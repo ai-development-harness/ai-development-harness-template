@@ -1,0 +1,7 @@
+---
+name: project-status
+description: Reconcile status projections with canonical tasks, requirements and evidence, then report current blockers and unblocked work.
+---
+# project-status
+
+Используй для `STATUS PROJECT`. Проверь task statuses, PLAN/STATUS projections, REQ statuses/coverage, latest reviews и blockers. Однозначный projection drift можно исправить. Не меняй смысл REQ/ADR и не пиши product code. Покажи in-progress, blocked, recent completed и unblocked high-priority work.

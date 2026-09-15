@@ -1,0 +1,28 @@
+# Raw local project input. Never commit by default.
+PROJECT_BRIEF.local.md
+
+# Local/private harness overrides.
+AGENT.local.md
+.project/local/
+.codex/local/
+
+# Secrets.
+.env
+.env.*
+!.env.example
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+
+# Common generated/local artifacts (adjust after INIT if project intentionally tracks one).
+*.log
+*.tmp
+*.swp
+__pycache__/
+.venv/
+node_modules/
+dist/
+build/
+coverage/
+.cache/

@@ -1,0 +1,62 @@
+# Человекочитаемое имя workflow в GitHub Actions UI.
+# Пример: "Harness Integrity".
+name: Harness Integrity
+
+# GitHub Actions events, на которых выполняется baseline Harness validation.
+# Пример: push + pull_request + ручной workflow_dispatch.
+on:
+  # Проверять каждый push любой ветки.
+  # Пример: commit в feature/* сразу получает Harness integrity result.
+  push:
+  # Проверять Pull Request до merge.
+  # Пример: удаление обязательного protocol-файла блокируется ещё в PR.
+  pull_request:
+  # Разрешить ручной запуск workflow из GitHub UI/API.
+  # Пример: повторная проверка после внешней настройки repository.
+  workflow_dispatch:
+
+# Минимальные GitHub token permissions всего workflow.
+# Пример: только `contents: read`, потому что workflow ничего не публикует.
+permissions:
+  # Только чтение repository contents; validator ничего не коммитит и не пушит.
+  # Пример: `read` достаточно для checkout и локальной проверки.
+  contents: read
+
+# Набор jobs workflow.
+# Пример: один `validate-harness` job для baseline template.
+jobs:
+  # Стабильный machine-readable ID job.
+  # Пример: `validate-harness` используется в branch protection/check names.
+  validate-harness:
+    # Отображаемое имя job в GitHub UI.
+    # Пример: "Validate Harness".
+    name: Validate Harness
+    # Runner image для выполнения validation.
+    # Пример: `ubuntu-latest`; validator использует только Python standard library.
+    runs-on: ubuntu-latest
+    # Максимальное время job до принудительной остановки.
+    # Пример: 5 минут существенно выше обычного времени validator, но защищает от зависания.
+    timeout-minutes: 5
+
+    # Последовательность шагов job.
+    # Пример: checkout → запуск dependency-free validator.
+    steps:
+      # Отображаемое имя checkout step.
+      # Пример: "Checkout repository".
+      - name: Checkout repository
+        # Официальный action для получения contents текущего commit/PR.
+        # Пример: actions/checkout@v7; обновляй major осознанно, не автоматически в рамках product STEP.
+        uses: actions/checkout@v7
+        # Параметры checkout action.
+        # Пример: отключить сохранение credentials, так как workflow только читает repository.
+        with:
+          # Не оставлять GitHub token в локальном git config runner после checkout.
+          # Пример: false снижает ненужные credentials в job, которому push не требуется.
+          persist-credentials: false
+
+      # Отображаемое имя deterministic validation step.
+      # Пример: видно как отдельная строка в Actions log.
+      - name: Validate Harness integrity and repository hygiene
+        # Команда baseline validator. Product-specific CI добавляется отдельными workflows после INIT.
+        # Пример: `--mode ci` включает CI semantics без mutation.
+        run: python3 tools/harness/validate.py --mode ci
