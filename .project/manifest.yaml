@@ -4,6 +4,9 @@ harness:
   # Стабильный номер поколения Harness template.
   # Пример: "1". Пока protocol не стабилизирован dogfooding, номер не повышается за каждую итерацию.
   version: "1"
+  # Release Harness, от которого текущий project protocol layer синхронизирован.
+  # Пример: "0.1.0"; immutable source ref хранится в `.project/harness.lock.json`.
+  release: "0.1.0"
 
 # Состояние конкретного проекта, созданного из template.
 # Пример: до INIT initialized=false/name=null, после INIT значения заполняются initializer.
@@ -92,6 +95,9 @@ protocol:
   # Реестр установленных/созданных дополнительных skills.
   # Пример: docs/skills/REGISTRY.md.
   skillRegistry: docs/skills/REGISTRY.md
+  # Каталог durable Harness update reports.
+  # Пример: planning/harness-updates.
+  harnessUpdateDirectory: planning/harness-updates
 
 # Пути к repository policies и deterministic validation.
 # Пример: gitPolicy=`.project/git-policy.toml`.
@@ -102,6 +108,12 @@ repository:
   # Политика обязательных Harness artifacts/repository hygiene.
   # Пример: .project/harness-policy.toml.
   harnessPolicy: .project/harness-policy.toml
+  # Ownership/source policy безопасного self-update.
+  # Пример: .project/harness-update.toml.
+  harnessUpdatePolicy: .project/harness-update.toml
+  # Lock known BASE текущего Harness release.
+  # Пример: .project/harness.lock.json.
+  harnessLock: .project/harness.lock.json
   # Локальный deterministic validator, используемый COMMIT/PUSH/CI.
   # Пример: tools/harness/validate.py.
   harnessValidation: tools/harness/validate.py

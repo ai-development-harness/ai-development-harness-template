@@ -2,11 +2,12 @@
 
 ## Что относится к protocol layer
 
-- `AGENTS.md` (кроме generated project block);
+- `AGENTS.md` (кроме generated project blocks);
 - `.codex/`;
-- `.agents/skills/`;
+- core `.agents/skills/`;
 - `planning/EXECUTION_PROTOCOL.md`;
 - `docs/harness/`;
+- `.project/*-policy.toml`, updater/validator;
 - templates.
 
 ## Что относится к конкретному проекту
@@ -17,24 +18,59 @@
 - ADR;
 - architecture/subsystem docs;
 - roadmap/tasks/reviews/audits;
-- product code/tests/config.
+- Harness update reports;
+- product code/tests/config;
+- project-native/third-party skills.
 
 ## Правило обновлений
 
-Не копируй новый harness поверх проекта вслепую. Сначала сравни protocol layer, затем перенеси изменение с учётом project-specific дополнений.
+Не копируй новый Harness поверх проекта вручную.
 
-## Версия Harness
+Используй:
 
-`.project/manifest.yaml` содержит `harness.version`. Пока Harness находится в экспериментальной фазе и не прошёл реальное dogfooding, сохраняй версию `1`. Не повышай номер за каждую итерацию шаблона. Версионирование схемы/совместимости вводится отдельно после стабилизации protocol.
+```text
+CHECK HARNESS UPDATE
+UPDATE HARNESS
+```
+
+Формальная модель ownership, BASE/OURS/THEIRS, legacy adoption и release lifecycle описана в [`UPDATES.md`](UPDATES.md).
+
+`UPDATE HARNESS` — maintenance mutation, а не STEP. После неё не выполняются commit/push/PR автоматически: сначала inspect diff, затем обычный `GIT CHECK` → `COMMIT`.
+
+## Version и release
+
+`.project/manifest.yaml` разделяет два понятия:
+
+- `harness.version` — поколение protocol/schema layer;
+- `harness.release` — конкретный semver release.
+
+Пока protocol generation совместимо, `harness.version` остаётся `"1"`, а поставки получают immutable tags `vMAJOR.MINOR.PATCH`.
+
+Known BASE проекта фиксируется в `.project/harness.lock.json`. Moving `main` не используется как update baseline.
+
+## Ownership
+
+`.project/harness-update.toml` делит обновляемые пути на:
+
+- `harness_owned` — локальная модификация блокирует silent overwrite;
+- `shared` — 3-way merge;
+- `marker_merge` — 3-way merge с сохранением generated project blocks.
+
+Всё неизвестное считается project-owned и updater не меняет.
+
+## Legacy projects
+
+Если проект создан до появления lock, безопасный BASE неизвестен. Updater не должен угадывать его по похожести файлов.
+
+Legacy adoption разрешён только для явно известного release через `update-harness`: укажи конкретный immutable tag `vX.Y.Z`. При неизвестном baseline нужен ручной reconciliation.
 
 ## Project-specific skills
 
 Добавляй отдельно. Универсальный `implement-step` не должен знать конкретный framework. Если technology skill нужен большинству задач проекта — зарегистрируй его в `.agents/skills/` и упомяни в generated project context/architecture docs.
 
-
 ## Third-party skills
 
-Не смешивай upstream skill upgrades с обычным harness update. У каждого внешнего skill должен быть `UPSTREAM.md` и запись в `docs/skills/REGISTRY.md`. Обновление upstream требует повторного inspection; не делай silent auto-update.
+Не смешивай upstream skill upgrades с обычным Harness update. У каждого внешнего skill должен быть `UPSTREAM.md` и запись в `docs/skills/REGISTRY.md`. Обновление upstream требует повторного inspection; не делай silent auto-update.
 
 ## Самодокументируемые конфиги
 

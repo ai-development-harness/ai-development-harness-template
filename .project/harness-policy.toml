@@ -15,7 +15,10 @@ required_files = [
   ".project/manifest.yaml",
   ".project/git-policy.toml",
   ".project/harness-policy.toml",
+  ".project/harness-update.toml",
+  ".project/harness.lock.json",
   ".codex/config.toml",
+  ".codex/agents/harness-updater.toml",
   "docs/harness/README.md",
   "docs/harness/COMMANDS.md",
   "docs/harness/DOCUMENT_MODEL.md",
@@ -24,7 +27,9 @@ required_files = [
   "docs/harness/LANGUAGE_POLICY.md",
   "docs/harness/QUICK_CHANGES.md",
   "docs/harness/GITHUB_TEMPLATES.md",
+  "docs/harness/UPDATES.md",
   "planning/EXECUTION_PROTOCOL.md",
+  "planning/harness-updates/README.md",
   "planning/tasks/TEMPLATE.md",
   "docs/requirements/SPEC.md",
   "docs/adr/TEMPLATE.md",
@@ -61,6 +66,7 @@ required_skills = [
   "git-workflow",
   "quick-fix",
   "generate-github-templates",
+  "update-harness",
 ]
 
 # Имена agent registrations, которые `.codex/config.toml` обязан предоставлять.
@@ -77,6 +83,7 @@ required_agents = [
   "mechanic",
   "skill_curator",
   "git_operator",
+  "harness_updater",
 ]
 
 # Канонические пользовательские команды, которые должны оставаться описаны в AGENTS/protocol/docs.
@@ -148,6 +155,7 @@ format_paths = [
   "docs/harness",
   "planning/EXECUTION_PROTOCOL.md",
   "planning/README.md",
+  "planning/harness-updates",
   "tools/harness",
   ".github",
 ]

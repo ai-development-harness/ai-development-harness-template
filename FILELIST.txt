@@ -22,11 +22,13 @@
 .agents/skills/review-step/SKILL.md
 .agents/skills/run-step/SKILL.md
 .agents/skills/security-review/SKILL.md
+.agents/skills/update-harness/SKILL.md
 .agents/skills/write-tests/SKILL.md
 .codex/README.md
 .codex/agents/architect.toml
 .codex/agents/docs.toml
 .codex/agents/git-operator.toml
+.codex/agents/harness-updater.toml
 .codex/agents/implementer.toml
 .codex/agents/initializer.toml
 .codex/agents/mechanic.toml
@@ -43,10 +45,14 @@
 .project/README.md
 .project/git-policy.toml
 .project/harness-policy.toml
+.project/harness-update.toml
+.project/harness.lock.json
 .project/manifest.yaml
+.vscode/settings.json
 AGENT.local.example.md
 AGENTS.md
 FILELIST.txt
+LICENSE
 PROJECT_BRIEF.example.md
 README.md
 docs/GLOSSARY.md
@@ -72,6 +78,7 @@ docs/harness/README.md
 docs/harness/REPORTING.md
 docs/harness/REPOSITORY_LAYOUT.md
 docs/harness/SKILL_MANAGEMENT.md
+docs/harness/UPDATES.md
 docs/harness/WORKFLOW.md
 docs/requirements/SPEC.md
 docs/requirements/STATUS.md
@@ -84,6 +91,7 @@ planning/README.md
 planning/STATUS.md
 planning/audits/README.md
 planning/audits/TEMPLATE.md
+planning/harness-updates/README.md
 planning/releases/README.md
 planning/releases/TEMPLATE.md
 planning/reviews/README.md
@@ -91,5 +99,4 @@ planning/reviews/TEMPLATE.md
 planning/skill-searches/README.md
 planning/skill-searches/TEMPLATE.md
 planning/tasks/TEMPLATE.md
-tools/harness/__pycache__/validate.cpython-313.pyc
 tools/harness/validate.py

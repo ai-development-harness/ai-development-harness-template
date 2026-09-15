@@ -25,6 +25,7 @@ Harness skills описывают **workflow**, а не конкретный tec
 - `find-skill`
 - `install-skill`
 - `create-skill`
+- `update-harness`
 
 После INIT добавляй project/technology-specific skills отдельно. Выбирай минимальный достаточный набор на задачу: лишние skills увеличивают контекст и риск конфликтующих инструкций.
 
@@ -37,4 +38,5 @@ Harness skills описывают **workflow**, а не конкретный tec
 ## Дополнительные core workflow skills
 
 - `quick-fix` — мелкие low-risk изменения без STEP/REQ/ADR;
-- `generate-github-templates` — регенерация GitHub Issue Forms и PR template по актуальному tooling.
+- `generate-github-templates` — регенерация GitHub Issue Forms и PR template по актуальному tooling;
+- `update-harness` — read-only check и безопасный self-update protocol layer из immutable release tags.

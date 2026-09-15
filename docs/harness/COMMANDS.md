@@ -97,6 +97,20 @@ Read-only рекомендация следующего **unblocked** шага �
 
 Финальный release-oriented review по фактическим проектным gates: unresolved critical/high findings, requirements, migrations, tests/build, security, docs, upgrade/deploy concerns. Создаёт report в `planning/releases/`.
 
+## `CHECK HARNESS UPDATE`
+
+Read-only проверка доступной версии Harness. Использует `.project/harness.lock.json` как BASE и `.project/harness-update.toml` как ownership/source policy. Показывает safe changes/conflicts, но не меняет working tree, Git refs, lock, STEP, commit, push или PR.
+
+Если lock отсутствует, возвращает legacy-adoption blocker вместо угадывания BASE. Подробно: [`UPDATES.md`](UPDATES.md).
+
+## `UPDATE HARNESS`
+
+Maintenance mutation protocol layer без STEP. Допускается только после успешного `CHECK HARNESS UPDATE`.
+
+Updater меняет только allowlisted Harness paths, использует 3-way merge для shared files, сохраняет generated project blocks в `README.md`/`AGENTS.md` и останавливается до mutation при конфликтах.
+
+Команда не запускает migration/install/bootstrap scripts из target release и не выполняет commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
+
 ## `GIT CHECK`
 
 Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged/unstaged/untracked, Harness integrity, policy и подозрительные файлы. Ничего не stage/commit/push.

@@ -80,7 +80,7 @@ description = "Implement an approved STEP plan within scope, update tests, and r
 config_file = "./agents/implementer.toml"
 
 [agents.reviewer]
-# Когда выбирать независимого reviewer.
+# Когда выбирать независимый reviewer.
 # Пример: `REVIEW STEP-NNN` после реализации другим агентом.
 description = "Independently review a completed implementation for correctness, regressions, architecture and missing tests."
 # Role-specific read-only конфигурация reviewer.
@@ -134,3 +134,11 @@ description = "Safely prepare commits, branches, pushes and pull requests accord
 # Role-specific профиль Git workflow.
 # Пример: "./agents/git-operator.toml".
 config_file = "./agents/git-operator.toml"
+
+[agents.harness_updater]
+# Когда выбирать harness updater.
+# Пример: `CHECK HARNESS UPDATE`, `UPDATE HARNESS` и explicit legacy adoption.
+description = "Check and safely reconcile the Harness protocol layer with immutable upstream release tags while preserving project-owned state."
+# Role-specific профиль maintenance mutation.
+# Пример: "./agents/harness-updater.toml".
+config_file = "./agents/harness-updater.toml"

@@ -29,6 +29,7 @@
 - [Структура репозитория](docs/harness/REPOSITORY_LAYOUT.md)
 - [Команды](docs/harness/COMMANDS.md)
 - [Execution Protocol](planning/EXECUTION_PROTOCOL.md)
+- [Обновление Harness в существующем проекте](docs/harness/UPDATES.md)
 - [Агенты, модели и reasoning effort](docs/harness/AGENT_CONFIGURATION.md)
 - [Git workflow: COMMIT / PUSH / PR / SYNC](docs/harness/GIT_WORKFLOW.md)
 - [CI и Harness Integrity](docs/harness/CI.md)

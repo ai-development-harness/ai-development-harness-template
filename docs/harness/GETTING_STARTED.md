@@ -6,6 +6,8 @@
 
 Если template клонируется напрямую, перед первым `PUSH` замени `origin` на репозиторий нового проекта.
 
+Template уже содержит `.project/harness.lock.json`: это BASE для будущих `CHECK HARNESS UPDATE` / `UPDATE HARNESS`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
+
 ## 2. Создай локальный project brief
 
 ```bash
@@ -49,7 +51,8 @@ Initializer должен:
 - заполнить scope, out of scope, dependencies, acceptance criteria и verification;
 - заменить generated project blocks в `README.md` и `AGENTS.md`;
 - выставить `project.initialized: true` в `.project/manifest.yaml` только после consistency check;
-- не создавать production code.
+- не создавать production code;
+- не изменять Harness release/lock как часть INIT.
 
 ## 5. Проверь результат
 
@@ -79,6 +82,8 @@ NEXT STEP
 - основной implementer — balanced профиль;
 - механические роли — более экономичный профиль;
 - reviewer должен оставаться независимым от implementer.
+
+Пользовательские изменения этих файлов сохраняются при Harness update через 3-way merge.
 
 ## 7. Зафиксируй bootstrap
 
@@ -117,6 +122,22 @@ ADD STEP: <описание>
 ```text
 FIND SKILL: <описание>
 ```
+
+## 9. Обновляй Harness отдельно от project work
+
+Проверка:
+
+```text
+CHECK HARNESS UPDATE
+```
+
+Применение:
+
+```text
+UPDATE HARNESS
+```
+
+Это maintenance flow без STEP и без автоматического commit/push/PR. Подробно: [`UPDATES.md`](UPDATES.md).
 
 ## Необязательные локальные инструкции
 
