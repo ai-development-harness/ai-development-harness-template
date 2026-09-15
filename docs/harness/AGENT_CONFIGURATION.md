@@ -17,6 +17,7 @@
 | mechanic | GPT-5.6 Terra | low | локальная механическая работа |
 | skill-curator | GPT-5.6 Sol | medium | внешние skills требуют careful inspection/provenance |
 | git-operator | GPT-5.6 Terra | medium | diff classification, commit/branch/PR safety |
+| harness-updater | GPT-5.6 Sol | high | BASE/OURS/THEIRS reconciliation и ownership conflicts |
 
 ## Главный принцип экономии
 
@@ -80,7 +81,7 @@ Root defaults и лимит параллелизма находятся в `.cod
 
 ### Quality-first
 
-- initializer/architect/planner/reviewer/security: Sol High
+- initializer/architect/planner/reviewer/security/harness-updater: Sol High
 - implementer: Sol Medium или High для critical STEP
 - test-reviewer: Terra Medium
 
@@ -89,6 +90,7 @@ Root defaults и лимит параллелизма находятся в `.cod
 - reasoning roles: Sol High
 - implementer: Terra Medium
 - mechanical roles: Terra Low по умолчанию; Luna можно использовать как дополнительную экономию только после проверки совместимости с текущей версией Codex
+- harness-updater: Sol High, потому что запускается редко и ошибка может повредить protocol layer проекта
 
 ### Budget-first
 
@@ -96,6 +98,7 @@ Root defaults и лимит параллелизма находятся в `.cod
 - implementer: Terra Low/Medium
 - reviewer: Sol High только для major/risky STEP, Terra Medium для малых corrective STEP
 - mechanic/docs: Terra Low (или Luna Low, если текущая версия Codex поддерживает Luna для spawned custom agents в твоей конфигурации)
+- harness-updater не понижать автоматически: update лучше запускать реже, но с сильным reconciliation profile
 
 Budget-first не отменяет security/release gates для high-risk изменений.
 
@@ -112,3 +115,13 @@ git-operator → GPT-5.6 Terra / Medium
 ```
 
 Задача в основном механическая, но требует аккуратно классифицировать diff, отделять unrelated files и формировать commit/PR metadata. Low допустим для очень простого репозитория, но Medium является более безопасным default. Git operator не должен принимать архитектурные решения и не заменяет reviewer.
+
+## Harness updater
+
+Default:
+
+```text
+harness-updater → GPT-5.6 Sol / High
+```
+
+Роль сравнивает immutable source BASE, local OURS и target THEIRS, определяет ownership boundary и должна предпочитать blocker потенциально разрушительному auto-merge. Она не выполняет product work, STEP или Git publication и не запускает target migration scripts.

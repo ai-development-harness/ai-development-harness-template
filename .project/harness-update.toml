@@ -1,0 +1,71 @@
+# Политика безопасного self-update protocol layer из release-тегов source repository.
+
+[source]
+# Канонический source repository Harness в формате owner/repo.
+# Пример: "ai-development-harness/ai-development-harness-template".
+repository = "ai-development-harness/ai-development-harness-template"
+
+# Ветка, из которой maintainers готовят releases; updater обновляет проекты только по tags, не по moving branch.
+# Пример: "main".
+default_branch = "main"
+
+# Регулярное выражение release-тегов, допустимых как immutable update baseline.
+# Пример: '^v\d+\.\d+\.\d+$'.
+tag_pattern = '^v\d+\.\d+\.\d+$'
+
+[state]
+# Машинный lock с текущим known BASE проекта.
+# Пример: ".project/harness.lock.json".
+lock_file = ".project/harness.lock.json"
+
+# Каталог durable report после успешного UPDATE HARNESS.
+# Пример: "planning/harness-updates".
+report_directory = "planning/harness-updates"
+
+[ownership]
+# Полностью Harness-owned paths. Updater заменяет их только если local content не расходится с BASE;
+# при local modification update блокируется вместо silent overwrite.
+# Пример: docs/harness/** и core workflow skills.
+harness_owned = [
+  ".agents/skills/**",
+  ".codex/README.md",
+  ".project/README.md",
+  ".project/harness-policy.toml",
+  ".project/harness-update.toml",
+  "docs/harness/**",
+  "planning/EXECUTION_PROTOCOL.md",
+  "planning/harness-updates/README.md",
+  "tools/harness/**",
+]
+
+# Shared paths могут содержать project-specific настройки; при расхождении local/base/target применяется 3-way merge.
+# Пример: пользователь может менять model/effort в .codex/config.toml.
+shared = [
+  ".codex/config.toml",
+  ".codex/agents/**",
+  ".github/**",
+  ".gitignore",
+  ".gitmessage",
+  ".project/git-policy.toml",
+  ".project/manifest.yaml",
+  "AGENT.local.example.md",
+  "FILELIST.txt",
+  "PROJECT_BRIEF.example.md",
+]
+
+# Файлы с generated project blocks. Помимо обычного 3-way merge updater обязан восстановить local marked blocks.
+# Пример: README.md сохраняет <!-- PROJECT:START --> ... <!-- PROJECT:END -->.
+marker_merge = [
+  "AGENTS.md",
+  "README.md",
+]
+
+[markers."AGENTS.md"]
+# Имена generated blocks, которые всегда принадлежат конкретному проекту и сохраняются при update.
+# Пример: PROJECT-CONTEXT.
+blocks = ["PROJECT-CONTEXT", "SKILL-ROUTING"]
+
+[markers."README.md"]
+# Имена generated blocks, которые всегда принадлежат конкретному проекту и сохраняются при update.
+# Пример: PROJECT.
+blocks = ["PROJECT"]

@@ -45,13 +45,15 @@
 - `NEXT STEP`
 - `RECONCILE PROJECT`
 - `RELEASE CHECK`
+- `CHECK HARNESS UPDATE`
+- `UPDATE HARNESS`
 - `GIT CHECK`
 - `COMMIT` / `COMMIT: <подсказка>`
 - `PUSH`
 - `PR`
 - `SYNC`
 
-Точная семантика находится в `planning/EXECUTION_PROTOCOL.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`. Перед исполнением команды используй соответствующий skill из `.agents/skills/`.
+Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`. Перед исполнением команды используй соответствующий skill из `.agents/skills/`.
 
 ## 4. INIT guard
 
@@ -91,8 +93,9 @@
 - `test_reviewer` — test strategy/coverage review по необходимости;
 - `docs` — механическая синхронизация документации;
 - `mechanic` — простые локальные изменения;
-- `skill_curator` — поиск, inspection, установка и создание repository skills.
-- `git_operator` — безопасные branch/commit/push/PR операции по `.project/git-policy.toml`.
+- `skill_curator` — поиск, inspection, установка и создание repository skills;
+- `git_operator` — безопасные branch/commit/push/PR операции по `.project/git-policy.toml`;
+- `harness_updater` — `CHECK HARNESS UPDATE`, `UPDATE HARNESS` и legacy adoption по `.project/harness-update.toml`.
 
 Не запускай специализированного агента, если его проверка не относится к задаче. Не используй несколько write-agents параллельно над одними файлами.
 
@@ -152,6 +155,8 @@ Technology/project-specific skills находятся в `.agents/skills/`. Ст
 
 GitHub collaboration templates обновляются отдельной командой `GENERATE GITHUB TEMPLATES`; она заменяет managed Issue/PR templates по фактическому стеку и tooling проекта.
 
+Self-update самого Harness выполняется только через core skill `update-harness`; project/third-party skills не обновляются этой командой.
+
 <!-- SKILL-ROUTING:START -->
 ### Project skill routing
 
@@ -171,7 +176,32 @@ GitHub collaboration templates обновляются отдельной ком�
 
 Если пользователь уже внёс такую мелкую правку вручную, разрешён прямой `GIT CHECK` → `COMMIT` без STEP после проверки diff. Если изменение оказалось не мелким — остановись и предложи `ADD STEP:`. Подробности: `docs/harness/QUICK_CHANGES.md`.
 
-## 15. Completion report
+## 15. Harness self-update
+
+Self-update protocol layer не является STEP.
+
+### `CHECK HARNESS UPDATE`
+
+- используй `.agents/skills/update-harness/SKILL.md`;
+- не меняй working tree, Git refs, lock, STEP/REQ/ADR, commit/push/PR;
+- BASE берётся только из `.project/harness.lock.json`;
+- если lock отсутствует, не угадывай baseline: переходи в legacy adoption mode;
+- неизвестные/project-owned paths не трогай даже при сходстве имён.
+
+### `UPDATE HARNESS`
+
+- разрешён только после успешного check без blockers;
+- меняет только allowlist из `.project/harness-update.toml`;
+- `shared` → 3-way merge;
+- `README.md`/`AGENTS.md` → 3-way merge с сохранением local generated blocks;
+- local modification `harness_owned` файла → blocker, а не overwrite;
+- target migration/install/bootstrap scripts автоматически не запускаются;
+- команда не делает STEP, commit, push или PR;
+- после mutation обязательно inspect diff → `GIT CHECK` → `COMMIT`.
+
+Для старого проекта без lock adoption разрешён только с explicit известным release. Подробности: `docs/harness/UPDATES.md`.
+
+## 16. Completion report
 
 По завершении команды сообщи кратко:
 
@@ -184,7 +214,7 @@ GitHub collaboration templates обновляются отдельной ком�
 
 Не пересказывай целиком прочитанные документы.
 
-## 16. Git workflow
+## 17. Git workflow
 
 Git mutation выполняется только явными командами `COMMIT`, `PUSH`, `PR`, `SYNC` и по `.project/git-policy.toml`.
 
@@ -200,9 +230,9 @@ Git mutation выполняется только явными командами
 Commit message строится по фактическому diff и `.gitmessage`; при наличии STEP/REQ/ADR использует repository traceability. При нескольких независимых changes предпочитай раздельные commits.
 
 Harness CI (`.github/workflows/harness-integrity.yml`) не заменяет product CI: он проверяет только целостность Harness и repository hygiene. После INIT project-specific CI добавляется отдельными workflows/gates на основании реально выбранного стека.
-## 17. Custom User Commands — читать последним
+
+## 18. Custom User Commands — читать последним
 
 После чтения **всех остальных разделов** этого `AGENTS.md` проверь наличие `AGENT.local.md` и, если он существует, прочитай его **последним**. Файл предназначен для локальных пользовательских alias-команд, личных предпочтений и checkout-specific workflows и исключён из Git. Пример находится в `AGENT.local.example.md`.
 
 `AGENT.local.md` может расширять командный интерфейс и задавать локальные предпочтения, но не должен скрыто отменять safety rules, Accepted ADR, scope текущего STEP, deterministic gates или repository security policy. Если локальная команда конфликтует с этими ограничениями, остановись и сообщи о конфликте.
-

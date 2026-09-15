@@ -7,3 +7,4 @@
 Перед изменением конфигурации прочитай `docs/harness/AGENT_CONFIGURATION.md`.
 
 - `skill-curator` — поиск, inspection, установка и создание repository skills.
+- `harness-updater` — безопасный `CHECK HARNESS UPDATE` / `UPDATE HARNESS` с сохранением project-owned state.
