@@ -2,6 +2,8 @@
 PROJECT_BRIEF.local.md
 
 # Local/private harness overrides.
+AGENTS.local.md
+# Legacy name kept ignored for projects created before v0.1.1.
 AGENT.local.md
 .project/local/
 .codex/local/
