@@ -85,7 +85,8 @@ required_agents = [
   "harness_updater",
 ]
 
-# Канонические пользовательские команды, которые должны оставаться описаны в AGENTS/protocol/docs.
+# Команды execution/Git surface, которые обязаны одновременно оставаться в AGENTS, EXECUTION_PROTOCOL и COMMANDS.
+# Maintenance-команды self-update проверяются отдельными update skill/docs и не дублируются в project execution protocol.
 # Пример: если при рефакторинге исчезнет `ADD STEP:`, Harness validator должен это заметить.
 required_commands = [
   "INIT PROJECT",
@@ -105,8 +106,6 @@ required_commands = [
   "NEXT STEP",
   "RECONCILE PROJECT",
   "RELEASE CHECK",
-  "CHECK HARNESS UPDATE",
-  "UPDATE HARNESS",
   "GIT CHECK",
   "COMMIT",
   "PUSH",
