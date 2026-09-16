@@ -4,7 +4,13 @@
 
 Workflow: `.github/workflows/harness-integrity.yml`.
 
-Он запускает:
+Validator написан на Python и использует только standard library. Минимальная версия — Python 3.11+, потому что структурная проверка TOML опирается на `tomllib`. Это осознанная небольшая tooling dependency Harness, а не зависимость будущего продукта.
+
+Bash не используется как реализация validator: текущие проверки требуют корректного TOML parsing, работы с Git index, glob/path semantics, UTF-8/binary content и структурой skills/configs. Перенос в shell либо ослабил бы эти проверки, либо добавил внешние parser dependencies. Docker также не является обязательным runtime, чтобы локальная validation не зависела от daemon/image/network.
+
+В GitHub Actions версия Python задаётся явно через `actions/setup-python`, поэтому CI не зависит от случайной версии интерпретатора в `ubuntu-latest`.
+
+Workflow запускает:
 
 ```bash
 python3 tools/harness/validate.py --mode ci
@@ -16,6 +22,8 @@ python3 tools/harness/validate.py --mode ci
 
 ## Локальный запуск
 
+Требуются Git и Python 3.11+:
+
 ```bash
 python3 tools/harness/validate.py --mode manual
 ```
@@ -25,6 +33,8 @@ python3 tools/harness/validate.py --mode manual
 ```bash
 python3 tools/harness/validate.py --mode commit
 ```
+
+Если Python 3.11+ отсутствует, validator должен считаться недоступным gate, а не молча заменяться частичной shell-проверкой.
 
 ## Настройка
 
