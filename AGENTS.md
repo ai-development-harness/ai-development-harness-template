@@ -233,7 +233,7 @@ Harness CI (`.github/workflows/harness-integrity.yml`) не заменяет pro
 
 ## 18. Custom User Commands — читать последним
 
-После чтения **всех остальных разделов** этого `AGENTS.md` проверь наличие `AGENTS.local.md` и, если он существует, прочитай его **последним**. Если нового файла нет, но существует legacy `AGENT.local.md`, прочитай legacy-файл вместо него. Если существуют оба, приоритет имеет `AGENTS.local.md`.
+После чтения **всех остальных разделов** этого `AGENTS.md` проверь наличие `AGENTS.local.md` и, если он существует, прочитай его **последним**.
 
 `AGENTS.local.md` предназначен для локальных пользовательских alias-команд, личных предпочтений и checkout-specific workflows и исключён из Git. Пример находится в `AGENTS.local.example.md`.
 
