@@ -10,7 +10,6 @@ required_files = [
   "AGENTS.md",
   "README.md",
   "PROJECT_BRIEF.example.md",
-  "AGENT.local.example.md",
   ".gitignore",
   ".project/manifest.yaml",
   ".project/git-policy.toml",
@@ -106,6 +105,8 @@ required_commands = [
   "NEXT STEP",
   "RECONCILE PROJECT",
   "RELEASE CHECK",
+  "CHECK HARNESS UPDATE",
+  "UPDATE HARNESS",
   "GIT CHECK",
   "COMMIT",
   "PUSH",
@@ -117,6 +118,7 @@ required_commands = [
 # Пример: local brief, `.env`, private keys, dependencies/build/cache/log artifacts.
 forbidden_tracked_globs = [
   "PROJECT_BRIEF.local.md",
+  "AGENTS.local.md",
   "AGENT.local.md",
   ".project/local/**",
   ".codex/local/**",
@@ -148,7 +150,7 @@ allowed_tracked_globs = [
 # Пример: trailing whitespace/final newline проверяются в Harness-managed docs/config/tooling, а не автоматически во всём будущем product code.
 format_paths = [
   "AGENTS.md",
-  "AGENT.local.example.md",
+  "AGENTS.local.example.md",
   "README.md",
   ".project",
   ".codex",
