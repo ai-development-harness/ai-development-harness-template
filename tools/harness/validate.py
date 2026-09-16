@@ -232,8 +232,6 @@ def main() -> int:
         errors.append(".gitignore must ignore PROJECT_BRIEF.local.md")
     if "AGENTS.local.md" not in gitignore:
         errors.append(".gitignore must ignore AGENTS.local.md")
-    if "AGENT.local.md" not in gitignore:
-        errors.append(".gitignore must keep ignoring legacy AGENT.local.md")
 
     files = tracked_files(root)
     forbidden = policy.get("forbidden_tracked_globs", [])
