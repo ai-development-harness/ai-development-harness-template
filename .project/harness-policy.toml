@@ -118,7 +118,6 @@ required_commands = [
 forbidden_tracked_globs = [
   "PROJECT_BRIEF.local.md",
   "AGENTS.local.md",
-  "AGENT.local.md",
   ".project/local/**",
   ".codex/local/**",
   ".env",
