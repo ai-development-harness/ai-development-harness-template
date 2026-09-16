@@ -1,6 +1,6 @@
 # Команды Harness
 
-Команды — стабильный человеко-машинный интерфейс. Подробные state transitions описаны в `planning/EXECUTION_PROTOCOL.md`. Локальные пользовательские alias-команды можно добавить в `AGENT.local.md`; они читаются после `AGENTS.md`.
+Команды — стабильный человеко-машинный интерфейс. Подробные state transitions описаны в `planning/EXECUTION_PROTOCOL.md`. Локальные пользовательские alias-команды можно добавить в `AGENTS.local.md`; они читаются после `AGENTS.md`.
 
 ## `INIT PROJECT`
 
