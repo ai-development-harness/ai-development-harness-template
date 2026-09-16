@@ -48,8 +48,7 @@ shared = [
   ".gitmessage",
   ".project/git-policy.toml",
   ".project/manifest.yaml",
-  "AGENT.local.example.md",
-  "FILELIST.txt",
+  "AGENTS.local.example.md",
   "PROJECT_BRIEF.example.md",
 ]
 

@@ -2,7 +2,7 @@
 PROJECT_BRIEF.local.md
 
 # Local/private harness overrides.
-AGENT.local.md
+AGENTS.local.md
 .project/local/
 .codex/local/
 

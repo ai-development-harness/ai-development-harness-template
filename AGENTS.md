@@ -233,6 +233,8 @@ Harness CI (`.github/workflows/harness-integrity.yml`) не заменяет pro
 
 ## 18. Custom User Commands — читать последним
 
-После чтения **всех остальных разделов** этого `AGENTS.md` проверь наличие `AGENT.local.md` и, если он существует, прочитай его **последним**. Файл предназначен для локальных пользовательских alias-команд, личных предпочтений и checkout-specific workflows и исключён из Git. Пример находится в `AGENT.local.example.md`.
+После чтения **всех остальных разделов** этого `AGENTS.md` проверь наличие `AGENTS.local.md` и, если он существует, прочитай его **последним**.
 
-`AGENT.local.md` может расширять командный интерфейс и задавать локальные предпочтения, но не должен скрыто отменять safety rules, Accepted ADR, scope текущего STEP, deterministic gates или repository security policy. Если локальная команда конфликтует с этими ограничениями, остановись и сообщи о конфликте.
+`AGENTS.local.md` предназначен для локальных пользовательских alias-команд, личных предпочтений и checkout-specific workflows и исключён из Git. Пример находится в `AGENTS.local.example.md`.
+
+Локальные инструкции могут расширять командный интерфейс и задавать локальные предпочтения, но не должны скрыто отменять safety rules, Accepted ADR, scope текущего STEP, deterministic gates или repository security policy. Если локальная команда конфликтует с этими ограничениями, остановись и сообщи о конфликте.

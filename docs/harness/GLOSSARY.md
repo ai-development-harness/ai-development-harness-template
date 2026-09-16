@@ -558,7 +558,6 @@ Structured YAML template из `.github/ISSUE_TEMPLATE/*.yml`, который Git
 
 Idempotent-команда, которая инспектирует актуальный repository stack/tooling/CI и заменяет managed Issue/PR templates. Не создаёт commit автоматически.
 
-## `AGENT.local.md`
+## `AGENTS.local.md`
 
 Локальный, исключённый из Git файл пользовательских alias-команд и предпочтений. `AGENTS.md` требует читать его последним, если он существует. Локальные инструкции расширяют workflow, но не должны скрыто обходить safety/ADR/STEP/security gates.
-

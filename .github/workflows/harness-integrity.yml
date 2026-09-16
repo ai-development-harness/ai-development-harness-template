@@ -32,14 +32,14 @@ jobs:
     # Пример: "Validate Harness".
     name: Validate Harness
     # Runner image для выполнения validation.
-    # Пример: `ubuntu-latest`; validator использует только Python standard library.
+    # Пример: `ubuntu-latest`; конкретная версия Python задаётся отдельным setup step.
     runs-on: ubuntu-latest
     # Максимальное время job до принудительной остановки.
     # Пример: 5 минут существенно выше обычного времени validator, но защищает от зависания.
     timeout-minutes: 5
 
     # Последовательность шагов job.
-    # Пример: checkout → запуск dependency-free validator.
+    # Пример: checkout → setup Python → запуск dependency-free validator.
     steps:
       # Отображаемое имя checkout step.
       # Пример: "Checkout repository".
@@ -53,6 +53,19 @@ jobs:
           # Не оставлять GitHub token в локальном git config runner после checkout.
           # Пример: false снижает ненужные credentials в job, которому push не требуется.
           persist-credentials: false
+
+      # Отображаемое имя шага настройки validator runtime.
+      # Пример: "Setup Python".
+      - name: Setup Python
+        # Официальный action фиксирует major runtime вместо зависимости от случайного PATH runner image.
+        # Пример: actions/setup-python@v7.
+        uses: actions/setup-python@v7
+        # Параметры Python runtime.
+        # Пример: validator поддерживает Python 3.11+, CI использует стабильную ветку 3.13.
+        with:
+          # Версия Python для deterministic Harness validator.
+          # Пример: "3.13".
+          python-version: "3.13"
 
       # Отображаемое имя deterministic validation step.
       # Пример: видно как отдельная строка в Actions log.

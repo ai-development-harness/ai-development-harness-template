@@ -119,13 +119,9 @@ vMAJOR.MINOR.PATCH
 
 Moving branch `main` не является update baseline.
 
-Для первого release после внедрения self-update обязателен post-merge tag:
+При подготовке release `.project/manifest.yaml` → `harness.release` и `.project/harness.lock.json` → `release` / `source.ref` должны указывать одну и ту же версию. После merge соответствующий immutable tag создаётся на фактическом release commit.
 
-```text
-v0.1.0
-```
-
-Пока этот tag не создан, проекты не должны использовать `0.1.0` как доступный update target.
+До создания этого tag новая версия **не считается доступным update target**, даже если её номер уже записан в `main`.
 
 ## Security boundary
 

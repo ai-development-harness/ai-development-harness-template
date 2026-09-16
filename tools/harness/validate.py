@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env python3
 """Dependency-free integrity/safety validator for AI Development Harness."""
 from __future__ import annotations
@@ -11,11 +10,11 @@ import re
 import subprocess
 import sys
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover
-    print("ERROR: Python 3.11+ is required (tomllib missing).", file=sys.stderr)
+if sys.version_info < (3, 11):
+    print("ERROR: Harness validation requires Python 3.11+ (stdlib tomllib).", file=sys.stderr)
     raise SystemExit(2)
+
+import tomllib
 
 
 def run_git(root: Path, *args: str) -> tuple[int, str]:
@@ -87,8 +86,6 @@ def parse_skill_frontmatter(path: Path) -> tuple[str | None, str | None]:
     return name, desc
 
 
-
-
 def preceding_comment_block(lines: list[str], index: int) -> list[str]:
     """Return contiguous comment lines immediately preceding a config parameter."""
     comments: list[str] = []
@@ -138,6 +135,7 @@ def config_parameter_lines(path: Path) -> list[tuple[int, str]]:
             if m:
                 result.append((idx, m.group(1)))
     return result
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -232,8 +230,8 @@ def main() -> int:
     gitignore = (root / ".gitignore").read_text(encoding="utf-8") if (root / ".gitignore").exists() else ""
     if "PROJECT_BRIEF.local.md" not in gitignore:
         errors.append(".gitignore must ignore PROJECT_BRIEF.local.md")
-    if "AGENT.local.md" not in gitignore:
-        errors.append(".gitignore must ignore AGENT.local.md")
+    if "AGENTS.local.md" not in gitignore:
+        errors.append(".gitignore must ignore AGENTS.local.md")
 
     files = tracked_files(root)
     forbidden = policy.get("forbidden_tracked_globs", [])

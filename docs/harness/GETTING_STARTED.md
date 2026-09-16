@@ -1,5 +1,12 @@
 # Начало работы
 
+## Требования к локальному окружению
+
+- Git — Harness использует repository state, diff/index и Git workflow как часть deterministic gates.
+- Python 3.11+ — нужен только для `tools/harness/validate.py`; product runtime от Python не зависит.
+
+В CI версия Python задаётся явно. Переписывать validator на Bash только ради устранения Python dependency не рекомендуется: validator разбирает TOML стандартным `tomllib` и выполняет структурные проверки, которые shell-скрипт без дополнительного парсера воспроизводил бы менее надёжно.
+
 ## 1. Создай новый репозиторий
 
 Предпочтительный путь — GitHub **Use this template**. После этого клонируй уже созданный репозиторий проекта.
@@ -142,9 +149,9 @@ UPDATE HARNESS
 ## Необязательные локальные инструкции
 
 ```bash
-cp AGENT.local.example.md AGENT.local.md
+cp AGENTS.local.example.md AGENTS.local.md
 ```
 
-`AGENT.local.md` также заранее игнорируется Git и читается после `AGENTS.md`.
+`AGENTS.local.md` заранее игнорируется Git и читается после `AGENTS.md`. Для проектов, созданных до переименования, legacy `AGENT.local.md` временно поддерживается как fallback; при наличии обоих файлов используется `AGENTS.local.md`.
 
 Перед INIT при необходимости настрой языки в `.project/manifest.yaml` → `language`.
