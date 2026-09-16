@@ -10,6 +10,7 @@ required_files = [
   "AGENTS.md",
   "README.md",
   "PROJECT_BRIEF.example.md",
+  "AGENTS.local.example.md",
   ".gitignore",
   ".project/manifest.yaml",
   ".project/git-policy.toml",
