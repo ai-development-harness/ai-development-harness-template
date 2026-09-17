@@ -48,8 +48,8 @@ CHECK HARNESS UPDATE TO v0.1.2
 Команда:
 
 - читает `.project/harness.lock.json`;
-- читает canonical `update.json` из `source.default_branch` как **routing metadata**;
-- без `TO <tag>` использует `update.json → latest` как конечный target и проверяет, что соответствующий immutable tag реально существует;
+- читает canonical `.project/harness-update-graph.json` из `source.default_branch` как **routing metadata**;
+- без `TO <tag>` использует `.project/harness-update-graph.json → latest` как конечный target и проверяет, что соответствующий immutable tag реально существует;
 - с `TO <tag>` использует именно указанный release как конечный target и не заменяет его более новым;
 - строит детерминированный route от текущего lock release до target; отсутствие route является blocker;
 - последовательно моделирует BASE / projected OURS / THEIRS для каждого hop до mutation;
@@ -95,7 +95,7 @@ PR
 
 ## Update manifest и выбор target
 
-Канонический source repository хранит в корне `update.json`:
+Канонический source repository хранит `.project/harness-update-graph.json`:
 
 ```json
 {
@@ -113,7 +113,7 @@ PR
 }
 ```
 
-`update.json` — **не migration script** и не source baseline. Это только machine-readable routing metadata:
+`.project/harness-update-graph.json` — **не migration script** и не source baseline. Это только machine-readable routing metadata:
 
 - `schemaVersion` задаёт понятую updater-ом схему;
 - `latest` задаёт конечный target для команды без `TO`;
@@ -126,7 +126,7 @@ PR
 
 Без `TO <tag>`:
 
-1. прочитай remote `update.json` из `source.default_branch`;
+1. прочитай remote `.project/harness-update-graph.json` из `source.default_branch`;
 2. возьми `latest`;
 3. построй route от current lock release до `latest`;
 4. проверь существование/immutability каждого tag, участвующего в route;
@@ -134,7 +134,7 @@ PR
 
 С `TO <tag>` конечный target задаёт пользователь. Updater обязан доказать достижимость именно этого tag из current release. Наличие самого tag недостаточно.
 
-Moving `main` разрешено читать только для `update.json`. Содержимое Harness для BASE/THEIRS всегда читается из immutable release tags.
+Moving `main` разрешено читать только для `.project/harness-update-graph.json`. Содержимое Harness для BASE/THEIRS всегда читается из immutable release tags.
 
 ### Исторический bridge `v0.1.1 → v0.1.2`
 
@@ -150,7 +150,7 @@ v0.2.0
 ...
 ```
 
-Сам `v0.1.1` остаётся immutable и задним числом не становится graph-aware. Его собственный старый updater по-прежнему требует явного перехода на `v0.1.2`. Начиная с graph-aware release такие compatibility rules больше не должны зашиваться в prompt/docs отдельными исключениями: source of truth — `update.json`.
+Сам `v0.1.1` остаётся immutable и задним числом не становится graph-aware. Его собственный старый updater по-прежнему требует явного перехода на `v0.1.2`. Начиная с graph-aware release такие compatibility rules больше не должны зашиваться в prompt/docs отдельными исключениями: source of truth — `.project/harness-update-graph.json`.
 
 ## Version и release — разные вещи
 
@@ -281,7 +281,7 @@ Moving branch `main` не является update baseline.
 
 ## Security boundary
 
-Updater-agent начинает с allowlist BASE policy. До выбора THEIRS ему разрешено прочитать только canonical remote `update.json` из настроенного `source.default_branch`; этот JSON используется исключительно для выбора release refs и не может задавать filesystem paths, shell commands, hooks или произвольные инструкции.
+Updater-agent начинает с allowlist BASE policy. До выбора THEIRS ему разрешено прочитать только canonical remote `.project/harness-update-graph.json` из настроенного `source.default_branch`; этот JSON используется исключительно для выбора release refs и не может задавать filesystem paths, shell commands, hooks или произвольные инструкции.
 
 После выбора очередного hop единственное расширение bootstrap scope — чтение target `.project/harness-update.toml` по тому же уже управляемому пути, после чего target policy используется только для вычисления безопасного transition scope.
 
@@ -291,4 +291,4 @@ Updater-agent начинает с allowlist BASE policy. До выбора THEIR
 
 Текущий validator запускается **до** mutation. После `UPDATE HARNESS` пользователь/агент обязан сначала проверить diff; выполнение нового tooling относится уже к обычному `GIT CHECK`/verification после review изменений.
 
-Remote `update.json` не делает moving `main` baseline: любое содержимое protocol layer, применяемое к проекту, должно происходить из immutable tag, проверенного для конкретного hop.
+Remote `.project/harness-update-graph.json` не делает moving `main` baseline: любое содержимое protocol layer, применяемое к проекту, должно происходить из immutable tag, проверенного для конкретного hop.

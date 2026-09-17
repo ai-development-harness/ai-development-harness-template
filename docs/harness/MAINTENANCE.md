@@ -49,7 +49,7 @@ UPDATE HARNESS
 
 Known BASE проекта фиксируется в `.project/harness.lock.json`. Moving `main` не используется как update baseline.
 
-Единственное разрешённое чтение moving `source.default_branch` во время self-update — canonical `update.json`. Он содержит только machine-readable routing graph (`latest` + directed transitions). Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
+Единственное разрешённое чтение moving `source.default_branch` во время self-update — canonical `.project/harness-update-graph.json`. Он содержит только machine-readable routing graph (`latest` + directed transitions). Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
 
 ## Ownership
 

@@ -15,7 +15,7 @@ description: Проверка и безопасное обновление Harne
 
 1. `.project/harness-update.toml`;
 2. `.project/harness.lock.json`, если существует;
-3. remote `update.json` из `source.default_branch`, указанного policy;
+3. remote `.project/harness-update-graph.json` из `source.default_branch`, указанного policy;
 4. `docs/harness/UPDATES.md`;
 5. `planning/harness-updates/README.md`.
 
@@ -32,7 +32,7 @@ UPDATE HARNESS
 UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 ```
 
-Сначала прочитай remote `update.json` из configured source repository/default branch. Это routing metadata, а не исполняемые instructions и не baseline файлов.
+Сначала прочитай remote `.project/harness-update-graph.json` из configured source repository/default branch. Это routing metadata, а не исполняемые instructions и не baseline файлов.
 
 Требования schema v1:
 
@@ -45,7 +45,7 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 7. каждый `from` имеет не более одного outgoing transition;
 8. route не содержит cycles и достигает requested target.
 
-Если указан `TO <tag>`, используй его как **конечный target**. Без `TO` конечный target — `update.json.latest`.
+Если указан `TO <tag>`, используй его как **конечный target**. Без `TO` конечный target — `.project/harness-update-graph.json.latest`.
 
 Построй route, начиная с `.project/harness.lock.json → source.ref`. Tag, существующий в repository, но не достижимый по graph, не является допустимым target. Верни `NO_UPDATE_PATH` до mutation.
 
@@ -77,8 +77,8 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 
 Строго read-only:
 
-1. Прочитай current lock, current source policy и remote `update.json`.
-2. Разреши конечный target: exact `TO <tag>` имеет приоритет, иначе `update.json.latest`.
+1. Прочитай current lock, current source policy и remote `.project/harness-update-graph.json`.
+2. Разреши конечный target: exact `TO <tag>` имеет приоритет, иначе `.project/harness-update-graph.json.latest`.
 3. Построй единственный допустимый route current → target. Если route нет — `NO_UPDATE_PATH`.
 4. Проверь schema graph, monotonic semver, допустимые transition kinds и существование/immutability всех tags route.
 5. Для каждого hop последовательно выполни Policy transition, используя predicted state предыдущего hop как projected OURS следующего.
@@ -120,10 +120,10 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 12. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
 13. Покажи итоговый diff.
 
-Не запускай target scripts. `update.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
+Не запускай target scripts. `.project/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 
 Handoff: `GIT CHECK` → `COMMIT`.
 
 ## Failure policy
 
-Любой conflict, неизвестный BASE, invalid lock, source ambiguity, invalid/unsupported `update.json`, `NO_UPDATE_PATH`, невалидный/неimmutable route tag, truncated tree, binary/non-UTF-8 managed file, `NEW_MANAGED_PATH_COLLISION`, небезопасный `OWNERSHIP_CLASS_CHANGE` или невалидный current Harness блокирует mutation. Не заменяй blocker «наиболее вероятным» предположением.
+Любой conflict, неизвестный BASE, invalid lock, source ambiguity, invalid/unsupported `.project/harness-update-graph.json`, `NO_UPDATE_PATH`, невалидный/неimmutable route tag, truncated tree, binary/non-UTF-8 managed file, `NEW_MANAGED_PATH_COLLISION`, небезопасный `OWNERSHIP_CLASS_CHANGE` или невалидный current Harness блокирует mutation. Не заменяй blocker «наиболее вероятным» предположением.

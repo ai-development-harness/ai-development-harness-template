@@ -154,30 +154,30 @@ def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
     return tuple(int(part) for part in match.groups())
 
 
-def validate_update_manifest(root: Path, errors: list[str]) -> None:
-    path = root / "update.json"
+def validate_update_graph(root: Path, errors: list[str]) -> None:
+    path = root / ".project" / "harness-update-graph.json"
     if not path.is_file():
         return
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        errors.append(f"invalid update.json: {exc}")
+        errors.append(f"invalid .project/harness-update-graph.json: {exc}")
         return
 
     if not isinstance(data, dict):
-        errors.append("update.json root must be an object")
+        errors.append(".project/harness-update-graph.json root must be an object")
         return
     if data.get("schemaVersion") != 1:
-        errors.append("update.json schemaVersion must be 1")
+        errors.append(".project/harness-update-graph.json schemaVersion must be 1")
 
     latest = data.get("latest")
     if not isinstance(latest, str) or semver_tag_tuple(latest) is None:
-        errors.append("update.json latest must be vMAJOR.MINOR.PATCH")
+        errors.append(".project/harness-update-graph.json latest must be vMAJOR.MINOR.PATCH")
         latest = None
 
     transitions = data.get("transitions")
     if not isinstance(transitions, list):
-        errors.append("update.json transitions must be an array")
+        errors.append(".project/harness-update-graph.json transitions must be an array")
         return
 
     outgoing: dict[str, str] = {}
@@ -186,7 +186,7 @@ def validate_update_manifest(root: Path, errors: list[str]) -> None:
         nodes.add(latest)
 
     for index, transition in enumerate(transitions):
-        prefix = f"update.json transitions[{index}]"
+        prefix = f".project/harness-update-graph.json transitions[{index}]"
         if not isinstance(transition, dict):
             errors.append(f"{prefix} must be an object")
             continue
@@ -213,13 +213,13 @@ def validate_update_manifest(root: Path, errors: list[str]) -> None:
 
         if isinstance(source, str) and isinstance(target, str):
             if source in outgoing:
-                errors.append(f"update.json ambiguous route: multiple transitions from {source}")
+                errors.append(f".project/harness-update-graph.json ambiguous route: multiple transitions from {source}")
             else:
                 outgoing[source] = target
             nodes.update({source, target})
 
     if latest and latest in outgoing:
-        errors.append("update.json latest must be terminal (no outgoing transition)")
+        errors.append(".project/harness-update-graph.json latest must be terminal (no outgoing transition)")
 
     if latest:
         for start in sorted(nodes):
@@ -227,12 +227,12 @@ def validate_update_manifest(root: Path, errors: list[str]) -> None:
             seen: set[str] = set()
             while current != latest:
                 if current in seen:
-                    errors.append(f"update.json cycle detected from {start}")
+                    errors.append(f".project/harness-update-graph.json cycle detected from {start}")
                     break
                 seen.add(current)
                 nxt = outgoing.get(current)
                 if nxt is None:
-                    errors.append(f"update.json release {start} cannot reach latest {latest}")
+                    errors.append(f".project/harness-update-graph.json release {start} cannot reach latest {latest}")
                     break
                 current = nxt
 
@@ -247,7 +247,7 @@ def validate_update_manifest(root: Path, errors: list[str]) -> None:
                         break
                 if manifest_release and latest != f"v{manifest_release}":
                     errors.append(
-                        f"update.json latest {latest} does not match manifest harness.release v{manifest_release}"
+                        f".project/harness-update-graph.json latest {latest} does not match manifest harness.release v{manifest_release}"
                     )
             except UnicodeDecodeError:
                 pass
@@ -273,7 +273,7 @@ def main() -> int:
         print(f"ERROR: invalid harness policy TOML: {exc}", file=sys.stderr)
         return 2
 
-    validate_update_manifest(root, errors)
+    validate_update_graph(root, errors)
 
     # Core files.
     for rel in policy.get("required_files", []):

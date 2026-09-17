@@ -15,8 +15,8 @@ tag_pattern = '^v\d+\.\d+\.\d+$'
 
 # Machine-readable граф допустимых переходов. Updater читает его из default_branch только как routing metadata;
 # содержимое release по-прежнему берётся исключительно из immutable tags.
-# Пример: "update.json".
-update_manifest = "update.json"
+# Пример: ".project/harness-update-graph.json".
+update_manifest = ".project/harness-update-graph.json"
 
 [state]
 # Машинный lock с текущим known BASE проекта.
@@ -32,7 +32,7 @@ report_directory = "planning/harness-updates"
 # при local modification update блокируется вместо silent overwrite.
 # Пример: docs/harness/**, core workflow skills и runtime adapter README.
 harness_owned = [
-  "update.json",
+  ".project/harness-update-graph.json",
   ".agents/skills/**",
   ".codex/README.md",
   ".claude/README.md",

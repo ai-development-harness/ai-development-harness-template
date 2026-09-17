@@ -99,9 +99,9 @@ Read-only рекомендация следующего **unblocked** шага �
 
 ## `CHECK HARNESS UPDATE [TO <tag>]`
 
-Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE, `.project/harness-update.toml` как source/ownership policy и canonical remote `update.json` как routing metadata.
+Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE, `.project/harness-update.toml` как source/ownership policy и canonical remote `.project/harness-update-graph.json` как routing metadata.
 
-Без `TO` конечный target берётся из `update.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
+Без `TO` конечный target берётся из `.project/harness-update-graph.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
 
 Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
@@ -121,7 +121,7 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 UPDATE HARNESS TO v0.2.3
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `update.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
+Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
 
 ## `GIT CHECK`
 
