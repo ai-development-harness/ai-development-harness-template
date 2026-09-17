@@ -97,17 +97,31 @@ Read-only рекомендация следующего **unblocked** шага �
 
 Финальный release-oriented review по фактическим проектным gates: unresolved critical/high findings, requirements, migrations, tests/build, security, docs, upgrade/deploy concerns. Создаёт report в `planning/releases/`.
 
-## `CHECK HARNESS UPDATE`
+## `CHECK HARNESS UPDATE [TO <tag>]`
 
 Read-only проверка доступной версии Harness. Использует `.project/harness.lock.json` как BASE и `.project/harness-update.toml` как ownership/source policy. Показывает safe changes/conflicts, но не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
-Если lock отсутствует, возвращает legacy-adoption blocker вместо угадывания BASE. Подробно: [`UPDATES.md`](UPDATES.md).
+Без `TO <tag>` выбирается latest допустимый immutable release. Форма с explicit target фиксирует конкретный release:
 
-## `UPDATE HARNESS`
+```text
+CHECK HARNESS UPDATE TO v0.1.2
+```
 
-Maintenance mutation protocol layer без STEP. Допускается только после успешного `CHECK HARNESS UPDATE`.
+Explicit tag обязан соответствовать `source.tag_pattern`, существовать и быть immutable. Если lock отсутствует, команда возвращает legacy-adoption blocker вместо угадывания BASE.
 
-Updater меняет только allowlisted Harness paths, использует 3-way merge для shared files, сохраняет generated project blocks в `README.md`/`AGENTS.md` и останавливается до mutation при конфликтах.
+Для проекта на `v0.1.1` первый переход обязан быть явным: `CHECK HARNESS UPDATE TO v0.1.2`. Причина и compatibility bridge описаны в [`UPDATES.md`](UPDATES.md).
+
+## `UPDATE HARNESS [TO <tag>]`
+
+Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же target**.
+
+Без `TO <tag>` используется latest допустимый immutable release. Для фиксированного target:
+
+```text
+UPDATE HARNESS TO v0.1.2
+```
+
+Updater меняет только рассчитанный transition scope Harness paths, использует 3-way merge для shared files, сохраняет generated project blocks в `README.md`/`AGENTS.md` и останавливается до mutation при конфликтах.
 
 Команда не запускает migration/install/bootstrap scripts из target release и не выполняет commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
 
