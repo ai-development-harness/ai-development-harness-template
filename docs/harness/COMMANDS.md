@@ -101,6 +101,8 @@ Read-only рекомендация следующего **unblocked** шага �
 
 Read-only проверка доступной версии Harness. Использует `.project/harness.lock.json` как BASE и `.project/harness-update.toml` как ownership/source policy. Показывает safe changes/conflicts, но не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
+Команда разрешена как до, так и после `INIT PROJECT`: `project.initialized: false` не является blocker для проверки Harness update.
+
 Без `TO <tag>` выбирается latest допустимый immutable release. Форма с explicit target фиксирует конкретный release:
 
 ```text
@@ -114,6 +116,8 @@ Explicit tag обязан соответствовать `source.tag_pattern`, �
 ## `UPDATE HARNESS [TO <tag>]`
 
 Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же target**.
+
+Команда разрешена до `INIT PROJECT`. Pre-init update обновляет только protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`.
 
 Без `TO <tag>` используется latest допустимый immutable release. Для фиксированного target:
 
