@@ -2,7 +2,16 @@
 
 Цель — тратить дорогой reasoning там, где он действительно повышает качество, а не на механические изменения.
 
+Harness отделяет **роль** от конкретного AI runtime. Канонические responsibilities задаются protocol/role instructions, а выбор model/effort хранится в adapter-конфигурации:
+
+- Codex: `.codex/config.toml` и `.codex/agents/*.toml`;
+- Claude Code: `.claude/settings.json` и `.claude/agents/*.md`.
+
+Подробности Claude adapter: [`CLAUDE_CODE.md`](CLAUDE_CODE.md).
+
 ## Базовый профиль
+
+### Codex
 
 | Роль | Модель | Effort | Когда |
 |---|---|---|---|
@@ -19,13 +28,32 @@
 | git-operator | GPT-5.6 Terra | medium | diff classification, commit/branch/PR safety |
 | harness-updater | GPT-5.6 Sol | high | BASE/OURS/THEIRS reconciliation и ownership conflicts |
 
+### Claude Code
+
+| Роль | Модель | Effort | Permission |
+|---|---|---|---|
+| initializer | opus | high | default |
+| architect | opus | high | plan |
+| planner | opus | high | plan |
+| implementer | sonnet | medium | default |
+| reviewer | opus | high | plan |
+| security-reviewer | opus | high | plan |
+| test-reviewer | sonnet | low | plan |
+| docs | sonnet | low | default |
+| mechanic | sonnet | low | default |
+| skill-curator | opus | medium | default |
+| git-operator | sonnet | medium | default |
+| harness-updater | opus | high | default |
+
+Family aliases в Claude Code выбраны намеренно: они позволяют runtime использовать актуальную разрешённую модель семейства. Проект при необходимости может закрепить конкретный model ID.
+
 ## Главный принцип экономии
 
 Сначала сокращай **лишние агентные проходы и контекст**, а уже затем снижай effort.
 
-Не запускай security/test reviewer для задачи, которой они не касаются. Planner можно пропустить внутри `RUN`, если task уже имеет свежий и достаточный Implementation plan. Механические изменения не должны уходить к Sol.
+Не запускай security/test reviewer для задачи, которой они не касаются. Planner можно пропустить внутри `RUN`, если task уже имеет свежий и достаточный Implementation plan. Механические изменения не должны уходить к самой дорогой reasoning-модели.
 
-## Когда повышать implementer до Sol
+## Когда повышать implementer
 
 Повышай роль на STEP, если присутствуют несколько факторов:
 
@@ -38,7 +66,7 @@
 - критичный performance path;
 - много неочевидных side effects.
 
-В остальных случаях Terra Medium — рекомендуемый default.
+В остальных случаях balanced implementer profile является рекомендуемым default.
 
 ## Когда допустим Low
 
@@ -68,7 +96,9 @@ Implementer получает готовый task/plan и решает задач
 
 ## Как изменить модель
 
-Редактируй конкретный файл `.codex/agents/<role>.toml`:
+### Codex
+
+Редактируй конкретный `.codex/agents/<role>.toml`:
 
 ```toml
 model = "gpt-5.6-terra"
@@ -77,51 +107,69 @@ model_reasoning_effort = "medium"
 
 Root defaults и лимит параллелизма находятся в `.codex/config.toml`.
 
+### Claude Code
+
+Редактируй конкретный `.claude/agents/<role>.md`:
+
+```yaml
+---
+model: sonnet
+effort: medium
+permissionMode: default
+---
+```
+
+Root defaults находятся в `.claude/settings.json`:
+
+```json
+{
+  "model": "sonnet",
+  "effortLevel": "medium"
+}
+```
+
+Для персонального override без repository diff используй `.claude/settings.local.json`.
+
+Tracked Codex и Claude role configs относятся к `shared`, поэтому пользовательские изменения сохраняются при Harness update через 3-way merge.
+
 ## Профили
 
 ### Quality-first
 
-- initializer/architect/planner/reviewer/security/harness-updater: Sol High
-- implementer: Sol Medium или High для critical STEP
-- test-reviewer: Terra Medium
+- reasoning roles: сильная модель + high;
+- implementer: сильная/balanced модель, Medium или High для critical STEP;
+- test-reviewer: Medium при сложной test surface;
+- harness-updater: High, потому что запускается редко и ошибка может повредить protocol layer.
 
 ### Balanced (default)
 
-- reasoning roles: Sol High
-- implementer: Terra Medium
-- mechanical roles: Terra Low по умолчанию; Luna можно использовать как дополнительную экономию только после проверки совместимости с текущей версией Codex
-- harness-updater: Sol High, потому что запускается редко и ошибка может повредить protocol layer проекта
+- reasoning roles: сильная модель + High;
+- implementer: balanced model + Medium;
+- mechanical roles: balanced/cheap model + Low;
+- harness-updater: сильная модель + High.
 
 ### Budget-first
 
-- planner: Terra High для обычных задач, Sol High только для architecture-heavy
-- implementer: Terra Low/Medium
-- reviewer: Sol High только для major/risky STEP, Terra Medium для малых corrective STEP
-- mechanic/docs: Terra Low (или Luna Low, если текущая версия Codex поддерживает Luna для spawned custom agents в твоей конфигурации)
-- harness-updater не понижать автоматически: update лучше запускать реже, но с сильным reconciliation profile
+- planner: balanced model + High для обычных задач, сильная модель только для architecture-heavy;
+- implementer: Low/Medium;
+- reviewer: сильная модель + High только для major/risky STEP, balanced + Medium для малых corrective STEP;
+- mechanic/docs: Low;
+- harness-updater не понижать автоматически: update лучше запускать реже, но с сильным reconciliation profile.
 
 Budget-first не отменяет security/release gates для high-risk изменений.
 
 ## Skill curator
 
-`skill-curator` вызывается редко, поэтому здесь выгоднее умеренно сильный профиль, чем максимальная экономия: он читает недоверенные third-party instructions/scripts и принимает решение об installation risk. Default — Sol Medium. Для широко известного, простого, чисто документального skill можно временно использовать Terra Medium; для skill со scripts/hooks/network/security tooling разумно повысить curator до Sol High или дополнительно привлечь `security_reviewer`.
+`skill-curator` вызывается редко, поэтому здесь выгоднее умеренно сильный профиль, чем максимальная экономия: он читает недоверенные third-party instructions/scripts и принимает решение об installation risk.
+
+Для skill со scripts/hooks/network/security tooling разумно повысить curator до максимального обычного reasoning profile или дополнительно привлечь `security_reviewer`.
 
 ## Git operator
-
-Default:
-
-```text
-git-operator → GPT-5.6 Terra / Medium
-```
 
 Задача в основном механическая, но требует аккуратно классифицировать diff, отделять unrelated files и формировать commit/PR metadata. Low допустим для очень простого репозитория, но Medium является более безопасным default. Git operator не должен принимать архитектурные решения и не заменяет reviewer.
 
 ## Harness updater
 
-Default:
+Updater сравнивает immutable source BASE, local OURS и target THEIRS, определяет ownership boundary и должен предпочитать blocker потенциально разрушительному auto-merge. Он не выполняет product work, STEP или Git publication и не запускает target migration scripts.
 
-```text
-harness-updater → GPT-5.6 Sol / High
-```
-
-Роль сравнивает immutable source BASE, local OURS и target THEIRS, определяет ownership boundary и должна предпочитать blocker потенциально разрушительному auto-merge. Она не выполняет product work, STEP или Git publication и не запускает target migration scripts.
+Для этой роли сохраняй сильную модель и High независимо от выбранного runtime.

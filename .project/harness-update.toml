@@ -25,10 +25,11 @@ report_directory = "planning/harness-updates"
 [ownership]
 # Полностью Harness-owned paths. Updater заменяет их только если local content не расходится с BASE;
 # при local modification update блокируется вместо silent overwrite.
-# Пример: docs/harness/** и core workflow skills.
+# Пример: docs/harness/**, core workflow skills и runtime adapter README.
 harness_owned = [
   ".agents/skills/**",
   ".codex/README.md",
+  ".claude/README.md",
   ".project/README.md",
   ".project/harness-policy.toml",
   ".project/harness-update.toml",
@@ -39,10 +40,13 @@ harness_owned = [
 ]
 
 # Shared paths могут содержать project-specific настройки; при расхождении local/base/target применяется 3-way merge.
-# Пример: пользователь может менять model/effort в .codex/config.toml.
+# Пример: пользователь может менять model/effort в Codex и Claude Code runtime adapters.
 shared = [
   ".codex/config.toml",
   ".codex/agents/**",
+  "CLAUDE.md",
+  ".claude/settings.json",
+  ".claude/agents/**",
   ".github/**",
   ".gitignore",
   ".gitmessage",

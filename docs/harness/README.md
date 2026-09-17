@@ -16,7 +16,8 @@
 
 ## Агенты и автоматизация
 
-- [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md) — роли субагентов, модели, reasoning effort и стратегии экономии.
+- [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md) — runtime-neutral роли субагентов, модели, reasoning effort и стратегии экономии.
+- [`CLAUDE_CODE.md`](CLAUDE_CODE.md) — project settings, subagents и ownership Claude Code adapter.
 - [`WORKFLOW.md`](WORKFLOW.md) — устройство orchestration и durable handoff между стадиями.
 - [`REPORTING.md`](REPORTING.md) — требования к итоговым отчётам.
 - [`SKILL_MANAGEMENT.md`](SKILL_MANAGEMENT.md) — поиск, inspection, установка и создание skills.
@@ -31,7 +32,7 @@
 
 ## Project-specific документация
 
-После `INIT PROJECT` основными продуктовым источниками становятся:
+После `INIT PROJECT` основными продуктовыми источниками становятся:
 
 - [`../PROJECT.md`](../PROJECT.md) — что это за проект и его границы;
 - [`../requirements/SPEC.md`](../requirements/SPEC.md) — требования;

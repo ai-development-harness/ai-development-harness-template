@@ -5,9 +5,10 @@
 version = 1
 
 # Файлы, без которых repository больше не считается валидным экземпляром Harness.
-# Пример: удаление `planning/EXECUTION_PROTOCOL.md` или `tools/harness/validate.py` должно ломать CI.
+# Пример: удаление `planning/EXECUTION_PROTOCOL.md` или runtime adapter должно ломать CI.
 required_files = [
   "AGENTS.md",
+  "CLAUDE.md",
   "README.md",
   "PROJECT_BRIEF.example.md",
   "AGENTS.local.example.md",
@@ -19,6 +20,9 @@ required_files = [
   ".project/harness.lock.json",
   ".codex/config.toml",
   ".codex/agents/harness-updater.toml",
+  ".claude/README.md",
+  ".claude/settings.json",
+  ".claude/agents/harness-updater.md",
   "docs/harness/README.md",
   "docs/harness/COMMANDS.md",
   "docs/harness/DOCUMENT_MODEL.md",
@@ -28,6 +32,7 @@ required_files = [
   "docs/harness/QUICK_CHANGES.md",
   "docs/harness/GITHUB_TEMPLATES.md",
   "docs/harness/UPDATES.md",
+  "docs/harness/CLAUDE_CODE.md",
   "planning/EXECUTION_PROTOCOL.md",
   "planning/harness-updates/README.md",
   "planning/tasks/TEMPLATE.md",
@@ -69,8 +74,8 @@ required_skills = [
   "update-harness",
 ]
 
-# Имена agent registrations, которые `.codex/config.toml` обязан предоставлять.
-# Пример: удаление reviewer ломает независимый review pipeline.
+# Канонические role identifiers, которые обязаны существовать во всех поддерживаемых runtime adapters.
+# Пример: `reviewer` должен иметь и Codex binding, и Claude Code subagent profile.
 required_agents = [
   "initializer",
   "architect",
@@ -115,12 +120,15 @@ required_commands = [
 ]
 
 # Glob-patterns файлов, которые не должны быть tracked Git.
-# Пример: local brief, `.env`, private keys, dependencies/build/cache/log artifacts.
+# Пример: local brief, private runtime overrides, `.env`, private keys, dependencies/build/cache/log artifacts.
 forbidden_tracked_globs = [
   "PROJECT_BRIEF.local.md",
   "AGENTS.local.md",
+  "CLAUDE.local.md",
   ".project/local/**",
   ".codex/local/**",
+  ".claude/local/**",
+  ".claude/settings.local.json",
   ".env",
   ".env.*",
   "*.pem",
@@ -149,10 +157,12 @@ allowed_tracked_globs = [
 # Пример: trailing whitespace/final newline проверяются в Harness-managed docs/config/tooling, а не автоматически во всём будущем product code.
 format_paths = [
   "AGENTS.md",
+  "CLAUDE.md",
   "AGENTS.local.example.md",
   "README.md",
   ".project",
   ".codex",
+  ".claude",
   "docs/harness",
   "planning/EXECUTION_PROTOCOL.md",
   "planning/README.md",
@@ -162,7 +172,7 @@ format_paths = [
 ]
 
 # Config-файлы, где каждый параметр обязан иметь человекочитаемый комментарий и пример рядом с настройкой.
-# Пример: все project/Codex policies и GitHub Actions YAML; product configs после INIT можно добавить сюда осознанно.
+# Пример: YAML/TOML допускают comments; strict JSON Claude settings документируются отдельно в CLAUDE_CODE.md.
 documented_config_globs = [
   ".project/*.toml",
   ".project/*.yaml",

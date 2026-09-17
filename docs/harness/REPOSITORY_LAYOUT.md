@@ -1,11 +1,12 @@
 # Структура репозитория
 
-Базовый template разделён на protocol layer, project knowledge base и будущую реализацию.
+Базовый template разделён на protocol layer, runtime adapters, project knowledge base и будущую реализацию.
 
 ```text
 .
 ├── README.md                         # project entry point; generated PROJECT block сохраняется при update
-├── AGENTS.md                         # repository-level инструкции; generated blocks сохраняются при update
+├── AGENTS.md                         # канонические repository-level инструкции Harness
+├── CLAUDE.md                         # Claude Code bridge: импортирует AGENTS.md
 ├── PROJECT_BRIEF.example.md          # шаблон локального сырого brief
 ├── .project/
 │   ├── manifest.yaml                 # protocol generation + current release + project state
@@ -13,8 +14,11 @@
 │   ├── harness-update.toml           # source/ownership/merge policy self-update
 │   ├── harness-policy.toml           # deterministic integrity policy
 │   └── git-policy.toml               # Git workflow policy
-├── .codex/                           # project-scoped roles и model/effort configuration
-├── .agents/skills/                   # core workflow + project/technology skills
+├── .codex/                           # Codex project-scoped roles и model/effort configuration
+├── .claude/                          # Claude Code project settings и role profiles
+│   ├── settings.json
+│   └── agents/
+├── .agents/skills/                   # runtime-neutral core workflow + project/technology skills
 ├── docs/
 │   ├── PROJECT.md                    # нормализованное описание конкретного проекта
 │   ├── architecture.md               # текущий architecture baseline
@@ -23,7 +27,7 @@
 │   ├── requirements/                 # REQ definitions + status projection
 │   ├── adr/                          # immutable architecture decisions
 │   ├── skills/                       # registry/provenance дополнительных skills
-│   └── harness/                      # документация самого Harness, включая UPDATES.md
+│   └── harness/                      # документация самого Harness, включая runtime adapters
 ├── planning/
 │   ├── EXECUTION_PROTOCOL.md
 │   ├── PLAN.md
@@ -39,11 +43,14 @@
 └── .github/                          # PR template + Harness CI
 ```
 
-## Три слоя
+## Слои
 
 ```text
 HARNESS / PROTOCOL
-AGENTS + commands + skills + policies + templates + update-agent
+AGENTS + commands + skills + policies + templates
+                     ↓
+RUNTIME ADAPTERS
+Codex (.codex) / Claude Code (CLAUDE.md + .claude)
                      ↓
 PROJECT KNOWLEDGE BASE
 PROJECT + REQ + ADR + architecture + planning
@@ -51,6 +58,8 @@ PROJECT + REQ + ADR + architecture + planning
 IMPLEMENTATION
 code + tests + migrations + runtime configuration
 ```
+
+Runtime adapter не является источником семантики Harness. Один и тот же STEP/REQ/ADR/Git contract должен исполняться одинаково независимо от Codex или Claude Code.
 
 Product implementation folders намеренно отсутствуют из template и появляются только после инициализации/реальных STEP.
 

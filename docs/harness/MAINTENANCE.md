@@ -3,7 +3,7 @@
 ## Что относится к protocol layer
 
 - `AGENTS.md` (кроме generated project blocks);
-- `.codex/`;
+- runtime adapters: `.codex/`, `CLAUDE.md`, baseline `.claude/`;
 - core `.agents/skills/`;
 - `planning/EXECUTION_PROTOCOL.md`;
 - `docs/harness/`;
@@ -20,7 +20,8 @@
 - roadmap/tasks/reviews/audits;
 - Harness update reports;
 - product code/tests/config;
-- project-native/third-party skills.
+- project-native/third-party skills;
+- project-specific runtime additions, отсутствующие в upstream allowlist.
 
 ## Правило обновлений
 
@@ -56,7 +57,9 @@ Known BASE проекта фиксируется в `.project/harness.lock.json`
 - `shared` — 3-way merge;
 - `marker_merge` — 3-way merge с сохранением generated project blocks.
 
-Всё неизвестное считается project-owned и updater не меняет.
+Runtime tuning относится к `shared`: пользователь может менять model/effort в `.codex/` и tracked Claude adapter, не теряя настройки при обычном Harness update.
+
+Всё неизвестное считается project-owned и updater не меняет. Например project-specific `.claude/skills/**` не становится Harness-owned только потому, что находится внутри `.claude/`.
 
 ## Legacy projects
 
@@ -68,6 +71,8 @@ Legacy adoption разрешён только для явно известног
 
 Добавляй отдельно. Универсальный `implement-step` не должен знать конкретный framework. Если technology skill нужен большинству задач проекта — зарегистрируй его в `.agents/skills/` и упомяни в generated project context/architecture docs.
 
+`.agents/skills/` является runtime-neutral canonical location. Не создавай вторую tracked копию core Harness skill в `.claude/skills/` только ради Claude Code.
+
 ## Third-party skills
 
 Не смешивай upstream skill upgrades с обычным Harness update. У каждого внешнего skill должен быть `UPSTREAM.md` и запись в `docs/skills/REGISTRY.md`. Обновление upstream требует повторного inspection; не делай silent auto-update.
@@ -76,7 +81,9 @@ Legacy adoption разрешён только для явно известног
 
 Tracked YAML/TOML в `.project/`, `.codex/` и baseline GitHub Actions должны оставаться читаемыми без перехода в отдельную справку. Каждый параметр обязан иметь рядом комментарий с назначением и примером. Harness Integrity проверяет это правило для patterns из `.project/harness-policy.toml`.
 
-При добавлении нового policy/config key одновременно:
+Claude Code settings являются strict JSON и не допускают комментариев. Поэтому их назначение и defaults документируются в [`CLAUDE_CODE.md`](CLAUDE_CODE.md), а validator проверяет JSON structure и обязательные значения отдельно.
+
+При добавлении нового YAML/TOML policy/config key одновременно:
 
 1. объясни назначение;
 2. перечисли допустимое поведение, если оно неочевидно;
