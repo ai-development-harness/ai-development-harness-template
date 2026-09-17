@@ -52,7 +52,28 @@ Claude Code использует `CLAUDE.md`, который импортиру�
 
 Core `.agents/skills/` общие для обоих runtime adapters.
 
-## 5. Запусти bootstrap
+## 5. Перед INIT проверь актуальность Harness
+
+Если после создания репозитория из template вышел новый Harness release, обновиться можно **до** `INIT PROJECT`:
+
+```text
+CHECK HARNESS UPDATE
+UPDATE HARNESS
+```
+
+`project.initialized: false` не блокирует эти команды. Pre-init update меняет только Harness protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`. Локальный `PROJECT_BRIEF.local.md` не является managed Harness path и не перезаписывается updater-ом.
+
+После update проверь и отдельно зафиксируй maintenance diff, чтобы не смешивать его с будущим bootstrap проекта:
+
+```text
+inspect diff
+GIT CHECK
+COMMIT
+```
+
+Если доступного update нет, переходи сразу к `INIT PROJECT`.
+
+## 6. Запусти bootstrap
 
 ```text
 INIT PROJECT
@@ -74,7 +95,7 @@ Initializer должен:
 - не создавать production code;
 - не изменять Harness release/lock как часть INIT.
 
-## 6. Проверь результат
+## 7. Проверь результат
 
 Особое внимание удели:
 
@@ -92,7 +113,7 @@ STATUS PROJECT
 NEXT STEP
 ```
 
-## 7. Настрой профили агентов
+## 8. Настрой профили агентов
 
 Изучи [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md).
 
@@ -121,7 +142,7 @@ NEXT STEP
 
 Tracked runtime configs сохраняются при Harness update через 3-way merge.
 
-## 8. Зафиксируй bootstrap
+## 9. Зафиксируй bootstrap
 
 ```text
 GIT CHECK
@@ -131,7 +152,7 @@ PUSH
 
 Политика веток/PR задаётся в `.project/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
 
-## 9. Начни разработку
+## 10. Начни разработку
 
 Ручной flow:
 
@@ -159,7 +180,7 @@ ADD STEP: <описание>
 FIND SKILL: <описание>
 ```
 
-## 10. Обновляй Harness отдельно от project work
+## 11. Обновляй Harness отдельно от project work
 
 Проверка:
 

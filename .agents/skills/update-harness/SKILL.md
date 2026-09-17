@@ -7,6 +7,8 @@ description: Проверка и безопасное обновление Harne
 
 Используй этот skill только для `CHECK HARNESS UPDATE [TO <tag>]`, `UPDATE HARNESS [TO <tag>]` и legacy adoption.
 
+Команды доступны независимо от `project.initialized`: pre-init состояние не является blocker. `UPDATE HARNESS` до INIT обновляет только Harness protocol layer/lock, не выполняет `INIT PROJECT`, не создаёт product knowledge и не переводит `project.initialized` в `true`.
+
 ## Sources
 
 Перед действием прочитай:
@@ -116,7 +118,8 @@ UPDATE HARNESS
 10. До обновления lock проверь, что фактический working tree соответствует вычисленному plan и target required Harness artifacts присутствуют.
 11. Только после успешной проверки обнови `.project/harness.lock.json` на выбранный target release.
 12. Создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав target, introduced/retired/reclassified paths и verification evidence.
-13. Покажи итоговый diff.
+13. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
+14. Покажи итоговый diff.
 
 Не запускай target scripts. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 

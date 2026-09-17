@@ -57,7 +57,16 @@
 
 ## 4. INIT guard
 
-До `project.initialized: true` в `.project/manifest.yaml` разрешены только bootstrap/documentation операции. Production implementation до завершения INIT запрещён.
+До `project.initialized: true` в `.project/manifest.yaml` запрещены production implementation и STEP-oriented product mutations.
+
+До INIT разрешены:
+
+- bootstrap/documentation operations, необходимые для подготовки проекта;
+- `CHECK HARNESS UPDATE` и `UPDATE HARNESS` по `docs/harness/UPDATES.md`;
+- настройка Harness/runtime configuration, не создающая product implementation;
+- repository/Git operations, необходимые для проверки и отдельной фиксации этих изменений.
+
+Pre-init Harness update не выполняет `INIT PROJECT`, не создаёт product knowledge и не переводит `project.initialized` в `true`. После update проект остаётся неинициализированным до явной команды `INIT PROJECT`.
 
 Повторный `INIT PROJECT` для уже инициализированного проекта не должен разрушать документацию. Вместо этого предложи `RECONCILE PROJECT`, если пользователь явно не запросил destructive reinitialization.
 
