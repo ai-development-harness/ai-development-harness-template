@@ -8,6 +8,7 @@
 ├── AGENTS.md                         # канонические repository-level инструкции Harness
 ├── CLAUDE.md                         # Claude Code bridge: импортирует AGENTS.md
 ├── PROJECT_BRIEF.example.md          # шаблон локального сырого brief
+├── update.json                        # machine-readable граф маршрутов Harness update
 ├── .project/
 │   ├── manifest.yaml                 # protocol generation + current release + project state
 │   ├── harness.lock.json             # immutable source BASE текущего Harness release
@@ -63,4 +64,4 @@ Runtime adapter не является источником семантики Ha
 
 Product implementation folders намеренно отсутствуют из template и появляются только после инициализации/реальных STEP.
 
-Self-updater использует allowlist source paths и по умолчанию считает всё неизвестное project-owned.
+Self-updater использует allowlist source paths и по умолчанию считает всё неизвестное project-owned. Допустимый target и обязательные промежуточные releases определяются remote `update.json`; moving `main` при этом не становится source baseline — содержимое каждого hop читается только из immutable tag.

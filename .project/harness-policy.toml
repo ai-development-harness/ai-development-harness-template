@@ -8,6 +8,7 @@ version = 1
 # Пример: удаление `planning/EXECUTION_PROTOCOL.md` или runtime adapter должно ломать CI.
 required_files = [
   "AGENTS.md",
+  "update.json",
   "CLAUDE.md",
   "README.md",
   "PROJECT_BRIEF.example.md",

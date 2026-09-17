@@ -11,7 +11,73 @@ default_branch = "main"
 
 # Регулярное выражение release-тегов, допустимых как immutable update baseline.
 # Пример: '^v\d+\.\d+\.\d+$'.
-tag_pattern = '^v\d+\.\d+\.\d+$'
+tag_pattern = '^v\d+\.\d+\.\d+
+[state]
+# Машинный lock с текущим known BASE проекта.
+# Пример: ".project/harness.lock.json".
+lock_file = ".project/harness.lock.json"
+
+# Каталог durable report после успешного UPDATE HARNESS.
+# Пример: "planning/harness-updates".
+report_directory = "planning/harness-updates"
+
+[ownership]
+# Полностью Harness-owned paths. Updater заменяет их только если local content не расходится с BASE;
+# при local modification update блокируется вместо silent overwrite.
+# Пример: docs/harness/**, core workflow skills и runtime adapter README.
+harness_owned = [
+  "update.json",
+  ".agents/skills/**",
+  ".codex/README.md",
+  ".claude/README.md",
+  ".project/README.md",
+  ".project/harness-policy.toml",
+  ".project/harness-update.toml",
+  "docs/harness/**",
+  "planning/EXECUTION_PROTOCOL.md",
+  "planning/harness-updates/README.md",
+  "tools/harness/**",
+]
+
+# Shared paths могут содержать project-specific настройки; при расхождении local/base/target применяется 3-way merge.
+# Пример: пользователь может менять model/effort в Codex и Claude Code runtime adapters.
+shared = [
+  ".codex/config.toml",
+  ".codex/agents/**",
+  "CLAUDE.md",
+  ".claude/settings.json",
+  ".claude/agents/**",
+  ".github/**",
+  ".gitignore",
+  ".gitmessage",
+  ".project/git-policy.toml",
+  ".project/manifest.yaml",
+  "AGENTS.local.example.md",
+  "PROJECT_BRIEF.example.md",
+]
+
+# Файлы с generated project blocks. Помимо обычного 3-way merge updater обязан восстановить local marked blocks.
+# Пример: README.md сохраняет <!-- PROJECT:START --> ... <!-- PROJECT:END -->.
+marker_merge = [
+  "AGENTS.md",
+  "README.md",
+]
+
+[markers."AGENTS.md"]
+# Имена generated blocks, которые всегда принадлежат конкретному проекту и сохраняются при update.
+# Пример: PROJECT-CONTEXT.
+blocks = ["PROJECT-CONTEXT", "SKILL-ROUTING"]
+
+[markers."README.md"]
+# Имена generated blocks, которые всегда принадлежат конкретному проекту и сохраняются при update.
+# Пример: PROJECT.
+blocks = ["PROJECT"]
+
+
+# Machine-readable граф допустимых переходов. Updater читает его из default_branch только как routing metadata;
+# содержимое release по-прежнему берётся исключительно из immutable tags.
+# Пример: "update.json".
+update_manifest = "update.json"
 
 [state]
 # Машинный lock с текущим known BASE проекта.

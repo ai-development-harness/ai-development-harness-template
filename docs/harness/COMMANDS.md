@@ -99,35 +99,29 @@ Read-only рекомендация следующего **unblocked** шага �
 
 ## `CHECK HARNESS UPDATE [TO <tag>]`
 
-Read-only проверка доступной версии Harness. Использует `.project/harness.lock.json` как BASE и `.project/harness-update.toml` как ownership/source policy. Показывает safe changes/conflicts, но не меняет working tree, Git refs, lock, STEP, commit, push или PR.
+Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE, `.project/harness-update.toml` как source/ownership policy и canonical remote `update.json` как routing metadata.
+
+Без `TO` конечный target берётся из `update.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
+
+Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
 Команда разрешена как до, так и после `INIT PROJECT`: `project.initialized: false` не является blocker для проверки Harness update.
 
-Без `TO <tag>` выбирается latest допустимый immutable release. Форма с explicit target фиксирует конкретный release:
-
-```text
-CHECK HARNESS UPDATE TO v0.1.2
-```
-
-Explicit tag обязан соответствовать `source.tag_pattern`, существовать и быть immutable. Если lock отсутствует, команда возвращает legacy-adoption blocker вместо угадывания BASE.
-
-Для проекта на `v0.1.1` первый переход обязан быть явным: `CHECK HARNESS UPDATE TO v0.1.2`. Причина и compatibility bridge описаны в [`UPDATES.md`](UPDATES.md).
-
 ## `UPDATE HARNESS [TO <tag>]`
 
-Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же target**.
+Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же конечного target и route**.
+
+Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
 
 Команда разрешена до `INIT PROJECT`. Pre-init update обновляет только protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`.
 
-Без `TO <tag>` используется latest допустимый immutable release. Для фиксированного target:
+Пример конечного target:
 
 ```text
-UPDATE HARNESS TO v0.1.2
+UPDATE HARNESS TO v0.2.3
 ```
 
-Updater меняет только рассчитанный transition scope Harness paths, использует 3-way merge для shared files, сохраняет generated project blocks в `README.md`/`AGENTS.md` и останавливается до mutation при конфликтах.
-
-Команда не запускает migration/install/bootstrap scripts из target release и не выполняет commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
+Updater не выполняет executable migration/install/bootstrap actions из `update.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
 
 ## `GIT CHECK`
 
