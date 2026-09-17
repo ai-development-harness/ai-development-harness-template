@@ -68,9 +68,18 @@ Known BASE хранится в `.project/harness.lock.json`.
 
 Чистый protocol/tooling Harness. Если local файл отличается от BASE, updater не перезаписывает его автоматически, а блокирует update.
 
+Сюда входят, например, core `.agents/skills/**`, documentation Harness, validator и runtime adapter README.
+
 ### `shared`
 
-Файлы, которые Harness поставляет, но проект вправе настраивать. Примеры: `.codex/config.toml`, `.codex/agents/*.toml`, `.project/manifest.yaml`.
+Файлы, которые Harness поставляет, но проект вправе настраивать. Примеры:
+
+- `.codex/config.toml`;
+- `.codex/agents/*.toml`;
+- `CLAUDE.md`;
+- `.claude/settings.json`;
+- `.claude/agents/*.md`;
+- `.project/manifest.yaml`.
 
 Для них выполняется 3-way merge:
 
@@ -81,6 +90,8 @@ THEIRS = target release
 ```
 
 Conflict означает остановку до mutation/ручного reconciliation.
+
+Model/effort tuning обоих runtime adapters специально относится к `shared`: update не должен молча возвращать проект к upstream defaults.
 
 ### `marker_merge`
 
@@ -99,7 +110,8 @@ Updater их не меняет вообще. В частности:
 - product REQ/ADR;
 - product architecture/docs;
 - product code/tests/config;
-- project-native и third-party skills, отсутствующие в upstream tree.
+- project-native и third-party skills, отсутствующие в upstream tree;
+- project-specific `.claude/skills/**` и другие неизвестные runtime additions.
 
 ## Legacy adoption
 

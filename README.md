@@ -11,7 +11,7 @@
 
 2. Опиши проект своими словами в `PROJECT_BRIEF.local.md`: цель, пользователей, сценарии, ограничения, предпочтительный стек, референсы и любые важные заметки.
 3. При необходимости скопируй `AGENTS.local.example.md` в `AGENTS.local.md` и добавь локальные команды/предпочтения.
-4. Открой репозиторий в Codex.
+4. Открой репозиторий в Codex или Claude Code.
 5. Выполни:
 
    ```text
@@ -20,6 +20,15 @@
 
 После успешной инициализации агент заменит **только этот блок** описанием конкретного проекта, ключевыми ссылками и текущей точкой входа в разработку.
 <!-- PROJECT:END -->
+
+## Runtime adapters
+
+Harness protocol не привязан к одной модели или одному coding agent:
+
+- Codex: `.codex/config.toml` + `.codex/agents/*.toml`;
+- Claude Code: `CLAUDE.md` + `.claude/settings.json` + `.claude/agents/*.md`.
+
+`AGENTS.md`, execution protocol, REQ/ADR/STEP и `.agents/skills/` остаются общими источниками истины.
 
 ## Документация Harness
 
@@ -31,6 +40,7 @@
 - [Execution Protocol](planning/EXECUTION_PROTOCOL.md)
 - [Обновление Harness в существующем проекте](docs/harness/UPDATES.md)
 - [Агенты, модели и reasoning effort](docs/harness/AGENT_CONFIGURATION.md)
+- [Claude Code adapter](docs/harness/CLAUDE_CODE.md)
 - [Git workflow: COMMIT / PUSH / PR / SYNC](docs/harness/GIT_WORKFLOW.md)
 - [CI и Harness Integrity](docs/harness/CI.md)
 - [Skills: FIND / INSTALL / CREATE](docs/harness/SKILL_MANAGEMENT.md)
