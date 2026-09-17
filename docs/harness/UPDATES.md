@@ -2,6 +2,31 @@
 
 Harness обновляется отдельно от product development. Обновление protocol layer не является STEP и не должно создавать REQ/ADR только потому, что вышла новая версия Harness.
 
+## Обновление до `INIT PROJECT`
+
+`CHECK HARNESS UPDATE` и `UPDATE HARNESS` разрешены при `.project/manifest.yaml → project.initialized: false`. Инициализация проекта не является precondition для self-update: достаточны валидный Harness lock/source policy и выполнение обычных update safety checks.
+
+Это поддерживает сценарий, когда репозиторий уже создан из template и `PROJECT_BRIEF.local.md` заполнен, но до запуска initializer вышел новый immutable Harness release:
+
+```text
+CHECK HARNESS UPDATE
+UPDATE HARNESS
+inspect diff
+GIT CHECK
+COMMIT
+INIT PROJECT
+```
+
+Pre-init update:
+
+- обновляет только Harness protocol layer и `.project/harness.lock.json`;
+- не читает brief как команду на bootstrap и не создаёт product REQ/ADR/STEP;
+- не выполняет `INIT PROJECT` автоматически;
+- не переводит `project.initialized` в `true`;
+- сохраняет project-owned/unknown state по обычным ownership rules.
+
+После успешного update initializer запускается уже на новой версии Harness. Отдельный commit перед `INIT PROJECT` рекомендуется, чтобы не смешивать maintenance diff Harness с bootstrap diff проекта.
+
 ## Команды
 
 ### `CHECK HARNESS UPDATE [TO <tag>]`
