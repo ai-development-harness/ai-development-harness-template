@@ -120,7 +120,7 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 
 Не запускай target scripts. `.project/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 
-Handoff: `GIT CHECK` → `COMMIT`.
+Handoff: `GIT CHECK` → `GIT COMMIT`.
 
 ## Failure policy
 
