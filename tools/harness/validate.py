@@ -410,7 +410,7 @@ def main() -> int:
             errors.append("CLAUDE.md is not UTF-8")
 
     # Required command surface in all canonical routing docs.
-    command_files = [root / "AGENTS.md", root / "docs/harness/COMMANDS.md", root / "planning/EXECUTION_PROTOCOL.md"]
+    command_files = [root / "AGENTS.md", root / "docs/harness/COMMAND_SYNTAX.md", root / "docs/harness/COMMANDS.md", root / "planning/EXECUTION_PROTOCOL.md"]
     for command in policy.get("required_commands", []):
         for p in command_files:
             if p.exists() and command not in p.read_text(encoding="utf-8"):
