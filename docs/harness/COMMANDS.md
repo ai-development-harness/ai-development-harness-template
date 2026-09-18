@@ -71,7 +71,7 @@ PLAN (если актуального плана нет)
  → deterministic verification
  → REVIEW
  → [условно security/test review]
- → FIX ↔ REVIEW (максимум 3 цикла)
+ → FIX ↔ REVIEW (лимит из `execution.maxFixReviewCycles`, допустимо 1–5)
  → CLOSE
 ```
 
