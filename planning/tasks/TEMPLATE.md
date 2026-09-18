@@ -67,7 +67,7 @@
 **Plan revision:** —
 **Planned at:** —
 
-Заполняется командой `PLAN STEP-NNN`.
+Заполняется командой `STEP PLAN STEP-NNN`.
 
 ## Evidence
 
