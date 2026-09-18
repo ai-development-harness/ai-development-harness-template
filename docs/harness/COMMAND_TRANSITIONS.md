@@ -286,6 +286,51 @@ STEP RUN STEP-024 > GIT COMMIT
 
 Отклоняется при normalization/transition validation. Cross-domain edges в graph отсутствуют.
 
+## Runtime preconditions
+
+Имена runtime preconditions в graph — стабильные protocol identifiers.
+
+### `git-push-ready`
+
+После `GIT CHECK` текущее состояние должно допускать `GIT PUSH`: существует локальное publishable состояние, нет blocking divergence/policy violation, а push не требует запрещённой destructive операции.
+
+### `git-pr-ready`
+
+После `GIT CHECK` branch должна уже быть опубликована в состоянии, пригодном для `GIT PR`. Наличие unpublished local commit делает shortcut `CHECK → PR` blocked; для нового commit нужен путь через `PUSH`.
+
+### `matching-update-target-and-route`
+
+`HARNESS UPDATE APPLY` разрешён только для target/route, подтверждённых непосредственно предшествующим успешным `HARNESS UPDATE CHECK` этой chain либо соответствующим durable check state по update protocol.
+
+## Structural error codes
+
+`validate-command.py` использует стабильные structural codes:
+
+| Code | Значение |
+|---|---|
+| `EMPTY_COMMAND` | Команда пуста |
+| `EMPTY_SEGMENT` | В chain есть пустой segment |
+| `MISSING_DOMAIN` | Первый segment не содержит explicit DOMAIN |
+| `UNKNOWN_DOMAIN` | DOMAIN не существует в transition graph |
+| `UNKNOWN_OPERATION` | Operation не существует в выбранном DOMAIN |
+| `MISSING_TARGET` | Для команды отсутствует обязательный target |
+| `INVALID_TARGET_SYNTAX` | Target записан в неподдерживаемой форме |
+| `TARGET_MISMATCH` | Target изменён/введён позднее внутри chain |
+| `INVALID_INPUT_SYNTAX` | Free-form input не отделён двоеточием |
+| `MISSING_INPUT` | Обязательный free-form input пуст |
+| `UNEXPECTED_ARGUMENTS` | У команды появились неразрешённые аргументы |
+| `DOMAIN_MISMATCH` | Внутри chain явно указан другой DOMAIN |
+| `CHAIN_NOT_ALLOWED` | DOMAIN или command разрешены только standalone |
+| `INVALID_CHAIN` | Для соседней пары нет explicit transition edge |
+| `INVALID_TRANSITION_TABLE` | Сам machine-readable graph не прошёл integrity validation |
+
+Успешные structural results:
+
+- `VALID_COMMAND` — одна canonical command;
+- `VALID_CHAIN` — вся цепочка существует в graph.
+
+Runtime `BLOCKED`, `PASS`, `SUCCESS`, `FAIL` и `NOT_EXECUTED` относятся уже к execution layer и не подменяют structural codes.
+
 ## Deterministic preflight
 
 Перед интерпретацией canonical command Harness выполняет:
