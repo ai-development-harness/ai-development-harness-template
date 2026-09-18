@@ -221,7 +221,7 @@ Product code mutation запрещена; разрешено создание se
 5. Дополнительные issue forms добавлять только по фактической необходимости.
 6. Использовать `language.githubTemplates`.
 7. Валидировать YAML и выполнить Harness validation.
-8. Не делать GIT COMMIT/GIT PUSH автоматически.
+8. Не делать GIT COMMIT / GIT PUSH автоматически.
 
 Target files являются generated collaboration artifacts; intentional overwrite считается нормальным поведением команды.
 
