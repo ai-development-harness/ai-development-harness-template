@@ -53,7 +53,31 @@
 - `GIT PR`
 - `GIT SYNC`
 
-Канонический синтаксис и chain operator описаны в `docs/harness/COMMAND_SYNTAX.md`. Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`. Перед исполнением команды используй соответствующий skill из `.agents/skills/`.
+Канонический синтаксис и chain operator описаны в `docs/harness/COMMAND_SYNTAX.md`. Полный machine-readable graph команд и переходов — `.project/command-transitions.json`, человекочитаемая матрица — `docs/harness/COMMAND_TRANSITIONS.md`. Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`.
+
+### Обязательный command preflight
+
+Для canonical command **до чтения command-specific skill, project/Git state и до любой интерпретации semantics** выполни deterministic structural gate:
+
+```bash
+python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
+```
+
+Порядок обязателен:
+
+```text
+tokenize
+→ normalize
+→ transition-table
+→ runtime-preconditions
+→ dispatch
+```
+
+Если gate возвращает `INVALID_CHAIN`, `CHAIN_NOT_ALLOWED`, `DOMAIN_MISMATCH`, `TARGET_MISMATCH` или другую structural error — не исполняй ни один segment и не route-ь команду в skill.
+
+Только после structural PASS используй соответствующий skill из `.agents/skills/` и проверяй runtime/repository preconditions.
+
+Локальный alias из `AGENTS.local.md` сначала разворачивается в canonical command, после чего проходит тот же deterministic gate.
 
 ### Цепочки команд
 
@@ -67,7 +91,7 @@ HARNESS UPDATE CHECK TO v0.4.0 > APPLY
 
 Перед первым выполнением проверь **всю** цепочку. Если любой сегмент невалиден, не выполняй ничего. DOMAIN наследуется от первого сегмента; для STEP и HARNESS UPDATE также наследуется неизменяемый target. Cross-domain chain запрещён: `STEP RUN STEP-024 > GIT COMMIT` не выполняется.
 
-Следующий сегмент запускается только после успешного предыдущего и только если protocol handoff не требует отдельного решения пользователя. При FAIL/BLOCKED остальные сегменты = `NOT_EXECUTED`. Уже выполненные mutations автоматически не откатываются.
+Следующий segment запускается только если для пары команд существует edge в `.project/command-transitions.json` и фактический result предыдущего segment входит в `onPreviousResult` этого edge. Поэтому `FAIL` не является универсальной остановкой: например `STEP REVIEW → STEP FIX` разрешён именно при review verdict `FAIL`. `BLOCKED` всегда останавливает execution; неактивированные оставшиеся segments = `NOT_EXECUTED`. Уже выполненные mutations автоматически не откатываются.
 
 ## 4. INIT guard
 
