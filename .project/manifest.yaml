@@ -28,6 +28,26 @@ execution:
   # Допустимый диапазон: от 1 до 5 включительно. Пример: 3.
   maxFixReviewCycles: 3
 
+# Политика дополнительных specialized reviewers поверх обязательного independent review.
+# Пример: auto сохраняет risk/diff-based orchestration, always запускает reviewer для каждого review-прохода.
+review:
+  # Когда запускать security reviewer. Допустимо: auto | always.
+  # Пример: auto запускает его только при security-sensitive scope или фактическом security-relevant diff.
+  security: auto
+  # Когда запускать test reviewer. Допустимо: auto | always.
+  # Пример: auto запускает его только при сложной/сомнительной test surface.
+  tests: auto
+
+# Project-specific настройки управления repository skills.
+# Пример: search.maxResults ограничивает размер выдачи FIND SKILL.
+skills:
+  # Настройки поиска сторонних/repository skills.
+  # Пример: maxResults=5 сохраняет компактный shortlist.
+  search:
+    # Максимальное число кандидатов, сохраняемых и возвращаемых FIND SKILL.
+    # Допустимый диапазон: от 1 до 10 включительно. Пример: 5.
+    maxResults: 5
+
 # Единая языковая политика Harness и project tooling. Значения — BCP 47 language tags.
 # Пример: `ru`, `en`, `pt-BR`. Отдельные доменные/i18n-тесты могут осознанно использовать другие языки.
 language:

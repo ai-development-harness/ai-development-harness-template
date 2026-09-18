@@ -16,7 +16,7 @@
 - license;
 - safety.
 
-## TOP-5
+## Candidates
 
 ### #1 — <name>
 
@@ -30,7 +30,7 @@
 - Safety notes: <...>
 - Recommendation: <...>
 
-<!-- repeat up to #5 -->
+<!-- repeat up to configured skills.search.maxResults -->
 
 ## Rejected / notable alternatives
 

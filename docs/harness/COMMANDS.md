@@ -25,7 +25,7 @@ Production code не меняется.
 
 ## `FIND SKILL: <описание>`
 
-Ищет подходящие Agent Skills/repository skills на GitHub и в доступном web, инспектирует содержимое и сохраняет TOP-5 в `planning/skill-searches/`. Ничего не устанавливает. Для каждого кандидата возвращает exact source/path/link, fit, limitations, license/provenance и safety notes.
+Ищет подходящие Agent Skills/repository skills на GitHub и в доступном web, инспектирует содержимое и сохраняет shortlist в `planning/skill-searches/`. Максимальное число кандидатов задаёт `skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Для каждого кандидата возвращает exact source/path/link, fit, limitations, license/provenance и safety notes.
 
 Следующий шаг: `INSTALL SKILL: #N` либо `CREATE SKILL: <описание>`.
 
@@ -55,7 +55,7 @@ Production code не меняется.
 
 ## `REVIEW STEP-NNN`
 
-Независимая проверка. Reviewer read-only по product code. Создаётся immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL`, `BLOCKED`.
+Независимая проверка. Reviewer read-only по product code. Security/test reviewer запускаются по `review.security` / `review.tests`: `auto` — по фактической необходимости, `always` — для каждого review-прохода. Создаётся immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL`, `BLOCKED`.
 
 ## `FIX STEP-NNN`
 
@@ -70,7 +70,7 @@ PLAN (если актуального плана нет)
  → IMPLEMENT
  → deterministic verification
  → REVIEW
- → [условно security/test review]
+ → [security/test review по review.* policy]
  → FIX ↔ REVIEW (лимит из `execution.maxFixReviewCycles`, допустимо 1–5)
  → CLOSE
 ```

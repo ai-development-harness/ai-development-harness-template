@@ -525,6 +525,31 @@ def main() -> int:
                     max_cycles = int(max_cycles_raw)
                     if not 1 <= max_cycles <= 5:
                         errors.append("manifest execution.maxFixReviewCycles must be between 1 and 5")
+
+            if not re.search(r"(?m)^review:\s*$", manifest_text):
+                errors.append("manifest review policy missing: review")
+            for key in ["security", "tests"]:
+                review_match = re.search(rf"(?m)^  {key}:\s*([^#\s]+)", manifest_text)
+                if not review_match:
+                    errors.append(f"manifest review policy missing value: review.{key}")
+                elif review_match.group(1) not in {"auto", "always"}:
+                    errors.append(f"manifest review.{key} must be auto or always")
+
+            if not re.search(r"(?m)^skills:\s*$", manifest_text):
+                errors.append("manifest skills policy missing: skills")
+            if not re.search(r"(?m)^  search:\s*$", manifest_text):
+                errors.append("manifest skills policy missing: skills.search")
+            max_results_match = re.search(r"(?m)^    maxResults:\s*([^#\s]+)", manifest_text)
+            if not max_results_match:
+                errors.append("manifest skills policy missing value: skills.search.maxResults")
+            else:
+                max_results_raw = max_results_match.group(1)
+                if not re.fullmatch(r"[0-9]+", max_results_raw):
+                    errors.append("manifest skills.search.maxResults must be an integer from 1 to 10")
+                else:
+                    max_results = int(max_results_raw)
+                    if not 1 <= max_results <= 10:
+                        errors.append("manifest skills.search.maxResults must be between 1 and 10")
         except UnicodeDecodeError:
             errors.append(".project/manifest.yaml is not UTF-8")
 
