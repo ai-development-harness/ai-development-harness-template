@@ -190,7 +190,7 @@ Product code mutation запрещена; разрешено создание se
 5. Дополнительные issue forms добавлять только по фактической необходимости.
 6. Использовать `language.githubTemplates`.
 7. Валидировать YAML и выполнить Harness validation.
-8. Не делать COMMIT/PUSH автоматически.
+8. Не делать GIT COMMIT/GIT PUSH автоматически.
 
 Target files являются generated collaboration artifacts; intentional overwrite считается нормальным поведением команды.
 
@@ -212,9 +212,9 @@ PROJECT QUICK FIX — исключение из STEP workflow для micro-chang
 3. Выполнить минимальную правку через `mechanic`/минимально подходящий agent.
 4. Не создавать и не обновлять REQ/ADR/STEP/PLAN/STATUS только ради PROJECT QUICK FIX.
 5. Запустить пропорциональные проверки.
-6. Вернуть diff-summary и предложить `COMMIT`.
+6. Вернуть diff-summary и предложить `GIT COMMIT`.
 
-Если пользователь внёс такую правку вручную, отдельная команда PROJECT QUICK FIX не обязательна: `COMMIT` может принять отсутствие STEP после проверки, что diff соответствует micro-change policy.
+Если пользователь внёс такую правку вручную, отдельная команда PROJECT QUICK FIX не обязательна: `GIT COMMIT` может принять отсутствие STEP после проверки, что diff соответствует micro-change policy.
 
 ## 8. `STEP PLAN STEP-NNN`
 
@@ -379,9 +379,9 @@ Read-only Git preflight:
 5. Проверить suspicious/unrelated files и вероятную traceability.
 6. Ничего не stage/commit/push.
 
-## 19. `COMMIT` / `COMMIT: <подсказка>`
+## 19. `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
-1. Источник истины — фактический diff; текст после `COMMIT:` только hint.
+1. Источник истины — фактический diff; текст после `GIT COMMIT:` только hint.
 2. Выполнить GIT CHECK semantics и Harness validation.
 3. Определить один coherent logical change. Если изменений несколько и они независимы — не создавать общий commit; предложить split.
 4. Определить Conventional Commit type/scope и branch kind.
@@ -389,23 +389,23 @@ Read-only Git preflight:
 6. Stage по `commit.stage_mode`; при `all-safe` добавлять только явный проверенный набор, не использовать бездумный `git add .`.
 7. Повторно проверить staged diff.
 8. Сформировать подробный message по `.gitmessage` на языке `language.commitMessages`: subject, context, actual changes, verification, traceability. Для подтверждённого micro-change traceability может быть `PROJECT QUICK FIX / N/A`; отсутствие STEP в таком случае допустимо.
-9. Создать локальный commit. PUSH не выполнять.
+9. Создать локальный commit. GIT PUSH не выполнять.
 10. Вернуть commit hash, branch, files, subject, verification и следующую команду.
 
-## 20. `PUSH`
+## 20. `GIT PUSH`
 
 1. Выполнить Harness validation.
 2. Если policy требует — `git fetch` configured remote.
-3. Проверить upstream и divergence. Remote-ahead при `block` останавливает PUSH.
+3. Проверить upstream и divergence. Remote-ahead при `block` останавливает GIT PUSH.
 4. Protected branch push допускается только policy; initial push может иметь отдельное исключение.
 5. Push выполнять без force, с upstream при необходимости.
 6. После успешного push применить `pull_request.after_push`:
    - `never` → завершить;
-   - `ask` → предложить `PR`;
+   - `ask` → предложить `GIT PR`;
    - `create-if-missing` → найти существующий PR и создать только при отсутствии.
 7. Неспособность создать PR не должна маскироваться: отдельно указать, что push успешен, а PR blocked/skipped.
 
-## 21. `PR`
+## 21. `GIT PR`
 
 1. Прочитать PR policy и убедиться, что branch опубликована.
 2. При `reuse_existing=true` не создавать duplicate.
@@ -414,7 +414,7 @@ Read-only Git preflight:
 5. Draft/non-draft — по policy.
 6. Для GitHub предпочитать `gh` или доступный authenticated GitHub connector; при отсутствии capability вернуть конкретный blocker.
 
-## 22. `SYNC`
+## 22. `GIT SYNC`
 
 1. Fetch configured remote.
 2. Показать ahead/behind/diverged.
