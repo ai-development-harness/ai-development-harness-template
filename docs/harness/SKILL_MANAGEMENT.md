@@ -6,26 +6,26 @@ Skill — это не просто Markdown-справка. `SKILL.md` зада�
 
 ## Команды
 
-### `FIND SKILL: <описание>`
+### `SKILL FIND: <описание>`
 
-Ищет GitHub/доступный web, инспектирует подходящие repository skills и возвращает shortlist размером не более `.project/manifest.yaml → skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Результат сохраняется в `planning/skill-searches/`, поэтому позже можно написать `INSTALL SKILL: #3`.
+Ищет GitHub/доступный web, инспектирует подходящие repository skills и возвращает shortlist размером не более `.project/manifest.yaml → skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Результат сохраняется в `planning/skill-searches/`, поэтому позже можно написать `SKILL INSTALL: #3`.
 
 Пример:
 
 ```text
-FIND SKILL: Нужен skill для Docker: Dockerfile, multi-stage builds, docker compose, безопасность образов и оптимизация build cache.
+SKILL FIND: Нужен skill для Docker: Dockerfile, multi-stage builds, docker compose, безопасность образов и оптимизация build cache.
 ```
 
 Рейтинг учитывает не только популярность, но и реальное содержимое `SKILL.md`, релевантность, качество workflow, provenance/maintenance, license и safety.
 
-### `INSTALL SKILL: <source>`
+### `SKILL INSTALL: <source>`
 
 Устанавливает **выбранный пользователем** кандидат после повторного inspection. Поддерживаются:
 
 ```text
-INSTALL SKILL: #2
-INSTALL SKILL: https://github.com/owner/repo/tree/main/skills/docker
-INSTALL SKILL: owner/repo:skills/docker
+SKILL INSTALL: #2
+SKILL INSTALL: https://github.com/owner/repo/tree/main/skills/docker
+SKILL INSTALL: owner/repo:skills/docker
 ```
 
 Номер `#N` берётся из последнего durable search report, а не из памяти чата.
@@ -41,7 +41,7 @@ INSTALL SKILL: owner/repo:skills/docker
 7. обновляет `docs/skills/REGISTRY.md`;
 8. добавляет краткий routing rule в generated `SKILL-ROUTING` block `AGENTS.md`.
 
-### `CREATE SKILL: <описание>`
+### `SKILL CREATE: <описание>`
 
 Fallback, когда подходящего готового skill нет. Создаётся project-native `SKILL.md`, основанный на фактических conventions проекта и авторитетной документации технологии.
 
