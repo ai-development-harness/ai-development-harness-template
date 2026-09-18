@@ -36,7 +36,7 @@ HARNESS UPDATE APPLY
 
 Формальная модель ownership, BASE/OURS/THEIRS, legacy adoption и release lifecycle описана в [`UPDATES.md`](UPDATES.md).
 
-`HARNESS UPDATE APPLY` — maintenance mutation, а не STEP. После неё не выполняются commit/push/PR автоматически: сначала inspect diff, затем обычный `GIT CHECK` → `COMMIT`.
+`HARNESS UPDATE APPLY` — maintenance mutation, а не STEP. После неё не выполняются commit/push/PR автоматически: сначала inspect diff, затем обычный `GIT CHECK` → `GIT COMMIT`.
 
 ## Version и release
 
