@@ -1,4 +1,4 @@
-# REVIEW STEP-NNN — YYYY-MM-DD HH:MM
+# STEP REVIEW STEP-NNN — YYYY-MM-DD HH:MM
 
 **Reviewer role:** reviewer
 **Verdict:** PASS | FAIL | BLOCKED

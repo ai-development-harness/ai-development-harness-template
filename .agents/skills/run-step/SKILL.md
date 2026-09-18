@@ -4,7 +4,7 @@ description: Orchestrate PLAN → IMPLEMENT → verification → independent REV
 ---
 # run-step
 
-Используй для `RUN STEP-NNN`.
+Используй для `STEP RUN STEP-NNN`.
 
 1. Resolve STEP, blockers и Type.
 2. Прочитай `.project/manifest.yaml`: `execution.maxFixReviewCycles` должен быть целым 1–5, а `review.security` и `review.tests` — только `auto` или `always`. При отсутствующей/недопустимой настройке остановись с configuration blocker и не подставляй скрытый default.

@@ -18,7 +18,7 @@ python3 tools/harness/validate.py --mode ci
 
 Проверяются только invariants Harness/repository hygiene. Этот workflow **не должен** пытаться угадать project-specific `test`, `lint`, `typecheck`, `build` или deploy commands.
 
-После `INIT PROJECT` проект добавляет отдельные CI workflows, когда реальные команды известны из repository tooling. Они могут быть связаны с STEP Verification/Release Check, но Harness Integrity остаётся независимым structural gate.
+После `PROJECT INIT` проект добавляет отдельные CI workflows, когда реальные команды известны из repository tooling. Они могут быть связаны с STEP Verification/Release Check, но Harness Integrity остаётся независимым structural gate.
 
 ## Локальный запуск
 
@@ -28,7 +28,7 @@ python3 tools/harness/validate.py --mode ci
 python3 tools/harness/validate.py --mode manual
 ```
 
-Для COMMIT/PUSH agent использует:
+Для GIT COMMIT / GIT PUSH agent использует:
 
 ```bash
 python3 tools/harness/validate.py --mode commit

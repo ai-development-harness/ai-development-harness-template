@@ -49,7 +49,7 @@ interrupt_message = true
 
 [agents.initializer]
 # Когда выбирать роль initializer.
-# Пример: `INIT PROJECT` и bootstrap knowledge base из локального brief.
+# Пример: `PROJECT INIT` и bootstrap knowledge base из локального brief.
 description = "Bootstrap a new project from PROJECT_BRIEF.local.md into requirements, architecture, ADR and roadmap."
 # Путь к role-specific model/effort/sandbox configuration относительно `.codex/config.toml`.
 # Пример: отдельный Sol High профиль для bootstrap.
@@ -65,7 +65,7 @@ config_file = "./agents/architect.toml"
 
 [agents.planner]
 # Когда выбирать роль planner.
-# Пример: `PLAN STEP-NNN` для сложного pre-implementation анализа.
+# Пример: `STEP PLAN STEP-NNN` для сложного pre-implementation анализа.
 description = "Prepare implementation plans for STEP tasks by tracing requirements, ADR, code, dependencies and verification."
 # Role-specific конфигурация planner.
 # Пример: "./agents/planner.toml".
@@ -81,7 +81,7 @@ config_file = "./agents/implementer.toml"
 
 [agents.reviewer]
 # Когда выбирать независимый reviewer.
-# Пример: `REVIEW STEP-NNN` после реализации другим агентом.
+# Пример: `STEP REVIEW STEP-NNN` после реализации другим агентом.
 description = "Independently review a completed implementation for correctness, regressions, architecture and missing tests."
 # Role-specific read-only конфигурация reviewer.
 # Пример: "./agents/reviewer.toml".
@@ -121,7 +121,7 @@ config_file = "./agents/mechanic.toml"
 
 [agents.skill_curator]
 # Когда выбирать skill curator.
-# Пример: `FIND SKILL`, `INSTALL SKILL`, `CREATE SKILL`.
+# Пример: `SKILL FIND`, `SKILL INSTALL`, `SKILL CREATE`.
 description = "Search, inspect, safely install, and create repository skills while preserving provenance and routing."
 # Role-specific профиль для анализа недоверенного внешнего skill content.
 # Пример: "./agents/skill-curator.toml".
@@ -129,7 +129,7 @@ config_file = "./agents/skill-curator.toml"
 
 [agents.git_operator]
 # Когда выбирать git operator.
-# Пример: `GIT CHECK`, `COMMIT`, `PUSH`, `PR`, `SYNC`.
+# Пример: `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`.
 description = "Safely prepare commits, branches, pushes and pull requests according to repository Git policy."
 # Role-specific профиль Git workflow.
 # Пример: "./agents/git-operator.toml".
@@ -137,7 +137,7 @@ config_file = "./agents/git-operator.toml"
 
 [agents.harness_updater]
 # Когда выбирать harness updater.
-# Пример: `CHECK HARNESS UPDATE`, `UPDATE HARNESS` и explicit legacy adoption.
+# Пример: `HARNESS UPDATE CHECK`, `HARNESS UPDATE APPLY` и explicit legacy adoption.
 description = "Check and safely reconcile the Harness protocol layer with immutable upstream release tags while preserving project-owned state."
 # Role-specific профиль maintenance mutation.
 # Пример: "./agents/harness-updater.toml".

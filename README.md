@@ -15,7 +15,7 @@
 5. Выполни:
 
    ```text
-   INIT PROJECT
+   PROJECT INIT
    ```
 
 После успешной инициализации агент заменит **только этот блок** описанием конкретного проекта, ключевыми ссылками и текущей точкой входа в разработку.
@@ -41,7 +41,8 @@ Harness protocol не привязан к одной модели или одн�
 - [Обновление Harness в существующем проекте](docs/harness/UPDATES.md)
 - [Агенты, модели и reasoning effort](docs/harness/AGENT_CONFIGURATION.md)
 - [Claude Code adapter](docs/harness/CLAUDE_CODE.md)
-- [Git workflow: COMMIT / PUSH / PR / SYNC](docs/harness/GIT_WORKFLOW.md)
+- [Git workflow: GIT CHECK / GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC](docs/harness/GIT_WORKFLOW.md)
 - [CI и Harness Integrity](docs/harness/CI.md)
-- [Skills: FIND / INSTALL / CREATE](docs/harness/SKILL_MANAGEMENT.md)
+- [Skills: SKILL FIND / SKILL INSTALL / SKILL CREATE](docs/harness/SKILL_MANAGEMENT.md)
+- [Синтаксис команд и цепочек](docs/harness/COMMAND_SYNTAX.md)
 - [Полное оглавление документации Harness](docs/harness/README.md)

@@ -4,15 +4,15 @@
 
 `manifest.yaml` содержит только техническое состояние Harness, current release, project initialization state и ссылки на основные источники истины. Бизнес-требования, архитектурные решения и планы здесь хранить нельзя.
 
-`project.initialized` меняется на `true` только после успешного `INIT PROJECT` и проверки согласованности созданной документации.
+`project.initialized` меняется на `true` только после успешного `PROJECT INIT` и проверки согласованности созданной документации.
 
 ## Execution policy
 
-`.project/manifest.yaml → execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` внутри одного `RUN STEP`. Допустимый диапазон — от 1 до 5 включительно; template default — 3.
+`.project/manifest.yaml → execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` внутри одного `STEP RUN STEP`. Допустимый диапазон — от 1 до 5 включительно; template default — 3.
 
 `review.security` и `review.tests` управляют дополнительными specialized reviewers: `auto` запускает reviewer по фактическим рискам/diff/test surface, `always` — при каждом review-проходе. Режима `never` намеренно нет: настройка может усилить review, но не отключить safety gate.
 
-`skills.search.maxResults` задаёт максимальный размер shortlist команды `FIND SKILL`; допустимо от 1 до 10, template default — 5.
+`skills.search.maxResults` задаёт максимальный размер shortlist команды `SKILL FIND`; допустимо от 1 до 10, template default — 5.
 
 Все эти значения проверяются `tools/harness/validate.py`, поэтому отсутствующая или недопустимая настройка блокирует Harness validation до запуска orchestration.
 
@@ -20,7 +20,7 @@
 
 ## Repository policies
 
-- `git-policy.toml` — поведение COMMIT/PUSH/PR/SYNC, ветки и commit messages.
+- `git-policy.toml` — поведение GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC, ветки и commit messages.
 - `harness-policy.toml` — deterministic integrity/safety checks для local preflight и CI.
 - `harness-update.toml` — source repository, ownership classes, путь к remote update manifest и merge policy для self-update.
 - `harness.lock.json` — машинный known BASE текущего Harness release; JSON намеренно не требует inline-комментариев.

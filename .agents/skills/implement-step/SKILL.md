@@ -4,7 +4,7 @@ description: Implement a planned STEP within its scope, update tests, run verifi
 ---
 # implement-step
 
-Используй для `IMPLEMENT STEP-NNN`.
+Используй для `STEP IMPLEMENT STEP-NNN`.
 
 - Прочитай актуальный Implementation plan.
 - Проверь dependencies.
@@ -15,4 +15,4 @@ description: Implement a planned STEP within its scope, update tests, run verifi
 - Выполни реальные verification targets.
 - Запиши Evidence: command, exit code и observed facts. Не реконструируй terminal output; буквальный output допустим только если реально захвачен.
 - Не ставь `Выполнено` до independent review PASS.
-- Handoff: `REVIEW STEP-NNN`.
+- Handoff: `STEP REVIEW STEP-NNN`.

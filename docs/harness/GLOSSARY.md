@@ -2,7 +2,7 @@
 
 Этот документ определяет **каноническое значение терминов самого Harness**. Если термин используется в protocol, AGENTS, planning или отчётах агентов, его смысл должен соответствовать этому словарю.
 
-Продуктовые термины конкретного проекта находятся отдельно в `docs/GLOSSARY.md` и заполняются при `INIT PROJECT`.
+Продуктовые термины конкретного проекта находятся отдельно в `docs/GLOSSARY.md` и заполняются при `PROJECT INIT`.
 
 
 ## Общие понятия Harness
@@ -84,13 +84,13 @@
 
 ### Type
 
-Класс STEP, определяющий допустимую семантику выполнения (`IMPLEMENTATION`, `BUGFIX`, `ADR`, `RESEARCH`, `AUDIT`, `REVIEW`, `DOCUMENTATION`, `HARDENING`, `RELEASE`). `RUN STEP-NNN` обязан учитывать Type.
+Класс STEP, определяющий допустимую семантику выполнения (`IMPLEMENTATION`, `BUGFIX`, `ADR`, `RESEARCH`, `AUDIT`, `REVIEW`, `DOCUMENTATION`, `HARDENING`, `RELEASE`). `STEP RUN STEP-NNN` обязан учитывать Type.
 
 ## Часто встречающиеся технические сокращения
 
 ### PR — Pull Request
 
-Запрос на интеграцию изменений одной Git branch в другую с review/CI history.
+Запрос на интеграцию изменений одной Git branch в другую с review/CI history. Каноническая Harness-команда для создания/поиска такого запроса — `GIT PR`.
 
 ### CI — Continuous Integration
 
@@ -202,7 +202,7 @@ Canonical source: `planning/tasks/STEP-NNN.md`.
 Термин используется в двух смыслах:
 
 1. **`planning/PLAN.md`** — roadmap projection всех STEP и их порядка/зависимостей.
-2. **`PLAN STEP-NNN`** — команда, которая проводит pre-implementation analysis и сохраняет `Implementation plan` в task-файл.
+2. **`STEP PLAN STEP-NNN`** — команда, которая проводит pre-implementation analysis и сохраняет `Implementation plan` в task-файл.
 
 `PLAN.md` не заменяет task-файлы и не является вторым каноническим описанием STEP.
 
@@ -218,7 +218,7 @@ STATUS-файлы — **projection**, а не самостоятельный и�
 
 `PROJECT_BRIEF.local.md` — локальный сырой ввод пользователя для bootstrap. Он может быть неполным, субъективным и содержать приватные ссылки.
 
-Brief не является permanent source of truth после `INIT PROJECT`. Нормализованный контекст переносится в project documentation.
+Brief не является permanent source of truth после `PROJECT INIT`. Нормализованный контекст переносится в project documentation.
 
 ### PROJECT.md
 
@@ -294,7 +294,7 @@ Evidence обязано различать **буквально захвачен
 
 ### Implementation Plan
 
-Durable технический handoff, создаваемый `PLAN STEP-NNN` и сохраняемый внутри task-файла. Должен быть достаточно конкретным, чтобы implementer мог работать в новой сессии без chat history.
+Durable технический handoff, создаваемый `STEP PLAN STEP-NNN` и сохраняемый внутри task-файла. Должен быть достаточно конкретным, чтобы implementer мог работать в новой сессии без chat history.
 
 ## Типы STEP
 
@@ -412,7 +412,7 @@ PLAN/STATUS/REQ status не соответствует canonical task/evidence/f
 
 ### RECONCILE
 
-Процесс обнаружения и документированного разрешения drift через `RECONCILE PROJECT`. Он не должен молча переписывать production code.
+Процесс обнаружения и документированного разрешения drift через `PROJECT RECONCILE`. Он не должен молча переписывать production code.
 
 ## Агенты и execution
 
@@ -480,9 +480,9 @@ PLAN → IMPLEMENT → REVIEW → FIX → REVIEW
 
 ## Git и CI
 
-### COMMIT
+### GIT COMMIT
 
-Harness-команда для безопасной подготовки локального Git commit: preflight, staging policy, hygiene checks, commit message и traceability. Не выполняет PUSH.
+Harness-команда для безопасной подготовки локального Git commit: preflight, staging policy, hygiene checks, commit message и traceability. Не выполняет GIT PUSH.
 
 ### Conventional Commit
 
@@ -494,7 +494,7 @@ feat(scope): краткое описание
 
 Harness дополняет его body с Context / Changes / Verification / Traceability согласно policy.
 
-### PUSH
+### GIT PUSH
 
 Публикация уже существующих commit текущей ветки в configured remote после fetch/divergence/safety checks.
 
@@ -502,7 +502,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 Запрос на интеграцию опубликованной ветки в base branch. Harness может создавать или переиспользовать PR согласно `.project/git-policy.toml`.
 
-### SYNC
+### GIT SYNC
 
 Проверка состояния local/remote branch. По умолчанию read-only report; policy может разрешать только безопасный fast-forward.
 
@@ -538,7 +538,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 Канонический список пользовательских команд и их семантика находится в [`COMMANDS.md`](COMMANDS.md). State transitions — в `planning/EXECUTION_PROTOCOL.md`.
 
-## QUICK FIX
+## PROJECT QUICK FIX
 
 Команда/режим для micro-change, которому не нужна отдельная STEP/REQ/ADR traceability. Не является способом обойти процесс для маленькой фичи или скрытого behavior change.
 
@@ -552,13 +552,13 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 ## GitHub Issue Form
 
-Structured YAML template из `.github/ISSUE_TEMPLATE/*.yml`, который GitHub использует для создания типизированного issue с обязательными/необязательными полями. Harness генерирует формы по фактическому tooling проекта через `GENERATE GITHUB TEMPLATES`.
+Structured YAML template из `.github/ISSUE_TEMPLATE/*.yml`, который GitHub использует для создания типизированного issue с обязательными/необязательными полями. Harness генерирует формы по фактическому tooling проекта через `GITHUB GENERATE TEMPLATES`.
 
 ## Pull Request Template
 
 `.github/pull_request_template.md` — форма описания PR. В Harness она может регенерироваться по текущим verification gates и traceability conventions проекта.
 
-## `GENERATE GITHUB TEMPLATES`
+## `GITHUB GENERATE TEMPLATES`
 
 Idempotent-команда, которая инспектирует актуальный repository stack/tooling/CI и заменяет managed Issue/PR templates. Не создаёт commit автоматически.
 

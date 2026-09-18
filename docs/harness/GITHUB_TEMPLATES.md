@@ -3,7 +3,7 @@
 Команда:
 
 ```text
-GENERATE GITHUB TEMPLATES
+GITHUB GENERATE TEMPLATES
 ```
 
 нужна потому, что хороший template зависит от реального проекта. До появления кода неизвестно, какие runtime, test runner, build tool, CI gates, компоненты и deployment targets действительно используются.

@@ -410,11 +410,62 @@ def main() -> int:
             errors.append("CLAUDE.md is not UTF-8")
 
     # Required command surface in all canonical routing docs.
-    command_files = [root / "AGENTS.md", root / "docs/harness/COMMANDS.md", root / "planning/EXECUTION_PROTOCOL.md"]
+    command_files = [root / "AGENTS.md", root / "docs/harness/COMMAND_SYNTAX.md", root / "docs/harness/COMMANDS.md", root / "planning/EXECUTION_PROTOCOL.md"]
     for command in policy.get("required_commands", []):
         for p in command_files:
             if p.exists() and command not in p.read_text(encoding="utf-8"):
                 errors.append(f"command '{command}' missing from {p.relative_to(root)}")
+
+    # Deprecated pre-namespace command invocations must not return to Harness-owned protocol/runtime files.
+    # Chain shorthand after > is intentionally valid because the first segment owns the namespace.
+    deprecated_command_patterns = [
+        (re.compile(r"\bINIT PROJECT\b"), "INIT PROJECT"),
+        (re.compile(r"\bADD STEP(?=[:\s])"), "ADD STEP"),
+        (re.compile(r"\bFIND SKILL(?=[:\s])"), "FIND SKILL"),
+        (re.compile(r"\bINSTALL SKILL(?=[:\s])"), "INSTALL SKILL"),
+        (re.compile(r"\bCREATE SKILL(?=[:\s])"), "CREATE SKILL"),
+        (re.compile(r"\bGENERATE GITHUB TEMPLATES\b"), "GENERATE GITHUB TEMPLATES"),
+        (re.compile(r"\bSTATUS PROJECT\b"), "STATUS PROJECT"),
+        (re.compile(r"\bNEXT STEP\b"), "NEXT STEP"),
+        (re.compile(r"\bRECONCILE PROJECT\b"), "RECONCILE PROJECT"),
+        (re.compile(r"\bCHECK HARNESS UPDATE\b"), "CHECK HARNESS UPDATE"),
+        (re.compile(r"\bUPDATE HARNESS(?:\s+TO\b|\b)"), "UPDATE HARNESS"),
+        (re.compile(r"(?m)(?:^|\x60)\s*QUICK FIX(?=[:\x60\s]|$)"), "QUICK FIX"),
+        (re.compile(r"(?m)(?:^|\x60)\s*PLAN STEP-"), "PLAN STEP-NNN"),
+        (re.compile(r"(?m)(?:^|\x60)\s*IMPLEMENT STEP-"), "IMPLEMENT STEP-NNN"),
+        (re.compile(r"(?m)(?:^|\x60)\s*REVIEW STEP-"), "REVIEW STEP-NNN"),
+        (re.compile(r"(?m)(?:^|\x60)\s*FIX STEP-"), "FIX STEP-NNN"),
+        (re.compile(r"(?m)(?:^|\x60)\s*RUN STEP-"), "RUN STEP-NNN"),
+        (re.compile(r"(?m)(?:^|\x60)\s*AUDIT STEP-"), "AUDIT STEP-NNN"),
+        (re.compile(r"(?m)(?:^|\x60)\s*COMMIT(?=[:\x60\s]|$)"), "COMMIT"),
+        (re.compile(r"(?m)(?:^|\x60)\s*PUSH(?=[\x60\s]|$)"), "PUSH"),
+        (re.compile(r"(?m)(?:^|\x60)\s*PR(?=[\x60\s]|$)"), "PR"),
+        (re.compile(r"(?m)(?:^|\x60)\s*SYNC(?=[\x60\s]|$)"), "SYNC"),
+    ]
+    deprecated_scan_paths = [
+        root / "AGENTS.md",
+        root / ".project/manifest.yaml",
+        root / ".project/harness-policy.toml",
+        root / ".project/harness-update.toml",
+        root / ".codex/config.toml",
+        root / "planning/EXECUTION_PROTOCOL.md",
+    ]
+    deprecated_scan_paths.extend((root / "docs/harness").glob("*.md"))
+    deprecated_scan_paths.extend((root / ".agents/skills").glob("*/SKILL.md"))
+    deprecated_scan_paths.extend((root / ".codex/agents").glob("*.toml"))
+    deprecated_scan_paths.extend((root / ".claude").glob("*.md"))
+    deprecated_scan_paths.extend((root / ".claude/agents").glob("*.md"))
+
+    for p in deprecated_scan_paths:
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for pattern, legacy in deprecated_command_patterns:
+            if pattern.search(text):
+                errors.append(f"deprecated command form '{legacy}' found in {p.relative_to(root)}")
 
     # Generated markers + ignore rule.
     agents_text = (root / "AGENTS.md").read_text(encoding="utf-8") if (root / "AGENTS.md").exists() else ""

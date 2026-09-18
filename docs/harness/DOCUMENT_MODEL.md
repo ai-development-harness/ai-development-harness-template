@@ -6,7 +6,7 @@ Harness разделяет **идею продукта**, **требования
 
 ```mermaid
 flowchart TD
-    BRIEF[PROJECT_BRIEF.local.md\nсырой локальный вход] -->|INIT PROJECT| PROJECT[docs/PROJECT.md\nнормализованное описание проекта]
+    BRIEF[PROJECT_BRIEF.local.md\nсырой локальный вход] -->|PROJECT INIT| PROJECT[docs/PROJECT.md\nнормализованное описание проекта]
 
     PROJECT --> REQ[docs/requirements/SPEC.md\nREQ — продуктовые требования]
     PROJECT --> ARCH[docs/architecture.md\nтекущий архитектурный baseline]
@@ -22,7 +22,7 @@ flowchart TD
     STEP -->|проецируется| PLAN[planning/PLAN.md\nroadmap projection]
     STEP -->|проецируется| STATUS[planning/STATUS.md\nstatus projection]
 
-    STEP -->|PLAN STEP-NNN| IMPLPLAN[Implementation plan\nвнутри STEP]
+    STEP -->|STEP PLAN STEP-NNN| IMPLPLAN[Implementation plan\nвнутри STEP]
     IMPLPLAN -->|IMPLEMENT| CODE[code / tests / config / migrations]
     CODE -->|verification| EVIDENCE[Evidence\nдоказательства]
     EVIDENCE --> STEP
@@ -34,7 +34,7 @@ flowchart TD
 
     STEP -->|может закрывать| REQSTATUS[docs/requirements/STATUS.md\nREQ status projection]
 
-    MICRO[QUICK FIX / ручной micro-change] -->|без REQ/ADR/STEP| GIT[Git commit\nистория мелкой правки]
+    MICRO[PROJECT QUICK FIX / ручной micro-change] -->|без REQ/ADR/STEP| GIT[Git commit\nистория мелкой правки]
 ```
 
 ## Что означает направление стрелок
@@ -48,14 +48,14 @@ flowchart TD
 | `ADR → STEP` | Accepted ADR ограничивает способ реализации STEP |
 | `architecture → STEP` | STEP обязан учитывать текущее устройство системы |
 | `STEP → PLAN / STATUS` | `PLAN.md` и `STATUS.md` — производные проекции task-файлов, а не самостоятельный competing truth |
-| `STEP → Implementation plan` | `PLAN STEP-NNN` сохраняет технический handoff прямо в task-файл |
+| `STEP → Implementation plan` | `STEP PLAN STEP-NNN` сохраняет технический handoff прямо в task-файл |
 | `Implementation plan → code/tests/config` | implementer реализует уже зафиксированный план |
 | `code/tests/config → Evidence` | фактические проверки и артефакты доказывают выполнение acceptance criteria |
 | `Evidence → STEP` | task хранит ссылки на конкретные доказательства, а не фразу «работает» |
 | `STEP + implementation + Evidence → Review` | независимый reviewer сверяет ожидаемое и фактическое состояние |
 | `Review → STEP` | verdict определяет, можно ли закрывать STEP или требуется FIX |
 | `STEP → REQ status` | требование меняет статус только если STEP действительно доказал необходимый контракт; текущее lifecycle-состояние отражается только в `docs/requirements/STATUS.md` |
-| `QUICK FIX → Git commit` | безопасная мелкая правка не создаёт искусственные REQ/ADR/STEP; её достаточная история — проверенный Git diff/commit |
+| `PROJECT QUICK FIX → Git commit` | безопасная мелкая правка не создаёт искусственные REQ/ADR/STEP; её достаточная история — проверенный Git diff/commit |
 
 ## Canonical и projection files
 
@@ -71,7 +71,7 @@ flowchart TD
 
 Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ определение и acceptance остаются в `SPEC.md`, а lifecycle-state не дублируется туда из `STATUS.md`.
 
-Legacy-проекты, инициализированные старым Harness, могут всё ещё содержать `**Статус:**` внутри REQ в `SPEC.md`. Такой field считается устаревшим metadata, а не authoritative state: Harness update не делает его breaking validator error; при `RECONCILE PROJECT` его можно удалить после сверки `docs/requirements/STATUS.md` с STEP/evidence/review без изменения смысла requirement.
+Legacy-проекты, инициализированные старым Harness, могут всё ещё содержать `**Статус:**` внутри REQ в `SPEC.md`. Такой field считается устаревшим metadata, а не authoritative state: Harness update не делает его breaking validator error; при `PROJECT RECONCILE` его можно удалить после сверки `docs/requirements/STATUS.md` с STEP/evidence/review без изменения смысла requirement.
 
 ## Иерархия источников истины
 

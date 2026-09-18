@@ -1,12 +1,26 @@
 # Команды Harness
 
-Команды — стабильный человеко-машинный интерфейс. Подробные state transitions описаны в `planning/EXECUTION_PROTOCOL.md`. Локальные пользовательские alias-команды можно добавить в `AGENTS.local.md`; они читаются после `AGENTS.md`.
+Команды — стабильный человеко-машинный интерфейс. Каноническая форма начинается с явного namespace: `<DOMAIN> <ACTION> ...`. Подробный синтаксис, наследование target и chain operator `>` описаны в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md). State transitions описаны в `planning/EXECUTION_PROTOCOL.md`.
 
-## `INIT PROJECT`
+Старые ненеймспейсные формы не являются каноническими alias. Локальные пользовательские alias-команды можно добавить только явно в `AGENTS.local.md`; они читаются после `AGENTS.md`.
+
+## Цепочки
+
+Для разрешённых команд одной области можно не повторять namespace:
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+STEP PLAN STEP-024 > IMPLEMENT > REVIEW
+HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+```
+
+Вся цепочка валидируется до первого выполнения. Cross-domain chain запрещён. При FAIL/BLOCKED оставшиеся сегменты не выполняются, а уже успешные mutations автоматически не откатываются. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
+
+## `PROJECT INIT`
 
 Однократный bootstrap из `PROJECT_BRIEF.local.md`. Создаёт project knowledge base и initial roadmap, но не production code. Повторный INIT после `initialized: true` не выполняется автоматически.
 
-## `ADD STEP: <описание>`
+## `STEP ADD: <описание>`
 
 Преобразует короткую человеческую задачу в корректный новый STEP:
 
@@ -19,49 +33,49 @@
 - вычисляет dependencies;
 - формирует Goal/Context/Scope/Mutation policy/Out of scope/Acceptance/Verification/Deliverables;
 - обновляет PLAN/STATUS;
-- возвращает `PLAN STEP-NNN`.
+- возвращает `STEP PLAN STEP-NNN`.
 
 Production code не меняется.
 
-## `FIND SKILL: <описание>`
+## `SKILL FIND: <описание>`
 
 Ищет подходящие Agent Skills/repository skills на GitHub и в доступном web, инспектирует содержимое и сохраняет shortlist в `planning/skill-searches/`. Максимальное число кандидатов задаёт `skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Для каждого кандидата возвращает exact source/path/link, fit, limitations, license/provenance и safety notes.
 
-Следующий шаг: `INSTALL SKILL: #N` либо `CREATE SKILL: <описание>`.
+Следующий шаг: `SKILL INSTALL: #N` либо `SKILL CREATE: <описание>`.
 
-## `INSTALL SKILL: <source | #N>`
+## `SKILL INSTALL: <source | #N>`
 
 После явного выбора пользователя повторно инспектирует сторонний skill, не выполняя его scripts, блокирует high-risk варианты, затем устанавливает bundle в `.agents/skills/`, фиксирует `UPSTREAM.md`, обновляет `docs/skills/REGISTRY.md` и generated `SKILL-ROUTING` block `AGENTS.md`. `#N` resolve-ится из последнего durable search report, а не из chat history.
 
-## `CREATE SKILL: <описание>`
+## `SKILL CREATE: <описание>`
 
 Создаёт project-native skill, если готового подходящего варианта нет. Основан на project conventions и актуальной авторитетной документации, регистрируется в Registry и routing block. Не дублирует core harness protocol.
 
-## `GENERATE GITHUB TEMPLATES`
+## `GITHUB GENERATE TEMPLATES`
 
 Изучает актуальные technologies/tooling/CI/project conventions и полностью пересоздаёт managed GitHub Issue Forms и Pull Request template. Работает на любом этапе; существующие target files заменяются, чтобы пользователь увидел изменение в обычном diff. Язык берётся из `language.githubTemplates`. Подробнее: `GITHUB_TEMPLATES.md`.
 
-## `QUICK FIX: <описание>`
+## `PROJECT QUICK FIX: <описание>`
 
-Выполняет маленькую low-risk правку без создания STEP/REQ/ADR. Разрешён только для micro-change без изменения product/API/data/security/architecture/dependencies. Если scope оказался больше — команда прекращается и предлагает `ADD STEP:`. Если пользователь уже исправил мелочь вручную, можно сразу использовать `GIT CHECK`/`COMMIT`. Подробнее: `QUICK_CHANGES.md`.
+Выполняет маленькую low-risk правку без создания STEP/REQ/ADR. Разрешён только для micro-change без изменения product/API/data/security/architecture/dependencies. Если scope оказался больше — команда прекращается и предлагает `STEP ADD:`. Если пользователь уже исправил мелочь вручную, можно сразу использовать `GIT CHECK > COMMIT` или отдельные `GIT CHECK` и `GIT COMMIT`. Подробнее: `QUICK_CHANGES.md`.
 
-## `PLAN STEP-NNN`
+## `STEP PLAN STEP-NNN`
 
-Проводит pre-implementation analysis и **сохраняет** результат в `## Implementation plan` task-файла. Production code не меняется. План должен быть достаточно конкретным, чтобы следующая сессия могла выполнить `IMPLEMENT` без истории чата.
+Проводит pre-implementation analysis и **сохраняет** результат в `## Implementation plan` task-файла. Production code не меняется. План должен быть достаточно конкретным, чтобы следующая сессия могла выполнить `STEP IMPLEMENT STEP-NNN` без истории чата.
 
-## `IMPLEMENT STEP-NNN`
+## `STEP IMPLEMENT STEP-NNN`
 
 Реализует сохранённый план в пределах task contract. Ставит STEP в `В работе`, добавляет/обновляет tests и запускает verification. Не закрывает STEP до независимого review.
 
-## `REVIEW STEP-NNN`
+## `STEP REVIEW STEP-NNN`
 
 Независимая проверка. Reviewer read-only по product code. Security/test reviewer запускаются по `review.security` / `review.tests`: `auto` — по фактической необходимости, `always` — для каждого review-прохода. Создаётся immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL`, `BLOCKED`.
 
-## `FIX STEP-NNN`
+## `STEP FIX STEP-NNN`
 
-Исправляет подтверждённые findings последнего применимого FAIL review. Не расширяет scope. После FIX следующая команда — `REVIEW STEP-NNN`.
+Исправляет подтверждённые findings последнего применимого FAIL review. Не расширяет scope. После FIX следующая команда — `STEP REVIEW STEP-NNN`.
 
-## `RUN STEP-NNN`
+## `STEP RUN STEP-NNN`
 
 Автоматический orchestrated flow:
 
@@ -77,23 +91,23 @@ PLAN (если актуального плана нет)
 
 При blocker или исчерпании циклов останавливается и не маскирует failure.
 
-## `AUDIT STEP-NNN`
+## `STEP AUDIT STEP-NNN`
 
 Формальная проверка фактического состояния без production mutation. Подходит для historical reconciliation, architecture/data/security audits. Defects становятся findings/corrective STEP, а не скрытыми исправлениями.
 
-## `STATUS PROJECT`
+## `PROJECT STATUS`
 
 Проверяет и при необходимости регенерирует projection статусов, показывает blockers, unblocked work и drift indicators. Не пишет product code.
 
-## `NEXT STEP`
+## `STEP NEXT`
 
 Read-only рекомендация следующего **unblocked** шага на основании dependencies, priority, risk и roadmap. Не выбирает просто минимальный номер.
 
-## `RECONCILE PROJECT`
+## `PROJECT RECONCILE`
 
-Работает только после успешного `INIT PROJECT` (`.project/manifest.yaml → project.initialized: true`).
+Работает только после успешного `PROJECT INIT` (`.project/manifest.yaml → project.initialized: true`).
 
-Если проект ещё не инициализирован, команда ничего не меняет, не создаёт audit report/REQ/ADR/STEP и возвращает `RECONCILE PROJECT: NOT_APPLICABLE` с handoff → `INIT PROJECT`.
+Если проект ещё не инициализирован, команда ничего не меняет, не создаёт audit report/REQ/ADR/STEP и возвращает `PROJECT RECONCILE: NOT_APPLICABLE` с handoff → `PROJECT INIT`.
 
 В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. Не исправляет production code молча.
 
@@ -101,7 +115,7 @@ Read-only рекомендация следующего **unblocked** шага �
 
 Финальный release-oriented review по фактическим проектным gates: unresolved critical/high findings, requirements, migrations, tests/build, security, docs, upgrade/deploy concerns. Создаёт report в `planning/releases/`.
 
-## `CHECK HARNESS UPDATE [TO <tag>]`
+## `HARNESS UPDATE CHECK [TO <tag>]`
 
 Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE, `.project/harness-update.toml` как source/ownership policy и canonical remote `.project/harness-update-graph.json` как routing metadata.
 
@@ -109,40 +123,40 @@ Read-only проверка доступного маршрута Harness update.
 
 Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
-Команда разрешена как до, так и после `INIT PROJECT`: `project.initialized: false` не является blocker для проверки Harness update.
+Команда разрешена как до, так и после `PROJECT INIT`: `project.initialized: false` не является blocker для проверки Harness update.
 
-## `UPDATE HARNESS [TO <tag>]`
+## `HARNESS UPDATE APPLY [TO <tag>]`
 
 Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же конечного target и route**.
 
 Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
 
-Команда разрешена до `INIT PROJECT`. Pre-init update обновляет только protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`.
+Команда разрешена до `PROJECT INIT`. Pre-init update обновляет только protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`.
 
 Пример конечного target:
 
 ```text
-UPDATE HARNESS TO v0.2.3
+HARNESS UPDATE APPLY TO v0.2.3
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
+Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## `GIT CHECK`
 
 Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged/unstaged/untracked, Harness integrity, policy и подозрительные файлы. Ничего не stage/commit/push.
 
-## `COMMIT` / `COMMIT: <подсказка>`
+## `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
-Безопасно формирует локальный commit по `.project/git-policy.toml`: проверяет Harness/diff, исключает unrelated/suspicious files, при необходимости создаёт ветку, stage-ит разрешённые файлы и формирует подробный Conventional Commit message по `.gitmessage`. `COMMIT` никогда не делает push.
+Безопасно формирует локальный commit по `.project/git-policy.toml`: проверяет Harness/diff, исключает unrelated/suspicious files, при необходимости создаёт ветку, stage-ит разрешённые файлы и формирует подробный Conventional Commit message по `.gitmessage`. `GIT COMMIT` никогда не делает push.
 
-## `PUSH`
+## `GIT PUSH`
 
 Проверяет Harness, fetch/divergence и protected-branch policy, затем без force отправляет текущую ветку в configured remote. После успешного push применяет PR-policy: ничего, предложить PR или создать PR при отсутствии.
 
-## `PR`
+## `GIT PR`
 
 Создаёт Pull Request для опубликованной ветки либо возвращает существующий PR согласно policy. Использует `.github/pull_request_template.md`, repository evidence и verification; дубликаты не создаёт.
 
-## `SYNC`
+## `GIT SYNC`
 
 Fetch + ahead/behind/divergence. По умолчанию read-only report; при `sync.mode="ff-only"` допускает только безопасный fast-forward чистой рабочей копии. Merge/rebase автоматически не выполняются.
