@@ -17,6 +17,13 @@ if sys.version_info < (3, 11):
 
 import tomllib
 
+from command_transitions import (
+    canonical_commands,
+    load_transition_table,
+    render_transition_markdown,
+    validate_transition_table,
+)
+
 
 def run_git(root: Path, *args: str) -> tuple[int, str]:
     try:
@@ -299,6 +306,58 @@ def main() -> int:
         if not (root / rel).is_file():
             errors.append(f"required file missing: {rel}")
 
+    # Canonical command transition graph. This is the structural source of truth
+    # and must validate before command docs/routing are trusted.
+    transition_table = None
+    try:
+        transition_table = load_transition_table(root)
+    except Exception as exc:
+        errors.append(f"invalid .project/command-transitions.json: {exc}")
+
+    if transition_table is not None:
+        errors.extend(validate_transition_table(transition_table))
+        table_commands = set(canonical_commands(transition_table))
+
+        for command in policy.get("required_commands", []):
+            if command not in table_commands:
+                errors.append(
+                    f"harness-policy required command '{command}' missing from command transition graph"
+                )
+
+        transition_docs = [
+            root / "AGENTS.md",
+            root / "docs/harness/COMMANDS.md",
+            root / "docs/harness/COMMAND_SYNTAX.md",
+            root / "docs/harness/COMMAND_TRANSITIONS.md",
+        ]
+        for command in sorted(table_commands):
+            for p in transition_docs:
+                if p.is_file() and command not in p.read_text(encoding="utf-8"):
+                    errors.append(
+                        f"canonical command '{command}' missing from {p.relative_to(root)}"
+                    )
+
+        transitions_doc = root / "docs/harness/COMMAND_TRANSITIONS.md"
+        if transitions_doc.is_file():
+            text = transitions_doc.read_text(encoding="utf-8")
+            start_marker = "<!-- COMMAND-TRANSITIONS:START -->"
+            end_marker = "<!-- COMMAND-TRANSITIONS:END -->"
+            if start_marker not in text or end_marker not in text:
+                errors.append(
+                    "COMMAND_TRANSITIONS.md missing generated transition table markers"
+                )
+            elif text.index(start_marker) > text.index(end_marker):
+                errors.append(
+                    "COMMAND_TRANSITIONS.md transition table markers are reversed"
+                )
+            else:
+                actual = text.split(start_marker, 1)[1].split(end_marker, 1)[0].strip()
+                expected = render_transition_markdown(transition_table).strip()
+                if actual != expected:
+                    errors.append(
+                        "COMMAND_TRANSITIONS.md generated table differs from .project/command-transitions.json"
+                    )
+
     # Required skills + minimal frontmatter.
     seen_skill_names: dict[str, str] = {}
     for skill in policy.get("required_skills", []):
@@ -410,7 +469,13 @@ def main() -> int:
             errors.append("CLAUDE.md is not UTF-8")
 
     # Required command surface in all canonical routing docs.
-    command_files = [root / "AGENTS.md", root / "docs/harness/COMMAND_SYNTAX.md", root / "docs/harness/COMMANDS.md", root / "planning/EXECUTION_PROTOCOL.md"]
+    command_files = [
+        root / "AGENTS.md",
+        root / "docs/harness/COMMAND_SYNTAX.md",
+        root / "docs/harness/COMMAND_TRANSITIONS.md",
+        root / "docs/harness/COMMANDS.md",
+        root / "planning/EXECUTION_PROTOCOL.md",
+    ]
     for command in policy.get("required_commands", []):
         for p in command_files:
             if p.exists() and command not in p.read_text(encoding="utf-8"):
