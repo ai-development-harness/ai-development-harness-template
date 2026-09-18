@@ -91,7 +91,11 @@ Read-only рекомендация следующего **unblocked** шага �
 
 ## `RECONCILE PROJECT`
 
-Сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence. Создаёт audit report и при необходимости corrective STEP. Не исправляет production code молча.
+Работает только после успешного `INIT PROJECT` (`.project/manifest.yaml → project.initialized: true`).
+
+Если проект ещё не инициализирован, команда ничего не меняет, не создаёт audit report/REQ/ADR/STEP и возвращает `RECONCILE PROJECT: NOT_APPLICABLE` с handoff → `INIT PROJECT`.
+
+В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. Не исправляет production code молча.
 
 ## `RELEASE CHECK`
 
