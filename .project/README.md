@@ -20,7 +20,7 @@
 
 ## Repository policies
 
-- `git-policy.toml` — поведение COMMIT/PUSH/PR/SYNC, ветки и commit messages.
+- `git-policy.toml` — поведение GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC, ветки и commit messages.
 - `harness-policy.toml` — deterministic integrity/safety checks для local preflight и CI.
 - `harness-update.toml` — source repository, ownership classes, путь к remote update manifest и merge policy для self-update.
 - `harness.lock.json` — машинный known BASE текущего Harness release; JSON намеренно не требует inline-комментариев.
