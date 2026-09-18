@@ -45,7 +45,7 @@
 - suspicious/unrelated files or blockers;
 - для GIT COMMIT: hash, subject, included files, verification/traceability;
 - для GIT PUSH: remote branch, push result, ahead/behind state;
-- для PR: URL либо точный blocker;
+- для `GIT PR`: URL либо точный blocker;
 - следующая безопасная команда.
 
 Не скрывай partial success: например, если push прошёл, а PR создать не удалось, сообщи оба результата отдельно.
