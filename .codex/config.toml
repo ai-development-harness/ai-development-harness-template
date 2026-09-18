@@ -129,7 +129,7 @@ config_file = "./agents/skill-curator.toml"
 
 [agents.git_operator]
 # Когда выбирать git operator.
-# Пример: `GIT CHECK`, `COMMIT`, `PUSH`, `PR`, `SYNC`.
+# Пример: `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`.
 description = "Safely prepare commits, branches, pushes and pull requests according to repository Git policy."
 # Role-specific профиль Git workflow.
 # Пример: "./agents/git-operator.toml".
