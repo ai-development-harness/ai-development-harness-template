@@ -141,7 +141,7 @@ repository:
   # Lock known BASE текущего Harness release.
   # Пример: .project/harness.lock.json.
   harnessLock: .project/harness.lock.json
-  # Локальный deterministic validator, используемый GIT COMMIT/GIT PUSH/CI.
+  # Локальный deterministic validator, используемый GIT COMMIT / GIT PUSH/CI.
   # Пример: tools/harness/validate.py.
   harnessValidation: tools/harness/validate.py
   # Baseline GitHub Actions workflow целостности Harness.
