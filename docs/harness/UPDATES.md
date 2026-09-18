@@ -29,6 +29,14 @@ Pre-init update:
 
 ## Команды
 
+Канонические формы можно вызывать отдельно или одной безопасной цепочкой:
+
+```text
+HARNESS UPDATE CHECK TO vMAJOR.MINOR.PATCH > APPLY
+```
+
+В цепочке `APPLY` наследует target от `CHECK` и выполняется только после успешного matching check без blockers. Вся цепочка валидируется до первого сегмента; другой target или другой DOMAIN внутри цепочки запрещён.
+
 ### `HARNESS UPDATE CHECK [TO <tag>]`
 
 Read-only проверка:
