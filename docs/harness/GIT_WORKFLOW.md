@@ -1,6 +1,6 @@
 # Git workflow Harness
 
-Harness отделяет разработку от публикации изменений. `IMPLEMENT/REVIEW` не создают commits автоматически. Git-операции выполняются явными командами и управляются `.project/git-policy.toml`.
+Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются `.project/git-policy.toml`.
 
 ## Команды
 
@@ -11,13 +11,16 @@ GIT COMMIT: <необязательная подсказка>
 GIT PUSH
 GIT PR
 GIT SYNC
+
+# shorthand-цепочка
+GIT CHECK > COMMIT > PUSH > PR
 ```
 
-### GIT CHECK
+### `GIT CHECK`
 
 Read-only preflight: branch/upstream, ahead/behind, staged/unstaged/untracked, Harness integrity, подозрительные файлы и предполагаемый commit type/scope.
 
-### GIT COMMIT
+### `GIT COMMIT`
 
 `GIT COMMIT`:
 
@@ -72,7 +75,7 @@ when_on_protected = "auto-create" # auto-create | stay | block
 
 Первый commit пустого template repo может остаться в `main` благодаря `allow_initial_commit_on_protected=true`.
 
-### GIT PUSH
+### `GIT PUSH`
 
 `GIT PUSH` сначала выполняет fetch/divergence/safety checks, затем публикует текущую ветку в configured remote без force. По умолчанию:
 
@@ -90,11 +93,11 @@ after_push = "never"
 
 Для GitHub PR Harness предпочитает `gh`. Если CLI недоступен/не авторизован, push не объявляется неуспешным, но PR creation показывается как отдельный blocker.
 
-### GIT PR
+### `GIT PR`
 
 `GIT PR` можно вызвать отдельно. Агент использует `.github/pull_request_template.md`, не создаёт duplicate PR и заполняет traceability/verification из repository evidence.
 
-### GIT SYNC
+### `GIT SYNC`
 
 Default `GIT SYNC` только fetch + ahead/behind report. Для автоматического безопасного fast-forward:
 
@@ -104,6 +107,18 @@ mode = "ff-only"
 ```
 
 Merge/rebase конфликтующей истории автоматически не выполняются.
+
+## Цепочка публикации
+
+Для обычной последовательной публикации допустим shorthand:
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+```
+
+Он эквивалентен четырём отдельным canonical commands той же области. Вся цепочка валидируется до первого выполнения. Если любой сегмент возвращает FAIL/BLOCKED, следующие не выполняются. Уже созданный commit не откатывается автоматически, если последующий push или PR оказался blocked.
+
+Cross-domain chain запрещён: `STEP RUN STEP-NNN > GIT COMMIT` не является допустимой командой. Полная семантика — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
 
 ## Safety defaults
 
@@ -116,7 +131,7 @@ Harness никогда по умолчанию не выполняет:
 - commit amend;
 - staging подозрительных/несвязанных файлов.
 
-Перед GIT COMMIT/GIT PUSH запускается `tools/harness/validate.py`. CI запускает тот же валидатор, поэтому локальные и remote gates основаны на одном контракте.
+Перед `GIT COMMIT` / `GIT PUSH` запускается `tools/harness/validate.py`. CI запускает тот же валидатор, поэтому локальные и remote gates основаны на одном контракте.
 
 ## Что настраивать
 
@@ -136,6 +151,6 @@ Harness никогда по умолчанию не выполняет:
 
 ## Мелкие изменения без STEP
 
-Для typo/formatting/другого подтверждённого micro-change STEP не обязателен. Если пользователь уже внёс правку, достаточно `GIT CHECK` → `GIT COMMIT`. Git operator обязан проверить, что diff действительно не меняет behavior/API/data/security/architecture/dependencies. Подробности: [`QUICK_CHANGES.md`](QUICK_CHANGES.md).
+Для typo/formatting/другого подтверждённого micro-change STEP не обязателен. Если пользователь уже внёс правку, достаточно `GIT CHECK > COMMIT` либо тех же команд по отдельности. Git operator обязан проверить, что diff действительно не меняет behavior/API/data/security/architecture/dependencies. Подробности: [`QUICK_CHANGES.md`](QUICK_CHANGES.md).
 
 Язык commit message берётся из `.project/manifest.yaml` → `language.commitMessages`.
