@@ -73,6 +73,8 @@
 
 Заполняется по факту реализации и verification.
 
+Для каждой значимой проверки указывай `Command`, `Exit code` и `Observed`. Буквальный terminal output включай только если он реально захвачен; нормализованное резюме не оформляй как цитату/output.
+
 ## Review status
 
 **Latest verdict:** NOT REVIEWED
