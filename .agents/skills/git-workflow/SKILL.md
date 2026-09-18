@@ -15,7 +15,7 @@ description: Safe repository Git workflow for GIT CHECK, COMMIT, PUSH, PR and SY
 5. Не включай unrelated changes. При нескольких независимых логических изменениях останови COMMIT и предложи разбиение.
 6. Секреты/local brief/generated мусор не должны попадать в index/commit.
 7. Язык commit message бери из `.project/manifest.yaml` → `language.commitMessages`; не используй отдельный скрытый default.
-8. STEP/REQ/ADR traceability не обязательна для подтверждённого micro-change/QUICK FIX. Если diff без STEP меняет behavior/API/data/security/architecture/dependencies — COMMIT должен остановиться и предложить `ADD STEP:`.
+8. STEP/REQ/ADR traceability не обязательна для подтверждённого micro-change/PROJECT QUICK FIX. Если diff без STEP меняет behavior/API/data/security/architecture/dependencies — COMMIT должен остановиться и предложить `STEP ADD:`.
 
 ## GIT CHECK
 
