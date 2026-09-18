@@ -53,8 +53,6 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 
 `reloadRequired: true` означает: hop можно применить после успешного check, но после него текущий updater/runtime нельзя использовать для следующего hop. Зафиксируй новый lock, остановись с `UPDATER_RELOAD_REQUIRED` и попроси повторить ту же UPDATE-команду после reload. Не пытайся эмулировать reload внутри текущего агента.
 
-Исторический `v0.1.1 → v0.1.2` теперь описывается graph edge, а не отдельным условием skill. Сам старый immutable `v0.1.1` graph-aware не становится.
-
 ## Policy transition
 
 Текущая `.project/harness-update.toml` является bootstrap trust boundary. Она обязана разрешать чтение собственной версии из BASE и THEIRS.
