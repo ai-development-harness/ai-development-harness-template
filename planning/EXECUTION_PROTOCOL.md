@@ -282,15 +282,17 @@ Reviewer должен быть независимым и read-only относи�
 
 Стандартный implementation flow:
 
+Перед запуском прочитай `.project/manifest.yaml → execution.maxFixReviewCycles`. Значение задаёт максимальное число циклов `FIX → REVIEW` внутри одного `RUN STEP` и должно быть целым числом от 1 до 5. Диапазон проверяется deterministic Harness validator; при отсутствующем или недопустимом значении orchestration должна остановиться с configuration blocker, а не использовать скрытый default.
+
 1. Resolve.
 2. Если нет актуального Implementation plan — PLAN через planner.
 3. IMPLEMENT через implementer.
 4. Deterministic verification.
 5. REVIEW через независимого reviewer.
 6. Security/test reviewer — только при необходимости.
-7. FAIL → FIX → REVIEW, максимум 3 fix-review цикла.
+7. FAIL → FIX → REVIEW, повторять не более `execution.maxFixReviewCycles` циклов.
 8. PASS + gates → CLOSE.
-9. BLOCKED или три FAIL → остановиться, сохранить evidence/report, не объявлять success.
+9. BLOCKED или исчерпан `execution.maxFixReviewCycles` → остановиться, сохранить evidence/report, не объявлять success.
 
 Не запускай одновременно несколько write-agents над одним workspace scope.
 
