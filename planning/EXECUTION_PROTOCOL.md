@@ -8,6 +8,23 @@
 
 ## 0. Command interface и цепочки
 
+### 0.1. Structural gate — всегда первым
+
+Для canonical command первым выполняется deterministic structural validation по `.project/command-transitions.json`:
+
+```bash
+python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
+```
+
+До PASS этого gate запрещено:
+
+- выбирать command-specific skill;
+- читать state ради трактовки порядка chain;
+- запускать subagent/runtime action;
+- выполнять mutation.
+
+`docs/harness/COMMAND_TRANSITIONS.md` содержит полную человекочитаемую матрицу. Отсутствующий edge означает `INVALID_CHAIN`; implicit transitions запрещены.
+
 Каноническая команда начинается с явного namespace:
 
 ```text
@@ -30,10 +47,10 @@ HARNESS UPDATE CHECK TO v0.4.0 > APPLY
 2. DOMAIN наследуется от первого сегмента; смена DOMAIN внутри цепочки запрещена;
 3. STEP target наследуется и остаётся неизменным;
 4. HARNESS UPDATE target `TO <tag>` наследуется от CHECK к APPLY;
-5. до первого выполнения проверить не только syntax/domain/target, но и допустимый порядок операций;
+5. допустимый порядок определяется только explicit edges из `.project/command-transitions.json`;
 6. same-domain reverse/invalid order (например `GIT PR > COMMIT`) = `INVALID_CHAIN`; ни один сегмент не выполняется;
-7. следующий сегмент выполняется только после успешного предыдущего и допустимого protocol handoff;
-8. FAIL/BLOCKED останавливает цепочку, оставшиеся сегменты = `NOT_EXECUTED`;
+7. после выполнения segment следующий запускается только если фактический result входит в `onPreviousResult` соответствующего edge и выполнены его runtime preconditions;
+8. `FAIL` может быть разрешающим result конкретного edge (например REVIEW → FIX); `BLOCKED` останавливает execution; остальные segments = `NOT_EXECUTED`;
 9. уже выполненные mutations не откатываются автоматически;
 10. cross-domain chain, например `STEP RUN STEP-024 > GIT COMMIT`, не выполняется.
 
