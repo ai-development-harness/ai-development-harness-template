@@ -67,8 +67,7 @@ HARNESS UPDATE APPLY
 
 ```text
 inspect diff
-GIT CHECK
-GIT COMMIT
+GIT CHECK > COMMIT
 ```
 
 Если доступного update нет, переходи сразу к `PROJECT INIT`.
@@ -145,9 +144,7 @@ Tracked runtime configs сохраняются при Harness update через 
 ## 9. Зафиксируй bootstrap
 
 ```text
-GIT CHECK
-GIT COMMIT
-GIT PUSH
+GIT CHECK > COMMIT > PUSH
 ```
 
 Политика веток/PR задаётся в `.project/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
