@@ -8,7 +8,13 @@
 
 ## Execution policy
 
-`.project/manifest.yaml → execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` внутри одного `RUN STEP`. Допустимый диапазон — от 1 до 5 включительно; template default — 3. Значение проверяется `tools/harness/validate.py`, поэтому недопустимая настройка блокирует Harness validation до запуска orchestration.
+`.project/manifest.yaml → execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` внутри одного `RUN STEP`. Допустимый диапазон — от 1 до 5 включительно; template default — 3.
+
+`review.security` и `review.tests` управляют дополнительными specialized reviewers: `auto` запускает reviewer по фактическим рискам/diff/test surface, `always` — при каждом review-проходе. Режима `never` намеренно нет: настройка может усилить review, но не отключить safety gate.
+
+`skills.search.maxResults` задаёт максимальный размер shortlist команды `FIND SKILL`; допустимо от 1 до 10, template default — 5.
+
+Все эти значения проверяются `tools/harness/validate.py`, поэтому отсутствующая или недопустимая настройка блокирует Harness validation до запуска orchestration.
 
 Локальные/секретные overrides при необходимости складываются в `.project/local/`; каталог игнорируется Git.
 

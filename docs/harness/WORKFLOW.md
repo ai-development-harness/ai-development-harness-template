@@ -51,7 +51,7 @@ Technology-specific knowledge не нужно заранее встраиват�
 Need capability
    ↓
 FIND SKILL
-   ↓ TOP-5 + durable report
+   ↓ configured shortlist + durable report
 User selects
    ↓
 INSTALL SKILL
