@@ -184,15 +184,16 @@ Git-цепочка не имеет отдельного target; каждый с�
 
 ### GIT
 
-Допустимы:
+В chain участвуют только фазы publication pipeline:
 
 ```text
 GIT CHECK
 GIT COMMIT
 GIT PUSH
 GIT PR
-GIT SYNC
 ```
+
+`GIT SYNC` остаётся самостоятельной командой.
 
 Пример обычной публикации:
 
@@ -240,7 +241,106 @@ HARNESS UPDATE CHECK [TO <tag>] > APPLY
 - `GITHUB` — генерация templates является самостоятельной mutation;
 - `RELEASE` — release check является самостоятельным gate.
 
-## 7. Условие перехода к следующему сегменту
+## 7. Допустимый порядок операций
+
+Same-domain chain не считается валидной только потому, что все её сегменты по отдельности являются существующими командами.
+
+До первого выполнения Harness обязан проверить **структурный порядок операций**.
+
+### GIT
+
+Git-chain описывает только pipeline публикации:
+
+```text
+CHECK → COMMIT → PUSH → PR
+```
+
+Допустима последовательность, которая движется только вперёд по этому pipeline и не нарушает обязательные промежуточные зависимости.
+
+Примеры:
+
+```text
+GIT CHECK > COMMIT
+GIT CHECK > COMMIT > PUSH
+GIT CHECK > COMMIT > PUSH > PR
+GIT CHECK > PUSH
+GIT CHECK > PUSH > PR
+GIT CHECK > PR
+GIT COMMIT > PUSH
+GIT COMMIT > PUSH > PR
+GIT PUSH > PR
+```
+
+`GIT CHECK > PUSH` допустима, если commit уже существует и текущий repository state позволяет push.
+`GIT CHECK > PR` допустима, если ветка уже опубликована и удовлетворяет preconditions `GIT PR`.
+
+После `GIT COMMIT` переход напрямую к `GIT PR` запрещён: новый локальный commit должен быть опубликован через `GIT PUSH`.
+
+Нельзя двигаться назад, повторять уже пройденную фазу или выполнять публикацию после `PR`:
+
+```text
+GIT PR > COMMIT              # INVALID_CHAIN
+GIT PUSH > COMMIT            # INVALID_CHAIN
+GIT COMMIT > CHECK           # INVALID_CHAIN
+GIT CHECK > COMMIT > CHECK   # INVALID_CHAIN
+GIT COMMIT > PR              # INVALID_CHAIN
+GIT PR > PUSH                # INVALID_CHAIN
+```
+
+Такая ошибка определяется **до первого сегмента**. Например `GIT PR > COMMIT` не создаёт и не ищет PR — вся цепочка отклоняется целиком.
+
+`GIT SYNC` не является фазой publication pipeline и выполняется только как самостоятельная команда. Оно не используется внутри chain.
+
+### STEP
+
+Для ручного implementation flow допустимы переходы:
+
+```text
+PLAN → IMPLEMENT → REVIEW
+REVIEW(FAIL) → FIX → REVIEW
+```
+
+Вход в цепочку разрешён с любой стадии, если preconditions этой стадии уже удовлетворены repository state.
+
+Структурно допустимы, например:
+
+```text
+STEP PLAN STEP-024 > IMPLEMENT > REVIEW
+STEP IMPLEMENT STEP-024 > REVIEW
+STEP REVIEW STEP-024 > FIX > REVIEW
+STEP FIX STEP-024 > REVIEW
+```
+
+`REVIEW > FIX` является **условным** переходом: `FIX` выполняется только если фактический verdict review = `FAIL`. При `PASS` или `BLOCKED` оставшиеся сегменты получают `NOT_EXECUTED`.
+
+Обратные или пропускающие обязательную mutation стадии цепочки запрещены:
+
+```text
+STEP REVIEW STEP-024 > IMPLEMENT      # INVALID_CHAIN
+STEP IMPLEMENT STEP-024 > PLAN       # INVALID_CHAIN
+STEP PLAN STEP-024 > REVIEW          # INVALID_CHAIN
+STEP FIX STEP-024 > IMPLEMENT        # INVALID_CHAIN
+```
+
+### HARNESS UPDATE
+
+Единственная допустимая update-chain:
+
+```text
+HARNESS UPDATE CHECK [TO <tag>] > APPLY
+```
+
+`APPLY > CHECK`, повторный `CHECK`, повторный `APPLY` и любые другие порядки невалидны.
+
+### Общий принцип
+
+Chain validator должен различать:
+
+- `INVALID_CHAIN` — структура/порядок невозможны; ничего не выполняется;
+- `BLOCKED` — структура допустима, но runtime/repository precondition не выполнена;
+- `NOT_EXECUTED` — сегмент структурно допустим, но до него не дошли из-за результата предыдущего сегмента.
+
+## 8. Условие перехода к следующему сегменту
 
 Следующий сегмент выполняется только если предыдущий:
 
@@ -266,7 +366,7 @@ GIT CHECK > COMMIT > PUSH > PR
 ○ GIT PR — NOT_EXECUTED
 ```
 
-## 8. Цепочка не является транзакцией
+## 9. Цепочка не является транзакцией
 
 Успешно выполненные mutation не откатываются автоматически при ошибке следующего сегмента.
 
@@ -280,7 +380,7 @@ GIT COMMIT
 
 Automatic rollback, reset, amend, merge/rebase или force push из chain semantics запрещены.
 
-## 9. Safety boundary STEP → GIT
+## 10. Safety boundary STEP → GIT
 
 Harness намеренно не поддерживает:
 
