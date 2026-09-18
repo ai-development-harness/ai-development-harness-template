@@ -326,6 +326,18 @@ Read-only:
 
 ## 16. `RECONCILE PROJECT`
 
+Precondition: `.project/manifest.yaml → project.initialized: true`.
+
+Если `project.initialized: false`:
+
+1. не выполнять reconciliation;
+2. не менять project/Harness artifacts;
+3. не создавать audit report, REQ, ADR или corrective STEP;
+4. не интерпретировать template placeholders как project knowledge;
+5. вернуть `RECONCILE PROJECT: NOT_APPLICABLE` и handoff → `INIT PROJECT`.
+
+Для инициализированного проекта:
+
 1. Сравнить code/config/migrations/tests с REQ, Accepted ADR, architecture docs, tasks и evidence.
 2. Найти documentation/status/architecture/requirement drift и undocumented behavior.
 3. Не исправлять production code.
