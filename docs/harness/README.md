@@ -1,10 +1,10 @@
 # AI Development Harness — документация
 
-Эта папка описывает **сам Harness**, а не конкретный продукт. После `INIT PROJECT` продуктовая документация живёт уровнем выше в `docs/`, а правила разработки остаются здесь.
+Эта папка описывает **сам Harness**, а не конкретный продукт. После `PROJECT INIT` продуктовая документация живёт уровнем выше в `docs/`, а правила разработки остаются здесь.
 
 ## С чего начать
 
-- [`GETTING_STARTED.md`](GETTING_STARTED.md) — создание проекта из template и `INIT PROJECT`.
+- [`GETTING_STARTED.md`](GETTING_STARTED.md) — создание проекта из template и `PROJECT INIT`.
 - [`DOCUMENT_MODEL.md`](DOCUMENT_MODEL.md) — какие артефакты существуют, что является источником истины и как связаны REQ / ADR / STEP / PLAN / STATUS / Evidence / Review.
 - [`GLOSSARY.md`](GLOSSARY.md) — полный словарь терминов и сокращений Harness.
 - [`REPOSITORY_LAYOUT.md`](REPOSITORY_LAYOUT.md) — файловая архитектура и разделение protocol / knowledge / implementation.
@@ -32,7 +32,7 @@
 
 ## Project-specific документация
 
-После `INIT PROJECT` основными продуктовыми источниками становятся:
+После `PROJECT INIT` основными продуктовыми источниками становятся:
 
 - [`../PROJECT.md`](../PROJECT.md) — что это за проект и его границы;
 - [`../requirements/SPEC.md`](../requirements/SPEC.md) — требования;
