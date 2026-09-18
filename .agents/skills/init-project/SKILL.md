@@ -9,7 +9,7 @@ description: Bootstrap a new repository from PROJECT_BRIEF.local.md into a durab
 1. Прочитай `.project/manifest.yaml`, включая `language`; если initialized=true, остановись и предложи `RECONCILE PROJECT`. После общих repository instructions также прочитай `AGENTS.local.md`, если он существует.
 2. Прочитай `PROJECT_BRIEF.local.md`; если файла нет, сообщи точную команду копирования example.
 3. Изучи предоставленные референсы настолько, насколько они доступны. Не подменяй недоступный источник общими знаниями без явной пометки.
-4. Создавай project documentation на языке `language.documentation`. Создай `docs/PROJECT.md`, REQ, минимальный architecture baseline, OPEN_QUESTIONS и продуктовый `docs/GLOSSARY.md` по необходимости. Термины Harness не дублируй: они определены в `docs/harness/GLOSSARY.md`.
+4. Создавай project documentation на языке `language.documentation`. Создай `docs/PROJECT.md`, REQ, минимальный architecture baseline, OPEN_QUESTIONS и продуктовый `docs/GLOSSARY.md` по необходимости. В `docs/requirements/SPEC.md` храни только definition/rationale/acceptance/traceability REQ без lifecycle-статуса; начальное состояние REQ записывай только в `docs/requirements/STATUS.md`. Термины Harness не дублируй: они определены в `docs/harness/GLOSSARY.md`.
 5. ADR создавай только для реальных устойчивых решений; неопределённость не превращай в Accepted ADR.
 6. Построй roadmap по dependencies и создай полноценные STEP-файлы.
 7. Обеспечь traceability REQ↔STEP↔ADR.
