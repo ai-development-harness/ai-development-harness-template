@@ -278,6 +278,22 @@ def main() -> int:
 
     validate_update_graph(root, errors)
 
+    # Harness policy semantics must be valid before policy values are consumed below.
+    max_tracked_file_size_mb = policy.get("max_tracked_file_size_mb")
+    if isinstance(max_tracked_file_size_mb, bool) or not isinstance(max_tracked_file_size_mb, int) or max_tracked_file_size_mb <= 0:
+        errors.append("harness-policy: max_tracked_file_size_mb must be a positive integer")
+    for key in [
+        "check_utf8",
+        "check_final_newline",
+        "check_trailing_whitespace",
+        "check_private_key_material",
+        "check_merge_markers",
+        "check_config_parameter_comments",
+        "check_config_parameter_examples",
+    ]:
+        if not isinstance(policy.get(key), bool):
+            errors.append(f"harness-policy: {key} must be boolean")
+
     # Core files.
     for rel in policy.get("required_files", []):
         if not (root / rel).is_file():
@@ -427,7 +443,8 @@ def main() -> int:
 
     forbidden = policy.get("forbidden_tracked_globs", [])
     allowed = policy.get("allowed_tracked_globs", [])
-    max_size = int(policy.get("max_tracked_file_size_mb", 10)) * 1024 * 1024
+    max_size_mb = max_tracked_file_size_mb if isinstance(max_tracked_file_size_mb, int) and not isinstance(max_tracked_file_size_mb, bool) and max_tracked_file_size_mb > 0 else 10
+    max_size = max_size_mb * 1024 * 1024
 
     for rel in files:
         normalized = rel.replace("\\", "/")
@@ -513,22 +530,6 @@ def main() -> int:
                     errors.append(f"manifest language policy missing value: language.{key}")
         except UnicodeDecodeError:
             errors.append(".project/manifest.yaml is not UTF-8")
-
-    # Harness policy semantics that must stay deterministic.
-    max_tracked_file_size_mb = policy.get("max_tracked_file_size_mb")
-    if isinstance(max_tracked_file_size_mb, bool) or not isinstance(max_tracked_file_size_mb, int) or max_tracked_file_size_mb <= 0:
-        errors.append("harness-policy: max_tracked_file_size_mb must be a positive integer")
-    for key in [
-        "check_utf8",
-        "check_final_newline",
-        "check_trailing_whitespace",
-        "check_private_key_material",
-        "check_merge_markers",
-        "check_config_parameter_comments",
-        "check_config_parameter_examples",
-    ]:
-        if not isinstance(policy.get(key), bool):
-            errors.append(f"harness-policy: {key} must be boolean")
 
     # Git policy semantics.
     git_policy_path = root / ".project" / "git-policy.toml"
