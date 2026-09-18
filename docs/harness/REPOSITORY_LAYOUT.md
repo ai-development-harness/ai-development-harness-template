@@ -12,6 +12,7 @@
 │   ├── manifest.yaml                 # protocol generation + current release + project state
 │   ├── harness.lock.json             # immutable source BASE текущего Harness release
 │   ├── harness-update-graph.json     # machine-readable граф маршрутов Harness update
+│   ├── command-transitions.json      # canonical command/chain transition graph
 │   ├── harness-update.toml           # source/ownership/merge policy self-update
 │   ├── harness-policy.toml           # deterministic integrity policy
 │   └── git-policy.toml               # Git workflow policy
@@ -40,7 +41,9 @@
 │   ├── harness-updates/              # durable HARNESS UPDATE APPLY reports
 │   └── skill-searches/               # durable SKILL FIND results
 ├── tools/harness/
-│   └── validate.py                   # deterministic integrity/safety validator
+│   ├── validate.py                   # deterministic integrity/safety validator
+│   ├── command_transitions.py        # parser + graph validator + Markdown renderer
+│   └── validate-command.py           # pre-interpretation structural command gate
 └── .github/                          # PR template + Harness CI
 ```
 
@@ -61,6 +64,8 @@ code + tests + migrations + runtime configuration
 ```
 
 Runtime adapter не является источником семантики Harness. Один и тот же STEP/REQ/ADR/Git contract должен исполняться одинаково независимо от Codex или Claude Code.
+
+Command transition graph также относится к protocol layer: отсутствие edge в `.project/command-transitions.json` означает запрет перехода независимо от runtime/LLM interpretation.
 
 Product implementation folders намеренно отсутствуют из template и появляются только после инициализации/реальных STEP.
 
