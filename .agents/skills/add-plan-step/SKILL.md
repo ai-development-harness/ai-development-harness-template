@@ -4,7 +4,7 @@ description: Convert a short user request into a correctly classified, traceable
 ---
 # add-plan-step
 
-Используй для `ADD STEP: ...`.
+Используй для `STEP ADD: ...`.
 
 - Сначала semantic duplicate/overlap search.
 - ID = следующий после максимального когда-либо использованного; дырки не переиспользуются.
@@ -16,4 +16,4 @@ description: Convert a short user request into a correctly classified, traceable
 - `Implementation plan` оставь Not planned.
 - Обнови PLAN/STATUS/REQ traceability.
 - Production code не меняй.
-- Верни `PLAN STEP-NNN`.
+- Верни `STEP PLAN STEP-NNN`.
