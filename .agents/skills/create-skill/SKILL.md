@@ -4,7 +4,7 @@ description: Create a project-native repository skill when no suitable third-par
 ---
 # create-skill
 
-Используй для `CREATE SKILL: <описание>`.
+Используй для `SKILL CREATE: <описание>`.
 
 1. Проверь existing `.agents/skills/` на overlap; не создавай дубликат.
 2. Восстанови project context из AGENTS, docs, ADR, requirements, code/config и существующих conventions.
