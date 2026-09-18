@@ -511,6 +511,20 @@ def main() -> int:
             for key in required_language_keys:
                 if not re.search(rf"(?m)^  {re.escape(key)}:\s*[^#\s]+", manifest_text):
                     errors.append(f"manifest language policy missing value: language.{key}")
+
+            if not re.search(r"(?m)^execution:\s*$", manifest_text):
+                errors.append("manifest execution policy missing: execution")
+            max_cycles_match = re.search(r"(?m)^  maxFixReviewCycles:\s*([^#\s]+)", manifest_text)
+            if not max_cycles_match:
+                errors.append("manifest execution policy missing value: execution.maxFixReviewCycles")
+            else:
+                max_cycles_raw = max_cycles_match.group(1)
+                if not re.fullmatch(r"[0-9]+", max_cycles_raw):
+                    errors.append("manifest execution.maxFixReviewCycles must be an integer from 1 to 5")
+                else:
+                    max_cycles = int(max_cycles_raw)
+                    if not 1 <= max_cycles <= 5:
+                        errors.append("manifest execution.maxFixReviewCycles must be between 1 and 5")
         except UnicodeDecodeError:
             errors.append(".project/manifest.yaml is not UTF-8")
 
