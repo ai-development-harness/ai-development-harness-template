@@ -43,7 +43,7 @@ Production code не меняется.
 
 ## `PROJECT QUICK FIX: <описание>`
 
-Выполняет маленькую low-risk правку без создания STEP/REQ/ADR. Разрешён только для micro-change без изменения product/API/data/security/architecture/dependencies. Если scope оказался больше — команда прекращается и предлагает `STEP ADD:`. Если пользователь уже исправил мелочь вручную, можно сразу использовать `GIT CHECK`/`COMMIT`. Подробнее: `QUICK_CHANGES.md`.
+Выполняет маленькую low-risk правку без создания STEP/REQ/ADR. Разрешён только для micro-change без изменения product/API/data/security/architecture/dependencies. Если scope оказался больше — команда прекращается и предлагает `STEP ADD:`. Если пользователь уже исправил мелочь вручную, можно сразу использовать `GIT CHECK`/`GIT COMMIT`. Подробнее: `QUICK_CHANGES.md`.
 
 ## `STEP PLAN STEP-NNN`
 
@@ -125,24 +125,24 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 HARNESS UPDATE APPLY TO v0.2.3
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `COMMIT`.
+Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `GIT COMMIT`.
 
 ## `GIT CHECK`
 
 Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged/unstaged/untracked, Harness integrity, policy и подозрительные файлы. Ничего не stage/commit/push.
 
-## `COMMIT` / `COMMIT: <подсказка>`
+## `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
-Безопасно формирует локальный commit по `.project/git-policy.toml`: проверяет Harness/diff, исключает unrelated/suspicious files, при необходимости создаёт ветку, stage-ит разрешённые файлы и формирует подробный Conventional Commit message по `.gitmessage`. `COMMIT` никогда не делает push.
+Безопасно формирует локальный commit по `.project/git-policy.toml`: проверяет Harness/diff, исключает unrelated/suspicious files, при необходимости создаёт ветку, stage-ит разрешённые файлы и формирует подробный Conventional Commit message по `.gitmessage`. `GIT COMMIT` никогда не делает push.
 
-## `PUSH`
+## `GIT PUSH`
 
 Проверяет Harness, fetch/divergence и protected-branch policy, затем без force отправляет текущую ветку в configured remote. После успешного push применяет PR-policy: ничего, предложить PR или создать PR при отсутствии.
 
-## `PR`
+## `GIT PR`
 
 Создаёт Pull Request для опубликованной ветки либо возвращает существующий PR согласно policy. Использует `.github/pull_request_template.md`, repository evidence и verification; дубликаты не создаёт.
 
-## `SYNC`
+## `GIT SYNC`
 
 Fetch + ahead/behind/divergence. По умолчанию read-only report; при `sync.mode="ff-only"` допускает только безопасный fast-forward чистой рабочей копии. Merge/rebase автоматически не выполняются.
