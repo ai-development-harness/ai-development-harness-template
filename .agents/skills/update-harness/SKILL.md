@@ -5,7 +5,7 @@ description: Проверка и безопасное обновление Harne
 
 # Update Harness
 
-Используй этот skill только для `HARNESS UPDATE CHECK [TO <tag>]`, `HARNESS UPDATE APPLY [TO <tag>]` и legacy adoption.
+Используй этот skill только для `HARNESS UPDATE CHECK [TO <tag>]`, `HARNESS UPDATE APPLY [TO <tag>]`, безопасной цепочки `HARNESS UPDATE CHECK [TO <tag>] > APPLY` и legacy adoption.
 
 Команды доступны независимо от `project.initialized`: pre-init состояние не является blocker. `HARNESS UPDATE APPLY` до INIT обновляет только Harness protocol layer/lock, не выполняет `PROJECT INIT`, не создаёт product knowledge и не переводит `project.initialized` в `true`.
 
@@ -120,7 +120,7 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 
 Не запускай target scripts. `.project/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 
-Handoff: `GIT CHECK` → `GIT COMMIT`.
+Handoff: `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## Failure policy
 
