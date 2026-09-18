@@ -28,7 +28,7 @@
 
 Распознавай команды:
 
-- `PROJECT INIT` / `Выполни инициализацию проекта.`
+- `PROJECT INIT`
 - `STEP ADD: <описание>`
 - `SKILL FIND: <описание>`
 - `SKILL INSTALL: <source | #N>`
@@ -53,7 +53,21 @@
 - `GIT PR`
 - `GIT SYNC`
 
-Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`. Перед исполнением команды используй соответствующий skill из `.agents/skills/`.
+Канонический синтаксис и chain operator описаны в `docs/harness/COMMAND_SYNTAX.md`. Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`. Перед исполнением команды используй соответствующий skill из `.agents/skills/`.
+
+### Цепочки команд
+
+Разрешённый shorthand использует оператор `>` только внутри одной области:
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+STEP PLAN STEP-024 > IMPLEMENT > REVIEW
+HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+```
+
+Перед первым выполнением проверь **всю** цепочку. Если любой сегмент невалиден, не выполняй ничего. DOMAIN наследуется от первого сегмента; для STEP и HARNESS UPDATE также наследуется неизменяемый target. Cross-domain chain запрещён: `STEP RUN STEP-024 > GIT COMMIT` не выполняется.
+
+Следующий сегмент запускается только после успешного предыдущего и только если protocol handoff не требует отдельного решения пользователя. При FAIL/BLOCKED остальные сегменты = `NOT_EXECUTED`. Уже выполненные mutations автоматически не откатываются.
 
 ## 4. INIT guard
 
@@ -111,9 +125,9 @@ Pre-init Harness update не выполняет `PROJECT INIT`, не созда�
 
 Role semantics задаются Harness protocol, а model/effort/permissions — runtime adapter. Не запускай специализированного агента, если его проверка не относится к задаче. Не используй несколько write-agents параллельно над одними файлами.
 
-## 7. Независимость REVIEW
+## 7. Независимость STEP REVIEW
 
-Reviewer не должен быть автором проверяемой реализации. `REVIEW` по умолчанию не исправляет production code. Он выдаёт findings и verdict; исправления выполняются отдельным `FIX`/implementer проходом.
+Reviewer не должен быть автором проверяемой реализации. `STEP REVIEW` по умолчанию не исправляет production code. Он выдаёт findings и verdict; исправления выполняются отдельным `STEP FIX`/implementer проходом.
 
 Security/test reviewers запускаются условно на основании `Risk flags`, фактического diff и характера задачи.
 
