@@ -80,7 +80,7 @@ proportional check
         ↓
 GIT CHECK
         ↓
-COMMIT
+GIT COMMIT
 ```
 
 Если обнаруживается contract/risk change, короткий путь прекращается и начинается `STEP ADD:`.
