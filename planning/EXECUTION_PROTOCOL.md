@@ -6,6 +6,37 @@
 
 > Пользователь задаёт короткую стабильную команду; полный инженерный контекст агент обязан восстановить из репозитория самостоятельно.
 
+## 0. Command interface и цепочки
+
+Каноническая команда начинается с явного namespace:
+
+```text
+<DOMAIN> <ACTION> [TARGET] [: free-form input]
+```
+
+Полная грамматика находится в `docs/harness/COMMAND_SYNTAX.md`. Старые ненеймспейсные формы не считаются canonical aliases.
+
+Оператор `>` разрешает последовательность только внутри одной области:
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+STEP PLAN STEP-024 > IMPLEMENT > REVIEW
+HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+```
+
+Правила:
+
+1. до первого выполнения разобрать и валидировать всю цепочку;
+2. DOMAIN наследуется от первого сегмента; смена DOMAIN внутри цепочки запрещена;
+3. STEP target наследуется и остаётся неизменным;
+4. HARNESS UPDATE target `TO <tag>` наследуется от CHECK к APPLY;
+5. следующий сегмент выполняется только после успешного предыдущего и допустимого protocol handoff;
+6. FAIL/BLOCKED останавливает цепочку, оставшиеся сегменты = `NOT_EXECUTED`;
+7. уже выполненные mutations не откатываются автоматически;
+8. cross-domain chain, например `STEP RUN STEP-024 > GIT COMMIT`, не выполняется.
+
+Разрешённые chain surfaces: GIT; ручной STEP flow `PLAN/IMPLEMENT/REVIEW/FIX`; HARNESS UPDATE только `CHECK > APPLY`. PROJECT/SKILL/GITHUB/RELEASE и `STEP RUN`/ `STEP AUDIT` остаются самостоятельными командами.
+
 ## 1. Сущности
 
 ### Requirement (`REQ-NNN`)
@@ -331,7 +362,7 @@ Read-only:
 2. исключить STEP с незавершёнными hard dependencies;
 3. учитывать priority, phase/order, risk, critical path и corrective prerequisites;
 4. вернуть один основной STEP и краткую причину;
-5. вернуть точную следующую команду (`PLAN`, `IMPLEMENT`, `FIX`, `REVIEW`), исходя из фактического состояния task.
+5. вернуть точную следующую canonical-команду (`STEP PLAN STEP-NNN`, `STEP IMPLEMENT STEP-NNN`, `STEP FIX STEP-NNN`, `STEP REVIEW STEP-NNN`) исходя из фактического состояния task.
 
 ## 16. `PROJECT RECONCILE`
 
@@ -351,7 +382,7 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 2. Найти documentation/status/architecture/requirement drift и undocumented behavior.
 3. Не исправлять production code.
 4. Однозначный projection drift можно синхронизировать.
-5. Для substantive defect/gap создать corrective STEP через ADD semantics.
+5. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
 6. Новые устойчивые решения не записывать как Accepted ADR без decision process.
 7. Сохранить audit report.
 
@@ -390,7 +421,7 @@ Read-only Git preflight:
 7. Повторно проверить staged diff.
 8. Сформировать подробный message по `.gitmessage` на языке `language.commitMessages`: subject, context, actual changes, verification, traceability. Для подтверждённого micro-change traceability может быть `PROJECT QUICK FIX / N/A`; отсутствие STEP в таком случае допустимо.
 9. Создать локальный commit. GIT PUSH не выполнять.
-10. Вернуть commit hash, branch, files, subject, verification и следующую команду.
+10. Вернуть commit hash, branch, files, subject, verification и следующую canonical-команду `GIT PUSH`.
 
 ## 20. `GIT PUSH`
 
