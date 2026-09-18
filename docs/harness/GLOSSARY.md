@@ -66,6 +66,8 @@
 - `Отменено` — STEP сознательно больше не требуется;
 - `Заменено` — STEP исторически сохранён, но его роль выполняет другой STEP/решение.
 
+Для REQ Harness использует `Запланировано`, `Частично`, `Выполнено`, `Отложено`, `Отменено`. REQ lifecycle-state не является частью canonical definition: он хранится только в `docs/requirements/STATUS.md` и выводится из фактического STEP coverage, verification/evidence и review. `docs/requirements/SPEC.md` не должен содержать competing status field.
+
 ### Priority
 
 Относительная важность STEP для порядка работы. Priority не отменяет dependencies: критичный, но заблокированный STEP не становится executable только из-за высокого приоритета.
@@ -153,7 +155,7 @@ REQ-AUTH-003
 
 REQ не должен описывать конкретный файл или implementation technique без необходимости. Один REQ может реализовываться несколькими STEP.
 
-Canonical source: `docs/requirements/SPEC.md`.
+Canonical source определения/acceptance: `docs/requirements/SPEC.md`. Текущий lifecycle-статус REQ находится только в `docs/requirements/STATUS.md`.
 
 ### ADR — Architecture Decision Record
 
@@ -269,6 +271,8 @@ Verification должен ссылаться на реальные tools/scripts
 ### Evidence
 
 Конкретные доказательства выполненной работы: изменённые артефакты, tests, commands и результаты, migrations, screenshots/measurements при необходимости, commit/PR reference и т. п.
+
+Evidence обязано различать **буквально захваченный output** и **нормализованное резюме наблюдения**. Нельзя оформлять реконструированный/пересказанный terminal output как буквальную цитату. Если точный output не сохраняется, фиксируй как минимум command, exit code и краткое `Observed` с проверяемыми фактами.
 
 Фраза `проверено, работает` evidence не является.
 

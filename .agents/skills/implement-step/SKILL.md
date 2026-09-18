@@ -13,6 +13,6 @@ description: Implement a planned STEP within its scope, update tests, run verifi
 - Соблюдай mutation policy/out-of-scope и Accepted ADR.
 - Добавь необходимые tests.
 - Выполни реальные verification targets.
-- Запиши Evidence.
+- Запиши Evidence: command, exit code и observed facts. Не реконструируй terminal output; буквальный output допустим только если реально захвачен.
 - Не ставь `Выполнено` до independent review PASS.
 - Handoff: `REVIEW STEP-NNN`.

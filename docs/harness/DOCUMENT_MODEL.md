@@ -54,7 +54,7 @@ flowchart TD
 | `Evidence → STEP` | task хранит ссылки на конкретные доказательства, а не фразу «работает» |
 | `STEP + implementation + Evidence → Review` | независимый reviewer сверяет ожидаемое и фактическое состояние |
 | `Review → STEP` | verdict определяет, можно ли закрывать STEP или требуется FIX |
-| `STEP → REQ status` | требование меняет статус только если STEP действительно доказал необходимый контракт |
+| `STEP → REQ status` | требование меняет статус только если STEP действительно доказал необходимый контракт; текущее lifecycle-состояние отражается только в `docs/requirements/STATUS.md` |
 | `QUICK FIX → Git commit` | безопасная мелкая правка не создаёт искусственные REQ/ADR/STEP; её достаточная история — проверенный Git diff/commit |
 
 ## Canonical и projection files
@@ -66,10 +66,12 @@ flowchart TD
 - `planning/tasks/STEP-NNN.md` — canonical task contract;
 - `planning/PLAN.md` — roadmap projection по всем STEP;
 - `planning/STATUS.md` — status projection;
-- `docs/requirements/SPEC.md` — canonical requirement definitions;
-- `docs/requirements/STATUS.md` — requirement status projection.
+- `docs/requirements/SPEC.md` — canonical requirement definitions; lifecycle-статус в нём намеренно не хранится;
+- `docs/requirements/STATUS.md` — единственная persisted requirement status projection, вычисляемая из STEP/evidence/review.
 
-Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной.
+Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ определение и acceptance остаются в `SPEC.md`, а lifecycle-state не дублируется туда из `STATUS.md`.
+
+Legacy-проекты, инициализированные старым Harness, могут всё ещё содержать `**Статус:**` внутри REQ в `SPEC.md`. Такой field считается устаревшим metadata, а не authoritative state: Harness update не делает его breaking validator error; при `RECONCILE PROJECT` его можно удалить после сверки `docs/requirements/STATUS.md` с STEP/evidence/review без изменения смысла requirement.
 
 ## Иерархия источников истины
 

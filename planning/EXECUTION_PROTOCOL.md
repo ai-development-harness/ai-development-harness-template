@@ -98,14 +98,14 @@ Precondition: `.project/manifest.yaml → project.initialized: false`.
 1. Проверить существование `PROJECT_BRIEF.local.md`.
 2. Прочитать brief и референсы. Если внешний source недоступен, отметить это, не подменять факт предположением.
 3. Сформировать `docs/PROJECT.md`.
-4. Извлечь проверяемые REQ и назначить стабильные IDs.
+4. Извлечь проверяемые REQ и назначить стабильные IDs; в `SPEC.md` не записывать lifecycle-статус.
 5. Сформировать минимально достаточный architecture baseline.
 6. Создать ADR только для уже необходимых устойчивых решений.
 7. Неопределённости записать в `OPEN_QUESTIONS`; при необходимости создать ранний `RESEARCH`/`ADR` STEP.
 8. Построить roadmap по dependencies, а не только по удобному порядку.
 9. Создать task-файл для каждого initial STEP по template.
 10. Заполнить traceability REQ↔STEP↔ADR.
-11. Обновить `PLAN.md`, `STATUS.md`, requirements status.
+11. Обновить `PLAN.md`, `STATUS.md` и `docs/requirements/STATUS.md`; это единственное persisted место lifecycle-статуса REQ.
 12. Обновить только generated blocks `README.md` и `AGENTS.md`.
 13. Заполнить `development.md` только фактами, известными из brief/выбранной архитектуры; не выдумывать CLI commands.
 14. Установить `project.initialized: true`, project name/date.
@@ -238,7 +238,7 @@ Production code mutation запрещена. Разрешено обновлен
 5. Не реализовывать future/unrelated work.
 6. Добавить/обновить tests.
 7. Запустить реальные Verification commands; неизвестные команды сначала обнаружить в repo.
-8. Обновить Evidence фактическими files/commands/results, но не ставить `Выполнено` до обязательного review PASS.
+8. Обновить Evidence фактическими files/commands/results, но не ставить `Выполнено` до обязательного review PASS. Буквальный terminal output разрешён только если он реально захвачен; иначе записывай `Command` / `Exit code` / `Observed` и не реконструируй вывод.
 9. Синхронизировать docs только для реально изменившихся contracts.
 10. Handoff → `REVIEW STEP-NNN`.
 
@@ -254,7 +254,7 @@ Reviewer должен быть независимым и read-only относи�
 6. Verdict: `PASS`, `FAIL`, `BLOCKED`.
 7. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
 8. Обновить в task только ссылку/latest review status, не уничтожая историю.
-9. При PASS + успешном deterministic verification разрешено закрытие: Status → `Выполнено`, evidence/status projections/REQ state синхронизируются.
+9. При PASS + успешном deterministic verification разрешено закрытие: Status → `Выполнено`, evidence/status projections синхронизируются; lifecycle-state REQ обновляется только в `docs/requirements/STATUS.md`, без status mutation в `SPEC.md`.
 10. При FAIL → `FIX STEP-NNN`. При BLOCKED → Status может стать `Заблокировано` с причиной.
 
 ## 11. `FIX STEP-NNN`
@@ -309,7 +309,7 @@ Report сохраняется в `planning/audits/`.
 ## 14. `STATUS PROJECT`
 
 1. Сверить task canonical statuses с PLAN/STATUS projections.
-2. Сверить REQ status с evidence и STEP coverage.
+2. Сверить REQ status в `docs/requirements/STATUS.md` с evidence, review и STEP coverage; не искать и не записывать lifecycle-status в `SPEC.md`.
 3. Показать blockers, in-progress, unblocked high-priority work, unresolved critical review findings.
 4. Исправить только projection drift, если canonical evidence однозначен.
 5. Не менять смысл REQ/ADR и не писать product code.

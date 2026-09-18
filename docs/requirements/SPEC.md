@@ -9,14 +9,7 @@
 - Техническая задача сама по себе не требует отдельного REQ.
 - Implementation detail не маскируй под product requirement.
 - При изменении смысла requirement обновляй traceability и roadmap.
-
-## Статусы
-
-- `Запланировано`
-- `Частично`
-- `Выполнено`
-- `Отложено`
-- `Отменено`
+- Lifecycle-статус REQ не хранится в `SPEC.md`: текущее состояние фиксируется только в `docs/requirements/STATUS.md` и выводится из STEP, evidence и review.
 
 ## Требования
 
@@ -24,7 +17,6 @@
 
 ### REQ-001 — TEMPLATE (удалить при INIT)
 
-**Статус:** Запланировано
 **Приоритет:** Средний
 **Источник:** PROJECT_BRIEF
 

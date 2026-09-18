@@ -19,7 +19,10 @@ import tomllib
 
 
 def run_git(root: Path, *args: str) -> tuple[int, str]:
-    proc = subprocess.run(["git", *args], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        proc = subprocess.run(["git", *args], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError:
+        return 127, ""
     return proc.returncode, proc.stdout
 
 
@@ -36,11 +39,11 @@ def load_toml(path: Path) -> dict:
         return tomllib.load(fh)
 
 
-def tracked_files(root: Path) -> list[str]:
+def tracked_files(root: Path) -> tuple[list[str], str | None]:
     code, out = run_git(root, "ls-files", "-z")
-    if code == 0:
-        return [p for p in out.split("\0") if p]
-    return [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file() and ".git" not in p.parts]
+    if code != 0:
+        return [], "Git index unavailable; tracked-file integrity checks require a Git working tree"
+    return [p for p in out.split("\0") if p], None
 
 
 def match_any(path: str, patterns: list[str]) -> bool:
@@ -416,7 +419,12 @@ def main() -> int:
         if ignored not in gitignore:
             errors.append(f".gitignore must ignore {ignored}")
 
-    files = tracked_files(root)
+    files, git_blocker = tracked_files(root)
+    if git_blocker:
+        print("HARNESS VALIDATION: BLOCKED")
+        print(f"  - {git_blocker}")
+        return 2
+
     forbidden = policy.get("forbidden_tracked_globs", [])
     allowed = policy.get("allowed_tracked_globs", [])
     max_size = int(policy.get("max_tracked_file_size_mb", 10)) * 1024 * 1024
@@ -540,7 +548,7 @@ def main() -> int:
             print(f"  - {item}")
         return 1
 
-    print(f"HARNESS VALIDATION: PASS ({len(files)} tracked/filesystem files checked, mode={args.mode})")
+    print(f"HARNESS VALIDATION: PASS ({len(files)} tracked files checked, mode={args.mode})")
     return 0
 
 
