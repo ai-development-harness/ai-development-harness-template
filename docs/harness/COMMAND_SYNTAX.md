@@ -94,17 +94,45 @@ GIT CHECK > GIT COMMIT > GIT PUSH
 GIT CHECK > COMMIT > PUSH
 ```
 
-## 3. Валидация до выполнения
+## 3. Structural validation до интерпретации
 
-Вся цепочка должна быть разобрана и проверена **до выполнения первого сегмента**.
+Machine-readable source of truth для command surface и переходов:
 
-Если цепочка синтаксически или семантически невалидна:
+```text
+.project/command-transitions.json
+```
 
-- ни один сегмент не выполняется;
+Полная документация матрицы:
+
+```text
+docs/harness/COMMAND_TRANSITIONS.md
+```
+
+Canonical command сначала проходит deterministic preflight:
+
+```bash
+python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
+```
+
+Порядок обработки фиксирован:
+
+```text
+tokenize
+→ normalize
+→ transition-table
+→ runtime-preconditions
+→ dispatch
+```
+
+До успешного шага `transition-table` запрещены skill routing, command-specific interpretation и mutation.
+
+Если команда или chain структурно невалидны:
+
+- ни один segment не выполняется;
 - working tree / Git / Harness artifacts не меняются;
-- пользователь получает конкретную причину.
+- пользователь получает стабильный structural error code.
 
-Это предотвращает ситуацию, когда первая mutation уже произошла, а ошибка в последнем сегменте обнаружилась только после неё.
+Это предотвращает ситуацию, когда первая mutation уже произошла, а ошибка в последнем segment обнаружилась только после неё.
 
 ## 4. Наследование области
 
@@ -241,130 +269,56 @@ HARNESS UPDATE CHECK [TO <tag>] > APPLY
 - `GITHUB` — генерация templates является самостоятельной mutation;
 - `RELEASE` — release check является самостоятельным gate.
 
-## 7. Допустимый порядок операций
+## 7. Переходы между командами
 
-Same-domain chain не считается валидной только потому, что все её сегменты по отдельности являются существующими командами.
+Допустимые переходы **не определяются этим документом**.
 
-До первого выполнения Harness обязан проверить **структурный порядок операций**.
-
-### GIT
-
-Git-chain описывает только pipeline публикации:
+Их единственный machine-readable источник:
 
 ```text
-CHECK → COMMIT → PUSH → PR
+.project/command-transitions.json
 ```
 
-Допустима последовательность, которая движется только вперёд по этому pipeline и не нарушает обязательные промежуточные зависимости.
-
-Примеры:
+Человекочитаемая полная таблица:
 
 ```text
-GIT CHECK > COMMIT
-GIT CHECK > COMMIT > PUSH
-GIT CHECK > COMMIT > PUSH > PR
-GIT CHECK > PUSH
-GIT CHECK > PUSH > PR
-GIT CHECK > PR
-GIT COMMIT > PUSH
-GIT COMMIT > PUSH > PR
-GIT PUSH > PR
+docs/harness/COMMAND_TRANSITIONS.md
 ```
 
-`GIT CHECK > PUSH` допустима, если commit уже существует и текущий repository state позволяет push.
-`GIT CHECK > PR` допустима, если ветка уже опубликована и удовлетворяет preconditions `GIT PR`.
+Правило закрытого мира:
 
-После `GIT COMMIT` переход напрямую к `GIT PR` запрещён: новый локальный commit должен быть опубликован через `GIT PUSH`.
+> Если explicit edge `A → B` отсутствует в transition graph, переход запрещён.
 
-Нельзя двигаться назад, повторять уже пройденную фазу или выполнять публикацию после фазы `GIT PR`:
+Поэтому существование обеих команд по отдельности не делает их допустимой цепочкой.
+
+Например:
 
 ```text
-GIT PR > COMMIT              # INVALID_CHAIN
-GIT PUSH > COMMIT            # INVALID_CHAIN
-GIT COMMIT > CHECK           # INVALID_CHAIN
-GIT CHECK > COMMIT > CHECK   # INVALID_CHAIN
-GIT COMMIT > PR              # INVALID_CHAIN
-GIT PR > PUSH                # INVALID_CHAIN
+GIT PR > COMMIT
 ```
 
-Такая ошибка определяется **до первого сегмента**. Например `GIT PR > COMMIT` не создаёт и не ищет PR — вся цепочка отклоняется целиком.
+даёт `INVALID_CHAIN` до выполнения `GIT PR`, потому что edge `GIT PR → GIT COMMIT` отсутствует.
 
-`GIT SYNC` не является фазой publication pipeline и выполняется только как самостоятельная команда. Оно не используется внутри chain.
+## 8. Выполнение structurally valid edge
 
-### STEP
-
-Для ручного implementation flow допустимы переходы:
+После structural PASS runtime использует metadata edge:
 
 ```text
-PLAN → IMPLEMENT → REVIEW
-REVIEW(FAIL) → FIX → REVIEW
+onPreviousResult
+runtimePreconditions
 ```
 
-Вход в цепочку разрешён с любой стадии, если preconditions этой стадии уже удовлетворены repository state.
+Следующий segment выполняется только если:
 
-Структурно допустимы, например:
+1. существует соответствующий edge;
+2. фактический result предыдущей команды входит в `onPreviousResult`;
+3. выполнены `runtimePreconditions` edge.
 
-```text
-STEP PLAN STEP-024 > IMPLEMENT > REVIEW
-STEP IMPLEMENT STEP-024 > REVIEW
-STEP REVIEW STEP-024 > FIX > REVIEW
-STEP FIX STEP-024 > REVIEW
-```
+Если edge структурно существует, но runtime precondition не выполнена, это `BLOCKED`, а не `INVALID_CHAIN`.
 
-`REVIEW > FIX` является **условным** переходом: `FIX` выполняется только если фактический verdict review = `FAIL`. При `PASS` или `BLOCKED` оставшиеся сегменты получают `NOT_EXECUTED`.
+Если result предыдущего segment не активирует edge, оставшиеся segments = `NOT_EXECUTED`.
 
-Обратные или пропускающие обязательную mutation стадии цепочки запрещены:
-
-```text
-STEP REVIEW STEP-024 > IMPLEMENT      # INVALID_CHAIN
-STEP IMPLEMENT STEP-024 > PLAN       # INVALID_CHAIN
-STEP PLAN STEP-024 > REVIEW          # INVALID_CHAIN
-STEP FIX STEP-024 > IMPLEMENT        # INVALID_CHAIN
-```
-
-### HARNESS UPDATE
-
-Единственная допустимая update-chain:
-
-```text
-HARNESS UPDATE CHECK [TO <tag>] > APPLY
-```
-
-`APPLY > CHECK`, повторный `CHECK`, повторный `APPLY` и любые другие порядки невалидны.
-
-### Общий принцип
-
-Chain validator должен различать:
-
-- `INVALID_CHAIN` — структура/порядок невозможны; ничего не выполняется;
-- `BLOCKED` — структура допустима, но runtime/repository precondition не выполнена;
-- `NOT_EXECUTED` — сегмент структурно допустим, но до него не дошли из-за результата предыдущего сегмента.
-
-## 8. Условие перехода к следующему сегменту
-
-Следующий сегмент выполняется только если предыдущий:
-
-1. завершился успешно;
-2. не вернул `FAIL` / `BLOCKED`;
-3. не требует отдельного пользовательского решения;
-4. допускает следующий шаг своим protocol handoff.
-
-При остановке оставшиеся сегменты получают состояние `NOT_EXECUTED`.
-
-Пример:
-
-```text
-GIT CHECK > COMMIT > PUSH > PR
-```
-
-может завершиться так:
-
-```text
-✓ GIT CHECK
-✓ GIT COMMIT
-✗ GIT PUSH — BLOCKED: remote ahead
-○ GIT PR — NOT_EXECUTED
-```
+Важно: `FAIL` не является универсальной остановкой. Например transition graph разрешает `STEP REVIEW → STEP FIX` именно при review result `FAIL`.
 
 ## 9. Цепочка не является транзакцией
 
