@@ -11,6 +11,6 @@
 # - <command/check> — PASS/FAIL/NOT RUN + причина
 #
 # Traceability:
-# - STEP-NNN / REQ-NNN / ADR-NNN / QUICK FIX / N/A
+# - STEP-NNN / REQ-NNN / ADR-NNN / PROJECT QUICK FIX / N/A
 #
 # Не включай комментарии (#) в итоговое сообщение.
