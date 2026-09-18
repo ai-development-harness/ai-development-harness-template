@@ -129,7 +129,7 @@ protocol:
 # Пути к repository policies и deterministic validation.
 # Пример: gitPolicy=`.project/git-policy.toml`.
 repository:
-  # Настройки COMMIT/PUSH/PR/SYNC и branch policy.
+  # Настройки GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC и branch policy.
   # Пример: .project/git-policy.toml.
   gitPolicy: .project/git-policy.toml
   # Политика обязательных Harness artifacts/repository hygiene.
@@ -141,7 +141,7 @@ repository:
   # Lock known BASE текущего Harness release.
   # Пример: .project/harness.lock.json.
   harnessLock: .project/harness.lock.json
-  # Локальный deterministic validator, используемый COMMIT/PUSH/CI.
+  # Локальный deterministic validator, используемый GIT COMMIT/GIT PUSH/CI.
   # Пример: tools/harness/validate.py.
   harnessValidation: tools/harness/validate.py
   # Baseline GitHub Actions workflow целостности Harness.
