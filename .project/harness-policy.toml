@@ -1,4 +1,4 @@
-# Deterministic integrity policy, используемая локально COMMIT/PUSH и Harness CI.
+# Deterministic integrity policy, используемая локально GIT COMMIT/GIT PUSH и Harness CI.
 
 # Версия схемы policy-файла.
 # Пример: 1; меняется только при несовместимом изменении структуры config.
@@ -114,10 +114,10 @@ required_commands = [
   "PROJECT RECONCILE",
   "RELEASE CHECK",
   "GIT CHECK",
-  "COMMIT",
-  "PUSH",
-  "PR",
-  "SYNC",
+  "GIT COMMIT",
+  "GIT PUSH",
+  "GIT PR",
+  "GIT SYNC",
 ]
 
 # Glob-patterns файлов, которые не должны быть tracked Git.
