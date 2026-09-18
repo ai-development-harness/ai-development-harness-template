@@ -480,9 +480,9 @@ PLAN → IMPLEMENT → REVIEW → FIX → REVIEW
 
 ## Git и CI
 
-### COMMIT
+### GIT COMMIT
 
-Harness-команда для безопасной подготовки локального Git commit: preflight, staging policy, hygiene checks, commit message и traceability. Не выполняет PUSH.
+Harness-команда для безопасной подготовки локального Git commit: preflight, staging policy, hygiene checks, commit message и traceability. Не выполняет GIT PUSH.
 
 ### Conventional Commit
 
@@ -494,7 +494,7 @@ feat(scope): краткое описание
 
 Harness дополняет его body с Context / Changes / Verification / Traceability согласно policy.
 
-### PUSH
+### GIT PUSH
 
 Публикация уже существующих commit текущей ветки в configured remote после fetch/divergence/safety checks.
 
@@ -502,7 +502,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 Запрос на интеграцию опубликованной ветки в base branch. Harness может создавать или переиспользовать PR согласно `.project/git-policy.toml`.
 
-### SYNC
+### GIT SYNC
 
 Проверка состояния local/remote branch. По умолчанию read-only report; policy может разрешать только безопасный fast-forward.
 
