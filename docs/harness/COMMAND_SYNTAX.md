@@ -10,7 +10,7 @@
 <DOMAIN> <OPERATION...> [TARGET] [: free-form input]
 ```
 
-`OPERATION` может состоять из нескольких слов, например `UPDATE CHECK` или `QUICK FIX`.
+`OPERATION` может состоять из нескольких слов, например в `HARNESS UPDATE CHECK` или `PROJECT QUICK FIX`.
 
 Канонические области:
 
