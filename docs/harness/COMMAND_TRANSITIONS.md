@@ -1,0 +1,301 @@
+# Command transitions
+
+Этот документ описывает структурную модель переходов между каноническими командами AI Development Harness.
+
+Machine-readable source of truth:
+
+```text
+.project/command-transitions.json
+```
+
+Человекочитаемая таблица ниже должна полностью соответствовать этому JSON. Harness Integrity проверяет соответствие автоматически.
+
+## Зачем существует отдельный transition graph
+
+Синтаксически корректные команды не обязательно образуют корректную цепочку.
+
+Например, обе команды существуют:
+
+```text
+GIT PR
+GIT COMMIT
+```
+
+но цепочка:
+
+```text
+GIT PR > COMMIT
+```
+
+структурно невозможна.
+
+Harness не должен выводить это из здравого смысла, Git semantics или поведения конкретного агента. Отсутствие edge `GIT PR → GIT COMMIT` в canonical transition graph означает `INVALID_CHAIN`.
+
+## Порядок обработки команды
+
+Каноническая команда проходит строго следующие стадии:
+
+```text
+1. tokenize
+      ↓
+2. normalize
+      ↓
+3. transition-table
+      ↓
+4. runtime-preconditions
+      ↓
+5. dispatch
+```
+
+Этот порядок зафиксирован и в `.project/command-transitions.json`.
+
+### 1. Tokenize
+
+Строка разбивается на chain segments только по отдельному оператору:
+
+```text
+ > 
+```
+
+### 2. Normalize
+
+До проверки graph разрешаются только механические преобразования:
+
+- первый segment обязан иметь explicit DOMAIN;
+- DOMAIN наследуется последующими shorthand-сегментами;
+- STEP target наследуется внутри STEP chain;
+- `HARNESS UPDATE CHECK ... > APPLY` нормализует `APPLY` в `HARNESS UPDATE APPLY`;
+- explicit target последующего segment не может отличаться от первого.
+
+На этой стадии не читаются project state, Git state, review verdict или skill instructions.
+
+### 3. Transition table
+
+После normalization каждый segment обязан существовать в table.
+
+Для каждой соседней пары:
+
+```text
+A > B
+```
+
+должен существовать explicit edge:
+
+```text
+A → B
+```
+
+Если edge отсутствует, результат:
+
+```text
+INVALID_CHAIN
+```
+
+и **ни один segment не выполняется**.
+
+Это правило применяется до skill routing, repository mutation и command-specific interpretation.
+
+### 4. Runtime preconditions
+
+Некоторые structurally valid edges имеют дополнительные условия.
+
+Примеры:
+
+- `GIT CHECK → GIT PUSH` требует `git-push-ready`;
+- `GIT CHECK → GIT PR` требует `git-pr-ready`;
+- `STEP REVIEW → STEP FIX` выполняется только при результате review `FAIL`;
+- `HARNESS UPDATE CHECK → HARNESS UPDATE APPLY` требует matching target и route.
+
+Отсутствие runtime precondition не превращает цепочку в `INVALID_CHAIN`. Структура остаётся валидной, но исполнение может завершиться `BLOCKED` или остановить оставшиеся segments.
+
+### 5. Dispatch
+
+Только после успешной structural validation Harness выбирает соответствующий skill/runtime role и начинает command semantics.
+
+## Result model
+
+### `INVALID_CHAIN`
+
+Структура command chain отсутствует в transition graph.
+
+Ничего не выполняется.
+
+### `BLOCKED`
+
+Структура допустима, но текущее состояние проекта/runtime/Git не удовлетворяет runtime precondition.
+
+### `NOT_EXECUTED`
+
+Segment структурно допустим, но execution до него не дошёл из-за результата предыдущего segment.
+
+### `PASS` / `SUCCESS` / `FAIL`
+
+Результат выполненной команды. Edge сам определяет, при каком результате разрешён переход дальше.
+
+Это особенно важно для review:
+
+```text
+STEP REVIEW STEP-024 > FIX > REVIEW
+```
+
+Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтому `FAIL` здесь не является универсальным «остановить chain» — transition graph определяет допустимый следующий шаг.
+
+## Полная таблица команд и переходов
+
+Отсутствие перехода в таблице означает запрет. Никаких implicit edges нет.
+
+<!-- COMMAND-TRANSITIONS:START -->
+| Command | Chain segment | Allowed next | Transition condition |
+|---|:---:|---|---|
+| `PROJECT INIT` | no | — | standalone-only |
+| `PROJECT STATUS` | no | — | standalone-only |
+| `PROJECT RECONCILE` | no | — | standalone-only |
+| `PROJECT QUICK FIX:` | no | — | standalone-only |
+| `STEP ADD:` | no | — | standalone-only |
+| `STEP NEXT` | no | — | standalone-only |
+| `STEP PLAN STEP-NNN` | yes | STEP IMPLEMENT | IMPLEMENT: result=SUCCESS; pre=— |
+| `STEP IMPLEMENT STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
+| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL; pre=latest-review-fail |
+| `STEP FIX STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
+| `STEP RUN STEP-NNN` | no | — | standalone-only |
+| `STEP AUDIT STEP-NNN` | no | — | standalone-only |
+| `SKILL FIND:` | no | — | standalone-only |
+| `SKILL INSTALL:` | no | — | standalone-only |
+| `SKILL CREATE:` | no | — | standalone-only |
+| `GITHUB GENERATE TEMPLATES` | no | — | standalone-only |
+| `RELEASE CHECK` | no | — | standalone-only |
+| `HARNESS UPDATE CHECK` | yes | HARNESS UPDATE APPLY | UPDATE APPLY: result=PASS; pre=matching-update-target-and-route |
+| `HARNESS UPDATE APPLY` | yes | — | terminal chain segment |
+| `GIT CHECK` | yes | GIT COMMIT<br>GIT PUSH<br>GIT PR | COMMIT: result=PASS; pre=—<br>PUSH: result=PASS; pre=git-push-ready<br>PR: result=PASS; pre=git-pr-ready |
+| `GIT COMMIT` | yes | GIT PUSH | PUSH: result=SUCCESS; pre=— |
+| `GIT PUSH` | yes | GIT PR | PR: result=SUCCESS; pre=— |
+| `GIT PR` | yes | — | terminal chain segment |
+| `GIT SYNC` | no | — | standalone-only |
+<!-- COMMAND-TRANSITIONS:END -->
+
+## Как читать таблицу
+
+### Chain segment = no
+
+Команда может выполняться отдельно, но никогда не входит в chain.
+
+Например:
+
+```text
+PROJECT INIT
+STEP RUN STEP-024
+GIT SYNC
+```
+
+### Chain segment = yes, Allowed next = —
+
+Команда может быть последним segment цепочки, но после неё нет допустимого перехода.
+
+Например:
+
+```text
+GIT PR
+HARNESS UPDATE APPLY
+```
+
+### Runtime condition
+
+`result=...` — результат предыдущего segment, при котором edge активируется.
+
+`pre=...` — runtime precondition, который проверяется после structural validation.
+
+## Примеры
+
+### Валидная Git chain
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+```
+
+Нормализация:
+
+```text
+GIT CHECK
+GIT COMMIT
+GIT PUSH
+GIT PR
+```
+
+Все три edges существуют.
+
+### Структурно валидный shortcut с runtime precondition
+
+```text
+GIT CHECK > PUSH
+```
+
+Edge существует, поэтому chain структурно валидна.
+
+Если publishable local commit отсутствует или Git state не позволяет push:
+
+```text
+BLOCKED
+```
+
+но не `INVALID_CHAIN`.
+
+### Обратный порядок
+
+```text
+GIT PR > COMMIT
+```
+
+Edge отсутствует:
+
+```text
+GIT PR -X-> GIT COMMIT
+```
+
+Результат:
+
+```text
+INVALID_CHAIN
+0 commands executed
+```
+
+### Условный STEP transition
+
+```text
+STEP REVIEW STEP-024 > FIX > REVIEW
+```
+
+Structural graph:
+
+```text
+REVIEW --FAIL--> FIX --SUCCESS--> REVIEW
+```
+
+Если первый review = PASS:
+
+```text
+✓ STEP REVIEW STEP-024 — PASS
+○ STEP FIX STEP-024 — NOT_EXECUTED
+○ STEP REVIEW STEP-024 — NOT_EXECUTED
+```
+
+### Cross-domain
+
+```text
+STEP RUN STEP-024 > GIT COMMIT
+```
+
+Отклоняется при normalization/transition validation. Cross-domain edges в graph отсутствуют.
+
+## Deterministic preflight
+
+Перед интерпретацией canonical command Harness выполняет:
+
+```bash
+python3 tools/harness/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
+```
+
+Для валидной команды tool возвращает normalized segments и metadata каждого edge.
+
+Для невалидной — ненулевой exit code и стабильный error code.
+
+Этот tool проверяет **только command structure**. Он не заменяет Git checks, STEP preconditions, review verdicts, Harness update checks или другие runtime gates.
