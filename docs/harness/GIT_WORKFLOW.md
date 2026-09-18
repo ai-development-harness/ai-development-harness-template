@@ -116,7 +116,7 @@ Merge/rebase конфликтующей истории автоматическ�
 GIT CHECK > COMMIT > PUSH > PR
 ```
 
-Он эквивалентен четырём отдельным canonical commands той же области. Вся цепочка валидируется до первого выполнения, включая **порядок фаз**. Publication pipeline движется вперёд: `CHECK → COMMIT → PUSH → PR`. Обратный порядок вроде `GIT PR > COMMIT`, повтор фазы или `GIT COMMIT > PR` отклоняются как `INVALID_CHAIN` до любых действий. Если структурно валидный сегмент возвращает FAIL/BLOCKED, следующие не выполняются. Уже созданный commit не откатывается автоматически, если последующий push или PR оказался blocked.
+Он эквивалентен четырём отдельным canonical commands той же области. Structural validity определяется не этим prose-описанием, а `.project/command-transitions.json`; полная матрица находится в [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). Для Git graph соответствует publication flow `CHECK → COMMIT → PUSH → PR` с дополнительными explicit shortcut edges из таблицы. Обратный/неразрешённый порядок отклоняется как `INVALID_CHAIN` до любых действий. После structural PASS runtime conditions каждого edge проверяются отдельно. Уже созданный commit не откатывается автоматически, если последующий push или PR оказался blocked.
 
 Cross-domain chain запрещён: `STEP RUN STEP-NNN > GIT COMMIT` не является допустимой командой. Полная семантика — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
 
