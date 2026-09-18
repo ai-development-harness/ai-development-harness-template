@@ -37,8 +37,8 @@
 │   ├── reviews/                      # immutable review reports
 │   ├── audits/                       # audit/reconcile reports
 │   ├── releases/                     # release reports
-│   ├── harness-updates/              # durable UPDATE HARNESS reports
-│   └── skill-searches/               # durable FIND SKILL results
+│   ├── harness-updates/              # durable HARNESS UPDATE APPLY reports
+│   └── skill-searches/               # durable SKILL FIND results
 ├── tools/harness/
 │   └── validate.py                   # deterministic integrity/safety validator
 └── .github/                          # PR template + Harness CI
