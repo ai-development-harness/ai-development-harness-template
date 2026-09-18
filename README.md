@@ -45,4 +45,5 @@ Harness protocol не привязан к одной модели или одн�
 - [CI и Harness Integrity](docs/harness/CI.md)
 - [Skills: SKILL FIND / SKILL INSTALL / SKILL CREATE](docs/harness/SKILL_MANAGEMENT.md)
 - [Синтаксис команд и цепочек](docs/harness/COMMAND_SYNTAX.md)
+- [Таблица допустимых переходов команд](docs/harness/COMMAND_TRANSITIONS.md)
 - [Полное оглавление документации Harness](docs/harness/README.md)
