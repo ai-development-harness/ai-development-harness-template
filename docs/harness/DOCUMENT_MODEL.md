@@ -71,6 +71,8 @@ flowchart TD
 
 Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ определение и acceptance остаются в `SPEC.md`, а lifecycle-state не дублируется туда из `STATUS.md`.
 
+Legacy-проекты, инициализированные старым Harness, могут всё ещё содержать `**Статус:**` внутри REQ в `SPEC.md`. Такой field считается устаревшим metadata, а не authoritative state: Harness update не делает его breaking validator error; при `RECONCILE PROJECT` его можно удалить после сверки `docs/requirements/STATUS.md` с STEP/evidence/review без изменения смысла requirement.
+
 ## Иерархия источников истины
 
 При конфликте Harness использует порядок:
