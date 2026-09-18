@@ -1,10 +1,10 @@
 ---
 name: git-workflow
-description: Safe repository Git workflow for GIT CHECK, GIT COMMIT, GIT PUSH, PR and GIT SYNC using project policy and deterministic integrity checks.
+description: Safe repository Git workflow for GIT CHECK, GIT COMMIT, GIT PUSH, GIT PR and GIT SYNC using project policy and deterministic integrity checks.
 ---
 # git-workflow
 
-Используй для `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`.
+Используй для `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и сегментов валидной Git-цепочки вроде `GIT CHECK > COMMIT > PUSH > PR`.
 
 ## Общие правила
 
