@@ -38,6 +38,6 @@
 
 ## Next command
 
-`INSTALL SKILL: #1`
+`SKILL INSTALL: #1`
 
-If none is good enough: `CREATE SKILL: <description>`
+If none is good enough: `SKILL CREATE: <description>`
