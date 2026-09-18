@@ -25,6 +25,7 @@
 - `harness-update.toml` — source repository, ownership classes, путь к remote update manifest и merge policy для self-update.
 - `harness.lock.json` — машинный known BASE текущего Harness release; JSON намеренно не требует inline-комментариев.
 - `harness-update-graph.json` — machine-readable граф допустимых переходов между immutable Harness releases; локальная копия входит в protocol layer, а выбор маршрута делается по версии из canonical `default_branch`.
+- `command-transitions.json` — machine-readable source of truth для canonical command surface, chain eligibility, explicit transition edges, `onPreviousResult` и runtime preconditions. До skill routing canonical command проходит structural validation по этому graph.
 
 `harness.lock.json` не содержит secrets. Его нужно хранить в Git вместе с проектом; удаление lock переводит updater в legacy-adoption mode.
 
