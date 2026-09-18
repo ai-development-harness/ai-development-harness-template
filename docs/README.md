@@ -1,6 +1,6 @@
 # Документация проекта
 
-После `INIT PROJECT` этот каталог становится project knowledge base.
+После `PROJECT INIT` этот каталог становится project knowledge base.
 
 ## Продуктовые документы
 
