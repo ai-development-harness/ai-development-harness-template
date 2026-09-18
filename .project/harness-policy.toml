@@ -1,4 +1,4 @@
-# Deterministic integrity policy, используемая локально GIT COMMIT/GIT PUSH и Harness CI.
+# Deterministic integrity policy, используемая локально GIT COMMIT / GIT PUSH и Harness CI.
 
 # Версия схемы policy-файла.
 # Пример: 1; меняется только при несовместимом изменении структуры config.
