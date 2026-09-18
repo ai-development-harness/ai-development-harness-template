@@ -6,6 +6,10 @@
 
 `project.initialized` меняется на `true` только после успешного `INIT PROJECT` и проверки согласованности созданной документации.
 
+## Execution policy
+
+`.project/manifest.yaml → execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` внутри одного `RUN STEP`. Допустимый диапазон — от 1 до 5 включительно; template default — 3. Значение проверяется `tools/harness/validate.py`, поэтому недопустимая настройка блокирует Harness validation до запуска orchestration.
+
 Локальные/секретные overrides при необходимости складываются в `.project/local/`; каталог игнорируется Git.
 
 ## Repository policies
