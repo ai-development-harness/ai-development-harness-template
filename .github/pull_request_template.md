@@ -1,6 +1,6 @@
 ## Контекст / traceability
 
-- Тип: STEP / QUICK FIX / maintenance
+- Тип: STEP / PROJECT QUICK FIX / maintenance
 - STEP: `STEP-NNN` / N/A
 - REQ: `REQ-NNN` / N/A
 - ADR: `ADR-NNN` / N/A
@@ -11,7 +11,7 @@
 
 ## Acceptance / verification
 
-- [ ] Acceptance criteria task проверены или N/A для QUICK FIX/maintenance
+- [ ] Acceptance criteria task проверены или N/A для PROJECT QUICK FIX/maintenance
 - [ ] Relevant tests пройдены
 - [ ] Остальные применимые project gates пройдены
 - [ ] Documentation/status синхронизированы, если контракт изменился
