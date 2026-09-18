@@ -12,8 +12,9 @@
 
 - `git-policy.toml` — поведение COMMIT/PUSH/PR/SYNC, ветки и commit messages.
 - `harness-policy.toml` — deterministic integrity/safety checks для local preflight и CI.
-- `harness-update.toml` — source repository, ownership classes и merge policy для self-update.
+- `harness-update.toml` — source repository, ownership classes, путь к remote update manifest и merge policy для self-update.
 - `harness.lock.json` — машинный known BASE текущего Harness release; JSON намеренно не требует inline-комментариев.
+- `harness-update-graph.json` — machine-readable граф допустимых переходов между immutable Harness releases; локальная копия входит в protocol layer, а выбор маршрута делается по версии из canonical `default_branch`.
 
 `harness.lock.json` не содержит secrets. Его нужно хранить в Git вместе с проектом; удаление lock переводит updater в legacy-adoption mode.
 
