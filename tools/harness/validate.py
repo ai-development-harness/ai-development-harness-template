@@ -21,6 +21,7 @@ from command_transitions import (
     canonical_commands,
     load_transition_table,
     render_transition_markdown,
+    validate_command_text,
     validate_transition_table,
 )
 
@@ -357,6 +358,60 @@ def main() -> int:
                     errors.append(
                         "COMMAND_TRANSITIONS.md generated table differs from .project/command-transitions.json"
                     )
+
+        # Parser/graph contract tests: every standalone canonical command must parse,
+        # and every pair of chain-enabled commands is valid iff an explicit edge exists.
+        def sample_command(domain_name: str, operation: str, spec: dict) -> str:
+            value = spec["canonical"].replace("STEP-NNN", "STEP-001")
+            if spec.get("target") == "release-optional":
+                value += " TO v0.0.0"
+            if spec.get("input") == "required":
+                value += " sample"
+            return value
+
+        for domain_name, domain in transition_table.get("domains", {}).items():
+            commands = domain.get("commands", {})
+            for operation, spec in commands.items():
+                sample = sample_command(domain_name, operation, spec)
+                result = validate_command_text(sample, transition_table)
+                if not result.get("valid"):
+                    errors.append(
+                        f"command parser rejects canonical sample '{sample}': "
+                        f"{result.get('code')} {result.get('message')}"
+                    )
+
+            chain_operations = [
+                operation
+                for operation, spec in commands.items()
+                if spec.get("chainAllowed")
+            ]
+            explicit_edges = {
+                (edge.get("from"), edge.get("to"))
+                for edge in domain.get("transitions", [])
+            }
+            for source in chain_operations:
+                for target in chain_operations:
+                    left = sample_command(domain_name, source, commands[source])
+                    right = sample_command(domain_name, target, commands[target])
+                    result = validate_command_text(
+                        f"{left} > {right}",
+                        transition_table,
+                    )
+                    expected_valid = (source, target) in explicit_edges
+                    if bool(result.get("valid")) != expected_valid:
+                        errors.append(
+                            "command parser/graph mismatch for "
+                            f"{domain_name} {source} -> {domain_name} {target}: "
+                            f"expected valid={expected_valid}, got "
+                            f"{result.get('code')} {result.get('message')}"
+                        )
+
+        cross_domain_probe = validate_command_text(
+            "STEP PLAN STEP-001 > GIT COMMIT",
+            transition_table,
+        )
+        if cross_domain_probe.get("valid"):
+            errors.append("command parser accepted forbidden cross-domain chain")
 
     # Required skills + minimal frontmatter.
     seen_skill_names: dict[str, str] = {}
