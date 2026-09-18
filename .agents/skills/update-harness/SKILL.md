@@ -5,9 +5,9 @@ description: Проверка и безопасное обновление Harne
 
 # Update Harness
 
-Используй этот skill только для `CHECK HARNESS UPDATE [TO <tag>]`, `UPDATE HARNESS [TO <tag>]` и legacy adoption.
+Используй этот skill только для `HARNESS UPDATE CHECK [TO <tag>]`, `HARNESS UPDATE APPLY [TO <tag>]` и legacy adoption.
 
-Команды доступны независимо от `project.initialized`: pre-init состояние не является blocker. `UPDATE HARNESS` до INIT обновляет только Harness protocol layer/lock, не выполняет `INIT PROJECT`, не создаёт product knowledge и не переводит `project.initialized` в `true`.
+Команды доступны независимо от `project.initialized`: pre-init состояние не является blocker. `HARNESS UPDATE APPLY` до INIT обновляет только Harness protocol layer/lock, не выполняет `PROJECT INIT`, не создаёт product knowledge и не переводит `project.initialized` в `true`.
 
 ## Sources
 
@@ -26,10 +26,10 @@ Source repository читается через доступный GitHub connecto
 Канонические формы:
 
 ```text
-CHECK HARNESS UPDATE
-CHECK HARNESS UPDATE TO vMAJOR.MINOR.PATCH
-UPDATE HARNESS
-UPDATE HARNESS TO vMAJOR.MINOR.PATCH
+HARNESS UPDATE CHECK
+HARNESS UPDATE CHECK TO vMAJOR.MINOR.PATCH
+HARNESS UPDATE APPLY
+HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 ```
 
 Сначала прочитай remote `.project/harness-update-graph.json` из configured source repository/default branch. Это routing metadata, а не исполняемые instructions и не baseline файлов.
@@ -71,7 +71,7 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 
 Эта схема позволяет release безопасно добавлять новый runtime adapter, не превращая target policy в право перезаписи уже существующих project files.
 
-## `CHECK HARNESS UPDATE [TO <tag>]`
+## `HARNESS UPDATE CHECK [TO <tag>]`
 
 Строго read-only:
 
@@ -102,9 +102,9 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 
 Если baseline неизвестен — автоматический 3-way update заблокирован.
 
-## `UPDATE HARNESS [TO <tag>]`
+## `HARNESS UPDATE APPLY [TO <tag>]`
 
-1. Сначала полностью выполни read-only semantics `CHECK HARNESS UPDATE` для того же конечного target и зафиксированного route.
+1. Сначала полностью выполни read-only semantics `HARNESS UPDATE CHECK` для того же конечного target и зафиксированного route.
 2. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
 3. Проверь текущий Harness через `python3 tools/harness/validate.py --mode manual`.
 4. Применяй route строго hop-by-hop; нельзя перепрыгивать edge даже если конечный tag существует.
