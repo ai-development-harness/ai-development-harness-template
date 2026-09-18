@@ -1,6 +1,10 @@
 # Команды Harness
 
-Команды — стабильный человеко-машинный интерфейс. Каноническая форма начинается с явного namespace: `<DOMAIN> <ACTION> ...`. Подробный синтаксис, наследование target и chain operator `>` описаны в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md). State transitions описаны в `planning/EXECUTION_PROTOCOL.md`.
+Команды — стабильный человеко-машинный интерфейс. Каноническая форма начинается с явного namespace: `<DOMAIN> <ACTION> ...`. Подробный синтаксис и chain operator `>` описаны в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
+
+Допустимость переходов между командами определяется **только** machine-readable graph `.project/command-transitions.json`. Полная человекочитаемая матрица — [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). До skill routing canonical command проходит deterministic `tools/harness/validate-command.py`.
+
+State transitions выполнения описаны в `planning/EXECUTION_PROTOCOL.md`.
 
 Старые ненеймспейсные формы не являются каноническими alias. Локальные пользовательские alias-команды можно добавить только явно в `AGENTS.local.md`; они читаются после `AGENTS.md`.
 
@@ -14,7 +18,7 @@ STEP PLAN STEP-024 > IMPLEMENT > REVIEW
 HARNESS UPDATE CHECK TO v0.4.0 > APPLY
 ```
 
-Вся цепочка валидируется до первого выполнения. Cross-domain chain запрещён. При FAIL/BLOCKED оставшиеся сегменты не выполняются, а уже успешные mutations автоматически не откатываются. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
+Вся цепочка сначала нормализуется и проверяется по `.project/command-transitions.json`. Отсутствующий edge означает `INVALID_CHAIN` и ноль выполненных сегментов. После structural PASS дальнейшее выполнение определяется `onPreviousResult` и `runtimePreconditions` конкретного edge. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) и [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md).
 
 ## `PROJECT INIT`
 
