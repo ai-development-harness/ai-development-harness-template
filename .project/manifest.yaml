@@ -21,6 +21,13 @@ project:
   # Пример: "2026-09-15T16:00:00+03:00"; null до INIT.
   initializedAt: null
 
+# Настройки orchestration Harness, которые проект может менять без изменения protocol.
+# Пример: лимит FIX ↔ REVIEW задаётся в диапазоне от 1 до 5.
+execution:
+  # Максимальное число циклов FIX → REVIEW внутри одного RUN STEP до остановки.
+  # Допустимый диапазон: от 1 до 5 включительно. Пример: 3.
+  maxFixReviewCycles: 3
+
 # Единая языковая политика Harness и project tooling. Значения — BCP 47 language tags.
 # Пример: `ru`, `en`, `pt-BR`. Отдельные доменные/i18n-тесты могут осознанно использовать другие языки.
 language:
