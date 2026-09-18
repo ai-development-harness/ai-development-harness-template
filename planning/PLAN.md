@@ -2,7 +2,7 @@
 
 > Projection-файл. Полный контракт каждого шага находится в `planning/tasks/STEP-NNN.md`.
 
-`INIT PROJECT` заменит пример фактическим roadmap.
+`PROJECT INIT` заменит пример фактическим roadmap.
 
 | STEP | Название | Type | Priority | Status | Depends on | REQ |
 |---|---|---|---|---|---|---|
