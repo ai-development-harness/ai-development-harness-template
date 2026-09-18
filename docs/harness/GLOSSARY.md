@@ -90,7 +90,7 @@
 
 ### PR — Pull Request
 
-Запрос на интеграцию изменений одной Git branch в другую с review/CI history.
+Запрос на интеграцию изменений одной Git branch в другую с review/CI history. Каноническая Harness-команда для создания/поиска такого запроса — `GIT PR`.
 
 ### CI — Continuous Integration
 
