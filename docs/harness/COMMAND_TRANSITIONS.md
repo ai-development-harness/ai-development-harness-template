@@ -155,7 +155,7 @@ Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтом�
 | `STEP NEXT` | no | — | standalone-only |
 | `STEP PLAN STEP-NNN` | yes | STEP IMPLEMENT | IMPLEMENT: result=SUCCESS; pre=— |
 | `STEP IMPLEMENT STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
-| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL; pre=latest-review-fail |
+| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL; pre=— |
 | `STEP FIX STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
 | `STEP RUN STEP-NNN` | no | — | standalone-only |
 | `STEP AUDIT STEP-NNN` | no | — | standalone-only |
