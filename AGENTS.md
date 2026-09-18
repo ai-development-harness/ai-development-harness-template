@@ -48,10 +48,10 @@
 - `HARNESS UPDATE CHECK`
 - `HARNESS UPDATE APPLY`
 - `GIT CHECK`
-- `COMMIT` / `COMMIT: <подсказка>`
-- `PUSH`
-- `PR`
-- `SYNC`
+- `GIT COMMIT` / `GIT COMMIT: <подсказка>`
+- `GIT PUSH`
+- `GIT PR`
+- `GIT SYNC`
 
 Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`. Перед исполнением команды используй соответствующий skill из `.agents/skills/`.
 
@@ -188,7 +188,7 @@ Self-update самого Harness выполняется только через 
 
 Не создавай STEP ради опечатки или другого безопасного micro-change. `PROJECT QUICK FIX: <описание>` допустим только если не меняются product behavior, API/schema/data/security/architecture/dependencies и отдельная traceability не нужна.
 
-Если пользователь уже внёс такую мелкую правку вручную, разрешён прямой `GIT CHECK` → `COMMIT` без STEP после проверки diff. Если изменение оказалось не мелким — остановись и предложи `STEP ADD:`. Подробности: `docs/harness/QUICK_CHANGES.md`.
+Если пользователь уже внёс такую мелкую правку вручную, разрешён прямой `GIT CHECK` → `GIT COMMIT` без STEP после проверки diff. Если изменение оказалось не мелким — остановись и предложи `STEP ADD:`. Подробности: `docs/harness/QUICK_CHANGES.md`.
 
 ## 15. Harness self-update
 
@@ -215,7 +215,7 @@ Self-update protocol layer не является STEP.
 - local modification `harness_owned` файла → blocker, а не overwrite;
 - target migration/install/bootstrap scripts автоматически не запускаются;
 - команда не делает STEP, commit, push или PR;
-- после mutation обязательно inspect diff → `GIT CHECK` → `COMMIT`.
+- после mutation обязательно inspect diff → `GIT CHECK` → `GIT COMMIT`.
 
 Для старого проекта без lock adoption разрешён только с explicit известным release. Подробности: `docs/harness/UPDATES.md`.
 
@@ -234,16 +234,16 @@ Self-update protocol layer не является STEP.
 
 ## 17. Git workflow
 
-Git mutation выполняется только явными командами `COMMIT`, `PUSH`, `PR`, `SYNC` и по `.project/git-policy.toml`.
+Git mutation выполняется только явными командами `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и по `.project/git-policy.toml`.
 
-Перед `COMMIT`/`PUSH` обязательно:
+Перед `GIT COMMIT`/`GIT PUSH` обязательно:
 
 1. изучить branch/status/staged/unstaged/untracked;
 2. выполнить `python3 tools/harness/validate.py --mode commit`;
 3. проверить diff на unrelated changes, secrets, local-only и generated мусор;
 4. соблюдать configured protected-branch/PR policy.
 
-`COMMIT` не делает push. `PUSH` не создаёт commit. Force-push, destructive reset/clean, automatic merge/rebase и amend запрещены без явного запроса пользователя.
+`GIT COMMIT` не делает push. `GIT PUSH` не создаёт commit. Force-push, destructive reset/clean, automatic merge/rebase и amend запрещены без явного запроса пользователя.
 
 Commit message строится по фактическому diff и `.gitmessage`; при наличии STEP/REQ/ADR использует repository traceability. При нескольких независимых changes предпочитай раздельные commits.
 
