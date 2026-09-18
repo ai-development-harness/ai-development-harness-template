@@ -202,6 +202,9 @@ check_final_newline = true
 # Запрещать ли trailing whitespace в проверяемых text files.
 # Пример: true.
 check_trailing_whitespace = true
+# Проверять ли tracked text files на типичные маркеры приватных ключей.
+# Пример: true блокирует случайное добавление PEM/OpenSSH private key material.
+check_private_key_material = true
 # Искать ли неразрешённые Git merge-conflict markers `<<<<<<<`, `=======`, `>>>>>>>`.
 # Пример: true блокирует случайный commit незавершённого conflict resolution.
 check_merge_markers = true
