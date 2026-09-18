@@ -175,26 +175,3 @@ fetch_remote = "origin"
 # Уровень автоматизации SYNC.
 # Пример: "report" только показывает состояние; "ff-only" разрешает безопасный fast-forward.
 mode = "report"
-# Разрешать ли автоматический rebase в SYNC.
-# Пример: false — rebase требует отдельного явного решения пользователя.
-allow_rebase = false
-# Разрешать ли автоматический merge в SYNC.
-# Пример: false — merge конфликтов/истории не должен быть скрытым side effect.
-allow_merge = false
-
-[safety]
-# Максимальный размер обычного tracked file до дополнительной проверки.
-# Пример: 10 MB помогает ловить случайные binary/build artifacts.
-max_tracked_file_size_mb = 10
-# Блокировать ли commits с обнаруженным private-key material.
-# Пример: true.
-block_private_keys = true
-# Блокировать ли tracked `PROJECT_BRIEF.local.md`.
-# Пример: true, потому что brief является local-only raw input.
-block_local_brief = true
-# Блокировать ли tracked `.env`/`.env.*` кроме явно разрешённых examples.
-# Пример: true.
-block_dotenv = true
-# Блокировать ли типичные generated/cache/build artifacts.
-# Пример: true предотвращает accidental node_modules/dist/coverage commits.
-block_generated_artifacts = true

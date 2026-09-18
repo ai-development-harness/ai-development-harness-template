@@ -278,6 +278,22 @@ def main() -> int:
 
     validate_update_graph(root, errors)
 
+    # Harness policy semantics must be valid before policy values are consumed below.
+    max_tracked_file_size_mb = policy.get("max_tracked_file_size_mb")
+    if isinstance(max_tracked_file_size_mb, bool) or not isinstance(max_tracked_file_size_mb, int) or max_tracked_file_size_mb <= 0:
+        errors.append("harness-policy: max_tracked_file_size_mb must be a positive integer")
+    for key in [
+        "check_utf8",
+        "check_final_newline",
+        "check_trailing_whitespace",
+        "check_private_key_material",
+        "check_merge_markers",
+        "check_config_parameter_comments",
+        "check_config_parameter_examples",
+    ]:
+        if not isinstance(policy.get(key), bool):
+            errors.append(f"harness-policy: {key} must be boolean")
+
     # Core files.
     for rel in policy.get("required_files", []):
         if not (root / rel).is_file():
@@ -427,7 +443,8 @@ def main() -> int:
 
     forbidden = policy.get("forbidden_tracked_globs", [])
     allowed = policy.get("allowed_tracked_globs", [])
-    max_size = int(policy.get("max_tracked_file_size_mb", 10)) * 1024 * 1024
+    max_size_mb = max_tracked_file_size_mb if isinstance(max_tracked_file_size_mb, int) and not isinstance(max_tracked_file_size_mb, bool) and max_tracked_file_size_mb > 0 else 10
+    max_size = max_size_mb * 1024 * 1024
 
     for rel in files:
         normalized = rel.replace("\\", "/")
@@ -451,7 +468,7 @@ def main() -> int:
             raw = p.read_bytes()
         except OSError:
             continue
-        if any(marker in raw for marker in private_markers):
+        if policy.get("check_private_key_material", True) and any(marker in raw for marker in private_markers):
             errors.append(f"private key material detected in tracked file: {rel}")
         if policy.get("check_merge_markers", True):
             text = raw.decode("utf-8", errors="ignore")
@@ -558,16 +575,100 @@ def main() -> int:
     if git_policy_path.exists():
         try:
             gp = load_toml(git_policy_path)
-            if gp.get("commit", {}).get("stage_mode") not in {"all-safe", "tracked-only", "staged-only"}:
+
+            if gp.get("version") != 1:
+                errors.append("git-policy: version must be 1")
+
+            commit = gp.get("commit", {})
+            if commit.get("style") != "conventional":
+                errors.append("git-policy: commit.style must be conventional")
+            if commit.get("stage_mode") not in {"all-safe", "tracked-only", "staged-only"}:
                 errors.append("git-policy: invalid commit.stage_mode")
-            if gp.get("branch", {}).get("when_on_protected") not in {"auto-create", "stay", "block"}:
+            subject_max_length = commit.get("subject_max_length")
+            if isinstance(subject_max_length, bool) or not isinstance(subject_max_length, int) or subject_max_length <= 0:
+                errors.append("git-policy: commit.subject_max_length must be a positive integer")
+            for key in [
+                "require_body",
+                "require_harness_validation",
+                "require_single_logical_change",
+                "include_verification",
+                "include_traceability",
+                "allow_empty",
+                "sign",
+            ]:
+                if not isinstance(commit.get(key), bool):
+                    errors.append(f"git-policy: commit.{key} must be boolean")
+
+            branch = gp.get("branch", {})
+            protected = branch.get("protected")
+            if not isinstance(protected, list) or not protected or not all(isinstance(item, str) and item.strip() for item in protected):
+                errors.append("git-policy: branch.protected must be a non-empty string array")
+            if branch.get("when_on_protected") not in {"auto-create", "stay", "block"}:
                 errors.append("git-policy: invalid branch.when_on_protected")
-            if gp.get("push", {}).get("force") != "never":
-                warnings.append("git-policy: push.force is not 'never'; review this consciously")
-            if gp.get("pull_request", {}).get("after_push") not in {"never", "ask", "create-if-missing"}:
+            for key in ["allow_initial_commit_on_protected", "reuse_current_non_protected"]:
+                if not isinstance(branch.get(key), bool):
+                    errors.append(f"git-policy: branch.{key} must be boolean")
+            for key in ["default_base", "name_pattern"]:
+                value = branch.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(f"git-policy: branch.{key} must be a non-empty string")
+            name_pattern = branch.get("name_pattern")
+            if isinstance(name_pattern, str) and ("{prefix}" not in name_pattern or "{slug}" not in name_pattern):
+                errors.append("git-policy: branch.name_pattern must contain {prefix} and {slug}")
+            slug_max_length = branch.get("slug_max_length")
+            if isinstance(slug_max_length, bool) or not isinstance(slug_max_length, int) or slug_max_length <= 0:
+                errors.append("git-policy: branch.slug_max_length must be a positive integer")
+            prefixes = branch.get("prefixes")
+            if not isinstance(prefixes, dict) or not prefixes or not all(
+                isinstance(key, str) and key.strip() and isinstance(value, str) and value.strip()
+                for key, value in prefixes.items()
+            ):
+                errors.append("git-policy: branch.prefixes must be a non-empty string map")
+
+            push = gp.get("push", {})
+            remote = push.get("remote")
+            if not isinstance(remote, str) or not remote.strip():
+                errors.append("git-policy: push.remote must be a non-empty string")
+            if push.get("if_remote_ahead") not in {"block", "allow"}:
+                errors.append("git-policy: invalid push.if_remote_ahead")
+            if push.get("force") != "never":
+                errors.append("git-policy: push.force must be never")
+            for key in [
+                "set_upstream",
+                "fetch_before_push",
+                "push_tags",
+                "allow_protected",
+                "allow_initial_push_to_protected",
+                "require_harness_validation",
+                "require_clean_worktree",
+            ]:
+                if not isinstance(push.get(key), bool):
+                    errors.append(f"git-policy: push.{key} must be boolean")
+
+            pull_request = gp.get("pull_request", {})
+            if pull_request.get("after_push") not in {"never", "ask", "create-if-missing"}:
                 errors.append("git-policy: invalid pull_request.after_push")
-            if gp.get("sync", {}).get("mode") not in {"report", "ff-only"}:
+            for key in ["provider", "preferred_tool", "base", "body_template"]:
+                value = pull_request.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    errors.append(f"git-policy: pull_request.{key} must be a non-empty string")
+            for key in ["draft", "reuse_existing", "title_from_commit"]:
+                if not isinstance(pull_request.get(key), bool):
+                    errors.append(f"git-policy: pull_request.{key} must be boolean")
+
+            sync = gp.get("sync", {})
+            fetch_remote = sync.get("fetch_remote")
+            if not isinstance(fetch_remote, str) or not fetch_remote.strip():
+                errors.append("git-policy: sync.fetch_remote must be a non-empty string")
+            if sync.get("mode") not in {"report", "ff-only"}:
                 errors.append("git-policy: invalid sync.mode")
+            unexpected_sync_keys = sorted(set(sync) - {"fetch_remote", "mode"})
+            if unexpected_sync_keys:
+                errors.append(
+                    "git-policy: unsupported sync settings: " + ", ".join(unexpected_sync_keys)
+                )
+            if "safety" in gp:
+                errors.append("git-policy: [safety] is no longer supported; use .project/harness-policy.toml")
         except Exception:
             pass
 
