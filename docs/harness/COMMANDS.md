@@ -1,6 +1,20 @@
 # Команды Harness
 
-Команды — стабильный человеко-машинный интерфейс. Подробные state transitions описаны в `planning/EXECUTION_PROTOCOL.md`. Локальные пользовательские alias-команды можно добавить в `AGENTS.local.md`; они читаются после `AGENTS.md`.
+Команды — стабильный человеко-машинный интерфейс. Каноническая форма начинается с явного namespace: `<DOMAIN> <ACTION> ...`. Подробный синтаксис, наследование target и chain operator `>` описаны в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md). State transitions описаны в `planning/EXECUTION_PROTOCOL.md`.
+
+Старые ненеймспейсные формы не являются каноническими alias. Локальные пользовательские alias-команды можно добавить только явно в `AGENTS.local.md`; они читаются после `AGENTS.md`.
+
+## Цепочки
+
+Для разрешённых команд одной области можно не повторять namespace:
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+STEP PLAN STEP-024 > IMPLEMENT > REVIEW
+HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+```
+
+Вся цепочка валидируется до первого выполнения. Cross-domain chain запрещён. При FAIL/BLOCKED оставшиеся сегменты не выполняются, а уже успешные mutations автоматически не откатываются. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
 
 ## `PROJECT INIT`
 
@@ -43,11 +57,11 @@ Production code не меняется.
 
 ## `PROJECT QUICK FIX: <описание>`
 
-Выполняет маленькую low-risk правку без создания STEP/REQ/ADR. Разрешён только для micro-change без изменения product/API/data/security/architecture/dependencies. Если scope оказался больше — команда прекращается и предлагает `STEP ADD:`. Если пользователь уже исправил мелочь вручную, можно сразу использовать `GIT CHECK`/`GIT COMMIT`. Подробнее: `QUICK_CHANGES.md`.
+Выполняет маленькую low-risk правку без создания STEP/REQ/ADR. Разрешён только для micro-change без изменения product/API/data/security/architecture/dependencies. Если scope оказался больше — команда прекращается и предлагает `STEP ADD:`. Если пользователь уже исправил мелочь вручную, можно сразу использовать `GIT CHECK > COMMIT` или отдельные `GIT CHECK` и `GIT COMMIT`. Подробнее: `QUICK_CHANGES.md`.
 
 ## `STEP PLAN STEP-NNN`
 
-Проводит pre-implementation analysis и **сохраняет** результат в `## Implementation plan` task-файла. Production code не меняется. План должен быть достаточно конкретным, чтобы следующая сессия могла выполнить `IMPLEMENT` без истории чата.
+Проводит pre-implementation analysis и **сохраняет** результат в `## Implementation plan` task-файла. Production code не меняется. План должен быть достаточно конкретным, чтобы следующая сессия могла выполнить `STEP IMPLEMENT STEP-NNN` без истории чата.
 
 ## `STEP IMPLEMENT STEP-NNN`
 
@@ -125,7 +139,7 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 HARNESS UPDATE APPLY TO v0.2.3
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK` → `GIT COMMIT`.
+Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## `GIT CHECK`
 
