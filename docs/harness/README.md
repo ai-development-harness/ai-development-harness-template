@@ -9,6 +9,7 @@
 - [`GLOSSARY.md`](GLOSSARY.md) — полный словарь терминов и сокращений Harness.
 - [`REPOSITORY_LAYOUT.md`](REPOSITORY_LAYOUT.md) — файловая архитектура и разделение protocol / knowledge / implementation.
 - [`COMMANDS.md`](COMMANDS.md) — пользовательский командный интерфейс.
+- [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) — namespaces, targets и chain operator `>`.
 - [`LANGUAGE_POLICY.md`](LANGUAGE_POLICY.md) — единая настройка языка для docs/commits/comments/tests/fixtures/templates.
 - [`QUICK_CHANGES.md`](QUICK_CHANGES.md) — когда мелкая правка не требует STEP.
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
