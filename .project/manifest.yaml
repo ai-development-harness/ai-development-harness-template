@@ -6,7 +6,7 @@ harness:
   version: "1"
   # Release Harness, от которого текущий project protocol layer синхронизирован.
   # Пример: "0.2.6"; immutable source ref хранится в `.project/harness.lock.json`.
-  release: "0.2.6"
+  release: "0.2.7"
 
 # Состояние конкретного проекта, созданного из template.
 # Пример: до INIT initialized=false/name=null, после INIT значения заполняются initializer.
