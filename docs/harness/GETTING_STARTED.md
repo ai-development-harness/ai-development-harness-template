@@ -12,7 +12,7 @@
 
 Предпочтительный путь — GitHub **Use this template**. После этого клонируй уже созданный репозиторий проекта.
 
-Если template клонируется напрямую, перед первым `PUSH` замени `origin` на репозиторий нового проекта.
+Если template клонируется напрямую, перед первым `GIT PUSH` замени `origin` на репозиторий нового проекта.
 
 Template уже содержит `.project/harness.lock.json`: это BASE для будущих `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
 
@@ -68,7 +68,7 @@ HARNESS UPDATE APPLY
 ```text
 inspect diff
 GIT CHECK
-COMMIT
+GIT COMMIT
 ```
 
 Если доступного update нет, переходи сразу к `PROJECT INIT`.
@@ -146,8 +146,8 @@ Tracked runtime configs сохраняются при Harness update через 
 
 ```text
 GIT CHECK
-COMMIT
-PUSH
+GIT COMMIT
+GIT PUSH
 ```
 
 Политика веток/PR задаётся в `.project/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
