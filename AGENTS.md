@@ -123,6 +123,8 @@ AI-вердикт не заменяет проверки проекта. Пер�
 
 Не выдумывай scripts/targets. Сначала исследуй фактическую систему сборки/тестирования проекта.
 
+Evidence должно отличать буквальный захваченный output от нормализованного резюме. Если точный output не сохранён, фиксируй `Command`, `Exit code` и `Observed`; не реконструируй вывод и не оформляй пересказ как terminal quote.
+
 ## 9. Scope discipline
 
 - Не реализуй будущие STEP «заодно».
@@ -144,7 +146,7 @@ ADR → affected REQ/STEP
 STEP → REQ + ADR + evidence + review
 ```
 
-Projection-файлы (`PLAN.md`, `STATUS.md`, requirements `STATUS.md`) не должны расходиться с canonical files.
+Projection-файлы (`PLAN.md`, `STATUS.md`, requirements `STATUS.md`) не должны расходиться с canonical files и фактическим evidence. `docs/requirements/SPEC.md` хранит definition/rationale/acceptance/traceability REQ без lifecycle-статуса; текущее состояние REQ фиксируется только в `docs/requirements/STATUS.md`.
 
 ## 11. Статусы STEP
 
