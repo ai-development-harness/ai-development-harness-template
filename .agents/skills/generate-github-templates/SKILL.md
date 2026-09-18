@@ -49,4 +49,4 @@ description: Regenerate GitHub Issue Forms and Pull Request template from the pr
 1. Проверь YAML syntax issue forms.
 2. Запусти `python3 tools/harness/validate.py --mode manual`.
 3. Покажи список заменённых/созданных файлов и основные изменения.
-4. Не делай COMMIT/PUSH автоматически.
+4. Не делай GIT COMMIT/GIT PUSH автоматически.
