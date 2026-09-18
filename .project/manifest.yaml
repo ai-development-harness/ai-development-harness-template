@@ -5,8 +5,8 @@ harness:
   # Пример: "1". Пока protocol не стабилизирован dogfooding, номер не повышается за каждую итерацию.
   version: "1"
   # Release Harness, от которого текущий project protocol layer синхронизирован.
-  # Пример: "0.2.4"; immutable source ref хранится в `.project/harness.lock.json`.
-  release: "0.2.4"
+  # Пример: "0.2.6"; immutable source ref хранится в `.project/harness.lock.json`.
+  release: "0.2.6"
 
 # Состояние конкретного проекта, созданного из template.
 # Пример: до INIT initialized=false/name=null, после INIT значения заполняются initializer.
