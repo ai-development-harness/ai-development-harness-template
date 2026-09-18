@@ -4,7 +4,7 @@ description: Regenerate GitHub Issue Forms and Pull Request template from the pr
 ---
 # generate-github-templates
 
-Используй для `GENERATE GITHUB TEMPLATES`. Команда доступна до и после INIT и всегда работает по **текущему** состоянию repository.
+Используй для `GITHUB GENERATE TEMPLATES`. Команда доступна до и после INIT и всегда работает по **текущему** состоянию repository.
 
 ## Цель
 
@@ -40,7 +40,7 @@ description: Regenerate GitHub Issue Forms and Pull Request template from the pr
 - Используй язык `language.githubTemplates`.
 - Bug form должен собирать reproduction, expected/actual, environment/tool versions только релевантные проекту, logs/screenshots и affected area.
 - Feature form должен начинаться с проблемы/ценности, а не только «что сделать», и позволять указать ограничения/референсы.
-- PR template должен отражать реальные verification gates и существующую traceability (`STEP/REQ/ADR`) только там, где она применима; QUICK FIX должен иметь возможность указать `N/A`.
+- PR template должен отражать реальные verification gates и существующую traceability (`STEP/REQ/ADR`) только там, где она применима; PROJECT QUICK FIX должен иметь возможность указать `N/A`.
 - Не включай чекбоксы для tooling, которого нет в проекте.
 - Existing target files заменяются намеренно; пользователь увидит изменения в Git diff.
 
