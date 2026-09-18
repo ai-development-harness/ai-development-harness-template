@@ -510,6 +510,6 @@ def render_transition_markdown(table: dict[str, Any]) -> str:
     ]
     for row in transition_rows(table):
         lines.append(
-            f"| \`{row['command']}\` | {row['chain']} | {row['next']} | {row['condition']} |"
+            f"| `{row['command']}` | {row['chain']} | {row['next']} | {row['condition']} |"
         )
     return "\n".join(lines)
