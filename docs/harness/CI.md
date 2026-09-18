@@ -28,7 +28,7 @@ python3 tools/harness/validate.py --mode ci
 python3 tools/harness/validate.py --mode manual
 ```
 
-Для COMMIT/PUSH agent использует:
+Для GIT COMMIT/GIT PUSH agent использует:
 
 ```bash
 python3 tools/harness/validate.py --mode commit
