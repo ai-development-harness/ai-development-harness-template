@@ -296,7 +296,7 @@ STEP RUN STEP-024 > GIT COMMIT
 
 ### `git-pr-ready`
 
-После `GIT CHECK` branch должна уже быть опубликована в состоянии, пригодном для `GIT PR`. Наличие unpublished local commit делает shortcut `CHECK → PR` blocked; для нового commit нужен путь через `PUSH`.
+После `GIT CHECK` branch должна уже быть опубликована в состоянии, пригодном для `GIT PR`. Наличие unpublished local commit делает shortcut `GIT CHECK → GIT PR` blocked; для нового commit нужен путь через `GIT PUSH`.
 
 ### `matching-update-target-and-route`
 
