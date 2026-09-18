@@ -30,10 +30,12 @@ HARNESS UPDATE CHECK TO v0.4.0 > APPLY
 2. DOMAIN наследуется от первого сегмента; смена DOMAIN внутри цепочки запрещена;
 3. STEP target наследуется и остаётся неизменным;
 4. HARNESS UPDATE target `TO <tag>` наследуется от CHECK к APPLY;
-5. следующий сегмент выполняется только после успешного предыдущего и допустимого protocol handoff;
-6. FAIL/BLOCKED останавливает цепочку, оставшиеся сегменты = `NOT_EXECUTED`;
-7. уже выполненные mutations не откатываются автоматически;
-8. cross-domain chain, например `STEP RUN STEP-024 > GIT COMMIT`, не выполняется.
+5. до первого выполнения проверить не только syntax/domain/target, но и допустимый порядок операций;
+6. same-domain reverse/invalid order (например `GIT PR > COMMIT`) = `INVALID_CHAIN`; ни один сегмент не выполняется;
+7. следующий сегмент выполняется только после успешного предыдущего и допустимого protocol handoff;
+8. FAIL/BLOCKED останавливает цепочку, оставшиеся сегменты = `NOT_EXECUTED`;
+9. уже выполненные mutations не откатываются автоматически;
+10. cross-domain chain, например `STEP RUN STEP-024 > GIT COMMIT`, не выполняется.
 
 Разрешённые chain surfaces: GIT; ручной STEP flow `PLAN/IMPLEMENT/REVIEW/FIX`; HARNESS UPDATE только `CHECK > APPLY`. PROJECT/SKILL/GITHUB/RELEASE и `STEP RUN`/ `STEP AUDIT` остаются самостоятельными командами.
 
