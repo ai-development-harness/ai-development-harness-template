@@ -10,7 +10,6 @@ required_files = [
   "AGENTS.md",
   ".project/harness-update-graph.json",
   ".project/command-transitions.json",
-  ".project/execution-recovery.json",
   "CLAUDE.md",
   "README.md",
   "PROJECT_BRIEF.example.md",
@@ -49,10 +48,10 @@ required_files = [
   "tools/harness/validate.py",
   "tools/harness/command_transitions.py",
   "tools/harness/validate-command.py",
-  "tools/harness/execution_recovery.py",
   "tools/harness/execution-state.py",
   "tools/harness/resolve-next-command.py",
-  "tools/harness/recovery-self-test.py",
+  "tools/harness/execution_status.py",
+  "tools/harness/execution-self-test.py",
   ".gitmessage",
 ]
 
