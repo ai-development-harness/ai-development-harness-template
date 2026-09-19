@@ -6,12 +6,16 @@ description: Select the next executable project action using dependencies, task 
 
 Используй для `STEP NEXT`. Read-only.
 
-Первым шагом выполни:
+Сначала выполни:
 
 ```bash
 python3 tools/harness/resolve-next-command.py --json
 ```
 
-Если есть interrupted/active execution candidates, они имеют приоритет над стартом нового STEP. При одном кандидате верни его exact resolved command. При нескольких сначала выбирай среди recovery candidates по обычным dependency/priority/risk правилам и только потом рассматривай новый STEP.
+Resolver возвращает все unresolved executions всех namespaces. Незавершённый STEP-related execution имеет приоритет над стартом нового STEP, но не блокирует явно запрошенные пользователем независимые Git/Project/Harness commands.
 
-Не выбирай просто наименьший номер. Исключи blocked hard dependencies и completed/cancelled work. Учитывай corrective prerequisites и фактическое состояние task: если implementation уже есть и review отсутствует, следующая команда может быть REVIEW, а не PLAN. Верни один основной выбор и точную команду.
+Если interrupted STEP execution один — верни его exact resolved command. Если их несколько — выбери один по dependencies/priority/risk/critical path и явно перечисли остальные как незавершённые.
+
+Если STEP-related interrupted execution нет, применяй обычный selection: исключи blocked hard dependencies и completed/cancelled work, учитывай corrective prerequisites и фактическое состояние task.
+
+Верни один основной выбор и точную canonical command.
