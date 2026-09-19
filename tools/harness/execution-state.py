@@ -13,6 +13,7 @@ from execution_recovery import (
     finish_execution,
     load_execution_state,
     stamp_plan,
+    start_execution,
 )
 
 
@@ -29,6 +30,10 @@ def main() -> int:
         description="Manage local restart-safe Harness execution state."
     )
     sub = parser.add_subparsers(dest="action", required=True)
+
+    start = sub.add_parser("start")
+    start.add_argument("step_id")
+    start.add_argument("--root-command", required=True)
 
     begin = sub.add_parser("begin")
     begin.add_argument("step_id")
@@ -64,7 +69,15 @@ def main() -> int:
     args = parser.parse_args()
     root = repo_root()
 
-    if args.action == "begin":
+    if args.action == "start":
+        emit(
+            start_execution(
+                root,
+                args.step_id,
+                root_command=args.root_command,
+            )
+        )
+    elif args.action == "begin":
         emit(
             begin_phase(
                 root,
