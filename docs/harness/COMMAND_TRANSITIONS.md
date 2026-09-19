@@ -4,6 +4,8 @@
 
 Команда в CTS является action/transition request, а не состоянием. Состояние определяется repository/runtime facts. Поэтому термин «Command State Machine» допустим только как упрощённая аналогия; каноническое название модели — **Command Transition System**.
 
+CTS не определяет, успела ли конкретная длительная command завершиться до session/runtime interruption. Для этого существует отдельный restart-safe слой [`EXECUTION_RECOVERY.md`](EXECUTION_RECOVERY.md), который использует CTS edges, но не создаёт собственную transition graph.
+
 Machine-readable source of truth:
 
 ```text
