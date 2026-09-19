@@ -113,7 +113,7 @@ Read-only рекомендация следующего **unblocked** шага �
 
 Если проект ещё не инициализирован, команда ничего не меняет, не создаёт audit report/REQ/ADR/STEP и возвращает `PROJECT RECONCILE: NOT_APPLICABLE` с handoff → `PROJECT INIT`.
 
-В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. Не исправляет production code молча.
+В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. В обязательную evidence-проверку входит `python3 tools/harness/check-command-references.py --json`: live project-owned документы сверяются с текущим namespaced command surface, а immutable/history-oriented reports не мигрируются задним числом. Не исправляет production code молча.
 
 ## `RELEASE CHECK`
 
