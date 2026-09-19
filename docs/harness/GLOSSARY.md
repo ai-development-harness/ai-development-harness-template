@@ -40,17 +40,37 @@ Harness update check valid / blocked
 
 Structural validation CTS выполняется до command-specific interpretation и skill routing.
 
-### Execution Cursor
+### Execution Status
 
-Локальный crash-safe указатель текущей phase длительного STEP execution.
+Локальный crash-safe operational state всех canonical Harness-команд.
 
-Хранится под `.project/local/execution/`, не коммитится и не является product evidence. Если cursor расходится с canonical repository artifacts, приоритет имеют canonical artifacts.
+Хранится в одном фиксированном файле:
 
-### Recovery Resolver
+```text
+.project/local/execution/execution-status.json
+```
 
-Детерминированный механизм `tools/harness/resolve-next-command.py`, который по task contract, Plan basis, immutable review reports и local Execution Cursor определяет exact следующую canonical command после обычного progress или interruption.
+Файл содержит независимые execution records. Новая пользовательская команда не затирает interrupted execution другой команды.
 
-Resolver не создаёт новые переходы: допустимые переходы по-прежнему определяет Command Transition System.
+Execution Status не является product evidence и не задаёт допустимые переходы — это делает CTS.
+
+### Execution Record
+
+Одна фактическая root invocation пользователя.
+
+Внутренний `mode` определяется автоматически:
+
+- `single` — одна command;
+- `chain` — explicit chain;
+- `orchestration` — `STEP RUN STEP-NNN`.
+
+Mode не является пользовательской командой или дополнительным workflow layer.
+
+### Execution Resolver
+
+Детерминированный механизм `tools/harness/resolve-next-command.py`, который читает Execution Status и возвращает interrupted/current/next command внутри конкретной root execution.
+
+Resolver не создаёт новые transitions: для chain/orchestration он использует CTS; для single execution после completion автоматически ничего не продолжает.
 
 ### Plan basis
 
