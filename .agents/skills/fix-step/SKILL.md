@@ -6,24 +6,14 @@ description: Fix confirmed findings from the latest failing review of a STEP, th
 
 Используй для `STEP FIX STEP-NNN`.
 
-Сначала выполни deterministic resolver и перед mutation отметь phase:
+Execution Status ведёт global wrapper.
 
-```bash
-python3 tools/harness/resolve-next-command.py --json STEP-NNN
-python3 tools/harness/execution-state.py begin STEP-NNN \
-  --command 'STEP FIX STEP-NNN'
-```
+Найди последний применимый FAIL review. Передай подтверждённые findings implementer. Исправляй только их и необходимый supporting code в scope. Новый architecture/product scope → corrective STEP, а не скрытое расширение.
 
-Найди последний применимый FAIL review. Передай подтверждённые findings implementer. Исправляй только их и необходимый supporting code в scope. Новый architecture/product scope → corrective STEP, а не скрытое расширение. Запусти relevant verification, обнови Evidence с command/exit code/observed facts; не выдавай реконструированный terminal output за буквальный. Старый review не изменяй.
+Если command resume-ится после interruption, сначала изучи существующий diff и продолжи незавершённые findings.
 
-Только после полного исправления findings + verification + Evidence запиши:
+Запусти relevant verification, обнови Evidence с command/exit code/observed facts; не выдавай реконструированный terminal output за буквальный.
 
-```bash
-python3 tools/harness/execution-state.py complete STEP-NNN \
-  --command 'STEP FIX STEP-NNN' \
-  --result SUCCESS
-```
+После полного исправления command завершается result `SUCCESS`. Старый review не изменяй.
 
-Если session оборвалась раньше, следующий запуск повторяет `STEP FIX STEP-NNN` в resume-semantics и продолжает существующий diff.
-
-Следующая команда всегда свежий `STEP REVIEW STEP-NNN`.
+Single FIX после SUCCESS останавливается. Только explicit chain или `STEP RUN` может продолжить к свежему REVIEW.
