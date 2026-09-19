@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Manage crash-safe local Harness execution cursors."""
+"""Manage the universal local Harness execution-status.json."""
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 
-from execution_recovery import (
-    begin_phase,
-    complete_phase,
-    contract_basis,
-    finish_execution,
-    load_execution_state,
+from execution_status import (
+    begin_command,
+    block_execution,
+    complete_command,
+    find_completed,
+    load_status,
     stamp_plan,
     start_execution,
 )
@@ -27,21 +27,19 @@ def emit(value: object) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Manage local restart-safe Harness execution state."
+        description="Manage crash-safe Harness command execution status."
     )
     sub = parser.add_subparsers(dest="action", required=True)
 
     start = sub.add_parser("start")
-    start.add_argument("step_id")
-    start.add_argument("--root-command", required=True)
+    start.add_argument("--command", required=True)
 
     begin = sub.add_parser("begin")
-    begin.add_argument("step_id")
+    begin.add_argument("--root", required=True)
     begin.add_argument("--command", required=True)
-    begin.add_argument("--root-command")
 
     complete = sub.add_parser("complete")
-    complete.add_argument("step_id")
+    complete.add_argument("--root", required=True)
     complete.add_argument("--command", required=True)
     complete.add_argument(
         "--result",
@@ -49,19 +47,15 @@ def main() -> int:
         choices=["SUCCESS", "PASS", "FAIL", "BLOCKED"],
     )
 
-    finish = sub.add_parser("finish")
-    finish.add_argument("step_id")
-    finish.add_argument(
-        "--status",
-        required=True,
-        choices=["completed", "blocked"],
-    )
+    block = sub.add_parser("block")
+    block.add_argument("--root", required=True)
+    block.add_argument("--command")
 
-    show = sub.add_parser("show")
-    show.add_argument("step_id")
+    sub.add_parser("status")
 
-    basis = sub.add_parser("plan-basis")
-    basis.add_argument("step_id")
+    find = sub.add_parser("find")
+    find.add_argument("--command", required=True)
+    find.add_argument("--result", choices=["SUCCESS", "PASS", "FAIL", "BLOCKED"])
 
     stamp = sub.add_parser("stamp-plan")
     stamp.add_argument("step_id")
@@ -70,40 +64,26 @@ def main() -> int:
     root = repo_root()
 
     if args.action == "start":
-        emit(
-            start_execution(
-                root,
-                args.step_id,
-                root_command=args.root_command,
-            )
-        )
+        emit(start_execution(root, args.command))
     elif args.action == "begin":
-        emit(
-            begin_phase(
-                root,
-                args.step_id,
-                args.command,
-                root_command=args.root_command,
-            )
-        )
+        emit(begin_command(root, args.root, args.command))
     elif args.action == "complete":
         emit(
-            complete_phase(
+            complete_command(
                 root,
-                args.step_id,
+                args.root,
                 args.command,
-                result=args.result,
+                args.result,
             )
         )
-    elif args.action == "finish":
-        emit(finish_execution(root, args.step_id, status=args.status))
-    elif args.action == "show":
-        emit(load_execution_state(root, args.step_id))
-    elif args.action == "plan-basis":
-        print(contract_basis(root, args.step_id))
+    elif args.action == "block":
+        emit(block_execution(root, args.root, command=args.command))
+    elif args.action == "status":
+        emit(load_status(root))
+    elif args.action == "find":
+        emit(find_completed(root, args.command, result=args.result))
     elif args.action == "stamp-plan":
         emit(stamp_plan(root, args.step_id))
-
     return 0
 
 
