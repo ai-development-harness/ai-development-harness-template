@@ -34,7 +34,6 @@ report_directory = "planning/harness-updates"
 harness_owned = [
   ".project/harness-update-graph.json",
   ".project/command-transitions.json",
-  ".project/execution-recovery.json",
   ".agents/skills/**",
   ".codex/README.md",
   ".claude/README.md",
