@@ -4,7 +4,9 @@
 
 Команда в CTS является action/transition request, а не состоянием. Состояние определяется repository/runtime facts. Поэтому термин «Command State Machine» допустим только как упрощённая аналогия; каноническое название модели — **Command Transition System**.
 
-CTS не определяет, успела ли конкретная длительная command завершиться до session/runtime interruption. Для этого существует отдельный restart-safe слой [`EXECUTION_RECOVERY.md`](EXECUTION_RECOVERY.md), который использует CTS edges, но не создаёт собственную transition graph.
+CTS не определяет, успела ли конкретная command завершиться до session/runtime interruption. Это фиксирует [`EXECUTION_STATUS.md`](EXECUTION_STATUS.md) в одном local `execution-status.json`.
+
+CTS также **не задаёт глобальный порядок всех команд пользователя**. Edge требуется только внутри одной explicit chain или orchestration execution. Две отдельные invocations, например завершённый `STEP PLAN STEP-001` и последующий отдельный `GIT COMMIT`, являются независимыми executions и не требуют cross-domain edge.
 
 Machine-readable source of truth:
 
