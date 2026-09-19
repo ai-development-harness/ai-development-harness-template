@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Dependency-free integrity/safety validator for AI Development Harness."""
+"""Dependency-free validator целостности и safety-инвариантов Harness.
+
+Этот скрипт запускается локально и в Harness Integrity CI. Он проверяет именно
+protocol/repository hygiene, а не product-specific tests. Поэтому реализация
+опирается только на Python stdlib и Git CLI: validator должен работать сразу
+после checkout template, до установки зависимостей будущего проекта.
+
+Подход fail-closed: если обязательный protocol artifact, schema, runtime binding,
+command surface или ownership rule повреждены, Harness считается невалидным.
+Большинство проверок собирают ошибки в общий список, чтобы один запуск показывал
+максимум проблем вместо цикла «исправил одну — запусти снова».
+"""
 from __future__ import annotations
 
 import argparse
@@ -25,6 +36,8 @@ from command_transitions import (
     validate_transition_table,
 )
 
+
+# Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
 def run_git(root: Path, *args: str) -> tuple[int, str]:
     try:
         proc = subprocess.run(["git", *args], cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -33,6 +46,8 @@ def run_git(root: Path, *args: str) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
+
+# Определить repository root через git rev-parse; fallback нужен для ограниченных окружений, где Git metadata недоступна.
 def repo_root() -> Path:
     here = Path(__file__).resolve()
     code, out = run_git(here.parent, "rev-parse", "--show-toplevel")
@@ -41,11 +56,15 @@ def repo_root() -> Path:
     return here.parents[2]
 
 
+
+# Прочитать TOML только stdlib tomllib. Любая syntax error должна попасть в общий validation report.
 def load_toml(path: Path) -> dict:
     with path.open("rb") as fh:
         return tomllib.load(fh)
 
 
+
+# Получить точный список tracked paths из Git index. Проверки secrets/local-only применяются именно к тому, что реально может попасть в commit.
 def tracked_files(root: Path) -> tuple[list[str], str | None]:
     code, out = run_git(root, "ls-files", "-z")
     if code != 0:
@@ -53,10 +72,14 @@ def tracked_files(root: Path) -> tuple[list[str], str | None]:
     return [p for p in out.split("\0") if p], None
 
 
+
+# Проверить path против набора glob patterns из policy.
 def match_any(path: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(path, pat) for pat in patterns)
 
 
+
+# Проверить принадлежность path управляемой директории без ложных prefix matches вроде docs/a vs docs/abc.
 def is_under(path: str, configured: list[str]) -> bool:
     p = path.replace("\\", "/")
     for item in configured:
@@ -66,6 +89,8 @@ def is_under(path: str, configured: list[str]) -> bool:
     return False
 
 
+
+# Быстро отличить текстовый файл от binary по NUL-byte, чтобы не декодировать произвольные artifacts как UTF-8.
 def text_file(path: Path) -> bool:
     try:
         data = path.read_bytes()
@@ -76,6 +101,8 @@ def text_file(path: Path) -> bool:
     return True
 
 
+
+# Разобрать только простой scalar-subset YAML frontmatter, который использует Harness. Полный YAML parser намеренно не добавляется как dependency.
 def parse_markdown_frontmatter(path: Path) -> dict[str, str]:
     """Parse the simple top-level scalar subset used by Harness skill/agent frontmatter."""
     try:
@@ -98,11 +125,15 @@ def parse_markdown_frontmatter(path: Path) -> dict[str, str]:
     return result
 
 
+
+# Извлечь обязательные name/description core skill поверх общего frontmatter parser.
 def parse_skill_frontmatter(path: Path) -> tuple[str | None, str | None]:
     fields = parse_markdown_frontmatter(path)
     return fields.get("name"), fields.get("description")
 
 
+
+# Собрать contiguous comments непосредственно перед config parameter; validator требует документацию рядом с настройкой.
 def preceding_comment_block(lines: list[str], index: int) -> list[str]:
     """Return contiguous comment lines immediately preceding a config parameter."""
     comments: list[str] = []
@@ -123,6 +154,8 @@ def preceding_comment_block(lines: list[str], index: int) -> list[str]:
     return comments
 
 
+
+# Найти реальные YAML/TOML parameters и пропустить tables/list bodies/multiline strings, чтобы comment-policy не давала лишних false positives.
 def config_parameter_lines(path: Path) -> list[tuple[int, str]]:
     """Find YAML/TOML parameter lines while skipping tables, list items and multiline TOML bodies."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -157,6 +190,8 @@ def config_parameter_lines(path: Path) -> list[tuple[int, str]]:
 SEMVER_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
+
+# Преобразовать только строгий vMAJOR.MINOR.PATCH в tuple для deterministic сравнения release graph.
 def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
     match = SEMVER_TAG_RE.fullmatch(tag)
     if not match:
@@ -164,6 +199,8 @@ def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
     return tuple(int(part) for part in match.groups())
 
 
+
+# Проверить Harness update graph: schema, monotonic transitions, отсутствие cycles/ambiguity и достижимость latest.
 def validate_update_graph(root: Path, errors: list[str]) -> None:
     path = root / ".project" / "harness-update-graph.json"
     if not path.is_file():
@@ -263,6 +300,8 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
                 pass
 
 
+
+# Запустить полный набор integrity checks, вывести все найденные ошибки и вернуть стабильный exit code для CI.
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["ci", "commit", "manual"], default="manual")
@@ -270,9 +309,13 @@ def main() -> int:
 
     root = repo_root()
     policy_path = root / ".project" / "harness-policy.toml"
+    # Ошибки намеренно накапливаются: CI/пользователь за один запуск получает
+    # полный список drift/corruption. warnings не делают repository невалидным.
     errors: list[str] = []
     warnings: list[str] = []
 
+    # Без policy невозможно понять, какие paths/skills/commands обязаны
+    # существовать. Это bootstrap blocker, поэтому здесь допустим ранний exit.
     if not policy_path.exists():
         print("ERROR: missing .project/harness-policy.toml", file=sys.stderr)
         return 2
@@ -301,13 +344,16 @@ def main() -> int:
         if not isinstance(policy.get(key), bool):
             errors.append(f"harness-policy: {key} must be boolean")
 
-    # Core files.
+    # --- Обязательные protocol artifacts ---------------------------------
+    # Удаление любого required file означает, что repository больше не является
+    # полноценным экземпляром Harness.
     for rel in policy.get("required_files", []):
         if not (root / rel).is_file():
             errors.append(f"required file missing: {rel}")
 
-    # Canonical command transition graph. This is the structural source of truth
-    # and must validate before command docs/routing are trusted.
+    # --- Command Transition System ---------------------------------------
+    # Graph — structural source of truth. Пока он невалиден, нельзя доверять
+    # command docs/routing: документация могла разъехаться с parser contract.
     transition_table = None
     try:
         transition_table = load_transition_table(root)
@@ -358,8 +404,9 @@ def main() -> int:
                         "COMMAND_TRANSITIONS.md generated table differs from .project/command-transitions.json"
                     )
 
-        # Parser/graph contract tests: every standalone canonical command must parse,
-        # and every pair of chain-enabled commands is valid iff an explicit edge exists.
+        # Exhaustive contract test: каждая canonical command обязана парситься,
+        # а каждая пара chain-enabled commands валидна тогда и только тогда,
+        # когда explicit edge буквально существует в graph.
         def sample_command(domain_name: str, operation: str, spec: dict) -> str:
             value = spec["canonical"].replace("STEP-NNN", "STEP-001")
             if spec.get("target") == "release-optional":
@@ -368,6 +415,8 @@ def main() -> int:
                 value += " sample"
             return value
 
+        # Перебираем полный декартов набор chain-enabled operations. Это ловит
+        # не только известные примеры вроде PR→COMMIT, но и любой будущий edge drift.
         for domain_name, domain in transition_table.get("domains", {}).items():
             commands = domain.get("commands", {})
             for operation, spec in commands.items():
@@ -412,7 +461,9 @@ def main() -> int:
         if cross_domain_probe.get("valid"):
             errors.append("command parser accepted forbidden cross-domain chain")
 
-    # Required skills + minimal frontmatter.
+    # --- Core skills ------------------------------------------------------
+    # Проверяем наличие обязательных skills и минимальный frontmatter, чтобы
+    # runtime routing не ссылался на исчезнувший/безымянный playbook.
     seen_skill_names: dict[str, str] = {}
     for skill in policy.get("required_skills", []):
         p = root / ".agents" / "skills" / skill / "SKILL.md"
@@ -432,7 +483,9 @@ def main() -> int:
             if not desc:
                 errors.append(f"skill frontmatter missing description: {rel}")
 
-    # TOML syntax and runtime agent bindings.
+    # --- Runtime adapters -------------------------------------------------
+    # TOML syntax и bindings Codex/Claude проверяются как protocol contract,
+    # независимо от того, какой runtime используется в текущей session.
     for p in root.rglob("*.toml"):
         if ".git" in p.parts:
             continue
@@ -522,7 +575,9 @@ def main() -> int:
         except UnicodeDecodeError:
             errors.append("CLAUDE.md is not UTF-8")
 
-    # Required command surface in all canonical routing docs.
+    # --- Документированность command surface ------------------------------
+    # Каждая required command должна присутствовать во всех canonical routing
+    # docs, иначе пользователь и агент увидят разные версии протокола.
     command_files = [
         root / "AGENTS.md",
         root / "docs/harness/COMMAND_SYNTAX.md",
@@ -535,8 +590,9 @@ def main() -> int:
             if p.exists() and command not in p.read_text(encoding="utf-8"):
                 errors.append(f"command '{command}' missing from {p.relative_to(root)}")
 
-    # Deprecated pre-namespace command invocations must not return to Harness-owned protocol/runtime files.
-    # Chain shorthand after > is intentionally valid because the first segment owns the namespace.
+    # --- Защита от возврата legacy syntax --------------------------------
+    # Старые pre-namespace invocations запрещены в Harness-owned files.
+    # Shorthand после `>` разрешён намеренно: namespace наследуется от первого segment.
     deprecated_command_patterns = [
         (re.compile(r"\bINIT PROJECT\b"), "INIT PROJECT"),
         (re.compile(r"\bADD STEP(?=[:\s])"), "ADD STEP"),
@@ -586,8 +642,9 @@ def main() -> int:
             if pattern.search(text):
                 errors.append(f"deprecated command form '{legacy}' found in {p.relative_to(root)}")
 
-    # Universal execution status uses one fixed local-only path.
-    # It must never become tracked product/protocol state.
+    # --- Local Execution Status -------------------------------------------
+    # Operational state хранится только по одному фиксированному local-only path
+    # и никогда не должен становиться tracked product/protocol artifact.
     execution_status_rel = ".project/local/execution/execution-status.json"
     if execution_status_rel not in [
         ".project/local/execution/execution-status.json"
@@ -600,7 +657,9 @@ def main() -> int:
         if "**Plan basis:** —" not in task_template_text:
             errors.append("planning/tasks/TEMPLATE.md missing deterministic Plan basis field")
 
-    # Generated markers + ignore rule.
+    # --- Generated blocks и local ignore ----------------------------------
+    # Проверяем markers, которые updater/initializer имеет право менять, и
+    # обязательные local files, которые Git никогда не должен отслеживать.
     agents_text = (root / "AGENTS.md").read_text(encoding="utf-8") if (root / "AGENTS.md").exists() else ""
     for start, end in [
         ("<!-- PROJECT-CONTEXT:START -->", "<!-- PROJECT-CONTEXT:END -->"),
@@ -619,6 +678,8 @@ def main() -> int:
         if ignored not in gitignore:
             errors.append(f".gitignore must ignore {ignored}")
 
+    # Дальнейшие forbidden/local-only checks имеют смысл только при достоверном
+    # Git index. Если его нет, validator возвращает BLOCKED, а не угадывает files.
     files, git_blocker = tracked_files(root)
     if git_blocker:
         print("HARNESS VALIDATION: BLOCKED")
@@ -641,7 +702,9 @@ def main() -> int:
         except OSError:
             pass
 
-    # Private key material + merge markers in tracked text.
+    # --- Tracked-file hygiene ---------------------------------------------
+    # Ищем очевидные private keys, незавершённые merge conflicts и базовые
+    # text-format проблемы только в реально tracked files.
     private_markers = [b"-----BEGIN" + suffix for suffix in (b" PRIVATE KEY-----", b" RSA PRIVATE KEY-----", b" OPENSSH PRIVATE KEY-----")]
     format_paths = policy.get("format_paths", [])
     for rel in files:
@@ -675,7 +738,9 @@ def main() -> int:
                         errors.append(f"trailing whitespace: {rel}:{n}")
                         break
 
-    # Self-documented YAML/TOML configs.
+    # --- Самодокументируемые config files --------------------------------
+    # Каждый параметр managed YAML/TOML обязан иметь соседний комментарий и
+    # пример: пользователь должен понимать настройки без чтения Python-кода.
     if policy.get("check_config_parameter_comments", True):
         config_patterns = policy.get("documented_config_globs", [])
         require_example = policy.get("check_config_parameter_examples", True)
@@ -698,7 +763,9 @@ def main() -> int:
                 if require_example and not any(("Пример:" in item or "Example:" in item) for item in comments):
                     errors.append(f"config parameter comment lacks example: {rel}:{idx + 1} ({key})")
 
-    # Central language policy must remain present in the project manifest.
+    # --- Language/execution/review policy ---------------------------------
+    # Manifest хранит центральные knobs Harness. Здесь проверяем не только
+    # наличие ключей, но и допустимые диапазоны/enum значения.
     manifest_path = root / ".project" / "manifest.yaml"
     if manifest_path.exists():
         try:
@@ -754,7 +821,9 @@ def main() -> int:
         except UnicodeDecodeError:
             errors.append(".project/manifest.yaml is not UTF-8")
 
-    # Git policy semantics.
+    # --- Git policy --------------------------------------------------------
+    # Проверяем semantics, от которых зависит безопасность COMMIT/PUSH/PR/SYNC:
+    # force-push, protected branches, staging и PR automation.
     git_policy_path = root / ".project" / "git-policy.toml"
     if git_policy_path.exists():
         try:
@@ -856,7 +925,8 @@ def main() -> int:
         except Exception:
             pass
 
-    # Commit-mode informational staged state.
+    # В commit-mode staged state — информационная проверка: агент ещё может
+    # безопасно сформировать stage согласно git-policy.
     if args.mode == "commit":
         code, staged = run_git(root, "diff", "--cached", "--name-only")
         if code == 0 and not staged.strip():
@@ -866,6 +936,8 @@ def main() -> int:
         print("WARNINGS:")
         for item in warnings:
             print(f"  - {item}")
+    # Финальный exit code — публичный contract CI/tooling:
+    # 0 = PASS, 1 = deterministic validation failures, 2 = bootstrap BLOCKED.
     if errors:
         print("HARNESS VALIDATION: FAIL")
         for item in errors:
