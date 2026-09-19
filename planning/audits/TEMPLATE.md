@@ -17,8 +17,7 @@ TBD
 
 ## Evidence
 
-- `python3 tools/harness/check-command-references.py --json` — PASS / DRIFT / BLOCKED
-- TBD
+TBD
 
 ## Corrective actions
 
