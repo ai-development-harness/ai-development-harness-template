@@ -377,3 +377,18 @@ GIT CHECK > COMMIT > PUSH > PR
 ```
 
 Эта граница является частью protocol safety, а не ограничением parser implementation.
+
+
+## 12. Drift ссылок на команды в project-owned документах
+
+После изменения command surface старые project-owned документы не считаются автоматически мигрированными только потому, что protocol layer уже обновлён. Для `PROJECT RECONCILE` предусмотрена отдельная deterministic проверка:
+
+```bash
+python3 tools/harness/check-command-references.py --json
+```
+
+Основные project paths (`projectOverview`, `requirements`, `architecture`, `roadmap`, `status`, `taskDirectory`) checker берёт из `.project/manifest.yaml`, поэтому нестандартный layout не теряется. Дополнительно проверяются `README.md` и live project Markdown под `docs/**` (кроме `docs/harness/**` и `docs/adr/**`).
+
+Исторические артефакты намеренно не переписываются и не входят в deterministic scope: immutable review/audit/release/update/search reports и ADR history могут сохранять синтаксис, который был корректен в момент создания записи.
+
+Finding этой проверки означает необходимость reconciliation, а не автоматическую mutation: `PROJECT RECONCILE` обязан отразить его в audit report и отличить реальный stale reference от намеренной исторической цитаты.

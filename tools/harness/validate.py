@@ -35,6 +35,7 @@ from command_transitions import (
     validate_command_text,
     validate_transition_table,
 )
+from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -371,6 +372,38 @@ def main() -> int:
                     f"harness-policy required command '{command}' missing from command transition graph"
                 )
 
+        # Legacy detector обязан предлагать только реально существующие canonical
+        # commands. Иначе после будущего rename checker сам станет источником drift.
+        for spec in DEPRECATED_COMMAND_PATTERNS:
+            if spec.canonical not in table_commands:
+                errors.append(
+                    "deprecated command mapping points to unknown canonical command: "
+                    f"{spec.legacy} -> {spec.canonical}"
+                )
+            # Добавляем whitespace delimiter: legacy формы с free-form input
+            # (например ADD STEP:) по контракту не матчятся на голом token без separator.
+            if not spec.pattern.search(spec.legacy + " "):
+                errors.append(
+                    f"deprecated command pattern does not match its own sample: {spec.legacy}"
+                )
+
+        # Regression contract detector-а: legacy STEP command должен находиться
+        # даже внутри prose, но canonical namespaced форма и chain shorthand
+        # не должны давать false positive.
+        detector_cases = [
+            ("После анализа выполни PLAN STEP-007.", {"PLAN STEP-NNN"}),
+            ("После анализа выполни STEP PLAN STEP-007.", set()),
+            ("GIT CHECK > COMMIT > PUSH > PR", set()),
+            ("Нужен `FIX STEP-007` перед повторным review.", {"FIX STEP-NNN"}),
+        ]
+        for sample, expected_legacy in detector_cases:
+            actual_legacy = {spec.legacy for spec, _ in find_deprecated_commands(sample)}
+            if actual_legacy != expected_legacy:
+                errors.append(
+                    "deprecated command detector mismatch for sample "
+                    f"{sample!r}: expected {sorted(expected_legacy)}, got {sorted(actual_legacy)}"
+                )
+
         transition_docs = [
             root / "AGENTS.md",
             root / "docs/harness/COMMANDS.md",
@@ -593,31 +626,8 @@ def main() -> int:
 
     # --- Защита от возврата legacy syntax --------------------------------
     # Старые pre-namespace invocations запрещены в Harness-owned files.
-    # Shorthand после `>` разрешён намеренно: namespace наследуется от первого segment.
-    deprecated_command_patterns = [
-        (re.compile(r"\bINIT PROJECT\b"), "INIT PROJECT"),
-        (re.compile(r"\bADD STEP(?=[:\s])"), "ADD STEP"),
-        (re.compile(r"\bFIND SKILL(?=[:\s])"), "FIND SKILL"),
-        (re.compile(r"\bINSTALL SKILL(?=[:\s])"), "INSTALL SKILL"),
-        (re.compile(r"\bCREATE SKILL(?=[:\s])"), "CREATE SKILL"),
-        (re.compile(r"\bGENERATE GITHUB TEMPLATES\b"), "GENERATE GITHUB TEMPLATES"),
-        (re.compile(r"\bSTATUS PROJECT\b"), "STATUS PROJECT"),
-        (re.compile(r"\bNEXT STEP\b"), "NEXT STEP"),
-        (re.compile(r"\bRECONCILE PROJECT\b"), "RECONCILE PROJECT"),
-        (re.compile(r"\bCHECK HARNESS UPDATE\b"), "CHECK HARNESS UPDATE"),
-        (re.compile(r"\bUPDATE HARNESS(?:\s+TO\b|\b)"), "UPDATE HARNESS"),
-        (re.compile(r"(?m)(?:^|\x60)\s*QUICK FIX(?=[:\x60\s]|$)"), "QUICK FIX"),
-        (re.compile(r"(?m)(?:^|\x60)\s*PLAN STEP-"), "PLAN STEP-NNN"),
-        (re.compile(r"(?m)(?:^|\x60)\s*IMPLEMENT STEP-"), "IMPLEMENT STEP-NNN"),
-        (re.compile(r"(?m)(?:^|\x60)\s*REVIEW STEP-"), "REVIEW STEP-NNN"),
-        (re.compile(r"(?m)(?:^|\x60)\s*FIX STEP-"), "FIX STEP-NNN"),
-        (re.compile(r"(?m)(?:^|\x60)\s*RUN STEP-"), "RUN STEP-NNN"),
-        (re.compile(r"(?m)(?:^|\x60)\s*AUDIT STEP-"), "AUDIT STEP-NNN"),
-        (re.compile(r"(?m)(?:^|\x60)\s*COMMIT(?=[:\x60\s]|$)"), "COMMIT"),
-        (re.compile(r"(?m)(?:^|\x60)\s*PUSH(?=[\x60\s]|$)"), "PUSH"),
-        (re.compile(r"(?m)(?:^|\x60)\s*PR(?=[\x60\s]|$)"), "PR"),
-        (re.compile(r"(?m)(?:^|\x60)\s*SYNC(?=[\x60\s]|$)"), "SYNC"),
-    ]
+    # Pattern definitions общие с PROJECT RECONCILE checker, чтобы два механизма
+    # не расходились после следующего изменения command surface.
     deprecated_scan_paths = [
         root / "AGENTS.md",
         root / ".project/manifest.yaml",
@@ -639,9 +649,11 @@ def main() -> int:
             text = p.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        for pattern, legacy in deprecated_command_patterns:
-            if pattern.search(text):
-                errors.append(f"deprecated command form '{legacy}' found in {p.relative_to(root)}")
+        for spec in DEPRECATED_COMMAND_PATTERNS:
+            if spec.pattern.search(text):
+                errors.append(
+                    f"deprecated command form '{spec.legacy}' found in {p.relative_to(root)}"
+                )
 
     # --- Локальный Execution Status ----------------------------------------
     # Operational state хранится только по одному фиксированному local-only path

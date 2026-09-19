@@ -43,7 +43,9 @@
 ├── tools/harness/
 │   ├── validate.py                   # deterministic integrity/safety validator
 │   ├── command_transitions.py        # parser + graph validator + Markdown renderer
+│   ├── command_references.py         # detector legacy command references + project-doc scope
 │   ├── validate-command.py           # pre-interpretation structural command gate
+│   ├── check-command-references.py   # CLI проверки command-syntax drift для RECONCILE
 │   ├── execution_status.py           # universal crash-safe execution state + resolver
 │   ├── execution-state.py            # CLI управления execution-status.json
 │   ├── resolve-next-command.py       # deterministic next/resume resolver

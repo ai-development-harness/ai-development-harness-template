@@ -10,4 +10,14 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 
 Если `project.initialized: false`, команда неприменима: ничего не меняй, не создавай audit report/REQ/ADR/STEP и не пытайся reconcile-ить template placeholders. Верни `PROJECT RECONCILE: NOT_APPLICABLE` и handoff → `PROJECT INIT`.
 
-Для инициализированного проекта сравни code/config/migrations/tests с REQ, Accepted ADR, architecture docs, tasks, evidence и projections. Найди undocumented behavior, stale docs/status, architecture drift и requirement gaps. Production code не исправляй. Однозначные projections можно синхронизировать; substantive gaps → corrective STEP. Сохрани audit report.
+Для инициализированного проекта сравни code/config/migrations/tests с REQ, Accepted ADR, architecture docs, tasks, evidence и projections. Найди undocumented behavior, stale docs/status, architecture drift и requirement gaps.
+
+До итогового вывода обязательно запусти deterministic проверку актуальности ссылок на Harness commands:
+
+```bash
+python3 tools/harness/check-command-references.py --json
+```
+
+Она берёт основные project paths и `taskDirectory` из `.project/manifest.yaml`, дополнительно проверяет `README.md` и live project Markdown под `docs/**`, и намеренно не сканирует immutable/history-oriented reports и ADR history. Каждый finding вида `legacy → canonical` включи в reconcile report как command-syntax drift, если это не явно намеренная историческая цитата. Нельзя писать «drift не обнаружен», пока эта проверка не выполнена или её BLOCKED-состояние не раскрыто в Evidence.
+
+Production code не исправляй. Однозначные projections и чисто документальный command-syntax drift можно синхронизировать; substantive gaps → corrective STEP. Сохрани audit report.

@@ -10,11 +10,16 @@ Bash не используется как реализация validator: тек
 
 В GitHub Actions версия Python задаётся явно через `actions/setup-python`, поэтому CI не зависит от случайной версии интерпретатора в `ubuntu-latest`.
 
-Workflow запускает:
+Workflow запускает baseline validator и dependency-free smoke/self-tests protocol tooling:
 
 ```bash
 python3 tools/harness/validate.py --mode ci
+python3 tools/harness/check-command-references.py --json
+python3 tools/harness/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
+python3 tools/harness/execution-self-test.py
 ```
+
+Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
 
 Проверяются только invariants Harness/repository hygiene. Этот workflow **не должен** пытаться угадать project-specific `test`, `lint`, `typecheck`, `build` или deploy commands.
 
