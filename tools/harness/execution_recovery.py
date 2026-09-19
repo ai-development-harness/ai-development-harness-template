@@ -197,9 +197,10 @@ def read_task(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
-def contract_basis(root: Path, step_id: str) -> str:
+def contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
+    """Return only task contract fields that are allowed to invalidate PLAN."""
     task = read_task(root, step_id)
-    payload: dict[str, Any] = {
+    return {
         "metadata": {
             key: task["metadata"].get(key, "")
             for key in CONTRACT_METADATA
@@ -209,6 +210,10 @@ def contract_basis(root: Path, step_id: str) -> str:
             for key in CONTRACT_SECTIONS
         },
     }
+
+
+def contract_basis(root: Path, step_id: str) -> str:
+    payload = contract_snapshot(root, step_id)
     encoded = json.dumps(
         payload,
         ensure_ascii=False,
