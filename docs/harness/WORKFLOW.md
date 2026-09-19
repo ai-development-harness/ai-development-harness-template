@@ -40,7 +40,7 @@ Review report — исторический артефакт с verdict и findin
 
 ## Почему RECONCILE обязателен
 
-Реальный проект неизбежно получает ручные изменения, hotfix, drift документации и stale statuses. `RECONCILE PROJECT` периодически восстанавливает согласованность без скрытого исправления production code.
+Реальный проект неизбежно получает ручные изменения, hotfix, drift документации и stale statuses. `PROJECT RECONCILE` периодически восстанавливает согласованность без скрытого исправления production code.
 
 
 ## Skill supply chain
@@ -50,11 +50,11 @@ Technology-specific knowledge не нужно заранее встраиват�
 ```text
 Need capability
    ↓
-FIND SKILL
+SKILL FIND
    ↓ configured shortlist + durable report
 User selects
    ↓
-INSTALL SKILL
+SKILL INSTALL
    ↓ inspect / provenance / routing
 .agents/skills/<name>
 ```
@@ -62,7 +62,7 @@ INSTALL SKILL
 Если достойного upstream нет:
 
 ```text
-CREATE SKILL
+SKILL CREATE
    ↓
 project-native SKILL.md
 ```
@@ -74,17 +74,17 @@ project-native SKILL.md
 Не вся работа проходит через STEP. Безопасная мелкая правка использует короткий путь:
 
 ```text
-QUICK FIX: ...   или ручная правка
+PROJECT QUICK FIX: ...   или ручная правка
         ↓
 proportional check
         ↓
 GIT CHECK
         ↓
-COMMIT
+GIT COMMIT
 ```
 
-Если обнаруживается contract/risk change, короткий путь прекращается и начинается `ADD STEP:`.
+Если обнаруживается contract/risk change, короткий путь прекращается и начинается `STEP ADD:`.
 
 ## Collaboration templates как производный артефакт
 
-Issue/PR templates зависят от текущего tooling и периодически регенерируются командой `GENERATE GITHUB TEMPLATES`. Они не являются canonical source требований или verification commands: генератор извлекает эти данные из repository state.
+Issue/PR templates зависят от текущего tooling и периодически регенерируются командой `GITHUB GENERATE TEMPLATES`. Они не являются canonical source требований или verification commands: генератор извлекает эти данные из repository state.

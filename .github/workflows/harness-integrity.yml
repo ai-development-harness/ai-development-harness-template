@@ -73,3 +73,22 @@ jobs:
         # Команда baseline validator. Product-specific CI добавляется отдельными workflows после INIT.
         # Пример: `--mode ci` включает CI semantics без mutation.
         run: python3 tools/harness/validate.py --mode ci
+
+      # Отображаемое имя smoke-test публичного command structural gate.
+      # Пример: подтверждает, что CLI принимает edge из graph и отвергает отсутствующий edge.
+      - name: Validate command transition gate
+        # Проверить публичный entry point на valid/invalid chain без runtime mutation.
+        # Пример: publication chain проходит, обратный GIT PR → GIT COMMIT обязан вернуть non-zero.
+        run: |
+          python3 tools/harness/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR' >/dev/null
+          if python3 tools/harness/validate-command.py --json -- 'GIT PR > COMMIT' >/dev/null 2>&1; then
+            echo "Expected INVALID_CHAIN for GIT PR > COMMIT"
+            exit 1
+          fi
+
+      # Проверить единый local execution state на полном наборе canonical commands.
+      # Пример: single/chain/STEP RUN, interruption, независимые команды и conditional transitions.
+      - name: Validate execution status
+        # Запуск dependency-free self-test на временном synthetic repository.
+        # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
+        run: python3 tools/harness/execution-self-test.py

@@ -1,6 +1,6 @@
 # Project
 
-> Этот файл заполняется `INIT PROJECT` на основании `PROJECT_BRIEF.local.md`.
+> Этот файл заполняется `PROJECT INIT` на основании `PROJECT_BRIEF.local.md`.
 
 ## Название
 

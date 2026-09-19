@@ -4,11 +4,11 @@ description: Handle tiny low-risk changes without creating STEP/REQ/ADR when no 
 ---
 # quick-fix
 
-Используй для `QUICK FIX: <описание>`.
+Используй для `PROJECT QUICK FIX: <описание>`.
 
 ## Когда допустимо
 
-QUICK FIX подходит только для маленького локального изменения, которое одновременно:
+PROJECT QUICK FIX подходит только для маленького локального изменения, которое одновременно:
 
 - не меняет product behavior/contract;
 - не меняет public API/schema/persistence/security/permissions;
@@ -22,11 +22,11 @@ QUICK FIX подходит только для маленького локаль
 ## Выполнение
 
 1. Прочитай `AGENTS.md`, затем `AGENTS.local.md`, если существует.
-2. Убедись, что запрос соответствует критериям QUICK FIX. Если нет — остановись и предложи `ADD STEP: ...`.
+2. Убедись, что запрос соответствует критериям PROJECT QUICK FIX. Если нет — остановись и предложи `STEP ADD: ...`.
 3. Используй `mechanic` или минимально подходящего write-agent.
 4. Меняй только минимально необходимый набор файлов.
 5. Не создавай/не обновляй REQ, ADR, STEP, PLAN, STATUS только ради мелкой правки.
 6. Запусти пропорциональные проверки: формат/targeted test/validator там, где они реально нужны.
-7. Верни краткий diff-summary и рекомендуй `COMMIT`.
+7. Верни краткий diff-summary и рекомендуй `GIT COMMIT`.
 
-Если пользователь уже вручную сделал такую правку, отдельный QUICK FIX не нужен: `GIT CHECK`/`COMMIT` могут принять её как micro-change без STEP после проверки критериев.
+Если пользователь уже вручную сделал такую правку, отдельный PROJECT QUICK FIX не нужен: `GIT CHECK`/`GIT COMMIT` могут принять её как micro-change без STEP после проверки критериев.

@@ -5,9 +5,9 @@ description: Проверка и безопасное обновление Harne
 
 # Update Harness
 
-Используй этот skill только для `CHECK HARNESS UPDATE [TO <tag>]`, `UPDATE HARNESS [TO <tag>]` и legacy adoption.
+Используй этот skill только для `HARNESS UPDATE CHECK [TO <tag>]`, `HARNESS UPDATE APPLY [TO <tag>]`, безопасной цепочки `HARNESS UPDATE CHECK [TO <tag>] > APPLY` и legacy adoption.
 
-Команды доступны независимо от `project.initialized`: pre-init состояние не является blocker. `UPDATE HARNESS` до INIT обновляет только Harness protocol layer/lock, не выполняет `INIT PROJECT`, не создаёт product knowledge и не переводит `project.initialized` в `true`.
+Команды доступны независимо от `project.initialized`: pre-init состояние не является blocker. `HARNESS UPDATE APPLY` до INIT обновляет только Harness protocol layer/lock, не выполняет `PROJECT INIT`, не создаёт product knowledge и не переводит `project.initialized` в `true`.
 
 ## Sources
 
@@ -26,10 +26,10 @@ Source repository читается через доступный GitHub connecto
 Канонические формы:
 
 ```text
-CHECK HARNESS UPDATE
-CHECK HARNESS UPDATE TO vMAJOR.MINOR.PATCH
-UPDATE HARNESS
-UPDATE HARNESS TO vMAJOR.MINOR.PATCH
+HARNESS UPDATE CHECK
+HARNESS UPDATE CHECK TO vMAJOR.MINOR.PATCH
+HARNESS UPDATE APPLY
+HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 ```
 
 Сначала прочитай remote `.project/harness-update-graph.json` из configured source repository/default branch. Это routing metadata, а не исполняемые instructions и не baseline файлов.
@@ -71,7 +71,7 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 
 Эта схема позволяет release безопасно добавлять новый runtime adapter, не превращая target policy в право перезаписи уже существующих project files.
 
-## `CHECK HARNESS UPDATE [TO <tag>]`
+## `HARNESS UPDATE CHECK [TO <tag>]`
 
 Строго read-only:
 
@@ -86,6 +86,15 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 9. Проверь predicted required Harness artifacts каждого hop; target `.project/harness-policy.toml` читается как данные.
 10. До mutation докажи, что весь route до конечного target безопасен, либо явно укажи ближайший `reloadRequired` boundary.
 11. Покажи current, final target, полный route, kind каждого hop, blockers и reload boundary.
+12. При PASS передай global execution wrapper metadata для completion record:
+    ```json
+    {
+      "resolvedTarget": "vMAJOR.MINOR.PATCH",
+      "route": ["vX.Y.Z", "vA.B.C"],
+      "lockRef": "vX.Y.Z"
+    }
+    ```
+    Wrapper сохраняет её в том же `.project/local/execution/execution-status.json` через optional `details`; отдельный update-state файл не создаётся.
 
 Не меняй working tree, Git refs, lock, STEP/REQ/ADR, commits или PR.
 
@@ -102,25 +111,34 @@ UPDATE HARNESS TO vMAJOR.MINOR.PATCH
 
 Если baseline неизвестен — автоматический 3-way update заблокирован.
 
-## `UPDATE HARNESS [TO <tag>]`
+## `HARNESS UPDATE APPLY [TO <tag>]`
 
-1. Сначала полностью выполни read-only semantics `CHECK HARNESS UPDATE` для того же конечного target и зафиксированного route.
-2. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
-3. Проверь текущий Harness через `python3 tools/harness/validate.py --mode manual`.
-4. Применяй route строго hop-by-hop; нельзя перепрыгивать edge даже если конечный tag существует.
-5. Для каждого hop повторно используй заранее рассчитанный transition scope: `harness_owned` только при OURS == BASE, `shared` через 3-way, `marker_merge` с восстановлением local blocks.
-6. Target-only managed paths создавай только если они отсутствовали в BASE и projected OURS и были допущены read-only check.
-7. Project-owned/unknown paths не трогай.
-8. После каждого hop проверь postcondition и required artifacts этого target.
-9. Только после успешного postcondition hop обнови `.project/harness.lock.json` на его `to` release. Частично применённый hop не имеет права продвинуть lock.
-10. Если edge имеет `reloadRequired: true`, создай durable report о достигнутом промежуточном release, остановись с `UPDATER_RELOAD_REQUIRED` и не выполняй следующие hops текущим runtime.
-11. После последнего hop создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав initial release, final target, фактически пройденный route, introduced/retired/reclassified paths и verification evidence.
-12. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
-13. Покажи итоговый diff.
+1. Разреши requested final target и current lock/route.
+2. Проверь, является ли **latest completed execution** успешным `HARNESS UPDATE CHECK` для того же request. Используй:
+   ```bash
+   python3 tools/harness/execution-state.py find \
+     --command 'HARNESS UPDATE CHECK [TO <tag>]' \
+     --result PASS \
+     --latest
+   ```
+6. Reuse CHECK допустим только если его `details.resolvedTarget`, `details.route` и `details.lockRef` точно совпадают с текущими resolved target/route/lock. Тогда не повторяй expensive CHECK после session restart.
+7. Если latest completed execution другая, metadata отсутствует/не совпадает или route/lock изменились — полностью выполни fresh read-only CHECK до mutation.
+8. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
+6. Проверь текущий Harness через `python3 tools/harness/validate.py --mode manual`.
+7. Применяй route строго hop-by-hop; нельзя перепрыгивать edge даже если конечный tag существует.
+8. Для каждого hop повторно используй заранее рассчитанный transition scope: `harness_owned` только при OURS == BASE, `shared` через 3-way, `marker_merge` с восстановлением local blocks.
+9. Target-only managed paths создавай только если они отсутствовали в BASE и projected OURS и были допущены read-only check.
+10. Project-owned/unknown paths не трогай.
+11. После каждого hop проверь postcondition и required artifacts этого target.
+12. Только после успешного postcondition hop обнови `.project/harness.lock.json` на его `to` release. Частично применённый hop не имеет права продвинуть lock.
+13. Если edge имеет `reloadRequired: true`, создай durable report о достигнутом промежуточном release, остановись с `UPDATER_RELOAD_REQUIRED` и не выполняй следующие hops текущим runtime.
+14. После последнего hop создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав initial release, final target, фактически пройденный route, introduced/retired/reclassified paths и verification evidence.
+15. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
+16. Покажи итоговый diff.
 
 Не запускай target scripts. `.project/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 
-Handoff: `GIT CHECK` → `COMMIT`.
+Handoff: `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## Failure policy
 

@@ -6,6 +6,150 @@
 
 > Пользователь задаёт короткую стабильную команду; полный инженерный контекст агент обязан восстановить из репозитория самостоятельно.
 
+## 0. Command interface и цепочки
+
+### 0.1. Command Transition System — structural gate всегда первым
+
+Harness использует **Command Transition System (CTS)**. Для canonical command первым выполняется deterministic structural validation по `.project/command-transitions.json`. Команда является action/transition request; фактическое state берётся из repository/runtime facts:
+
+```bash
+python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
+```
+
+До PASS этого gate запрещено:
+
+- выбирать command-specific skill;
+- читать state ради трактовки порядка chain;
+- запускать subagent/runtime action;
+- выполнять mutation.
+
+`docs/harness/COMMAND_TRANSITIONS.md` содержит полную человекочитаемую матрицу. Отсутствующий edge означает `INVALID_CHAIN`; implicit transitions запрещены.
+
+Каноническая команда начинается с явного namespace:
+
+```text
+<DOMAIN> <ACTION> [TARGET] [: free-form input]
+```
+
+Полная грамматика находится в `docs/harness/COMMAND_SYNTAX.md`. Старые ненеймспейсные формы не считаются canonical aliases.
+
+Оператор `>` разрешает последовательность только внутри одной области:
+
+```text
+GIT CHECK > COMMIT > PUSH > PR
+STEP PLAN STEP-024 > IMPLEMENT > REVIEW
+HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+```
+
+Правила:
+
+1. до первого выполнения разобрать и валидировать всю цепочку;
+2. DOMAIN наследуется от первого сегмента; смена DOMAIN внутри цепочки запрещена;
+3. STEP target наследуется и остаётся неизменным;
+4. HARNESS UPDATE target `TO <tag>` наследуется от CHECK к APPLY;
+5. допустимый порядок определяется только explicit edges из `.project/command-transitions.json`;
+6. same-domain reverse/invalid order (например `GIT PR > COMMIT`) = `INVALID_CHAIN`; ни один сегмент не выполняется;
+7. после выполнения segment следующий запускается только если фактический result входит в `onPreviousResult` соответствующего edge и выполнены его runtime preconditions;
+8. `FAIL` может быть разрешающим result конкретного edge (например REVIEW → FIX); `BLOCKED` останавливает execution; остальные segments = `NOT_EXECUTED`;
+9. уже выполненные mutations не откатываются автоматически;
+10. cross-domain chain, например `STEP RUN STEP-024 > GIT COMMIT`, не выполняется.
+
+Разрешённые chain surfaces: GIT; ручной STEP flow `PLAN/IMPLEMENT/REVIEW/FIX`; HARNESS UPDATE только `CHECK > APPLY`. PROJECT/SKILL/GITHUB/RELEASE и `STEP RUN`/ `STEP AUDIT` остаются самостоятельными командами.
+
+### 0.2. Execution Status — единый restart-safe слой
+
+После structural PASS каждая canonical command регистрируется в одном local-only файле:
+
+```text
+.project/local/execution/execution-status.json
+```
+
+Регистрация выполняется **до command-specific dispatch**:
+
+```bash
+python3 tools/harness/execution-state.py start \
+  --command '<raw canonical command>'
+```
+
+Execution Status применяется ко всем namespaces и не привязан к STEP.
+
+Внутренний `mode` определяется автоматически из уже существующего пользовательского ввода:
+
+- одна command → `single`;
+- explicit chain → `chain`;
+- `STEP RUN STEP-NNN` → `orchestration`.
+
+Это metadata, а не новый command layer.
+
+CTS scope:
+
+> CTS проверяет transitions только внутри одной root execution. Отдельные пользовательские invocations являются независимыми executions и не требуют edge между собой.
+
+Поэтому:
+
+```text
+STEP PLAN STEP-001
+<complete>
+
+GIT COMMIT
+```
+
+валидно как две независимые executions.
+
+Один файл может содержать несколько records. Новая команда не затирает старую interrupted execution.
+
+Current command status:
+
+- `running` — completion не доказан; после interruption resume той же command;
+- `complete` — command завершена;
+- `blocked` — автоматически дальше не идти.
+
+Result: `SUCCESS | PASS | FAIL | BLOCKED`.
+
+Для root execution:
+
+```bash
+python3 tools/harness/resolve-next-command.py --json \
+  --root '<root canonical command>'
+```
+
+Без `--root` resolver возвращает все unresolved executions.
+
+Поведение после `complete`:
+
+- `single` → остановиться; CTS ничего автоматически не продолжает;
+- `chain` → проверить следующий segment исходной sequence через CTS/result/runtime preconditions;
+- `STEP RUN` → продолжить orchestration через существующие child commands/CTS; если Type выполняется без отдельной child command, RUN остаётся current и после crash resume-ится сам.
+
+Для chain/orchestration переход к следующей child command отмечается:
+
+```bash
+python3 tools/harness/execution-state.py begin \
+  --root '<root command>' \
+  --command '<next/current child command>'
+```
+
+Completion:
+
+```bash
+python3 tools/harness/execution-state.py complete \
+  --root '<root command>' \
+  --command '<current command>' \
+  --result <SUCCESS|PASS|FAIL|BLOCKED>
+```
+
+Запись выполняется atomic replace: temporary file → flush/fsync → `os.replace`.
+
+Canonical artifacts имеют приоритет над local operational state. Для существующих команд разрешены узкие deterministic recovery proofs:
+
+- актуальный `Plan basis` может доказать завершённый `STEP PLAN`;
+- новый immutable review report может восстановить verdict `STEP REVIEW`;
+- изменение Git HEAD после `GIT COMMIT` может доказать, что commit уже создан.
+
+Эти проверки не создают profiles и не меняют command surface.
+
+Подробно: `docs/harness/EXECUTION_STATUS.md`.
+
 ## 1. Сущности
 
 ### Requirement (`REQ-NNN`)
@@ -89,7 +233,7 @@ ID всех сущностей стабилен, не переиспользуе
 
 Risk flags управляют orchestration, но не заменяют анализ фактического diff.
 
-## 6. `INIT PROJECT`
+## 6. `PROJECT INIT`
 
 Precondition: `.project/manifest.yaml → project.initialized: false`.
 
@@ -114,9 +258,9 @@ Precondition: `.project/manifest.yaml → project.initialized: false`.
 
 Если brief неоднозначен, но проект можно спланировать безопасно, не блокируй INIT: зафиксируй вопросы и prerequisite research/ADR. Если противоречие делает базовый roadmap невозможным, остановись с конкретным blocker.
 
-Повторный INIT при `initialized: true` не выполняется без explicit destructive intent; предложи `RECONCILE PROJECT`.
+Повторный INIT при `initialized: true` не выполняется без explicit destructive intent; предложи `PROJECT RECONCILE`.
 
-## 7. `ADD STEP: <описание>`
+## 7. `STEP ADD: <описание>`
 
 Production code mutation запрещена.
 
@@ -131,9 +275,9 @@ Production code mutation запрещена.
 9. `Implementation plan` оставить `Not planned` — его заполняет PLAN.
 10. Создать task, обновить PLAN/STATUS и REQ traceability.
 11. Проверить consistency.
-12. Вернуть `PLAN STEP-NNN`.
+12. Вернуть `STEP PLAN STEP-NNN`.
 
-## 7A. `FIND SKILL: <описание>`
+## 7A. `SKILL FIND: <описание>`
 
 Product code mutation запрещена; разрешено создание search report.
 
@@ -146,10 +290,10 @@ Product code mutation запрещена; разрешено создание se
 5. Отбросить кандидатов с очевидно опасным поведением, непроверяемым source или конфликтом с harness contract.
 6. Ранжировать по relevance, format compatibility, workflow quality, provenance/maintenance, license и safety.
 7. Сформировать не более `skills.search.maxResults` кандидатов со ссылками и rationale.
-8. Создать `planning/skill-searches/SKILL-SEARCH-<timestamp>.md`; search report является durable basis для `INSTALL SKILL: #N`.
-9. Ничего не устанавливать. Handoff → `INSTALL SKILL: #N` либо `CREATE SKILL: ...`.
+8. Создать `planning/skill-searches/SKILL-SEARCH-<timestamp>.md`; search report является durable basis для `SKILL INSTALL: #N`.
+9. Ничего не устанавливать. Handoff → `SKILL INSTALL: #N` либо `SKILL CREATE: ...`.
 
-## 7B. `INSTALL SKILL: <source | #N>`
+## 7B. `SKILL INSTALL: <source | #N>`
 
 Это явное пользовательское разрешение установить **конкретно выбранный** skill, но не разрешение выполнять его сторонние scripts.
 
@@ -166,7 +310,7 @@ Product code mutation запрещена; разрешено создание se
 11. Проверить целостность bundle и отсутствие routing conflicts.
 12. Product code не менять.
 
-## 7C. `CREATE SKILL: <описание>`
+## 7C. `SKILL CREATE: <описание>`
 
 1. Проверить existing skills на duplicate/overlap.
 2. Восстановить project conventions и реальные commands/API из repo.
@@ -177,9 +321,9 @@ Product code mutation запрещена; разрешено создание se
 7. Обновить Registry и `SKILL-ROUTING`.
 8. Не менять core harness semantics и product code.
 
-## 7D. `GENERATE GITHUB TEMPLATES`
+## 7D. `GITHUB GENERATE TEMPLATES`
 
-Команда доступна на любом этапе, включая до `INIT PROJECT`.
+Команда доступна на любом этапе, включая до `PROJECT INIT`.
 
 Алгоритм:
 
@@ -190,13 +334,13 @@ Product code mutation запрещена; разрешено создание se
 5. Дополнительные issue forms добавлять только по фактической необходимости.
 6. Использовать `language.githubTemplates`.
 7. Валидировать YAML и выполнить Harness validation.
-8. Не делать COMMIT/PUSH автоматически.
+8. Не делать GIT COMMIT / GIT PUSH автоматически.
 
 Target files являются generated collaboration artifacts; intentional overwrite считается нормальным поведением команды.
 
-## 7E. `QUICK FIX: <описание>`
+## 7E. `PROJECT QUICK FIX: <описание>`
 
-QUICK FIX — исключение из STEP workflow для micro-change.
+PROJECT QUICK FIX — исключение из STEP workflow для micro-change.
 
 Допустим только если изменение:
 
@@ -208,102 +352,133 @@ QUICK FIX — исключение из STEP workflow для micro-change.
 Алгоритм:
 
 1. Проверить критерии micro-change до mutation.
-2. Если критерии не выполняются — не реализовывать и предложить `ADD STEP:`.
+2. Если критерии не выполняются — не реализовывать и предложить `STEP ADD:`.
 3. Выполнить минимальную правку через `mechanic`/минимально подходящий agent.
-4. Не создавать и не обновлять REQ/ADR/STEP/PLAN/STATUS только ради QUICK FIX.
+4. Не создавать и не обновлять REQ/ADR/STEP/PLAN/STATUS только ради PROJECT QUICK FIX.
 5. Запустить пропорциональные проверки.
-6. Вернуть diff-summary и предложить `COMMIT`.
+6. Вернуть diff-summary и предложить `GIT COMMIT`.
 
-Если пользователь внёс такую правку вручную, отдельная команда QUICK FIX не обязательна: `COMMIT` может принять отсутствие STEP после проверки, что diff соответствует micro-change policy.
+Если пользователь внёс такую правку вручную, отдельная команда PROJECT QUICK FIX не обязательна: `GIT COMMIT` может принять отсутствие STEP после проверки, что diff соответствует micro-change policy.
 
-## 8. `PLAN STEP-NNN`
+## 8. `STEP PLAN STEP-NNN`
 
-Production code mutation запрещена. Разрешено обновление только planning/docs, необходимое для фиксации плана.
+Production code mutation запрещена. Execution tracking уже зарегистрирован global command wrapper; skill не создаёт отдельный per-STEP state.
 
 1. Resolve task, dependencies, REQ, ADR, architecture, code/tests/config.
-2. Если hard dependency не выполнена — не планировать как будто её нет; оформить blocker/corrective dependency.
-3. Проверить, не требует ли task нового ADR.
-4. Сформировать implementation approach, impacted modules/files, data/API implications, test strategy, verification sequence, risks/rollback при необходимости.
-5. Сохранить результат в `## Implementation plan` task-файла с timestamp/plan revision.
-6. Не менять Status на `В работе` только из-за планирования.
-7. Если план выявил ошибку task contract, сначала корректно обновить task/REQ/ADR traceability, не прятать изменение внутри implementation plan.
-8. Финальный handoff: `IMPLEMENT STEP-NNN` или конкретный blocker.
+2. Если hard dependency не выполнена — оформить blocker/corrective dependency.
+3. Проверить необходимость нового ADR.
+4. Сформировать implementation approach, impacted modules/files, data/API implications, test strategy, verification sequence, risks/rollback.
+5. Сохранить `## Implementation plan`.
+6. Выполнить:
+   ```bash
+   python3 tools/harness/execution-state.py stamp-plan STEP-NNN
+   ```
+7. `Plan basis` = SHA-256 от нормализованного task contract: Type, Depends on, Requirements, ADR, Risk flags, Goal, Context, Scope, Mutation policy, Out of scope, Acceptance criteria, Verification, Deliverables.
+8. Если hash больше не совпадает, plan = stale без LLM reasoning.
+9. Не менять Status на `В работе` только из-за planning.
+10. Если session оборвалась после `stamp-plan`, но до записи execution `complete`, resolver может доказать PLAN по актуальному Plan basis.
+11. После фактического завершения global wrapper записывает result `SUCCESS`.
 
-## 9. `IMPLEMENT STEP-NNN`
+Single `STEP PLAN` после SUCCESS останавливается. Только explicit chain или `STEP RUN` могут продолжить к IMPLEMENT.
 
-Команда предназначена для implementation-like типов: `IMPLEMENTATION`, `BUGFIX`, `REFACTOR`, `HARDENING`, а также `DOCUMENTATION`/`RELEASE`, если task явно допускает mutations. Для `ADR`, `AUDIT`, `RESEARCH` и roadmap-level `REVIEW` используй type-specific semantics или `RUN STEP-NNN`; не превращай их молча в coding task.
+## 9. `STEP IMPLEMENT STEP-NNN`
 
-1. Требуется актуальный `Implementation plan` либо task должен быть настолько простым, что пользователь явно разрешил implementation без PLAN.
+Execution tracking уже ведётся root execution wrapper.
+
+1. Требуется актуальный Implementation plan, если нет explicit user override.
 2. Проверить dependencies.
 3. Status → `В работе` при первой фактической mutation.
-4. Выполнить scope и mutation policy.
-5. Не реализовывать future/unrelated work.
-6. Добавить/обновить tests.
-7. Запустить реальные Verification commands; неизвестные команды сначала обнаружить в repo.
-8. Обновить Evidence фактическими files/commands/results, но не ставить `Выполнено` до обязательного review PASS. Буквальный terminal output разрешён только если он реально захвачен; иначе записывай `Command` / `Exit code` / `Observed` и не реконструируй вывод.
-9. Синхронизировать docs только для реально изменившихся contracts.
-10. Handoff → `REVIEW STEP-NNN`.
+4. При `RESUME` сначала исследовать существующий diff/Evidence и продолжить недостающее, не переделывая готовую работу.
+5. Выполнить scope/mutation policy.
+6. Не реализовывать future/unrelated work.
+7. Добавить/обновить tests.
+8. Запустить реальные Verification commands.
+9. Обновить Evidence.
+10. Не ставить `Выполнено` до required review PASS.
+11. После полного scope + verification + Evidence command завершается `SUCCESS`.
 
-## 10. `REVIEW STEP-NNN`
+Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN`.
 
-Reviewer должен быть независимым и read-only относительно product code.
+Single IMPLEMENT после SUCCESS останавливается; внутри chain/RUN CTS может продолжить к REVIEW.
+
+## 10. `STEP REVIEW STEP-NNN`
+
+Reviewer независим и read-only относительно product code.
 
 1. Прочитать task contract, implementation plan, REQ, ADR, diff/current implementation и tests.
-2. Прочитать `.project/manifest.yaml → review.security` и `review.tests`. Допустимы только `auto` и `always`; отсутствующее/другое значение — configuration blocker без скрытого default.
-3. Проверить acceptance и evidence, не доверяя статусу.
-4. Проверить correctness, regressions, error handling, compatibility, architecture drift и meaningful test gaps.
-5. Запустить specialized reviewers согласно policy: `auto` — по Risk flags/factual diff/test surface, `always` — соответствующего reviewer для каждого review-прохода.
-6. Findings должны быть конкретными и воспроизводимыми; cosmetic-only замечания не блокируют.
-7. Verdict: `PASS`, `FAIL`, `BLOCKED`.
-8. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
-9. Обновить в task только ссылку/latest review status, не уничтожая историю.
-10. При PASS + успешном deterministic verification разрешено закрытие: Status → `Выполнено`, evidence/status projections синхронизируются; lifecycle-state REQ обновляется только в `docs/requirements/STATUS.md`, без status mutation в `SPEC.md`.
-11. При FAIL → `FIX STEP-NNN`. При BLOCKED → Status может стать `Заблокировано` с причиной.
+2. Прочитать `.project/manifest.yaml → review.security` и `review.tests`.
+3. Проверить acceptance/evidence, correctness, regressions, error handling, compatibility, architecture drift и meaningful test gaps.
+4. Запустить specialized reviewers согласно policy.
+5. Findings должны быть конкретными и воспроизводимыми.
+6. Verdict: `PASS`, `FAIL`, `BLOCKED`.
+7. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
+8. Обновить task latest review status/report.
+9. Global wrapper записывает тот же verdict как command result.
 
-## 11. `FIX STEP-NNN`
+При старте command Execution Status запоминает предыдущий immutable review report. Если session оборвалась после создания нового report, resolver может восстановить verdict без повторного expensive review.
+
+Single REVIEW после verdict останавливается. Внутри chain/RUN CTS активирует FIX только при `FAIL`; PASS/BLOCKED не создают скрытый переход.
+
+## 11. `STEP FIX STEP-NNN`
 
 1. Найти последний применимый FAIL review.
-2. Исправлять только подтверждённые findings в пределах task/необходимого corrective scope.
+2. Исправлять только подтверждённые findings и необходимый supporting code в scope.
 3. Не превращать FIX в новый feature/refactor.
-4. Запустить соответствующие tests/verification.
-5. Обновить Evidence.
-6. Handoff → `REVIEW STEP-NNN`.
+4. При `RESUME` сначала изучить существующий diff и продолжить незавершённые findings.
+5. Запустить relevant tests/verification.
+6. Обновить Evidence.
+7. После полного исправления command завершается `SUCCESS`.
+8. Новый architecture/product scope → corrective STEP.
 
-Если finding требует самостоятельного architecture/product scope, создать corrective STEP вместо скрытого расширения текущего.
+Single FIX после SUCCESS останавливается. Внутри chain/RUN CTS может продолжить к свежему REVIEW.
 
-## 12. `RUN STEP-NNN`
+## 12. `STEP RUN STEP-NNN`
 
-Сначала dispatch по `Type`:
+`STEP RUN` — единственная текущая orchestration command. Global wrapper создаёт root execution:
 
-- `IMPLEMENTATION` / `BUGFIX` / `REFACTOR` / `HARDENING` → стандартный implementation flow;
-- `DOCUMENTATION` → plan → documentation mutation → review/verification;
-- `RELEASE` → task-specific release mutations/gates;
-- `ADR` → architect analysis → Proposed ADR/decision artifact → review/acceptance, без production implementation «заодно»;
-- `RESEARCH` → исследование → durable report/decision inputs, без скрытого implementation;
-- `AUDIT` → audit-only semantics;
-- `REVIEW` → review-only semantics.
+```text
+rootCommand = STEP RUN STEP-NNN
+mode        = orchestration
+```
 
-Стандартный implementation flow:
+RUN по-прежнему dispatch-ит существующий STEP Type:
 
-Перед запуском прочитай настройки `.project/manifest.yaml`:
-- `execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` и должно быть целым числом от 1 до 5;
-- `review.security` и `review.tests` принимают только `auto` или `always`: `auto` сохраняет risk/diff-based запуск specialized reviewer, `always` запускает его для каждого review-прохода.
+- `IMPLEMENTATION` / `BUGFIX` / `REFACTOR` / `HARDENING` → PLAN/IMPLEMENT/REVIEW/FIX flow;
+- `DOCUMENTATION` → task-specific documentation flow;
+- `RELEASE` → task-specific release flow;
+- `ADR` → architect/decision flow;
+- `RESEARCH` → research deliverables;
+- `AUDIT` → audit-only;
+- `REVIEW` → review-only.
 
-Значения проверяются deterministic Harness validator; при отсутствующей или недопустимой настройке orchestration должна остановиться с configuration blocker, а не использовать скрытый default.
+Никаких execution profiles не существует.
 
-1. Resolve.
-2. Если нет актуального Implementation plan — PLAN через planner.
-3. IMPLEMENT через implementer.
-4. Deterministic verification.
-5. REVIEW через независимого reviewer.
-6. Security/test reviewer — согласно `review.security` / `review.tests`: в `auto` по фактической необходимости, в `always` при каждом review-проходе.
-7. FAIL → FIX → REVIEW, повторять не более `execution.maxFixReviewCycles` циклов.
-8. PASS + gates → CLOSE.
-9. BLOCKED или исчерпан `execution.maxFixReviewCycles` → остановиться, сохранить evidence/report, не объявлять success.
+Алгоритм:
 
-Не запускай одновременно несколько write-agents над одним workspace scope.
+1. Resolve STEP, blockers и Type.
+2. Проверить `execution.maxFixReviewCycles`, `review.security`, `review.tests`, если они применимы.
+3. Получить состояние root:
+   ```bash
+   python3 tools/harness/resolve-next-command.py --json \
+     --root 'STEP RUN STEP-NNN'
+   ```
+4. Если resolver возвращает interrupted child command — resume её.
+5. Если RUN запускает canonical child command, перед dispatch:
+   ```bash
+   python3 tools/harness/execution-state.py begin \
+     --root 'STEP RUN STEP-NNN' \
+     --command '<child command>'
+   ```
+6. После child completion global wrapper записывает result; затем RUN снова вызывает resolver.
+7. Для PLAN → IMPLEMENT → REVIEW → FIX transitions resolver использует тот же CTS, что и manual STEP chain.
+8. Если конкретный Type выполняется без отдельной canonical child command, `current.command` остаётся `STEP RUN STEP-NNN`; после interruption повторяется сам RUN в resume-semantics.
+9. После REVIEW PASS и отсутствия следующего CTS edge resolver возвращает root RUN для remaining close/sync/finalization; новый REVIEW не создаётся.
+10. При BLOCKED root execution блокируется.
+11. Не запускать параллельные write-agents над одним workspace scope.
 
-## 13. `AUDIT STEP-NNN`
+Повторный явный `STEP RUN STEP-NNN` при уже running root не создаёт второй active record: он resume-ит существующий execution.
+
+## 13. `STEP AUDIT STEP-NNN`
 
 Audit-only semantics:
 
@@ -315,25 +490,30 @@ Audit-only semantics:
 
 Report сохраняется в `planning/audits/`.
 
-## 14. `STATUS PROJECT`
+## 14. `PROJECT STATUS`
 
 1. Сверить task canonical statuses с PLAN/STATUS projections.
-2. Сверить REQ status в `docs/requirements/STATUS.md` с evidence, review и STEP coverage; не искать и не записывать lifecycle-status в `SPEC.md`.
+2. Сверить REQ status в `docs/requirements/STATUS.md` с evidence, review и STEP coverage.
 3. Показать blockers, in-progress, unblocked high-priority work, unresolved critical review findings.
 4. Исправить только projection drift, если canonical evidence однозначен.
 5. Не менять смысл REQ/ADR и не писать product code.
 
-## 15. `NEXT STEP`
+## 15. `STEP NEXT`
 
 Read-only:
 
-1. исключить выполненные/отменённые/заблокированные без resolved blocker;
-2. исключить STEP с незавершёнными hard dependencies;
-3. учитывать priority, phase/order, risk, critical path и corrective prerequisites;
-4. вернуть один основной STEP и краткую причину;
-5. вернуть точную следующую команду (`PLAN`, `IMPLEMENT`, `FIX`, `REVIEW`), исходя из фактического состояния task.
+1. Сначала выполнить:
+   ```bash
+   python3 tools/harness/resolve-next-command.py --json
+   ```
+2. Resolver возвращает **все** unresolved executions, независимо от namespace.
+3. Незавершённый STEP-related execution имеет приоритет над стартом нового STEP, но не блокирует явно запрошенные пользователем независимые Git/Project/Harness commands.
+4. При нескольких interrupted STEP executions выбрать один по dependencies/priority/risk/critical path и явно указать остальные.
+5. Если STEP-related unresolved executions нет, исключить completed/cancelled и blocked hard dependencies.
+6. Вернуть один основной STEP, причину и точную canonical command.
+7. Valid Plan basis может доказать завершённый PLAN после crash; не повторять planning только из-за новой session.
 
-## 16. `RECONCILE PROJECT`
+## 16. `PROJECT RECONCILE`
 
 Precondition: `.project/manifest.yaml → project.initialized: true`.
 
@@ -343,7 +523,7 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 2. не менять project/Harness artifacts;
 3. не создавать audit report, REQ, ADR или corrective STEP;
 4. не интерпретировать template placeholders как project knowledge;
-5. вернуть `RECONCILE PROJECT: NOT_APPLICABLE` и handoff → `INIT PROJECT`.
+5. вернуть `PROJECT RECONCILE: NOT_APPLICABLE` и handoff → `PROJECT INIT`.
 
 Для инициализированного проекта:
 
@@ -351,7 +531,7 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 2. Найти documentation/status/architecture/requirement drift и undocumented behavior.
 3. Не исправлять production code.
 4. Однозначный projection drift можно синхронизировать.
-5. Для substantive defect/gap создать corrective STEP через ADD semantics.
+5. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
 6. Новые устойчивые решения не записывать как Accepted ADR без decision process.
 7. Сохранить audit report.
 
@@ -379,33 +559,33 @@ Read-only Git preflight:
 5. Проверить suspicious/unrelated files и вероятную traceability.
 6. Ничего не stage/commit/push.
 
-## 19. `COMMIT` / `COMMIT: <подсказка>`
+## 19. `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
-1. Источник истины — фактический diff; текст после `COMMIT:` только hint.
+1. Источник истины — фактический diff; текст после `GIT COMMIT:` только hint.
 2. Выполнить GIT CHECK semantics и Harness validation.
 3. Определить один coherent logical change. Если изменений несколько и они независимы — не создавать общий commit; предложить split.
 4. Определить Conventional Commit type/scope и branch kind.
 5. Если текущая ветка protected, применить `branch.when_on_protected`; при `auto-create` создать branch **до** commit. Initial commit может использовать configured exception.
 6. Stage по `commit.stage_mode`; при `all-safe` добавлять только явный проверенный набор, не использовать бездумный `git add .`.
 7. Повторно проверить staged diff.
-8. Сформировать подробный message по `.gitmessage` на языке `language.commitMessages`: subject, context, actual changes, verification, traceability. Для подтверждённого micro-change traceability может быть `QUICK FIX / N/A`; отсутствие STEP в таком случае допустимо.
-9. Создать локальный commit. PUSH не выполнять.
-10. Вернуть commit hash, branch, files, subject, verification и следующую команду.
+8. Сформировать подробный message по `.gitmessage` на языке `language.commitMessages`: subject, context, actual changes, verification, traceability. Для подтверждённого micro-change traceability может быть `PROJECT QUICK FIX / N/A`; отсутствие STEP в таком случае допустимо.
+9. Создать локальный commit. GIT PUSH не выполнять.
+10. Вернуть commit hash, branch, files, subject, verification и следующую canonical-команду `GIT PUSH`.
 
-## 20. `PUSH`
+## 20. `GIT PUSH`
 
 1. Выполнить Harness validation.
 2. Если policy требует — `git fetch` configured remote.
-3. Проверить upstream и divergence. Remote-ahead при `block` останавливает PUSH.
+3. Проверить upstream и divergence. Remote-ahead при `block` останавливает GIT PUSH.
 4. Protected branch push допускается только policy; initial push может иметь отдельное исключение.
 5. Push выполнять без force, с upstream при необходимости.
 6. После успешного push применить `pull_request.after_push`:
    - `never` → завершить;
-   - `ask` → предложить `PR`;
+   - `ask` → предложить `GIT PR`;
    - `create-if-missing` → найти существующий PR и создать только при отсутствии.
 7. Неспособность создать PR не должна маскироваться: отдельно указать, что push успешен, а PR blocked/skipped.
 
-## 21. `PR`
+## 21. `GIT PR`
 
 1. Прочитать PR policy и убедиться, что branch опубликована.
 2. При `reuse_existing=true` не создавать duplicate.
@@ -414,7 +594,7 @@ Read-only Git preflight:
 5. Draft/non-draft — по policy.
 6. Для GitHub предпочитать `gh` или доступный authenticated GitHub connector; при отсутствии capability вернуть конкретный blocker.
 
-## 22. `SYNC`
+## 22. `GIT SYNC`
 
 1. Fetch configured remote.
 2. Показать ahead/behind/diverged.

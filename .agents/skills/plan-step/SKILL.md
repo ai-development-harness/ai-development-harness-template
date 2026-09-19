@@ -4,6 +4,22 @@ description: Produce and persist a concrete implementation plan for an existing 
 ---
 # plan-step
 
-Используй для `PLAN STEP-NNN`.
+Используй для `STEP PLAN STEP-NNN`.
 
-Resolve task → dependencies → REQ → ADR → architecture → code/tests/config. При сложной задаче делегируй анализ `planner`. Проверь blockers и необходимость ADR. Подготовь порядок реализации, impacted areas/files, data/API compatibility, tests, verification, risks/rollback. Root-agent сохраняет итог в `## Implementation plan` с plan revision/timestamp. Не ставь STEP `В работе` и не меняй production code.
+Execution Status для команды ведёт global command wrapper; skill не создаёт отдельный per-STEP state.
+
+Resolve task → dependencies → REQ → ADR → architecture → code/tests/config. При сложной задаче делегируй анализ `planner`. Проверь blockers и необходимость ADR.
+
+Подготовь порядок реализации, impacted areas/files, data/API compatibility, tests, verification, risks/rollback. Root-agent сохраняет итог в `## Implementation plan`.
+
+После сохранения plan обязательно выполни:
+
+```bash
+python3 tools/harness/execution-state.py stamp-plan STEP-NNN
+```
+
+`stamp-plan` детерминированно выставляет `Plan status: Ready`, увеличивает revision, записывает `Plan basis: sha256:...` от текущего task contract и timestamp.
+
+Если session оборвалась после `stamp-plan`, но до записи execution `complete`, resolver может признать PLAN завершённым по valid Plan basis и не повторять planning.
+
+Не ставь STEP `В работе` и не меняй production code.

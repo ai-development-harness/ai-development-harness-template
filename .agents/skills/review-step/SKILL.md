@@ -4,6 +4,14 @@ description: Run an independent read-only review of a STEP implementation, optio
 ---
 # review-step
 
-Используй для `REVIEW STEP-NNN`.
+Используй для `STEP REVIEW STEP-NNN`.
 
-Обязателен независимый `reviewer`. Сверь task/REQ/ADR/plan с фактической реализацией и tests. Прочитай `.project/manifest.yaml → review.security` и `review.tests`: режим `auto` запускает соответствующего specialized reviewer по risk/factual diff/test surface, режим `always` запускает его для каждого review-прохода. Другие/отсутствующие значения — configuration blocker; скрытый default запрещён. Specialized reviewers по возможности запускай параллельно только для read-only анализа. Синтезируй дубликаты. Создай новый immutable report в `planning/reviews/STEP-NNN/`. Verdict PASS/FAIL/BLOCKED. PASS закрывает STEP только при успешных deterministic gates; FAIL ведёт в FIX; BLOCKED фиксирует blocker. Product code не исправляй.
+Execution Status ведёт global wrapper и при старте REVIEW запоминает previous immutable review report.
+
+Обязателен независимый `reviewer`. Сверь task/REQ/ADR/plan с фактической реализацией и tests. Прочитай `.project/manifest.yaml → review.security` и `review.tests`: `auto` запускает specialized reviewer по risk/factual diff/test surface, `always` — для каждого review-прохода. Другие/отсутствующие значения — configuration blocker.
+
+Создай новый immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL` или `BLOCKED`. Global wrapper записывает тот же verdict как command result.
+
+Если session оборвалась после создания нового immutable report, но до записи `complete`, resolver может восстановить verdict и не повторять expensive review.
+
+Product code не исправляй.

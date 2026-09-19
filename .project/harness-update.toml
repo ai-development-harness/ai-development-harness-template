@@ -23,7 +23,7 @@ update_manifest = ".project/harness-update-graph.json"
 # Пример: ".project/harness.lock.json".
 lock_file = ".project/harness.lock.json"
 
-# Каталог durable report после успешного UPDATE HARNESS.
+# Каталог durable report после успешного HARNESS UPDATE APPLY.
 # Пример: "planning/harness-updates".
 report_directory = "planning/harness-updates"
 
@@ -33,6 +33,7 @@ report_directory = "planning/harness-updates"
 # Пример: docs/harness/**, core workflow skills и runtime adapter README.
 harness_owned = [
   ".project/harness-update-graph.json",
+  ".project/command-transitions.json",
   ".agents/skills/**",
   ".codex/README.md",
   ".claude/README.md",

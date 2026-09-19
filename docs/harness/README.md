@@ -1,14 +1,17 @@
 # AI Development Harness — документация
 
-Эта папка описывает **сам Harness**, а не конкретный продукт. После `INIT PROJECT` продуктовая документация живёт уровнем выше в `docs/`, а правила разработки остаются здесь.
+Эта папка описывает **сам Harness**, а не конкретный продукт. После `PROJECT INIT` продуктовая документация живёт уровнем выше в `docs/`, а правила разработки остаются здесь.
 
 ## С чего начать
 
-- [`GETTING_STARTED.md`](GETTING_STARTED.md) — создание проекта из template и `INIT PROJECT`.
+- [`GETTING_STARTED.md`](GETTING_STARTED.md) — создание проекта из template и `PROJECT INIT`.
 - [`DOCUMENT_MODEL.md`](DOCUMENT_MODEL.md) — какие артефакты существуют, что является источником истины и как связаны REQ / ADR / STEP / PLAN / STATUS / Evidence / Review.
 - [`GLOSSARY.md`](GLOSSARY.md) — полный словарь терминов и сокращений Harness.
 - [`REPOSITORY_LAYOUT.md`](REPOSITORY_LAYOUT.md) — файловая архитектура и разделение protocol / knowledge / implementation.
 - [`COMMANDS.md`](COMMANDS.md) — пользовательский командный интерфейс.
+- [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) — namespaces, targets и chain operator `>`.
+- [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md) — полная transition matrix, validation order и runtime conditions.
+- [`EXECUTION_STATUS.md`](EXECUTION_STATUS.md) — единый local execution-status.json, resume semantics и independent single/chain/orchestration executions.
 - [`LANGUAGE_POLICY.md`](LANGUAGE_POLICY.md) — единая настройка языка для docs/commits/comments/tests/fixtures/templates.
 - [`QUICK_CHANGES.md`](QUICK_CHANGES.md) — когда мелкая правка не требует STEP.
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
@@ -25,14 +28,14 @@
 
 ## Repository operations
 
-- [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md) — `GIT CHECK`, `COMMIT`, `PUSH`, `PR`, `SYNC`.
+- [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md) — `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`.
 - [`CI.md`](CI.md) — Harness Integrity CI и граница между Harness CI и product CI.
 - [`MAINTENANCE.md`](MAINTENANCE.md) — как изменять Harness, не смешивая protocol layer с product knowledge.
 - [`UPDATES.md`](UPDATES.md) — release/lock/ownership/legacy-adoption lifecycle self-update.
 
 ## Project-specific документация
 
-После `INIT PROJECT` основными продуктовыми источниками становятся:
+После `PROJECT INIT` основными продуктовыми источниками становятся:
 
 - [`../PROJECT.md`](../PROJECT.md) — что это за проект и его границы;
 - [`../requirements/SPEC.md`](../requirements/SPEC.md) — требования;

@@ -12,9 +12,9 @@
 
 Предпочтительный путь — GitHub **Use this template**. После этого клонируй уже созданный репозиторий проекта.
 
-Если template клонируется напрямую, перед первым `PUSH` замени `origin` на репозиторий нового проекта.
+Если template клонируется напрямую, перед первым `GIT PUSH` замени `origin` на репозиторий нового проекта.
 
-Template уже содержит `.project/harness.lock.json`: это BASE для будущих `CHECK HARNESS UPDATE` / `UPDATE HARNESS`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
+Template уже содержит `.project/harness.lock.json`: это BASE для будущих `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
 
 ## 2. Создай локальный project brief
 
@@ -54,11 +54,11 @@ Core `.agents/skills/` общие для обоих runtime adapters.
 
 ## 5. Перед INIT проверь актуальность Harness
 
-Если после создания репозитория из template вышел новый Harness release, обновиться можно **до** `INIT PROJECT`:
+Если после создания репозитория из template вышел новый Harness release, обновиться можно **до** `PROJECT INIT`:
 
 ```text
-CHECK HARNESS UPDATE
-UPDATE HARNESS
+HARNESS UPDATE CHECK
+HARNESS UPDATE APPLY
 ```
 
 `project.initialized: false` не блокирует эти команды. Pre-init update меняет только Harness protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`. Локальный `PROJECT_BRIEF.local.md` не является managed Harness path и не перезаписывается updater-ом.
@@ -67,16 +67,15 @@ UPDATE HARNESS
 
 ```text
 inspect diff
-GIT CHECK
-COMMIT
+GIT CHECK > COMMIT
 ```
 
-Если доступного update нет, переходи сразу к `INIT PROJECT`.
+Если доступного update нет, переходи сразу к `PROJECT INIT`.
 
 ## 6. Запусти bootstrap
 
 ```text
-INIT PROJECT
+PROJECT INIT
 ```
 
 Initializer должен:
@@ -109,8 +108,8 @@ Initializer должен:
 Полезные команды:
 
 ```text
-STATUS PROJECT
-NEXT STEP
+PROJECT STATUS
+STEP NEXT
 ```
 
 ## 8. Настрой профили агентов
@@ -145,9 +144,7 @@ Tracked runtime configs сохраняются при Harness update через 
 ## 9. Зафиксируй bootstrap
 
 ```text
-GIT CHECK
-COMMIT
-PUSH
+GIT CHECK > COMMIT > PUSH
 ```
 
 Политика веток/PR задаётся в `.project/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
@@ -157,27 +154,27 @@ PUSH
 Ручной flow:
 
 ```text
-PLAN STEP-001
-IMPLEMENT STEP-001
-REVIEW STEP-001
+STEP PLAN STEP-001
+STEP IMPLEMENT STEP-001
+STEP REVIEW STEP-001
 ```
 
 Автоматизированный flow:
 
 ```text
-RUN STEP-001
+STEP RUN STEP-001
 ```
 
 Новая задача обычным языком:
 
 ```text
-ADD STEP: <описание>
+STEP ADD: <описание>
 ```
 
 Нужны дополнительные знания/technology playbook:
 
 ```text
-FIND SKILL: <описание>
+SKILL FIND: <описание>
 ```
 
 ## 11. Обновляй Harness отдельно от project work
@@ -185,13 +182,13 @@ FIND SKILL: <описание>
 Проверка:
 
 ```text
-CHECK HARNESS UPDATE
+HARNESS UPDATE CHECK
 ```
 
 Применение:
 
 ```text
-UPDATE HARNESS
+HARNESS UPDATE APPLY
 ```
 
 Это maintenance flow без STEP и без автоматического commit/push/PR. Подробно: [`UPDATES.md`](UPDATES.md).

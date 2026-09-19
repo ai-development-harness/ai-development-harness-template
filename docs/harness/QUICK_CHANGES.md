@@ -19,10 +19,10 @@
 ### Агент делает правку
 
 ```text
-QUICK FIX: исправь опечатку «авторизция» в форме входа
+PROJECT QUICK FIX: исправь опечатку «авторизция» в форме входа
 ```
 
-Агент проверяет, что изменение действительно micro-change, выполняет его и предлагает `COMMIT`.
+Агент проверяет, что изменение действительно micro-change, выполняет его и предлагает `GIT COMMIT`.
 
 ### Пользователь уже исправил вручную
 
@@ -30,14 +30,14 @@ QUICK FIX: исправь опечатку «авторизция» в форм�
 
 ```text
 GIT CHECK
-COMMIT
+GIT COMMIT
 ```
 
-`COMMIT` обязан проверить diff. Если изменение соответствует micro-change policy, отсутствие STEP допустимо.
+`GIT COMMIT` обязан проверить diff. Если изменение соответствует micro-change policy, отсутствие STEP допустимо.
 
-## Когда QUICK FIX запрещён
+## Когда PROJECT QUICK FIX запрещён
 
-Создай `ADD STEP:` вместо QUICK FIX, если изменение затрагивает хотя бы одно из следующего:
+Создай `STEP ADD:` вместо PROJECT QUICK FIX, если изменение затрагивает хотя бы одно из следующего:
 
 - поведение продукта;
 - API/public contract;
@@ -50,8 +50,8 @@ COMMIT
 - requirement/acceptance criteria;
 - риск регрессии, который требует отдельного review/evidence.
 
-Если во время QUICK FIX выяснилось, что scope больше ожидаемого, агент **не расширяет его молча**: он останавливается и предлагает `ADD STEP: ...`.
+Если во время PROJECT QUICK FIX выяснилось, что scope больше ожидаемого, агент **не расширяет его молча**: он останавливается и предлагает `STEP ADD: ...`.
 
 ## Commit message
 
-Для micro-change обычно подходят `docs`, `fix`, `style`, `test` или `chore` — по фактическому diff. `Traceability` в commit body может быть `N/A: QUICK FIX`.
+Для micro-change обычно подходят `docs`, `fix`, `style`, `test` или `chore` — по фактическому diff. `Traceability` в commit body может быть `N/A: PROJECT QUICK FIX`.

@@ -11,7 +11,7 @@ harness:
 # Состояние конкретного проекта, созданного из template.
 # Пример: до INIT initialized=false/name=null, после INIT значения заполняются initializer.
 project:
-  # Завершён ли одноразовый `INIT PROJECT`.
+  # Завершён ли одноразовый `PROJECT INIT`.
   # Пример: false в template; initializer меняет на true только после consistency check.
   initialized: false
   # Каноническое короткое имя проекта после INIT.
@@ -24,7 +24,7 @@ project:
 # Настройки orchestration Harness, которые проект может менять без изменения protocol.
 # Пример: лимит FIX ↔ REVIEW задаётся в диапазоне от 1 до 5.
 execution:
-  # Максимальное число циклов FIX → REVIEW внутри одного RUN STEP до остановки.
+  # Максимальное число циклов FIX → REVIEW внутри одного STEP RUN STEP до остановки.
   # Допустимый диапазон: от 1 до 5 включительно. Пример: 3.
   maxFixReviewCycles: 3
 
@@ -39,12 +39,12 @@ review:
   tests: auto
 
 # Project-specific настройки управления repository skills.
-# Пример: search.maxResults ограничивает размер выдачи FIND SKILL.
+# Пример: search.maxResults ограничивает размер выдачи SKILL FIND.
 skills:
   # Настройки поиска сторонних/repository skills.
   # Пример: maxResults=5 сохраняет компактный shortlist.
   search:
-    # Максимальное число кандидатов, сохраняемых и возвращаемых FIND SKILL.
+    # Максимальное число кандидатов, сохраняемых и возвращаемых SKILL FIND.
     # Допустимый диапазон: от 1 до 10 включительно. Пример: 5.
     maxResults: 5
 
@@ -72,7 +72,7 @@ language:
   # Язык человекочитаемого fixture/sample content, когда домен не требует другого.
   # Пример: ru; machine identifiers/keys не локализуются.
   fixtures: ru
-  # Язык GitHub issue forms и Pull Request template, генерируемых командой GENERATE GITHUB TEMPLATES.
+  # Язык GitHub issue forms и Pull Request template, генерируемых командой GITHUB GENERATE TEMPLATES.
   # Пример: ru.
   githubTemplates: ru
   # Язык release notes/changelog, если проект их генерирует через Harness.
@@ -116,7 +116,7 @@ protocol:
   # Каталог audit/reconcile reports.
   # Пример: planning/audits.
   auditDirectory: planning/audits
-  # Каталог durable результатов FIND SKILL.
+  # Каталог durable результатов SKILL FIND.
   # Пример: planning/skill-searches.
   skillSearchDirectory: planning/skill-searches
   # Реестр установленных/созданных дополнительных skills.
@@ -129,7 +129,7 @@ protocol:
 # Пути к repository policies и deterministic validation.
 # Пример: gitPolicy=`.project/git-policy.toml`.
 repository:
-  # Настройки COMMIT/PUSH/PR/SYNC и branch policy.
+  # Настройки GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC и branch policy.
   # Пример: .project/git-policy.toml.
   gitPolicy: .project/git-policy.toml
   # Политика обязательных Harness artifacts/repository hygiene.
@@ -141,7 +141,7 @@ repository:
   # Lock known BASE текущего Harness release.
   # Пример: .project/harness.lock.json.
   harnessLock: .project/harness.lock.json
-  # Локальный deterministic validator, используемый COMMIT/PUSH/CI.
+  # Локальный deterministic validator, используемый GIT COMMIT / GIT PUSH/CI.
   # Пример: tools/harness/validate.py.
   harnessValidation: tools/harness/validate.py
   # Baseline GitHub Actions workflow целостности Harness.
