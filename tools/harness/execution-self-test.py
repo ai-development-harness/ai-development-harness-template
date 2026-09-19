@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Deterministic self-test for universal Harness execution status."""
+"""Детерминированный self-test универсального Execution Status.
+
+Тест создаёт временный synthetic repository и проверяет именно protocol
+инварианты, а не product logic. Он не требует сети, LLM или установленного
+проекта и поэтому запускается в Harness Integrity CI.
+
+Сценарии специально охватывают не только happy path, но и обрывы session,
+ручные независимые команды, conditional chains и coexistence нескольких
+execution records в одном execution-status.json.
+"""
 from __future__ import annotations
 
 import json
@@ -20,11 +29,15 @@ from execution_status import (
 )
 
 
+
+# Минимальный helper для fixture files: тесты должны явно создавать только те canonical artifacts, которые нужны конкретному сценарию.
 def write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 
+
+# Вернуть synthetic STEP с полным contract/plan/review skeleton, достаточным для Plan basis и review recovery.
 def task_text() -> str:
     return """# STEP-001 — Execution state test
 
@@ -112,6 +125,8 @@ Self-test.
 """
 
 
+
+# Создать immutable-looking review fixture с заданным verdict; filename используется как durable ordering.
 def create_review(root: Path, name: str, verdict: str) -> str:
     rel = f"planning/reviews/STEP-001/{name}"
     write(
@@ -147,6 +162,8 @@ test
     return rel
 
 
+
+# Построить валидный concrete пример каждой canonical command из CTS table для полного surface coverage.
 def sample_command(domain: str, operation: str, spec: dict) -> str:
     value = spec["canonical"].replace("STEP-NNN", "STEP-001")
     if spec.get("target") == "release-optional":
@@ -156,6 +173,8 @@ def sample_command(domain: str, operation: str, spec: dict) -> str:
     return value
 
 
+
+# Короткая assertion helper: одновременно проверять status, exact command и reasonCode, чтобы resolver contract не дрейфовал.
 def assert_resolved(
     value: dict,
     status: str,
@@ -167,8 +186,12 @@ def assert_resolved(
     assert value["reasonCode"] == reason, value
 
 
+
+# Создать isolated repository и последовательно проверить все критические комбинации execution tracking.
 def main() -> int:
     source = Path(__file__).resolve().parents[2]
+    # TemporaryDirectory гарантирует, что self-test не зависит от state самого
+    # repository и не оставляет local artifacts после CI.
     with tempfile.TemporaryDirectory(prefix="harness-execution-") as tmp:
         root = Path(tmp)
         (root / ".project").mkdir(parents=True)
@@ -178,9 +201,9 @@ def main() -> int:
         )
         write(root / "planning/tasks/STEP-001.md", task_text())
 
-        # 1. Every canonical Harness command can be tracked as an independent
-        # single execution. No global transition between separate invocations
-        # is required.
+        # 1. Каждая canonical Harness-команда должна отслеживаться как независимая
+        # execution. Между отдельными пользовательскими invocations глобальный
+        # CTS transition не требуется.
         table = load_transition_table(root)
         canonical_samples: list[str] = []
         for domain_name, domain in table["domains"].items():
@@ -189,7 +212,7 @@ def main() -> int:
                 canonical_samples.append(command)
                 execution = start_execution(root, command)
                 if execution["mode"] == "orchestration":
-                    # STEP RUN is intentionally left to the dedicated test below.
+                    # STEP RUN отдельно проверяется ниже как orchestration, а не обычный single flow.
                     complete_command(
                         root,
                         execution["rootCommand"],
@@ -210,8 +233,8 @@ def main() -> int:
             len(canonical_samples),
         )
 
-        # 2. Manual independent commands are valid even when CTS has no edge
-        # between them: STEP PLAN, then GIT COMMIT.
+        # 2. Ручные независимые команды валидны даже без CTS edge между ними:
+        # сначала STEP PLAN, затем отдельный GIT COMMIT.
         plan = start_execution(root, "STEP PLAN STEP-001")
         complete_command(
             root,
@@ -229,7 +252,8 @@ def main() -> int:
         assert commit["mode"] == "single"
         complete_command(root, "GIT COMMIT", "GIT COMMIT", "SUCCESS")
 
-        # 3. Full Git chain advances only inside that explicit root execution.
+        # 3. Полная Git-chain продвигается только внутри той root execution,
+        # которую пользователь явно ввёл.
         git_root = "GIT CHECK > COMMIT > PUSH > PR"
         git_exec = start_execution(root, git_root)
         assert git_exec["mode"] == "chain"
@@ -255,7 +279,8 @@ def main() -> int:
             "EXECUTION_COMPLETE",
         )
 
-        # 4. Conditional chain stops cleanly when an edge result is not active.
+        # 4. Conditional chain обязана остановиться без side effects на remaining
+        # segments, если result предыдущей command не активирует edge.
         review_chain = "STEP REVIEW STEP-001 > FIX > REVIEW"
         conditional = start_execution(root, review_chain)
         complete_command(
@@ -275,7 +300,7 @@ def main() -> int:
             "STEP REVIEW STEP-001",
         ], finished
 
-        # Same structural chain follows REVIEW --FAIL--> FIX.
+        # Та же structural chain при FAIL, наоборот, обязана активировать REVIEW → FIX.
         conditional2 = start_execution(root, review_chain)
         complete_command(
             root,
@@ -290,7 +315,8 @@ def main() -> int:
             "CHAIN_NEXT_SEGMENT",
         )
 
-        # 5. Harness update chain keeps inherited target across a session.
+        # 5. HARNESS UPDATE chain обязана сохранять inherited target между segments
+        # и вернуть runtime precondition для APPLY.
         update_root = "HARNESS UPDATE CHECK TO v0.4.0 > APPLY"
         update = start_execution(root, update_root)
         complete_command(
@@ -303,8 +329,8 @@ def main() -> int:
         assert update_next["command"] == "HARNESS UPDATE APPLY TO v0.4.0", update_next
         assert "matching-update-target-and-route" in update_next["runtimePreconditions"]
 
-        # 6. A successful standalone update check remains discoverable even
-        # after unrelated commands, so APPLY can verify a cross-session handoff.
+        # 6. Успешный standalone UPDATE CHECK остаётся в общей history. Это позволяет
+        # диагностировать cross-session handoff, не создавая отдельный update-state file.
         check = start_execution(root, "HARNESS UPDATE CHECK TO v0.4.0")
         complete_command(
             root,
@@ -320,13 +346,14 @@ def main() -> int:
             result="PASS",
         ) is not None
 
-        # 7. STEP RUN orchestration may be interrupted while another independent
-        # command runs. The new command must not overwrite the interrupted one.
+        # 7. STEP RUN может быть прерван, после чего пользователь выполняет независимую
+        # command. Новый record не должен затереть interrupted orchestration.
         stamp_plan(root, "STEP-001")
         run_root = "STEP RUN STEP-001"
         run_exec = start_execution(root, run_root)
         begin_command(root, run_root, "STEP PLAN STEP-001")
-        # Durable plan proof recovers PLAN even if local completion wasn't written.
+        # Durable Plan basis закрывает crash-window, если plan уже сохранён,
+        # а local completion checkpoint записать не успели.
         assert_resolved(
             resolve_root(root, run_root),
             "NEXT",
@@ -353,7 +380,8 @@ def main() -> int:
             for item in active
         ), active
 
-        # 8. Coding orchestration follows existing CTS edges.
+        # 8. Coding orchestration использует существующие CTS edges, а не отдельную
+        # таблицу recovery-переходов.
         complete_command(
             root,
             run_root,
@@ -363,7 +391,8 @@ def main() -> int:
         assert resolve_root(root, run_root)["command"] == "STEP REVIEW STEP-001"
         begin_command(root, run_root, "STEP REVIEW STEP-001")
 
-        # Crash after immutable FAIL report: resolver recovers the REVIEW result.
+        # Если session оборвалась после immutable FAIL report, resolver восстанавливает
+        # verdict по durable artifact и не запускает review заново.
         create_review(root, "REVIEW-20260919-120000.md", "FAIL")
         recovered_review = resolve_root(root, run_root)
         assert recovered_review["command"] == "STEP FIX STEP-001", recovered_review
@@ -385,8 +414,8 @@ def main() -> int:
         complete_command(root, run_root, "STEP RUN STEP-001", "SUCCESS")
         assert resolve_root(root, run_root)["status"] == "DONE"
 
-        # 9. Re-entering the same unfinished root resumes one execution instead
-        # of creating duplicates.
+        # 9. Повтор той же unfinished root command должен resume-ить существующий
+        # execution record, а не создавать duplicate.
         first = start_execution(root, "PROJECT RECONCILE")
         second = start_execution(root, "PROJECT RECONCILE")
         assert first["executionId"] == second["executionId"], (first, second)
@@ -399,7 +428,8 @@ def main() -> int:
         assert len(matching) == 1, matching
         assert matching[0]["current"]["attempt"] == 2, matching[0]
 
-        # 10. Structurally invalid chains never create execution state.
+        # 10. Structural gate идёт раньше state tracking: INVALID_CHAIN не имеет права
+        # оставить даже локальный execution record.
         before = len(load_status(root)["executions"])
         try:
             start_execution(root, "GIT PR > COMMIT")
@@ -410,7 +440,8 @@ def main() -> int:
         after = len(load_status(root)["executions"])
         assert before == after, (before, after)
 
-        # 11. Fixed project-level path: never create per-STEP state files.
+        # 11. Execution state хранится строго в одном project-level файле;
+        # per-STEP JSON-файлы запрещены текущей моделью.
         fixed = root / ".project/local/execution/execution-status.json"
         assert fixed.is_file(), fixed
         assert not list((root / ".project/local/execution").glob("STEP-*.json"))
