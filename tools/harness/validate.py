@@ -180,7 +180,7 @@ def config_parameter_lines(path: Path) -> list[tuple[int, str]]:
                     in_toml_multiline = True
             continue
         if suffix in {".yaml", ".yml"}:
-            # Mapping key, including list-item mappings such as `- name:`.
+            # Ключ mapping, включая list-item mappings вида `- name:`.
             m = re.match(r"^\s*(?:-\s+)?([A-Za-z0-9_.-]+):(?:\s|$)", line)
             if m:
                 result.append((idx, m.group(1)))
@@ -328,7 +328,8 @@ def main() -> int:
 
     validate_update_graph(root, errors)
 
-    # Harness policy semantics must be valid before policy values are consumed below.
+    # Semantics harness-policy должны быть валидны до того, как значения policy
+    # начнут использоваться в остальных проверках.
     max_tracked_file_size_mb = policy.get("max_tracked_file_size_mb")
     if isinstance(max_tracked_file_size_mb, bool) or not isinstance(max_tracked_file_size_mb, int) or max_tracked_file_size_mb <= 0:
         errors.append("harness-policy: max_tracked_file_size_mb must be a positive integer")
@@ -351,7 +352,7 @@ def main() -> int:
         if not (root / rel).is_file():
             errors.append(f"required file missing: {rel}")
 
-    # --- Command Transition System ---------------------------------------
+    # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
     # command docs/routing: документация могла разъехаться с parser contract.
     transition_table = None
@@ -461,7 +462,7 @@ def main() -> int:
         if cross_domain_probe.get("valid"):
             errors.append("command parser accepted forbidden cross-domain chain")
 
-    # --- Core skills ------------------------------------------------------
+    # --- Обязательные core skills ------------------------------------------
     # Проверяем наличие обязательных skills и минимальный frontmatter, чтобы
     # runtime routing не ссылался на исчезнувший/безымянный playbook.
     seen_skill_names: dict[str, str] = {}
@@ -483,7 +484,7 @@ def main() -> int:
             if not desc:
                 errors.append(f"skill frontmatter missing description: {rel}")
 
-    # --- Runtime adapters -------------------------------------------------
+    # --- Runtime adapters: Codex / Claude ----------------------------------
     # TOML syntax и bindings Codex/Claude проверяются как protocol contract,
     # независимо от того, какой runtime используется в текущей session.
     for p in root.rglob("*.toml"):
@@ -642,7 +643,7 @@ def main() -> int:
             if pattern.search(text):
                 errors.append(f"deprecated command form '{legacy}' found in {p.relative_to(root)}")
 
-    # --- Local Execution Status -------------------------------------------
+    # --- Локальный Execution Status ----------------------------------------
     # Operational state хранится только по одному фиксированному local-only path
     # и никогда не должен становиться tracked product/protocol artifact.
     execution_status_rel = ".project/local/execution/execution-status.json"
@@ -702,7 +703,7 @@ def main() -> int:
         except OSError:
             pass
 
-    # --- Tracked-file hygiene ---------------------------------------------
+    # --- Гигиена tracked files ---------------------------------------------
     # Ищем очевидные private keys, незавершённые merge conflicts и базовые
     # text-format проблемы только в реально tracked files.
     private_markers = [b"-----BEGIN" + suffix for suffix in (b" PRIVATE KEY-----", b" RSA PRIVATE KEY-----", b" OPENSSH PRIVATE KEY-----")]
@@ -763,7 +764,7 @@ def main() -> int:
                 if require_example and not any(("Пример:" in item or "Example:" in item) for item in comments):
                     errors.append(f"config parameter comment lacks example: {rel}:{idx + 1} ({key})")
 
-    # --- Language/execution/review policy ---------------------------------
+    # --- Политики языка, execution и review -------------------------------
     # Manifest хранит центральные knobs Harness. Здесь проверяем не только
     # наличие ключей, но и допустимые диапазоны/enum значения.
     manifest_path = root / ".project" / "manifest.yaml"
@@ -821,7 +822,7 @@ def main() -> int:
         except UnicodeDecodeError:
             errors.append(".project/manifest.yaml is not UTF-8")
 
-    # --- Git policy --------------------------------------------------------
+    # --- Git policy: безопасные mutation rules ----------------------------
     # Проверяем semantics, от которых зависит безопасность COMMIT/PUSH/PR/SYNC:
     # force-push, protected branches, staging и PR automation.
     git_policy_path = root / ".project" / "git-policy.toml"
