@@ -38,10 +38,33 @@ def main() -> int:
         action="store_true",
         help="Emit machine-readable JSON.",
     )
+    parser.add_argument(
+        "--fail-on-drift",
+        action="store_true",
+        help="Return exit code 1 when drift is found; default keeps DRIFT as successful audit data.",
+    )
     args = parser.parse_args()
 
     root = repo_root()
-    findings = scan_files(root, project_live_document_paths(root))
+    try:
+        findings = scan_files(root, project_live_document_paths(root))
+    except RuntimeError as exc:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "status": "BLOCKED",
+                        "scope": "live-project-documents",
+                        "error": str(exc),
+                        "findings": [],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(f"COMMAND REFERENCE CHECK: BLOCKED — {exc}")
+        return 2
 
     if args.json:
         print(
@@ -74,8 +97,11 @@ def main() -> int:
     else:
         print("COMMAND REFERENCE CHECK: PASS")
 
-    # 0 = drift не найден, 1 = findings, 2 зарезервирован для bootstrap/tool errors.
-    return 0 if not findings else 1
+    # DRIFT — валидный audit result для PROJECT RECONCILE, а не tool failure.
+    # CI/maintainer при необходимости может запросить fail-fast через --fail-on-drift.
+    if findings and args.fail_on_drift:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
