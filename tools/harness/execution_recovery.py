@@ -317,7 +317,9 @@ def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
                 "mtime": path.stat().st_mtime,
             }
         )
-    result.sort(key=lambda item: (item["mtime"], item["path"]))
+    # REVIEW filenames contain sortable timestamps; prefer durable filename order
+    # over filesystem mtime, which is not stable across clone/checkout.
+    result.sort(key=lambda item: item["path"])
     return result
 
 
