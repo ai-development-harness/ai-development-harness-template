@@ -29,7 +29,7 @@ required_files = [
   "docs/harness/COMMANDS.md",
   "docs/harness/COMMAND_SYNTAX.md",
   "docs/harness/COMMAND_TRANSITIONS.md",
-  "docs/harness/EXECUTION_RECOVERY.md",
+  "docs/harness/EXECUTION_STATUS.md",
   "docs/harness/DOCUMENT_MODEL.md",
   "docs/harness/GLOSSARY.md",
   "docs/harness/GIT_WORKFLOW.md",
