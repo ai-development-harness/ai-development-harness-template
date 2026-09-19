@@ -99,18 +99,76 @@ def scan_files(root: Path, paths: Iterable[Path]) -> list[DeprecatedCommandFindi
     return findings
 
 
+def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
+    """Прочитать live project paths из простого scalar subset manifest.yaml.
+
+    Полный YAML parser намеренно не нужен: Harness manifest использует top-level
+    sections и scalar path values. Неизвестные/сложные значения fail-closed.
+    """
+    manifest = root / ".project" / "manifest.yaml"
+    try:
+        text = manifest.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RuntimeError(f"cannot read Harness manifest {manifest}: {exc}") from exc
+
+    wanted = {
+        "sources": {"projectOverview", "requirements", "architecture", "roadmap", "status"},
+        "protocol": {"taskDirectory"},
+    }
+    values: dict[tuple[str, str], str] = {}
+    section: str | None = None
+
+    for raw_line in text.splitlines():
+        if not raw_line or raw_line.lstrip().startswith("#"):
+            continue
+        top = re.fullmatch(r"([A-Za-z0-9_.-]+):\s*(?:#.*)?", raw_line)
+        if top:
+            section = top.group(1)
+            continue
+        if section not in wanted:
+            continue
+        item = re.match(r"^  ([A-Za-z0-9_.-]+):\s*([^#\s][^#]*?)\s*(?:#.*)?$", raw_line)
+        if not item or item.group(1) not in wanted[section]:
+            continue
+        value = item.group(2).strip().strip('"').strip("'")
+        if value:
+            values[(section, item.group(1))] = value
+
+    missing = [
+        f"{section}.{key}"
+        for section, keys in wanted.items()
+        for key in sorted(keys)
+        if (section, key) not in values
+    ]
+    if missing:
+        raise RuntimeError(
+            "Harness manifest missing command-reference scan paths: " + ", ".join(missing)
+        )
+
+    def resolve_repo_path(value: str) -> Path:
+        rel = Path(value)
+        if rel.is_absolute() or ".." in rel.parts:
+            raise RuntimeError(f"Harness manifest path escapes repository: {value}")
+        return root / rel
+
+    files = [
+        resolve_repo_path(values[("sources", key)])
+        for key in ("projectOverview", "requirements", "architecture", "roadmap", "status")
+    ]
+    task_directory = resolve_repo_path(values[("protocol", "taskDirectory")])
+    return files, task_directory
+
+
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
 
-    Scope включает README, все live project docs под docs/** и STEP contracts.
+    Primary project files и taskDirectory берутся из .project/manifest.yaml;
+    дополнительно сканируются README и live project docs под docs/**.
     Не входят docs/harness (protocol source), docs/adr (decision history) и
     history-oriented planning records: reviews/audits/releases/updates/searches.
     """
-    paths = [
-        root / "README.md",
-        root / "planning/PLAN.md",
-        root / "planning/STATUS.md",
-    ]
+    manifest_files, task_directory = _manifest_project_paths(root)
+    paths = [root / "README.md", *manifest_files]
 
     docs_root = root / "docs"
     if docs_root.exists():
@@ -123,5 +181,5 @@ def project_live_document_paths(root: Path) -> list[Path]:
                 continue
             paths.append(path)
 
-    paths.extend(sorted((root / "planning/tasks").glob("STEP-*.md")))
+    paths.extend(sorted(task_directory.glob("STEP-*.md")))
     return paths
