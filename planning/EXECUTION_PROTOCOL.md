@@ -8,9 +8,9 @@
 
 ## 0. Command interface и цепочки
 
-### 0.1. Structural gate — всегда первым
+### 0.1. Command Transition System — structural gate всегда первым
 
-Для canonical command первым выполняется deterministic structural validation по `.project/command-transitions.json`:
+Harness использует **Command Transition System (CTS)**. Для canonical command первым выполняется deterministic structural validation по `.project/command-transitions.json`. Команда является action/transition request; фактическое state берётся из repository/runtime facts:
 
 ```bash
 python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
