@@ -466,10 +466,42 @@ def begin_phase(
         and cursor.get("state") == "running"
         and cursor.get("command") != command
     ):
-        raise ValueError(
-            "another phase is marked running; resolve/recover it before "
-            f"starting {command}: {cursor.get('command')}"
-        )
+        # A crash may happen after durable completion proof but before the
+        # local completion checkpoint. Canonical artifacts outrank the cursor,
+        # so allow exactly the command selected by the deterministic resolver.
+        recovered = resolve_step(root, step_id)
+        if recovered.get("command") != command:
+            raise ValueError(
+                "another phase is marked running; resolver does not allow "
+                f"starting {command}: {cursor.get('command')}"
+            )
+
+        previous = dict(cursor)
+        previous["state"] = "interrupted"
+        previous["recoveredAt"] = utc_now()
+
+        if recovered.get("reasonCode") == "PLAN_PROVEN_AFTER_INTERRUPTION":
+            previous["state"] = "completed"
+            previous["completedAt"] = utc_now()
+            previous["result"] = "SUCCESS"
+            previous["recoveryProof"] = "plan-ready-current-basis"
+            state["lastCompleted"] = previous
+        elif recovered.get("reasonCode") == "LATEST_REVIEW_FAIL":
+            review = latest_review(root, step_id)
+            previous["state"] = "completed"
+            previous["completedAt"] = utc_now()
+            previous["result"] = "FAIL"
+            previous["recoveryProof"] = (
+                review["path"] if review else "new-immutable-review-report"
+            )
+            state["lastCompleted"] = previous
+        elif recovered.get("reasonCode") == "PLAN_STALE_DURING_IMPLEMENT":
+            state["lastInterrupted"] = previous
+        else:
+            raise ValueError(
+                "running phase can change only when canonical recovery proof "
+                f"authorizes it; resolver reason={recovered.get('reasonCode')}"
+            )
 
     attempt = 1
     if (
