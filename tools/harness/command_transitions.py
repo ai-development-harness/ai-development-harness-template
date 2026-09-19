@@ -344,6 +344,36 @@ def _parse_segment(
     }
 
 
+def parse_canonical_command(raw: str, table: dict[str, Any]) -> dict[str, Any]:
+    """Parse one canonical command without reading repository/runtime state."""
+    table_errors = validate_transition_table(table)
+    if table_errors:
+        return {
+            "valid": False,
+            "code": "INVALID_TRANSITION_TABLE",
+            "message": "command transition table is invalid",
+            "errors": table_errors,
+        }
+
+    text = raw.strip()
+    if not text:
+        return {"valid": False, "code": "EMPTY_COMMAND", "message": "command is empty"}
+    if table.get("chainSeparator", " > ") in text:
+        return {
+            "valid": False,
+            "code": "CHAIN_NOT_ALLOWED",
+            "message": "parse_canonical_command accepts exactly one command",
+        }
+
+    return _parse_segment(
+        text,
+        table,
+        expected_domain=None,
+        inherited_target=None,
+        first_segment=True,
+    )
+
+
 def validate_command_text(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     table_errors = validate_transition_table(table)
     if table_errors:
