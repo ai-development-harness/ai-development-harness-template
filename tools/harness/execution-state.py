@@ -17,18 +17,26 @@ from execution_status import (
 )
 
 
+
+# Определить корень repository относительно расположения самого tooling. Скрипт не зависит от текущего shell directory.
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+
+# Печатать machine-readable JSON одинаковым форматом для агента, клиента и ручной диагностики.
 def emit(value: object) -> None:
     print(json.dumps(value, ensure_ascii=False, indent=2))
 
 
+
+# Описать публичные subcommands execution-state.py и делегировать каждую операцию execution_status.py.
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Manage crash-safe Harness command execution status."
     )
+    # Каждая subcommand отражает простую mutation/query общего status file.
+    # Новых Harness-команд здесь нет: это внутренний tooling protocol layer.
     sub = parser.add_subparsers(dest="action", required=True)
 
     start = sub.add_parser("start")
@@ -77,6 +85,8 @@ def main() -> int:
     elif args.action == "begin":
         emit(begin_command(root, args.root, args.command))
     elif args.action == "complete":
+        # details — редкая command-specific metadata внутри той же execution
+        # (например resolved update target/route). Это не отдельный state file.
         details = json.loads(args.details_json) if args.details_json else None
         if details is not None and not isinstance(details, dict):
             raise ValueError("--details-json must decode to a JSON object")
