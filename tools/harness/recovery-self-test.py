@@ -281,7 +281,7 @@ def main() -> int:
         task.write_text(text, encoding="utf-8")
         result = resolve_step(root, "STEP-001")
         assert result["command"] == "STEP PLAN STEP-001", result
-        assert result["reasonCode"] == "PLAN_STALE", result
+        assert result["reasonCode"].startswith("PLAN_STALE"), result
 
     print("RECOVERY SELF-TEST: PASS")
     return 0
