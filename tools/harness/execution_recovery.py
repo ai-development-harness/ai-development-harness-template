@@ -411,6 +411,25 @@ def _parse_step_phase(root: Path, command: str) -> dict[str, Any]:
     return parsed
 
 
+def start_execution(
+    root: Path,
+    step_id: str,
+    *,
+    root_command: str,
+) -> dict[str, Any]:
+    """Register/rebind the root orchestration command without advancing a phase."""
+    task_path(root, step_id)
+    path = execution_state_path(root, step_id)
+    state = load_execution_state(root, step_id)
+    if state is None or state.get("status") == "completed":
+        state = _new_state(step_id, root_command)
+    else:
+        state["rootCommand"] = root_command
+    state["updatedAt"] = utc_now()
+    _atomic_write_json(path, state)
+    return state
+
+
 def begin_phase(
     root: Path,
     step_id: str,
