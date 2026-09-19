@@ -765,6 +765,17 @@ def resolve_step(root: Path, step_id: str) -> dict[str, Any]:
             )
 
         if operation == "REVIEW":
+            if not plan["ready"]:
+                return _result(
+                    "REPLAN",
+                    step_id,
+                    command=f"STEP PLAN {step_id}",
+                    reason="PLAN_STALE_DURING_REVIEW",
+                    details={
+                        "storedBasis": plan["storedBasis"],
+                        "currentBasis": plan["currentBasis"],
+                    },
+                )
             baseline = cursor.get("context", {}).get("reviewReportBefore")
             if _review_after_baseline(review, baseline):
                 return _resolve_review_result(
@@ -784,6 +795,17 @@ def resolve_step(root: Path, step_id: str) -> dict[str, Any]:
             )
 
         if operation == "FIX":
+            if not plan["ready"]:
+                return _result(
+                    "REPLAN",
+                    step_id,
+                    command=f"STEP PLAN {step_id}",
+                    reason="PLAN_STALE_DURING_FIX",
+                    details={
+                        "storedBasis": plan["storedBasis"],
+                        "currentBasis": plan["currentBasis"],
+                    },
+                )
             return _result(
                 "RESUME",
                 step_id,
