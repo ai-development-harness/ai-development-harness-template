@@ -936,10 +936,33 @@ def find_completed(
     command: str,
     *,
     result: str | None = None,
+    latest_only: bool = False,
 ) -> dict[str, Any] | None:
     normalized = normalize_single_command(root, command)["normalized"]
     status = load_status(root)
-    for execution in reversed(status.get("executions", [])):
+    executions = status.get("executions", [])
+
+    if latest_only:
+        latest_completed = next(
+            (
+                execution
+                for execution in reversed(executions)
+                if execution.get("status") == "complete"
+            ),
+            None,
+        )
+        if latest_completed is None:
+            return None
+        current = latest_completed.get("current", {})
+        if (
+            current.get("command") == normalized
+            and current.get("status") == "complete"
+            and (result is None or current.get("result") == result)
+        ):
+            return latest_completed
+        return None
+
+    for execution in reversed(executions):
         current = execution.get("current", {})
         if (
             current.get("command") == normalized
