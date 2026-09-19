@@ -101,18 +101,26 @@ def scan_files(root: Path, paths: Iterable[Path]) -> list[DeprecatedCommandFindi
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
 
-    Immutable/history-oriented records намеренно не входят в scope:
-    planning/reviews, planning/audits, planning/releases,
-    planning/harness-updates, planning/skill-searches и docs/adr.
+    Scope включает README, все live project docs под docs/** и STEP contracts.
+    Не входят docs/harness (protocol source), docs/adr (decision history) и
+    history-oriented planning records: reviews/audits/releases/updates/searches.
     """
     paths = [
         root / "README.md",
-        root / "docs/PROJECT.md",
-        root / "docs/architecture.md",
-        root / "docs/OPEN_QUESTIONS.md",
         root / "planning/PLAN.md",
         root / "planning/STATUS.md",
     ]
-    paths.extend(sorted((root / "docs/requirements").glob("*.md")))
+
+    docs_root = root / "docs"
+    if docs_root.exists():
+        for path in sorted(docs_root.rglob("*.md")):
+            rel = path.relative_to(docs_root)
+            # docs/harness — protocol source of truth, его уже проверяет Harness Integrity.
+            # docs/adr — исторические decision records; старый command syntax там может
+            # намеренно отражать состояние проекта на момент принятия решения.
+            if rel.parts and rel.parts[0] in {"harness", "adr"}:
+                continue
+            paths.append(path)
+
     paths.extend(sorted((root / "planning/tasks").glob("STEP-*.md")))
     return paths
