@@ -35,7 +35,7 @@ from command_transitions import (
     validate_command_text,
     validate_transition_table,
 )
-from command_references import DEPRECATED_COMMAND_PATTERNS
+from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -385,6 +385,23 @@ def main() -> int:
             if not spec.pattern.search(spec.legacy + " "):
                 errors.append(
                     f"deprecated command pattern does not match its own sample: {spec.legacy}"
+                )
+
+        # Regression contract detector-а: legacy STEP command должен находиться
+        # даже внутри prose, но canonical namespaced форма и chain shorthand
+        # не должны давать false positive.
+        detector_cases = [
+            ("После анализа выполни PLAN STEP-007.", {"PLAN STEP-NNN"}),
+            ("После анализа выполни STEP PLAN STEP-007.", set()),
+            ("GIT CHECK > COMMIT > PUSH > PR", set()),
+            ("Нужен `FIX STEP-007` перед повторным review.", {"FIX STEP-NNN"}),
+        ]
+        for sample, expected_legacy in detector_cases:
+            actual_legacy = {spec.legacy for spec, _ in find_deprecated_commands(sample)}
+            if actual_legacy != expected_legacy:
+                errors.append(
+                    "deprecated command detector mismatch for sample "
+                    f"{sample!r}: expected {sorted(expected_legacy)}, got {sorted(actual_legacy)}"
                 )
 
         transition_docs = [
