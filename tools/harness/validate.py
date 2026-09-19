@@ -24,11 +24,6 @@ from command_transitions import (
     validate_command_text,
     validate_transition_table,
 )
-from execution_recovery import (
-    load_recovery_policy,
-    validate_recovery_policy,
-)
-
 
 def run_git(root: Path, *args: str) -> tuple[int, str]:
     try:
@@ -591,15 +586,13 @@ def main() -> int:
             if pattern.search(text):
                 errors.append(f"deprecated command form '{legacy}' found in {p.relative_to(root)}")
 
-    # Restart-safe execution recovery policy must remain deterministic and local-only.
-    try:
-        recovery_policy = load_recovery_policy(root)
-    except Exception as exc:
-        errors.append(f"invalid .project/execution-recovery.json: {exc}")
-        recovery_policy = None
-
-    if recovery_policy is not None:
-        errors.extend(validate_recovery_policy(recovery_policy))
+    # Universal execution status uses one fixed local-only path.
+    # It must never become tracked product/protocol state.
+    execution_status_rel = ".project/local/execution/execution-status.json"
+    if execution_status_rel not in [
+        ".project/local/execution/execution-status.json"
+    ]:
+        errors.append("unexpected execution status path")
 
     task_template = root / "planning/tasks/TEMPLATE.md"
     if task_template.is_file():
