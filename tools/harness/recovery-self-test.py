@@ -10,6 +10,7 @@ import tempfile
 from execution_recovery import (
     begin_phase,
     complete_phase,
+    contract_snapshot,
     resolve_step,
     stamp_plan,
 )
@@ -225,8 +226,15 @@ def main() -> int:
 
         # New immutable review report proves interrupted REVIEW completion.
         begin_phase(root, "STEP-001", "STEP REVIEW STEP-001")
+        contract_before_review_status = contract_snapshot(root, "STEP-001")
         report1 = create_review(root, "REVIEW-20260919-120000.md", "FAIL")
         update_review_status(task, "FAIL", report1)
+        contract_after_review_status = contract_snapshot(root, "STEP-001")
+        assert contract_after_review_status == contract_before_review_status, (
+            "review/status mutation changed PLAN contract snapshot",
+            contract_before_review_status,
+            contract_after_review_status,
+        )
         expect(
             resolve_step(root, "STEP-001"),
             "NEXT",
