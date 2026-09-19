@@ -56,6 +56,11 @@ def main() -> int:
     find = sub.add_parser("find")
     find.add_argument("--command", required=True)
     find.add_argument("--result", choices=["SUCCESS", "PASS", "FAIL", "BLOCKED"])
+    find.add_argument(
+        "--latest",
+        action="store_true",
+        help="Match only the latest completed execution.",
+    )
 
     stamp = sub.add_parser("stamp-plan")
     stamp.add_argument("step_id")
@@ -81,7 +86,14 @@ def main() -> int:
     elif args.action == "status":
         emit(load_status(root))
     elif args.action == "find":
-        emit(find_completed(root, args.command, result=args.result))
+        emit(
+            find_completed(
+                root,
+                args.command,
+                result=args.result,
+                latest_only=args.latest,
+            )
+        )
     elif args.action == "stamp-plan":
         emit(stamp_plan(root, args.step_id))
     return 0
