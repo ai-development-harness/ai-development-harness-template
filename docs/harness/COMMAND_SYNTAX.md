@@ -387,7 +387,7 @@ GIT CHECK > COMMIT > PUSH > PR
 python3 tools/harness/check-command-references.py --json
 ```
 
-Проверка ищет pre-namespace command forms в актуальных документах проекта: project overview/architecture/open questions/requirements, `planning/PLAN.md`, `planning/STATUS.md` и текущих `planning/tasks/STEP-*.md`.
+Проверка ищет pre-namespace command forms в `README.md`, live project Markdown под `docs/**` (кроме `docs/harness/**` и `docs/adr/**`), `planning/PLAN.md`, `planning/STATUS.md` и `planning/tasks/STEP-*.md`.
 
 Исторические артефакты намеренно не переписываются и не входят в deterministic scope: immutable review/audit/release/update/search reports и ADR history могут сохранять синтаксис, который был корректен в момент создания записи.
 
