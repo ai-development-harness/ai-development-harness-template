@@ -344,6 +344,8 @@ def complete_command(
     root_command: str,
     command: str,
     result: str,
+    *,
+    details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if result not in RESULTS:
         raise ValueError(f"result must be one of {sorted(RESULTS)}")
@@ -370,6 +372,8 @@ def complete_command(
     current["status"] = "blocked" if result == "BLOCKED" else "complete"
     current["result"] = result
     current["completedAt"] = utc_now()
+    if details is not None:
+        current["details"] = details
     execution["updatedAt"] = utc_now()
 
     if result == "BLOCKED":
