@@ -380,7 +380,9 @@ def main() -> int:
                     "deprecated command mapping points to unknown canonical command: "
                     f"{spec.legacy} -> {spec.canonical}"
                 )
-            if not spec.pattern.search(spec.legacy):
+            # Добавляем whitespace delimiter: legacy формы с free-form input
+            # (например ADD STEP:) по контракту не матчятся на голом token без separator.
+            if not spec.pattern.search(spec.legacy + " "):
                 errors.append(
                     f"deprecated command pattern does not match its own sample: {spec.legacy}"
                 )
