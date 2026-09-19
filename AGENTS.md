@@ -79,6 +79,22 @@ tokenize
 
 Локальный alias из `AGENTS.local.md` сначала разворачивается в canonical command, после чего проходит тот же deterministic gate.
 
+### Restart-safe STEP recovery
+
+Для `STEP RUN STEP-NNN` стандартных implementation-like типов и для `STEP NEXT` не определяй текущую phase только из истории чата.
+
+Используй:
+
+```bash
+python3 tools/harness/resolve-next-command.py --json STEP-NNN
+```
+
+или без STEP id для списка active/interrupted executions.
+
+Recovery policy: `.project/execution-recovery.json`. Local cursor: `.project/local/execution/`. Canonical repository artifacts всегда имеют приоритет над local cursor. Недоказанно завершённый IMPLEMENT/FIX resume-ится той же command; valid Plan basis и новый immutable review report могут доказать завершение PLAN/REVIEW после crash.
+
+Подробно: `docs/harness/EXECUTION_RECOVERY.md`.
+
 ### Цепочки команд
 
 Разрешённый shorthand использует оператор `>` только внутри одной области:
