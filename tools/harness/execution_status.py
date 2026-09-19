@@ -961,8 +961,8 @@ def resolve_execution(
 
     # STEP RUN — единственная текущая orchestration command. Если появится ещё
     # одна, её semantics нужно добавить явно; generic "умного" продолжения нет.
-    # Child transitions
-    # use the same CTS as manually entered STEP chains.
+    # Переходы между дочерними командами используют тот же CTS, что и
+    # вручную введённые STEP chains. Отдельной recovery-матрицы нет.
     if execution["mode"] == "orchestration":
         if current["command"] == execution["rootCommand"]:
             return {
