@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve the next STEP command after normal progress or interrupted execution."""
+"""Resolve interrupted or continuing Harness executions without LLM reasoning."""
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
 
-from execution_recovery import active_recovery_candidates, resolve_step
+from execution_status import resolve_root, unresolved_executions
 
 
 def repo_root() -> Path:
@@ -15,33 +15,35 @@ def repo_root() -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Deterministically resolve restart-safe STEP continuation."
+        description="Resolve exact next/resume command from execution-status.json."
     )
-    parser.add_argument("step_id", nargs="?")
+    parser.add_argument("--root")
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args()
-
     root = repo_root()
-    value = (
-        resolve_step(root, args.step_id)
-        if args.step_id
-        else {
-            "status": "ACTIVE_EXECUTIONS",
-            "candidates": active_recovery_candidates(root),
+
+    if args.root:
+        value = resolve_root(root, args.root)
+    else:
+        value = {
+            "status": "UNRESOLVED_EXECUTIONS",
+            "executions": unresolved_executions(root),
         }
-    )
 
     if args.as_json:
         print(json.dumps(value, ensure_ascii=False, indent=2))
-    elif args.step_id:
+    elif args.root:
         print(value["status"])
         if value.get("command"):
             print(value["command"])
         print(value["reasonCode"])
     else:
-        for item in value["candidates"]:
+        for item in value["executions"]:
             command = item.get("command") or "—"
-            print(f"{item['stepId']}: {item['status']} -> {command} ({item['reasonCode']})")
+            print(
+                f"{item['executionId']}: {item['status']} -> "
+                f"{command} ({item['reasonCode']})"
+            )
     return 0
 
 
