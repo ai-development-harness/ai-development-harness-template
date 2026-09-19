@@ -114,6 +114,16 @@ def validate_recovery_policy(policy: dict[str, Any]) -> list[str]:
         errors.append(
             "execution-recovery: STEP phases must contain PLAN/IMPLEMENT/REVIEW/FIX exactly once"
         )
+    if step_run.get("supportedTypes") != [
+        "IMPLEMENTATION",
+        "BUGFIX",
+        "REFACTOR",
+        "HARDENING",
+    ]:
+        errors.append(
+            "execution-recovery: stepRun.supportedTypes must be "
+            "IMPLEMENTATION/BUGFIX/REFACTOR/HARDENING"
+        )
     if step_run.get("completionProof") != "step-status-completed":
         errors.append(
             "execution-recovery: stepRun.completionProof must be 'step-status-completed'"
@@ -653,6 +663,18 @@ def _result(
 def resolve_step(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
     task_status = task["metadata"].get("Статус") or task["metadata"].get("Status", "")
+    step_type = task["metadata"].get("Type", "")
+    policy = load_recovery_policy(root)
+    supported_types = set(policy.get("stepRun", {}).get("supportedTypes", []))
+    if step_type not in supported_types:
+        return _result(
+            "NOT_APPLICABLE",
+            step_id,
+            command=None,
+            reason="STEP_TYPE_USES_TYPE_SPECIFIC_RUN",
+            details={"type": step_type},
+        )
+
     plan = plan_info(root, step_id)
     state = load_execution_state(root, step_id)
     review = latest_review(root, step_id)
