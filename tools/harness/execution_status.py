@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""Universal crash-safe execution status for AI Development Harness."""
+"""Универсальное crash-safe состояние выполнения Harness-команд.
+
+Модуль хранит operational history всех canonical invocations в одном локальном
+файле .project/local/execution/execution-status.json. Он не является audit log
+и не заменяет canonical project artifacts.
+
+Модель намеренно простая:
+- каждый явный ввод пользователя создаёт независимую root execution;
+- single command после completion останавливается;
+- explicit chain продолжает только свою исходную sequence через CTS;
+- STEP RUN использует orchestration mode и существующие STEP child commands;
+- current.status=running после обрыва означает resume той же команды.
+
+CTS остаётся единственным источником разрешённых переходов. Этот модуль отвечает
+не на вопрос «можно ли перейти?», а на вопрос «что реально запускалось и успело
+ли завершиться?».
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -19,7 +35,11 @@ from command_transitions import (
     validate_command_text,
 )
 
+# Фиксированный project-level operational state. Один файл намеренно покрывает
+# STEP, Git, Harness update и остальные namespaces.
 STATUS_PATH = ".project/local/execution/execution-status.json"
+# mode описывает форму уже существующего пользовательского ввода и НЕ является
+# новой командой/профилем. Пользователь никогда не выбирает mode вручную.
 EXECUTION_MODES = {"single", "chain", "orchestration"}
 EXECUTION_STATUSES = {"running", "complete", "blocked"}
 COMMAND_STATUSES = {"running", "complete", "blocked"}
@@ -42,18 +62,26 @@ CONTRACT_SECTIONS = (
 REVIEW_VERDICTS = {"PASS", "FAIL", "BLOCKED", "NOT REVIEWED"}
 
 
+
+# Вернуть UTC timestamp в стабильном ISO-формате. Local timezone намеренно не хранится, чтобы сравнение records не зависело от окружения.
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+
+# Вернуть единственный фиксированный путь execution-status.json. Per-STEP state files в этой модели не используются.
 def status_path(root: Path) -> Path:
     return root / STATUS_PATH
 
 
+
+# Создать пустую schema v1 для проекта, где execution-status ещё ни разу не записывался.
 def empty_status() -> dict[str, Any]:
     return {"schemaVersion": 1, "executions": []}
 
 
+
+# Прочитать local state и сразу проверить schema. Повреждённый JSON/state не должен тихо трактоваться как отсутствие истории.
 def load_status(root: Path) -> dict[str, Any]:
     path = status_path(root)
     if not path.is_file():
@@ -66,10 +94,14 @@ def load_status(root: Path) -> dict[str, Any]:
     return value
 
 
+
+# Проверить минимальные инварианты operational state: уникальные IDs, допустимые modes/status/result и корректный current command.
 def validate_status(value: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if value.get("schemaVersion") != 1:
         errors.append("execution-status: schemaVersion must be 1")
+    # Несколько records нужны принципиально: отдельный GIT CHECK не должен
+    # уничтожать interrupted STEP RUN, и наоборот.
     executions = value.get("executions")
     if not isinstance(executions, list):
         return errors + ["execution-status: executions must be an array"]
@@ -118,6 +150,8 @@ def validate_status(value: dict[str, Any]) -> list[str]:
     return errors
 
 
+
+# Записать JSON crash-safe способом через temporary file, fsync и atomic os.replace. Это защищает от половины файла при process/session crash.
 def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
@@ -138,6 +172,8 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
             tmp.unlink(missing_ok=True)
 
 
+
+# Проверить state перед записью и сохранить его атомарно. Любая mutation local execution state проходит через эту точку.
 def save_status(root: Path, value: dict[str, Any]) -> None:
     errors = validate_status(value)
     if errors:
@@ -145,6 +181,8 @@ def save_status(root: Path, value: dict[str, Any]) -> None:
     _atomic_write_json(status_path(root), value)
 
 
+
+# Пропустить пользовательский root command через CTS parser и автоматически определить internal mode: single, chain или STEP RUN orchestration.
 def _normalize_root(root: Path, raw: str) -> dict[str, Any]:
     table = load_transition_table(root)
     result = validate_command_text(raw, table)
@@ -158,6 +196,8 @@ def _normalize_root(root: Path, raw: str) -> dict[str, Any]:
     if not first.get("valid"):
         raise ValueError("normalized root command failed canonical parser")
 
+    # mode выводится только из синтаксически уже валидного root command.
+    # Никакого execution profile/config для этого не существует.
     if len(normalized) > 1:
         mode = "chain"
     elif first.get("domain") == "STEP" and first.get("operation") == "RUN":
@@ -173,6 +213,8 @@ def _normalize_root(root: Path, raw: str) -> dict[str, Any]:
     }
 
 
+
+# Нормализовать одну canonical command без chain. Используется там, где current/child command уже должна быть одиночной.
 def normalize_single_command(root: Path, raw: str) -> dict[str, Any]:
     table = load_transition_table(root)
     parsed = parse_canonical_command(raw, table)
@@ -183,6 +225,8 @@ def normalize_single_command(root: Path, raw: str) -> dict[str, Any]:
     return parsed
 
 
+
+# Найти последнюю подходящую execution по ID/root/status. Поиск идёт с конца, потому что файл хранит records в порядке появления.
 def _latest_execution(
     status: dict[str, Any],
     *,
@@ -202,6 +246,8 @@ def _latest_execution(
     return None
 
 
+
+# Безопасно прочитать текущий Git HEAD для narrow durable proof GIT COMMIT. Ошибка Git здесь не должна ломать execution tracking.
 def _git_head(root: Path) -> str | None:
     try:
         completed = subprocess.run(
@@ -220,6 +266,8 @@ def _git_head(root: Path) -> str | None:
     return value or None
 
 
+
+# Собрать минимальный context, нужный только для crash recovery конкретных commands; не превращать его в копию project state.
 def _command_context(root: Path, command: str) -> dict[str, Any]:
     parsed = normalize_single_command(root, command)
     context: dict[str, Any] = {}
@@ -235,16 +283,22 @@ def _command_context(root: Path, command: str) -> dict[str, Any]:
             review = latest_review(root, step_id)
             context["reviewReportBefore"] = review["path"] if review else None
 
+    # Для COMMIT сравнение HEAD защищает от создания второго commit, если Git
+    # mutation успела завершиться, а local complete-checkpoint — нет.
     if parsed.get("domain") == "GIT" and parsed.get("operation") == "COMMIT":
         context["gitHeadBefore"] = _git_head(root)
 
     return context
 
 
+
+# Зарегистрировать новый root invocation либо resume уже running invocation с тем же normalized rootCommand.
 def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
     normalized = _normalize_root(root, raw_command)
     status = load_status(root)
 
+    # Повтор той же root command после session interruption должен resume
+    # существующий record, а не создавать параллельный duplicate.
     existing = _latest_execution(
         status,
         root_command=normalized["rootCommand"],
@@ -291,6 +345,8 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
     return execution
 
 
+
+# Найти конкретный CTS edge между двумя уже нормализованными commands. Cross-domain переход здесь всегда отсутствует.
 def _edge_for(
     root: Path,
     from_command: str,
@@ -310,6 +366,8 @@ def _edge_for(
     return None
 
 
+
+# Построить canonical next command по CTS edge, сохранив STEP/release target текущей execution.
 def _build_next_from_edge(
     root: Path,
     current_command: str,
@@ -333,12 +391,16 @@ def _build_next_from_edge(
     return canonical.rstrip(":")
 
 
+
+# Закрыть root execution как complete/blocked и записать timestamps. Функция не решает, можно ли было туда перейти.
 def _mark_root_complete(execution: dict[str, Any], *, blocked: bool = False) -> None:
     execution["status"] = "blocked" if blocked else "complete"
     execution["completedAt"] = utc_now()
     execution["updatedAt"] = utc_now()
 
 
+
+# Зафиксировать result текущей command и обновить состояние root execution согласно её mode.
 def complete_command(
     root: Path,
     root_command: str,
@@ -376,12 +438,16 @@ def complete_command(
         current["details"] = details
     execution["updatedAt"] = utc_now()
 
+    # BLOCKED всегда терминален для автоматического продолжения root execution.
+    # Уже выполненные side effects при этом не откатываются.
     if result == "BLOCKED":
         _mark_root_complete(execution, blocked=True)
         save_status(root, status)
         return execution
 
     mode = execution["mode"]
+    # Single invocation завершается здесь даже если CTS знает потенциальный edge.
+    # Пользователь не просил chain/orchestration — скрыто продолжать нельзя.
     if mode == "single":
         _mark_root_complete(execution)
     elif mode == "chain":
@@ -403,6 +469,8 @@ def complete_command(
     return execution
 
 
+
+# Проверить допустимость первой child command STEP RUN. Это bootstrap orchestration до появления первого CTS child edge.
 def _orchestration_first_child_allowed(
     root: Path,
     execution: dict[str, Any],
@@ -422,6 +490,8 @@ def _orchestration_first_child_allowed(
     return child.get("operation") in {"PLAN", "IMPLEMENT", "REVIEW", "FIX", "AUDIT"}
 
 
+
+# Перевести chain/orchestration execution на следующую child command. Ожидаемая команда сверяется с resolver, чтобы не перескочить phase.
 def begin_command(
     root: Path,
     root_command: str,
@@ -457,6 +527,8 @@ def begin_command(
     if execution["mode"] == "single":
         raise ValueError("single execution cannot switch to another command")
 
+    # Для child transition доверяем resolver, а не caller. Это не даёт вручную
+    # перескочить, например, с IMPLEMENT сразу в FIX внутри того же root RUN.
     resolved = resolve_execution(root, execution, mutate=False)
     expected = resolved.get("command")
 
@@ -473,6 +545,8 @@ def begin_command(
         )
 
     if execution["mode"] == "chain":
+        # Chain продолжает только sequence, которую пользователь ввёл изначально.
+        # CTS не имеет права добавить в неё «логичный» лишний segment.
         sequence = execution["sequence"]
         index = sequence.index(normalized_command)
         execution["currentIndex"] = index
@@ -491,6 +565,8 @@ def begin_command(
     return execution
 
 
+
+# Явно остановить root execution как blocked. Blocked state сохраняется между sessions и не продолжается автоматически.
 def block_execution(
     root: Path,
     root_command: str,
@@ -519,6 +595,8 @@ def block_execution(
     return execution
 
 
+
+# Нормализовать Markdown-текст для stable hashing: убрать CRLF/trailing blank lines, не меняя смысл содержимого.
 def _normalize_text(value: str) -> str:
     lines = [line.rstrip() for line in value.replace("\r\n", "\n").split("\n")]
     while lines and not lines[0].strip():
@@ -528,6 +606,8 @@ def _normalize_text(value: str) -> str:
     return "\n".join(lines)
 
 
+
+# Разобрать простой Harness Markdown на metadata и секции без полноценного Markdown parser. Поддерживается только используемый repository subset.
 def parse_markdown(text: str) -> tuple[dict[str, str], dict[str, str]]:
     metadata: dict[str, str] = {}
     sections: dict[str, list[str]] = {}
@@ -549,6 +629,8 @@ def parse_markdown(text: str) -> tuple[dict[str, str], dict[str, str]]:
     }
 
 
+
+# Разрешить STEP id в canonical planning/tasks path и отклонить некорректный identifier до чтения файла.
 def task_path(root: Path, step_id: str) -> Path:
     if not re.fullmatch(r"STEP-\d{3,}", step_id):
         raise ValueError(f"invalid STEP id: {step_id}")
@@ -558,6 +640,8 @@ def task_path(root: Path, step_id: str) -> Path:
     return path
 
 
+
+# Прочитать STEP и вернуть исходный текст плюс разобранные metadata/sections для deterministic recovery helpers.
 def read_task(root: Path, step_id: str) -> dict[str, Any]:
     path = task_path(root, step_id)
     text = path.read_text(encoding="utf-8")
@@ -570,6 +654,8 @@ def read_task(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
+
+# Выбрать только поля STEP contract, изменение которых действительно должно инвалидировать Implementation plan.
 def contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
     return {
@@ -584,6 +670,8 @@ def contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
+
+# Посчитать SHA-256 нормализованного task contract. Hash не включает Evidence/Review status/сам план.
 def contract_basis(root: Path, step_id: str) -> str:
     encoded = json.dumps(
         contract_snapshot(root, step_id),
@@ -594,6 +682,8 @@ def contract_basis(root: Path, step_id: str) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+
+# Сопоставить stored Plan basis с текущим contract hash и определить, можно ли считать plan актуальным.
 def plan_info(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
     section = task["sections"].get("Implementation plan", "")
@@ -609,6 +699,8 @@ def plan_info(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
+
+# Точечно заменить обязательное поле Implementation plan. Отсутствующее поле — ошибка template/protocol, а не повод молча добавить новое место.
 def _replace_plan_field(text: str, field: str, value: str) -> str:
     pattern = re.compile(rf"(?m)^\*\*{re.escape(field)}:\*\*\s*.*$")
     replacement = f"**{field}:** {value}"
@@ -617,6 +709,8 @@ def _replace_plan_field(text: str, field: str, value: str) -> str:
     return pattern.sub(replacement, text, count=1)
 
 
+
+# После сохранения содержательного plan детерминированно проставить Ready/revision/basis/timestamp атомарной записью STEP-файла.
 def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
     section = task["sections"].get("Implementation plan", "")
@@ -654,6 +748,8 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
+
+# Извлечь только поддерживаемый verdict из immutable review report. Неизвестное значение не угадывается.
 def _review_verdict(path: Path) -> str | None:
     if not path.is_file():
         return None
@@ -662,6 +758,8 @@ def _review_verdict(path: Path) -> str | None:
     return verdict if verdict in REVIEW_VERDICTS else None
 
 
+
+# Собрать immutable review reports STEP в сортируемом по filename порядке; timestamp в имени — durable ordering.
 def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
     directory = root / "planning/reviews" / step_id
     if not directory.is_dir():
@@ -679,11 +777,15 @@ def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
     return result
 
 
+
+# Вернуть последний review report STEP либо None, если review ещё не существует.
 def latest_review(root: Path, step_id: str) -> dict[str, Any] | None:
     reports = review_reports(root, step_id)
     return reports[-1] if reports else None
 
 
+
+# Попробовать доказать completion running command по durable artifacts и тем самым закрыть crash-window между фактом и local checkpoint.
 def _durable_recovery_result(
     root: Path,
     execution: dict[str, Any],
@@ -693,6 +795,8 @@ def _durable_recovery_result(
         return None
     parsed = normalize_single_command(root, current["command"])
 
+    # PLAN — редкий случай, где durable artifact сильнее stale local "running":
+    # Ready + совпадающий Plan basis доказывают завершение planning.
     if parsed.get("domain") == "STEP" and parsed.get("operation") == "PLAN":
         target = parsed.get("target")
         if target:
@@ -702,6 +806,8 @@ def _durable_recovery_result(
             except (OSError, ValueError, FileNotFoundError):
                 return None
 
+    # REVIEW можно восстановить по новому immutable report, появившемуся после
+    # reviewReportBefore. Это экономит повторный дорогой review после crash.
     if parsed.get("domain") == "STEP" and parsed.get("operation") == "REVIEW":
         target = parsed.get("target")
         baseline = current.get("context", {}).get("reviewReportBefore")
@@ -721,6 +827,8 @@ def _durable_recovery_result(
     return None
 
 
+
+# Применить доказанный durable result к local state так, как будто completion checkpoint успел записаться до crash.
 def _apply_recovered_completion(
     root: Path,
     status: dict[str, Any],
@@ -753,6 +861,8 @@ def _apply_recovered_completion(
     save_status(root, status)
 
 
+
+# Главный deterministic resolver одной root execution: RESUME running command либо NEXT/DONE/BLOCKED по mode и CTS.
 def resolve_execution(
     root: Path,
     execution: dict[str, Any],
@@ -778,6 +888,8 @@ def resolve_execution(
 
     current = execution["current"]
     if current.get("status") == "running":
+        # Базовое правило: running => RESUME той же command. Только узкий набор
+        # доказуемых durable facts имеет право автоматически закрыть crash-window.
         recovered = _durable_recovery_result(root, execution)
         if recovered is not None and mutate:
             status = load_status(root)
@@ -847,7 +959,9 @@ def resolve_execution(
             "runtimePreconditions": edge.get("runtimePreconditions", []),
         }
 
-    # STEP RUN is the only current orchestration command. Child transitions
+    # STEP RUN — единственная текущая orchestration command. Если появится ещё
+    # одна, её semantics нужно добавить явно; generic "умного" продолжения нет.
+    # Child transitions
     # use the same CTS as manually entered STEP chains.
     if execution["mode"] == "orchestration":
         if current["command"] == execution["rootCommand"]:
@@ -897,6 +1011,8 @@ def resolve_execution(
     raise ValueError(f"unsupported execution mode: {execution['mode']}")
 
 
+
+# Найти последнюю relevant execution для конкретного root command и разрешить её текущее состояние.
 def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     status = load_status(root)
@@ -922,6 +1038,8 @@ def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
     return resolve_execution(root, execution)
 
 
+
+# Вернуть все running/blocked executions проекта. Это позволяет новой session увидеть несколько независимых незавершённых работ.
 def unresolved_executions(root: Path) -> list[dict[str, Any]]:
     status = load_status(root)
     values: list[dict[str, Any]] = []
@@ -935,6 +1053,8 @@ def unresolved_executions(root: Path) -> list[dict[str, Any]]:
     return values
 
 
+
+# Найти завершённую command для безопасного cross-session handoff; latest_only используется там, где старый PASS может протухнуть.
 def find_completed(
     root: Path,
     command: str,
