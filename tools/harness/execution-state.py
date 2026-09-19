@@ -46,6 +46,10 @@ def main() -> int:
         required=True,
         choices=["SUCCESS", "PASS", "FAIL", "BLOCKED"],
     )
+    complete.add_argument(
+        "--details-json",
+        help="Optional JSON object with command-specific durable handoff metadata.",
+    )
 
     block = sub.add_parser("block")
     block.add_argument("--root", required=True)
@@ -73,12 +77,16 @@ def main() -> int:
     elif args.action == "begin":
         emit(begin_command(root, args.root, args.command))
     elif args.action == "complete":
+        details = json.loads(args.details_json) if args.details_json else None
+        if details is not None and not isinstance(details, dict):
+            raise ValueError("--details-json must decode to a JSON object")
         emit(
             complete_command(
                 root,
                 args.root,
                 args.command,
                 args.result,
+                details=details,
             )
         )
     elif args.action == "block":
