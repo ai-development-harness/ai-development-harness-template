@@ -63,37 +63,83 @@
 python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
 ```
 
-Порядок обязателен:
+CTS validation order:
 
 ```text
 tokenize
 → normalize
 → transition-table
-→ runtime-preconditions
-→ dispatch
 ```
 
-Если gate возвращает `INVALID_CHAIN`, `CHAIN_NOT_ALLOWED`, `DOMAIN_MISMATCH`, `TARGET_MISMATCH` или другую structural error — не исполняй ни один segment и не route-ь команду в skill.
+Если gate возвращает `INVALID_CHAIN`, `CHAIN_NOT_ALLOWED`, `DOMAIN_MISMATCH`, `TARGET_MISMATCH` или другую structural error — не исполняй ни один segment, не создавай execution record и не route-ь команду в skill.
 
-Только после structural PASS используй соответствующий skill из `.agents/skills/` и проверяй runtime/repository preconditions.
-
-Локальный alias из `AGENTS.local.md` сначала разворачивается в canonical command, после чего проходит тот же deterministic gate.
-
-### Restart-safe STEP recovery
-
-Для `STEP RUN STEP-NNN` стандартных implementation-like типов и для `STEP NEXT` не определяй текущую phase только из истории чата.
-
-Используй:
+После structural PASS зарегистрируй root execution **до command-specific dispatch**:
 
 ```bash
-python3 tools/harness/resolve-next-command.py --json STEP-NNN
+python3 tools/harness/execution-state.py start \
+  --command '<raw canonical command>'
 ```
 
-или без STEP id для списка active/interrupted executions.
+Единый local state:
 
-Recovery policy: `.project/execution-recovery.json`. Local cursor: `.project/local/execution/`. Canonical repository artifacts всегда имеют приоритет над local cursor. Недоказанно завершённый IMPLEMENT/FIX resume-ится той же command; valid Plan basis и новый immutable review report могут доказать завершение PLAN/REVIEW после crash.
+```text
+.project/local/execution/execution-status.json
+```
 
-Подробно: `docs/harness/EXECUTION_RECOVERY.md`.
+После этого проверь runtime/repository preconditions и используй соответствующий skill из `.agents/skills/`.
+
+Локальный alias из `AGENTS.local.md` сначала разворачивается в canonical command, после чего проходит тот же structural gate и execution tracking.
+
+### Universal execution status
+
+Execution Status применяется ко **всем** canonical commands, а не только к STEP.
+
+Каждый явный пользовательский ввод создаёт независимую root execution:
+
+- одна команда → `mode=single`;
+- explicit chain → `mode=chain`;
+- `STEP RUN STEP-NNN` → `mode=orchestration`.
+
+`mode` — внутренняя метка уже существующего ввода, а не новый command layer.
+
+Главное правило CTS scope:
+
+> CTS валидирует transitions только внутри одной root execution. Две отдельные команды пользователя не обязаны иметь CTS edge между собой.
+
+Поэтому это валидно:
+
+```text
+STEP PLAN STEP-001
+<execution complete>
+
+GIT COMMIT
+```
+
+Это две независимые executions.
+
+При session/runtime interruption:
+
+- `current.status=running` → resume той же `current.command`;
+- `current.status=complete` внутри chain/orchestration → resolver вычисляет продолжение через исходную sequence + CTS;
+- `blocked` → автоматически не продолжать;
+- новая независимая команда создаёт новый execution record и **не затирает** старый interrupted execution.
+
+Для конкретного root:
+
+```bash
+python3 tools/harness/resolve-next-command.py --json \
+  --root '<root canonical command>'
+```
+
+Для всех unresolved executions:
+
+```bash
+python3 tools/harness/resolve-next-command.py --json
+```
+
+Canonical repository artifacts имеют приоритет над local operational state. Для PLAN/REVIEW/GIT COMMIT resolver может использовать durable evidence, чтобы закрыть маленькое crash-window между фактическим завершением и записью `complete`.
+
+Подробно: `docs/harness/EXECUTION_STATUS.md`.
 
 ### Цепочки команд
 
