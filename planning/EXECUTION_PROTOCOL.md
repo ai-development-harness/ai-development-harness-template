@@ -528,12 +528,18 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 Для инициализированного проекта:
 
 1. Сравнить code/config/migrations/tests с REQ, Accepted ADR, architecture docs, tasks и evidence.
-2. Найти documentation/status/architecture/requirement drift и undocumented behavior.
-3. Не исправлять production code.
-4. Однозначный projection drift можно синхронизировать.
-5. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
-6. Новые устойчивые решения не записывать как Accepted ADR без decision process.
-7. Сохранить audit report.
+2. До итогового вывода выполнить deterministic command-reference check:
+   ```bash
+   python3 tools/harness/check-command-references.py --json
+   ```
+3. Найти documentation/status/architecture/requirement drift, undocumented behavior и stale Harness command references в live project-owned документах.
+4. Findings command-reference checker считать drift, если это не явно намеренная историческая цитата. Immutable/history-oriented reports и ADR history не переписывать только ради нового синтаксиса.
+5. Если checker не удалось выполнить, явно записать BLOCKED в Evidence; запрещено утверждать, что command-syntax drift отсутствует.
+6. Не исправлять production code.
+7. Однозначный projection drift и чисто документальный command-syntax drift можно синхронизировать.
+8. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
+9. Новые устойчивые решения не записывать как Accepted ADR без decision process.
+10. Сохранить audit report.
 
 ## 17. `RELEASE CHECK`
 
