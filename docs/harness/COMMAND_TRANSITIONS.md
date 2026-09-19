@@ -1,6 +1,8 @@
 # Command transitions
 
-Этот документ описывает структурную модель переходов между каноническими командами AI Development Harness.
+Этот документ описывает **Command Transition System (CTS)** AI Development Harness — детерминированную систему допустимых переходов между каноническими командами с условиями результата и runtime guards.
+
+Команда в CTS является action/transition request, а не состоянием. Состояние определяется repository/runtime facts. Поэтому термин «Command State Machine» допустим только как упрощённая аналогия; каноническое название модели — **Command Transition System**.
 
 Machine-readable source of truth:
 
