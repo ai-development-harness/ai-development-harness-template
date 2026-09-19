@@ -372,6 +372,19 @@ def main() -> int:
                     f"harness-policy required command '{command}' missing from command transition graph"
                 )
 
+        # Legacy detector обязан предлагать только реально существующие canonical
+        # commands. Иначе после будущего rename checker сам станет источником drift.
+        for spec in DEPRECATED_COMMAND_PATTERNS:
+            if spec.canonical not in table_commands:
+                errors.append(
+                    "deprecated command mapping points to unknown canonical command: "
+                    f"{spec.legacy} -> {spec.canonical}"
+                )
+            if not spec.pattern.search(spec.legacy):
+                errors.append(
+                    f"deprecated command pattern does not match its own sample: {spec.legacy}"
+                )
+
         transition_docs = [
             root / "AGENTS.md",
             root / "docs/harness/COMMANDS.md",
