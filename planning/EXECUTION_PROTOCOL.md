@@ -56,61 +56,99 @@ HARNESS UPDATE CHECK TO v0.4.0 > APPLY
 
 Разрешённые chain surfaces: GIT; ручной STEP flow `PLAN/IMPLEMENT/REVIEW/FIX`; HARNESS UPDATE только `CHECK > APPLY`. PROJECT/SKILL/GITHUB/RELEASE и `STEP RUN`/ `STEP AUDIT` остаются самостоятельными командами.
 
-### 0.2. Execution Recovery — restart-safe orchestration
+### 0.2. Execution Status — единый restart-safe слой
 
-CTS отвечает на вопрос **«какой переход разрешён?»**. Execution Recovery отвечает на вопрос **«на каком переходе фактически остановилась работа после обрыва session/runtime?»**.
-
-Machine-readable policy:
+После structural PASS каждая canonical command регистрируется в одном local-only файле:
 
 ```text
-.project/execution-recovery.json
+.project/local/execution/execution-status.json
 ```
 
-Local operational cursor:
-
-```text
-.project/local/execution/STEP-NNN.json
-```
-
-Путь local-only и не коммитится.
-
-Authority order:
-
-```text
-canonical repository artifacts
-        >
-local execution cursor
-```
-
-Cursor помогает продолжить работу, но никогда не является доказательством product completion. Если local cursor потерян, Harness обязан восстановить максимум из durable artifacts и при недостатке доказательств консервативно повторить незавершённую command phase.
-
-Deterministic resolver:
+Регистрация выполняется **до command-specific dispatch**:
 
 ```bash
-python3 tools/harness/resolve-next-command.py --json STEP-NNN
+python3 tools/harness/execution-state.py start \
+  --command '<raw canonical command>'
 ```
 
-Управление crash-safe cursor:
+Execution Status применяется ко всем namespaces и не привязан к STEP.
+
+Внутренний `mode` определяется автоматически из уже существующего пользовательского ввода:
+
+- одна command → `single`;
+- explicit chain → `chain`;
+- `STEP RUN STEP-NNN` → `orchestration`.
+
+Это metadata, а не новый command layer.
+
+CTS scope:
+
+> CTS проверяет transitions только внутри одной root execution. Отдельные пользовательские invocations являются независимыми executions и не требуют edge между собой.
+
+Поэтому:
+
+```text
+STEP PLAN STEP-001
+<complete>
+
+GIT COMMIT
+```
+
+валидно как две независимые executions.
+
+Один файл может содержать несколько records. Новая команда не затирает старую interrupted execution.
+
+Current command status:
+
+- `running` — completion не доказан; после interruption resume той же command;
+- `complete` — command завершена;
+- `blocked` — автоматически дальше не идти.
+
+Result: `SUCCESS | PASS | FAIL | BLOCKED`.
+
+Для root execution:
 
 ```bash
-python3 tools/harness/execution-state.py start STEP-NNN --root-command 'STEP RUN STEP-NNN'
-python3 tools/harness/execution-state.py begin STEP-NNN --command 'STEP IMPLEMENT STEP-NNN'
-python3 tools/harness/execution-state.py complete STEP-NNN --command 'STEP IMPLEMENT STEP-NNN' --result SUCCESS
+python3 tools/harness/resolve-next-command.py --json \
+  --root '<root canonical command>'
 ```
 
-Запись cursor выполняется atomic replace: temporary file → flush/fsync → `os.replace`.
+Без `--root` resolver возвращает все unresolved executions.
 
-Для стандартного implementation flow recovery поддерживает `IMPLEMENTATION`, `BUGFIX`, `REFACTOR`, `HARDENING`. Type-specific `ADR`, `RESEARCH`, `AUDIT`, `REVIEW`, `DOCUMENTATION`, `RELEASE` пока продолжают использовать собственную RUN semantics и не должны ошибочно прогоняться через coding resolver.
+Поведение после `complete`:
 
-Completion proof:
+- `single` → остановиться; CTS ничего автоматически не продолжает;
+- `chain` → проверить следующий segment исходной sequence через CTS/result/runtime preconditions;
+- `STEP RUN` → продолжить orchestration через существующие child commands/CTS; если Type выполняется без отдельной child command, RUN остаётся current и после crash resume-ится сам.
 
-- `PLAN` — `Plan status: Ready` + актуальный `Plan basis`;
-- `IMPLEMENT` — successful local completion-checkpoint после scope/verification/Evidence;
-- `REVIEW` — новый immutable review report после начала review phase; local checkpoint желателен, но report может восстановить verdict после crash;
-- `FIX` — successful local completion-checkpoint после исправлений/verification/Evidence;
-- весь STEP — canonical `Статус: Выполнено`.
+Для chain/orchestration переход к следующей child command отмечается:
 
-Если phase отмечена `running`, а completion proof отсутствует, следующая session повторяет **эту же command** в resume-semantics, а не переходит вперёд.
+```bash
+python3 tools/harness/execution-state.py begin \
+  --root '<root command>' \
+  --command '<next/current child command>'
+```
+
+Completion:
+
+```bash
+python3 tools/harness/execution-state.py complete \
+  --root '<root command>' \
+  --command '<current command>' \
+  --result <SUCCESS|PASS|FAIL|BLOCKED>
+```
+
+Запись выполняется atomic replace: temporary file → flush/fsync → `os.replace`.
+
+Canonical artifacts имеют приоритет над local operational state. Для существующих команд разрешены узкие deterministic recovery proofs:
+
+- актуальный `Plan basis` может доказать завершённый `STEP PLAN`;
+- новый immutable review report может восстановить verdict `STEP REVIEW`;
+- изменение Git HEAD после `GIT COMMIT` может доказать, что commit уже создан.
+
+Эти проверки не создают profiles и не меняют command surface.
+
+Подробно: `docs/harness/EXECUTION_STATUS.md`.
 
 ## 1. Сущности
 
@@ -324,163 +362,121 @@ PROJECT QUICK FIX — исключение из STEP workflow для micro-chang
 
 ## 8. `STEP PLAN STEP-NNN`
 
-Production code mutation запрещена. Разрешено обновление только planning/docs, необходимое для фиксации плана.
-
-Перед planning:
-
-```bash
-python3 tools/harness/execution-state.py begin STEP-NNN \
-  --command 'STEP PLAN STEP-NNN'
-```
+Production code mutation запрещена. Execution tracking уже зарегистрирован global command wrapper; skill не создаёт отдельный per-STEP state.
 
 1. Resolve task, dependencies, REQ, ADR, architecture, code/tests/config.
-2. Если hard dependency не выполнена — не планировать как будто её нет; оформить blocker/corrective dependency.
-3. Проверить, не требует ли task нового ADR.
-4. Сформировать implementation approach, impacted modules/files, data/API implications, test strategy, verification sequence, risks/rollback при необходимости.
-5. Сохранить содержимое `## Implementation plan`.
+2. Если hard dependency не выполнена — оформить blocker/corrective dependency.
+3. Проверить необходимость нового ADR.
+4. Сформировать implementation approach, impacted modules/files, data/API implications, test strategy, verification sequence, risks/rollback.
+5. Сохранить `## Implementation plan`.
 6. Выполнить:
    ```bash
    python3 tools/harness/execution-state.py stamp-plan STEP-NNN
    ```
-   Script выставляет `Plan status: Ready`, увеличивает `Plan revision`, записывает `Planned at` и `Plan basis`.
 7. `Plan basis` = SHA-256 от нормализованного task contract: Type, Depends on, Requirements, ADR, Risk flags, Goal, Context, Scope, Mutation policy, Out of scope, Acceptance criteria, Verification, Deliverables.
-8. Если task contract меняется и hash больше не совпадает, plan = stale без LLM reasoning.
-9. После полного PLAN:
-   ```bash
-   python3 tools/harness/execution-state.py complete STEP-NNN \
-     --command 'STEP PLAN STEP-NNN' \
-     --result SUCCESS
-   ```
-10. Не менять Status на `В работе` только из-за planning.
-11. Если session оборвалась после `stamp-plan`, но до completion-checkpoint, valid Plan basis всё равно доказывает завершённый PLAN.
-12. Финальный handoff определяется CTS/resolver; для стандартного flow это `STEP IMPLEMENT STEP-NNN`.
+8. Если hash больше не совпадает, plan = stale без LLM reasoning.
+9. Не менять Status на `В работе` только из-за planning.
+10. Если session оборвалась после `stamp-plan`, но до записи execution `complete`, resolver может доказать PLAN по актуальному Plan basis.
+11. После фактического завершения global wrapper записывает result `SUCCESS`.
+
+Single `STEP PLAN` после SUCCESS останавливается. Только explicit chain или `STEP RUN` могут продолжить к IMPLEMENT.
 
 ## 9. `STEP IMPLEMENT STEP-NNN`
 
-Команда предназначена для implementation-like типов: `IMPLEMENTATION`, `BUGFIX`, `REFACTOR`, `HARDENING`, а также `DOCUMENTATION`/`RELEASE`, если task явно допускает mutations. Deterministic recovery resolver автоматически применяется только к стандартным implementation-like типам.
+Execution tracking уже ведётся root execution wrapper.
 
-Перед mutation:
-
-```bash
-python3 tools/harness/resolve-next-command.py --json STEP-NNN
-python3 tools/harness/execution-state.py begin STEP-NNN \
-  --command 'STEP IMPLEMENT STEP-NNN'
-```
-
-1. Требуется `Plan status: Ready` и совпадающий `Plan basis`, если command не выполняется по отдельному explicit user override без PLAN.
+1. Требуется актуальный Implementation plan, если нет explicit user override.
 2. Проверить dependencies.
 3. Status → `В работе` при первой фактической mutation.
-4. Выполнить scope и mutation policy.
-5. При resume сначала исследовать существующий diff/Evidence и продолжить недостающее; не переделывать уже выполненную работу только из-за новой session.
+4. При `RESUME` сначала исследовать существующий diff/Evidence и продолжить недостающее, не переделывая готовую работу.
+5. Выполнить scope/mutation policy.
 6. Не реализовывать future/unrelated work.
 7. Добавить/обновить tests.
-8. Запустить реальные Verification commands; неизвестные команды сначала обнаружить в repo.
-9. Обновить Evidence фактическими files/commands/results, но не ставить `Выполнено` до обязательного review PASS.
-10. Только когда scope + verification + Evidence готовы к review:
-    ```bash
-    python3 tools/harness/execution-state.py complete STEP-NNN \
-      --command 'STEP IMPLEMENT STEP-NNN' \
-      --result SUCCESS
-    ```
-11. Если session/runtime оборвался до completion-checkpoint, command остаётся `running`; следующая session должна resume `STEP IMPLEMENT STEP-NNN`.
-12. Handoff определяется CTS/resolver; при SUCCESS это `STEP REVIEW STEP-NNN`.
+8. Запустить реальные Verification commands.
+9. Обновить Evidence.
+10. Не ставить `Выполнено` до required review PASS.
+11. После полного scope + verification + Evidence command завершается `SUCCESS`.
+
+Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN`.
+
+Single IMPLEMENT после SUCCESS останавливается; внутри chain/RUN CTS может продолжить к REVIEW.
 
 ## 10. `STEP REVIEW STEP-NNN`
 
-Reviewer должен быть независимым и read-only относительно product code.
-
-Перед review:
-
-```bash
-python3 tools/harness/execution-state.py begin STEP-NNN \
-  --command 'STEP REVIEW STEP-NNN'
-```
-
-Cursor фиксирует `reviewReportBefore`.
+Reviewer независим и read-only относительно product code.
 
 1. Прочитать task contract, implementation plan, REQ, ADR, diff/current implementation и tests.
-2. Прочитать `.project/manifest.yaml → review.security` и `review.tests`. Допустимы только `auto` и `always`.
-3. Проверить acceptance и evidence, не доверяя статусу.
-4. Проверить correctness, regressions, error handling, compatibility, architecture drift и meaningful test gaps.
-5. Запустить specialized reviewers согласно policy.
-6. Findings должны быть конкретными и воспроизводимыми.
-7. Verdict: `PASS`, `FAIL`, `BLOCKED`.
-8. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
-9. Обновить task latest review status/report.
-10. Записать completion-checkpoint:
-    ```bash
-    python3 tools/harness/execution-state.py complete STEP-NNN \
-      --command 'STEP REVIEW STEP-NNN' \
-      --result <PASS|FAIL|BLOCKED>
-    ```
-11. Если session оборвалась после создания нового immutable report, resolver сравнивает его с `reviewReportBefore` и восстанавливает verdict без повторного review.
-12. При PASS + deterministic gates разрешено закрытие STEP; если report уже PASS, но close/sync оборвался, resolver возвращает `STEP RUN STEP-NNN` с `FINALIZE_AFTER_PASS`, а не создаёт ещё один review.
-13. При FAIL CTS разрешает переход в FIX. При BLOCKED execution останавливается.
+2. Прочитать `.project/manifest.yaml → review.security` и `review.tests`.
+3. Проверить acceptance/evidence, correctness, regressions, error handling, compatibility, architecture drift и meaningful test gaps.
+4. Запустить specialized reviewers согласно policy.
+5. Findings должны быть конкретными и воспроизводимыми.
+6. Verdict: `PASS`, `FAIL`, `BLOCKED`.
+7. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
+8. Обновить task latest review status/report.
+9. Global wrapper записывает тот же verdict как command result.
+
+При старте command Execution Status запоминает предыдущий immutable review report. Если session оборвалась после создания нового report, resolver может восстановить verdict без повторного expensive review.
+
+Single REVIEW после verdict останавливается. Внутри chain/RUN CTS активирует FIX только при `FAIL`; PASS/BLOCKED не создают скрытый переход.
 
 ## 11. `STEP FIX STEP-NNN`
 
-Перед mutation:
-
-```bash
-python3 tools/harness/resolve-next-command.py --json STEP-NNN
-python3 tools/harness/execution-state.py begin STEP-NNN \
-  --command 'STEP FIX STEP-NNN'
-```
-
-1. Найти последний применимый FAIL review. Cursor фиксирует его как `sourceReview`.
-2. Исправлять только подтверждённые findings.
+1. Найти последний применимый FAIL review.
+2. Исправлять только подтверждённые findings и необходимый supporting code в scope.
 3. Не превращать FIX в новый feature/refactor.
-4. При resume сначала изучить уже сделанный diff и продолжить незавершённые findings.
-5. Запустить соответствующие tests/verification.
+4. При `RESUME` сначала изучить существующий diff и продолжить незавершённые findings.
+5. Запустить relevant tests/verification.
 6. Обновить Evidence.
-7. После полного FIX:
-   ```bash
-   python3 tools/harness/execution-state.py complete STEP-NNN \
-     --command 'STEP FIX STEP-NNN' \
-     --result SUCCESS
-   ```
-8. Без completion-checkpoint FIX считается незавершённым и повторяется в resume-semantics.
-9. Handoff по CTS → свежий `STEP REVIEW STEP-NNN`.
+7. После полного исправления command завершается `SUCCESS`.
+8. Новый architecture/product scope → corrective STEP.
 
-Если finding требует самостоятельного architecture/product scope, создать corrective STEP вместо скрытого расширения текущего.
+Single FIX после SUCCESS останавливается. Внутри chain/RUN CTS может продолжить к свежему REVIEW.
 
 ## 12. `STEP RUN STEP-NNN`
 
-Сначала dispatch по `Type`:
+`STEP RUN` — единственная текущая orchestration command. Global wrapper создаёт root execution:
 
-- `IMPLEMENTATION` / `BUGFIX` / `REFACTOR` / `HARDENING` → restart-safe coding flow;
-- `DOCUMENTATION` → type-specific plan/documentation/review flow;
-- `RELEASE` → task-specific release mutations/gates;
+```text
+rootCommand = STEP RUN STEP-NNN
+mode        = orchestration
+```
+
+RUN по-прежнему dispatch-ит существующий STEP Type:
+
+- `IMPLEMENTATION` / `BUGFIX` / `REFACTOR` / `HARDENING` → PLAN/IMPLEMENT/REVIEW/FIX flow;
+- `DOCUMENTATION` → task-specific documentation flow;
+- `RELEASE` → task-specific release flow;
 - `ADR` → architect/decision flow;
 - `RESEARCH` → research deliverables;
 - `AUDIT` → audit-only;
 - `REVIEW` → review-only.
 
-Для restart-safe coding flow:
+Никаких execution profiles не существует.
 
-1. Проверить `execution.maxFixReviewCycles`, `review.security`, `review.tests`.
-2. Зарегистрировать root command без изменения текущей phase:
-   ```bash
-   python3 tools/harness/execution-state.py start STEP-NNN \
-     --root-command 'STEP RUN STEP-NNN'
-   ```
-3. Получить exact continuation:
-   ```bash
-   python3 tools/harness/resolve-next-command.py --json STEP-NNN
-   ```
-4. Выполнить **ровно command, которую вернул resolver**: PLAN / IMPLEMENT / REVIEW / FIX.
-5. После phase completion снова вызвать resolver; не продолжать orchestration по памяти текущей session.
-6. `RESUME STEP IMPLEMENT` / `RESUME STEP FIX` означает продолжить существующий diff/evidence.
-7. `FINALIZE_AFTER_PASS` означает выполнить только оставшиеся deterministic gates + close/sync; PLAN/IMPLEMENT/REVIEW заново не запускать.
-8. `DONE` →:
-   ```bash
-   python3 tools/harness/execution-state.py finish STEP-NNN --status completed
-   ```
-9. `BLOCKED` → stop, сохранить факты; local state можно отметить `blocked`.
-10. FIX/REVIEW limit восстанавливается прежде всего по durable FAIL review reports: при max=N разрешены N FIX cycles; новый FIX не начинается, если latest FAIL требует цикл N+1.
-11. Не запускать одновременно несколько write-agents над одним workspace scope.
+Алгоритм:
 
-Повторный `STEP RUN STEP-NNN` после session/runtime interruption является штатным resume entry point и не должен автоматически повторять доказанно завершённый PLAN/REVIEW.
+1. Resolve STEP, blockers и Type.
+2. Проверить `execution.maxFixReviewCycles`, `review.security`, `review.tests`, если они применимы.
+3. Получить состояние root:
+   ```bash
+   python3 tools/harness/resolve-next-command.py --json \
+     --root 'STEP RUN STEP-NNN'
+   ```
+4. Если resolver возвращает interrupted child command — resume её.
+5. Если RUN запускает canonical child command, перед dispatch:
+   ```bash
+   python3 tools/harness/execution-state.py begin \
+     --root 'STEP RUN STEP-NNN' \
+     --command '<child command>'
+   ```
+6. После child completion global wrapper записывает result; затем RUN снова вызывает resolver.
+7. Для PLAN → IMPLEMENT → REVIEW → FIX transitions resolver использует тот же CTS, что и manual STEP chain.
+8. Если конкретный Type выполняется без отдельной canonical child command, `current.command` остаётся `STEP RUN STEP-NNN`; после interruption повторяется сам RUN в resume-semantics.
+9. После REVIEW PASS и отсутствия следующего CTS edge resolver возвращает root RUN для remaining close/sync/finalization; новый REVIEW не создаётся.
+10. При BLOCKED root execution блокируется.
+11. Не запускать параллельные write-agents над одним workspace scope.
+
+Повторный явный `STEP RUN STEP-NNN` при уже running root не создаёт второй active record: он resume-ит существующий execution.
 
 ## 13. `STEP AUDIT STEP-NNN`
 
@@ -510,13 +506,12 @@ Read-only:
    ```bash
    python3 tools/harness/resolve-next-command.py --json
    ```
-2. Interrupted/active execution candidates имеют приоритет над стартом нового STEP.
-3. Если recovery candidate один — вернуть его exact resolved command.
-4. Если их несколько — сначала выбрать среди recovery candidates по dependencies/priority/risk/critical path; только если recovery candidates нет, рассматривать новый STEP.
-5. Затем исключить выполненные/отменённые/заблокированные без resolved blocker.
-6. Исключить STEP с незавершёнными hard dependencies.
-7. Вернуть один основной STEP, причину и точную canonical command.
-8. Не запускать PLAN повторно только потому, что началась новая session: valid Plan basis означает, что PLAN уже доказанно завершён.
+2. Resolver возвращает **все** unresolved executions, независимо от namespace.
+3. Незавершённый STEP-related execution имеет приоритет над стартом нового STEP, но не блокирует явно запрошенные пользователем независимые Git/Project/Harness commands.
+4. При нескольких interrupted STEP executions выбрать один по dependencies/priority/risk/critical path и явно указать остальные.
+5. Если STEP-related unresolved executions нет, исключить completed/cancelled и blocked hard dependencies.
+6. Вернуть один основной STEP, причину и точную canonical command.
+7. Valid Plan basis может доказать завершённый PLAN после crash; не повторять planning только из-за новой session.
 
 ## 16. `PROJECT RECONCILE`
 
