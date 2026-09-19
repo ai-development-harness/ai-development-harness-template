@@ -85,3 +85,8 @@ jobs:
             echo "Expected INVALID_CHAIN for GIT PR > COMMIT"
             exit 1
           fi
+
+      # Проверить restart-safe resolver на synthetic STEP без внешних зависимостей.
+      # Пример: PLAN proof переживает crash, interrupted IMPLEMENT resume-ится, REVIEW report восстанавливает verdict.
+      - name: Validate execution recovery
+        run: python3 tools/harness/recovery-self-test.py
