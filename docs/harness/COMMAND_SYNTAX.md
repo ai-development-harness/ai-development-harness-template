@@ -320,7 +320,29 @@ runtimePreconditions
 
 Важно: `FAIL` не является универсальной остановкой. Например transition graph разрешает `STEP REVIEW → STEP FIX` именно при review result `FAIL`.
 
-## 9. Цепочка не является транзакцией
+## 9. Независимые executions
+
+CTS и chain syntax не запрещают пользователю после завершения одной команды вызвать любую другую structurally valid standalone command.
+
+Например:
+
+```text
+STEP PLAN STEP-001
+```
+
+завершилась, после чего пользователь отдельно вызывает:
+
+```text
+GIT COMMIT
+```
+
+Это две независимые root executions. Переход `STEP PLAN → GIT COMMIT` не ищется и не требуется.
+
+Cross-domain prohibition относится только к **одной строке chain**, например `STEP PLAN STEP-001 > GIT COMMIT`.
+
+Execution tracking описан в [`EXECUTION_STATUS.md`](EXECUTION_STATUS.md).
+
+## 10. Цепочка не является транзакцией
 
 Успешно выполненные mutation не откатываются автоматически при ошибке следующего сегмента.
 
@@ -334,7 +356,7 @@ GIT COMMIT
 
 Automatic rollback, reset, amend, merge/rebase или force push из chain semantics запрещены.
 
-## 10. Safety boundary STEP → GIT
+## 11. Safety boundary STEP → GIT
 
 Harness намеренно не поддерживает:
 
