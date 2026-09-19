@@ -13,6 +13,7 @@
 │   ├── harness.lock.json             # immutable source BASE текущего Harness release
 │   ├── harness-update-graph.json     # machine-readable граф маршрутов Harness update
 │   ├── command-transitions.json      # canonical command/chain transition graph
+│   ├── execution-recovery.json       # deterministic restart/recovery policy
 │   ├── harness-update.toml           # source/ownership/merge policy self-update
 │   ├── harness-policy.toml           # deterministic integrity policy
 │   └── git-policy.toml               # Git workflow policy
@@ -43,7 +44,11 @@
 ├── tools/harness/
 │   ├── validate.py                   # deterministic integrity/safety validator
 │   ├── command_transitions.py        # parser + graph validator + Markdown renderer
-│   └── validate-command.py           # pre-interpretation structural command gate
+│   ├── validate-command.py           # pre-interpretation structural command gate
+│   ├── execution_recovery.py         # crash-safe cursor + resolver implementation
+│   ├── execution-state.py            # local execution cursor CLI
+│   ├── resolve-next-command.py       # deterministic recovery resolver
+│   └── recovery-self-test.py         # restart/recovery protocol smoke test
 └── .github/                          # PR template + Harness CI
 ```
 
