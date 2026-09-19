@@ -15,6 +15,31 @@
 
 Стабильная часть репозитория, задающая способ работы агентов: `AGENTS.md`, `planning/EXECUTION_PROTOCOL.md`, core skills, agent configs, policies и `docs/harness/*`.
 
+### Command Transition System (CTS)
+
+**Command Transition System** — детерминированная protocol-система, которая определяет:
+
+- какие canonical commands существуют;
+- какие команды могут участвовать в chain;
+- какие переходы `A → B` структурно разрешены;
+- при каком `onPreviousResult` edge активируется;
+- какие runtime/repository preconditions должны быть выполнены;
+- как наследуются DOMAIN и target.
+
+Machine-readable source of truth: `.project/command-transitions.json`.
+
+Command Transition System **не считает сами команды состояниями**. Команда — это action/transition request. Фактическое состояние берётся из repository/runtime facts, например:
+
+```text
+STEP planned / implemented / review failed / review passed
+Git branch clean / ahead / published / PR exists
+Harness update check valid / blocked
+```
+
+Упрощённое выражение **Command State Machine** допустимо только как объяснение для человека, но не является каноническим термином Harness. Канонический термин — **Command Transition System**.
+
+Structural validation CTS выполняется до command-specific interpretation и skill routing.
+
 ### Project Knowledge Base
 
 Нормализованная проектная база знаний после INIT: `PROJECT.md`, REQ, architecture, ADR, glossary, planning и связанные документы. Она должна позволять новой сессии восстановить контекст без chat history.
