@@ -6,7 +6,6 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
-import sys
 
 from command_references import project_live_document_paths, scan_files
 
@@ -37,11 +36,6 @@ def main() -> int:
         "--json",
         action="store_true",
         help="Emit machine-readable JSON.",
-    )
-    parser.add_argument(
-        "--fail-on-drift",
-        action="store_true",
-        help="Return exit code 1 when drift is found; default keeps DRIFT as successful audit data.",
     )
     args = parser.parse_args()
 
@@ -98,9 +92,7 @@ def main() -> int:
         print("COMMAND REFERENCE CHECK: PASS")
 
     # DRIFT — валидный audit result для PROJECT RECONCILE, а не tool failure.
-    # CI/maintainer при необходимости может запросить fail-fast через --fail-on-drift.
-    if findings and args.fail_on_drift:
-        return 1
+    # Ненулевой код зарезервирован для BLOCKED/ошибки выполнения checker.
     return 0
 
 
