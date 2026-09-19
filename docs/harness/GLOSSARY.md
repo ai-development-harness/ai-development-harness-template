@@ -40,6 +40,24 @@ Harness update check valid / blocked
 
 Structural validation CTS выполняется до command-specific interpretation и skill routing.
 
+### Execution Cursor
+
+Локальный crash-safe указатель текущей phase длительного STEP execution.
+
+Хранится под `.project/local/execution/`, не коммитится и не является product evidence. Если cursor расходится с canonical repository artifacts, приоритет имеют canonical artifacts.
+
+### Recovery Resolver
+
+Детерминированный механизм `tools/harness/resolve-next-command.py`, который по task contract, Plan basis, immutable review reports и local Execution Cursor определяет exact следующую canonical command после обычного progress или interruption.
+
+Resolver не создаёт новые переходы: допустимые переходы по-прежнему определяет Command Transition System.
+
+### Plan basis
+
+SHA-256 fingerprint нормализованного STEP contract, сохранённый рядом с Implementation plan.
+
+Если текущий contract hash отличается от stored Plan basis, plan считается stale и resolver возвращает `STEP PLAN STEP-NNN` без LLM reasoning.
+
 ### Project Knowledge Base
 
 Нормализованная проектная база знаний после INIT: `PROJECT.md`, REQ, architecture, ADR, glossary, planning и связанные документы. Она должна позволять новой сессии восстановить контекст без chat history.
