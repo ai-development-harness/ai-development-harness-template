@@ -26,9 +26,7 @@
 - `harness.lock.json` — машинный known BASE текущего Harness release; JSON намеренно не требует inline-комментариев.
 - `harness-update-graph.json` — machine-readable граф допустимых переходов между immutable Harness releases; локальная копия входит в protocol layer, а выбор маршрута делается по версии из canonical `default_branch`.
 - `command-transitions.json` — machine-readable source of truth для canonical command surface, chain eligibility, explicit transition edges, `onPreviousResult` и runtime preconditions. До skill routing canonical command проходит structural validation по этому graph.
-- `execution-recovery.json` — machine-readable recovery policy: какие STEP phases умеют восстанавливаться, чем доказывается completion и где хранится local crash-safe cursor.
-
-`.project/local/execution/` хранит local operational cursor для interrupted execution. Он игнорируется Git и не является product evidence; canonical repository artifacts имеют приоритет.
+`.project/local/execution/execution-status.json` — единый local operational state всех canonical Harness executions. Он игнорируется Git, не является product evidence и может хранить несколько независимых running/completed records. Canonical repository artifacts имеют приоритет над local state.
 
 `harness.lock.json` не содержит secrets. Его нужно хранить в Git вместе с проектом; удаление lock переводит updater в legacy-adoption mode.
 
