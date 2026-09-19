@@ -11,7 +11,7 @@
 - [`COMMANDS.md`](COMMANDS.md) — пользовательский командный интерфейс.
 - [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) — namespaces, targets и chain operator `>`.
 - [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md) — полная transition matrix, validation order и runtime conditions.
-- [`EXECUTION_RECOVERY.md`](EXECUTION_RECOVERY.md) — restart-safe cursor, Plan basis и deterministic resume после session/runtime interruption.
+- [`EXECUTION_STATUS.md`](EXECUTION_STATUS.md) — единый local execution-status.json, resume semantics и independent single/chain/orchestration executions.
 - [`LANGUAGE_POLICY.md`](LANGUAGE_POLICY.md) — единая настройка языка для docs/commits/comments/tests/fixtures/templates.
 - [`QUICK_CHANGES.md`](QUICK_CHANGES.md) — когда мелкая правка не требует STEP.
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
