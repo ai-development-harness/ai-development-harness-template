@@ -77,11 +77,12 @@ def scan_files(root: Path, paths: Iterable[Path]) -> list[DeprecatedCommandFindi
         seen.add(path)
         try:
             text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
+        except (OSError, UnicodeDecodeError) as exc:
+            raise RuntimeError(f"cannot read live project document {path}: {exc}") from exc
+        lines = text.splitlines()
         for spec, match in find_deprecated_commands(text):
             line = text.count("\n", 0, match.start()) + 1
-            source_line = text.splitlines()[line - 1] if text.splitlines() else ""
+            source_line = lines[line - 1] if lines else ""
             try:
                 rel = str(path.relative_to(root)).replace("\\", "/")
             except ValueError:
