@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Machine-readable command/chain validation for AI Development Harness."""
+"""Детерминированный parser и валидатор Command Transition System (CTS).
+
+Этот модуль — низкоуровневая часть protocol layer. Он намеренно не читает Git,
+STEP-файлы, runtime state и не вызывает LLM. Его задача ограничена структурой
+команд: распознать canonical syntax, нормализовать shorthand chain и проверить,
+что каждый переход явно существует в .project/command-transitions.json.
+
+Ключевой safety-инвариант: отсутствие edge означает запрет перехода. Здесь нет
+эвристик вида «так логично» или «Git обычно работает именно так».
+"""
 from __future__ import annotations
 
 import json
@@ -7,18 +16,26 @@ from pathlib import Path
 import re
 from typing import Any
 
+# Единственный machine-readable source of truth для command surface и chain edges.
 TABLE_PATH = ".project/command-transitions.json"
+# Эти множества одновременно документируют и ограничивают schema vocabulary.
+# Новое значение нельзя «просто начать использовать» в JSON — сначала нужно явно
+# расширить parser/validator, иначе Harness Integrity обязан упасть.
 ALLOWED_TARGETS = {"none", "step", "release-optional"}
 ALLOWED_INPUTS = {"none", "optional", "required"}
 ALLOWED_RESULTS = {"PASS", "SUCCESS", "FAIL", "BLOCKED"}
 
 
+
+# Загрузить machine-readable CTS table. Функция ничего не кэширует: caller всегда получает фактическое содержимое repository file.
 def load_transition_table(root: Path) -> dict[str, Any]:
     path = root / TABLE_PATH
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
+
+# Проверить внутреннюю целостность transition graph до использования. Ошибки схемы собираются списком, чтобы validator показал все проблемы за один запуск.
 def validate_transition_table(table: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if table.get("schemaVersion") != 1:
@@ -45,6 +62,9 @@ def validate_transition_table(table: dict[str, Any]) -> list[str]:
     if not isinstance(domains, dict) or not domains:
         return errors + ["command-transitions: domains must be a non-empty object"]
 
+    # Проверяем graph сверху вниз: DOMAIN → commands → aliases → transitions.
+    # canonical_seen запрещает двум разным operations публиковать одинаковую
+    # пользовательскую команду — иначе normalization была бы неоднозначной.
     canonical_seen: set[str] = set()
     for domain_name, domain in domains.items():
         if not isinstance(domain_name, str) or not re.fullmatch(r"[A-Z]+", domain_name):
@@ -168,6 +188,8 @@ def validate_transition_table(table: dict[str, Any]) -> list[str]:
     return errors
 
 
+
+# Вернуть полный canonical command surface из graph. Используется integrity validator-ом для сверки документации и policy.
 def canonical_commands(table: dict[str, Any]) -> list[str]:
     result: list[str] = []
     for domain in table.get("domains", {}).values():
@@ -178,8 +200,12 @@ def canonical_commands(table: dict[str, Any]) -> list[str]:
     return result
 
 
+
+# Найти operation по longest-match. Это важно для пар вроде UPDATE CHECK / UPDATE APPLY: короткий prefix не должен перехватывать более длинную operation.
 def _operation_match(text: str, operations: list[str]) -> tuple[str | None, str]:
     stripped = text.strip()
+    # Longest-first обязателен. Например, если когда-либо сосуществуют
+    # "UPDATE" и "UPDATE CHECK", сначала должна проверяться длинная operation.
     for operation in sorted(operations, key=len, reverse=True):
         if stripped == operation:
             return operation, ""
@@ -190,6 +216,8 @@ def _operation_match(text: str, operations: list[str]) -> tuple[str | None, str]
     return None, stripped
 
 
+
+# Разобрать один segment chain. Здесь выполняются только механические правила DOMAIN/target/input inheritance — никакого repository/runtime reasoning.
 def _parse_segment(
     raw_segment: str,
     table: dict[str, Any],
@@ -209,6 +237,8 @@ def _parse_segment(
             remainder = segment[len(candidate):].strip()
             break
 
+    # DOMAIN обязателен только в первом segment. Дальше shorthand наследует
+    # DOMAIN, но явная попытка сменить его внутри chain считается ошибкой.
     if first_segment:
         if domain_name is None:
             return {
@@ -256,6 +286,8 @@ def _parse_segment(
     target: str | None = None
 
     target_kind = spec["target"]
+    # Target наследуется только там, где это разрешено schema конкретной
+    # команды. STEP target не может внезапно появиться/измениться посередине chain.
     if target_kind == "step":
         if rest:
             token, _, tail = rest.partition(" ")
@@ -288,6 +320,8 @@ def _parse_segment(
 
     input_mode = spec["input"]
     input_value: str | None = None
+    # Free-form input всегда отделяется двоеточием. Это не косметика:
+    # без явного delimiter parser не смог бы надёжно отличить target от текста.
     if input_mode in {"optional", "required"}:
         if rest:
             if not rest.startswith(":"):
@@ -344,6 +378,8 @@ def _parse_segment(
     }
 
 
+
+# Разобрать ровно одну canonical command. Эта функция нужна execution layer, когда root chain уже нормализован и требуется безопасно исследовать один segment.
 def parse_canonical_command(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     """Parse one canonical command without reading repository/runtime state."""
     table_errors = validate_transition_table(table)
@@ -374,6 +410,8 @@ def parse_canonical_command(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+
+# Главный structural gate: разобрать всю строку и проверить все соседние пары ДО выполнения первого segment.
 def validate_command_text(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     table_errors = validate_transition_table(table)
     if table_errors:
@@ -389,6 +427,8 @@ def validate_command_text(raw: str, table: dict[str, Any]) -> dict[str, Any]:
         return {"valid": False, "code": "EMPTY_COMMAND", "message": "command is empty"}
 
     separator = table["chainSeparator"]
+    # Split выполняется только по зафиксированному separator " > ".
+    # Оператор обязан быть отдельным token в canonical syntax.
     segments = [part.strip() for part in text.split(separator)]
     if any(not part for part in segments):
         return {
@@ -461,6 +501,8 @@ def validate_command_text(raw: str, table: dict[str, Any]) -> dict[str, Any]:
                 "segmentIndex": index,
             }
 
+    # Closed-world transition rule: разрешены только пары, которые буквально
+    # присутствуют в graph. Отсутствующая пара не восстанавливается эвристикой.
     edge_map = {
         (edge["from"], edge["to"]): edge
         for edge in domain.get("transitions", [])
@@ -496,6 +538,8 @@ def validate_command_text(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+# Преобразовать graph в человекочитаемые строки документации. Это представление генерируется только из source-of-truth JSON.
 def transition_rows(table: dict[str, Any]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for domain_name, domain in table.get("domains", {}).items():
@@ -533,6 +577,8 @@ def transition_rows(table: dict[str, Any]) -> list[dict[str, str]]:
     return rows
 
 
+
+# Сгенерировать Markdown-таблицу CTS. CI сравнивает её с generated block документа буквально, поэтому ручной drift обнаруживается автоматически.
 def render_transition_markdown(table: dict[str, Any]) -> str:
     lines = [
         "| Command | Chain segment | Allowed next | Transition condition |",
