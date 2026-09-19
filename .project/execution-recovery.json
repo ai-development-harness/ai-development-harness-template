@@ -36,6 +36,12 @@
     ],
     "completionProof": "step-status-completed",
     "finalizeCommand": "STEP RUN STEP-NNN",
-    "fixReviewLimitSource": ".project/manifest.yaml:execution.maxFixReviewCycles"
+    "fixReviewLimitSource": ".project/manifest.yaml:execution.maxFixReviewCycles",
+    "supportedTypes": [
+      "IMPLEMENTATION",
+      "BUGFIX",
+      "REFACTOR",
+      "HARDENING"
+    ]
   }
 }
