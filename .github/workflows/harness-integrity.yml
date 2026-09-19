@@ -86,9 +86,9 @@ jobs:
             exit 1
           fi
 
-      # Проверить restart-safe resolver на synthetic STEP без внешних зависимостей.
-      # Пример: PLAN proof переживает crash, interrupted IMPLEMENT resume-ится, REVIEW report восстанавливает verdict.
-      - name: Validate execution recovery
-        # Запуск dependency-free recovery self-test на временном synthetic STEP.
-        # Пример: проверяет PLAN proof, interrupted IMPLEMENT/FIX и восстановление REVIEW verdict.
-        run: python3 tools/harness/recovery-self-test.py
+      # Проверить единый local execution state на полном наборе canonical commands.
+      # Пример: single/chain/STEP RUN, interruption, независимые команды и conditional transitions.
+      - name: Validate execution status
+        # Запуск dependency-free self-test на временном synthetic repository.
+        # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
+        run: python3 tools/harness/execution-self-test.py
