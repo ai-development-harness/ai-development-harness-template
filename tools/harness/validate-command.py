@@ -10,10 +10,14 @@ import sys
 from command_transitions import load_transition_table, validate_command_text
 
 
+
+# Найти repository root, чтобы validation всегда использовала transition graph текущего проекта.
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+
+# Прочитать raw command, прогнать deterministic CTS validator и вернуть JSON/text + корректный process exit code.
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate Harness command syntax and structural transition graph."
@@ -31,6 +35,8 @@ def main() -> int:
         raw = raw[3:].strip()
 
     table = load_transition_table(repo_root())
+    # Здесь заканчивается structural layer. Даже VALID_CHAIN ещё не означает,
+    # что runtime preconditions (Git divergence, update route и т.п.) выполнены.
     result = validate_command_text(raw, table)
 
     if args.as_json:
