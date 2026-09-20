@@ -163,6 +163,20 @@ protocol:
         resolved = task_path(root, "STEP-001")
         assert resolved == root / "work/tasks/STEP-001.md", resolved
 
+        # Manifest path не имеет права читать artifacts за пределами repository.
+        manifest_path = root / ".harness/manifest.yaml"
+        valid_manifest = manifest_path.read_text(encoding="utf-8")
+        write(
+            manifest_path,
+            valid_manifest.replace(
+                "taskDirectory: work/tasks",
+                "taskDirectory: ../outside/tasks",
+            ),
+        )
+        errors = validate_planning_contracts(root)
+        assert any("path must stay inside repository" in item for item in errors), errors
+        write(manifest_path, valid_manifest)
+
         # 2. Linked REQ и architecture входят в transitive Plan basis.
         basis_a = planning_context_basis(root, "STEP-001")
         write(root / "spec/requirements/REQ-001-contract.md", requirement("Изменено."))
