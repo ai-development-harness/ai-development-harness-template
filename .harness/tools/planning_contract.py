@@ -311,7 +311,14 @@ def open_question_affects(root: Path) -> list[dict[str, Any]]:
         return []
     entries: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
+    in_fence = False
     for raw in path.read_text(encoding="utf-8").splitlines():
+        stripped = raw.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         heading = re.match(
             r"^(?:#{1,6}\s+)?(OQ-\d{3})\s+—\s+(.+)$",
             raw.strip(),
