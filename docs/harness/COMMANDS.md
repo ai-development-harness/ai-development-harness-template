@@ -15,7 +15,7 @@ State transitions выполнения описаны в `planning/EXECUTION_PRO
 ```text
 GIT CHECK > COMMIT > PUSH > PR
 STEP PLAN STEP-024 > IMPLEMENT > REVIEW
-HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
 Вся цепочка сначала нормализуется и проверяется по `.project/command-transitions.json`. Отсутствующий edge означает `INVALID_CHAIN` и ноль выполненных сегментов. После structural PASS дальнейшее выполнение определяется `onPreviousResult` и `runtimePreconditions` конкретного edge. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) и [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md).
@@ -140,7 +140,7 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 Пример конечного target:
 
 ```text
-HARNESS UPDATE APPLY TO v0.2.3
+HARNESS UPDATE APPLY TO vX.X.X
 ```
 
 Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
