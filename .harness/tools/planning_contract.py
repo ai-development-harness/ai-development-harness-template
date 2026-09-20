@@ -275,7 +275,10 @@ def open_question_affects(root: Path) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     for raw in path.read_text(encoding="utf-8").splitlines():
-        heading = re.match(r"^(OQ-\d{3})\s+—\s+(.+)$", raw.strip())
+        heading = re.match(
+            r"^(?:#{1,6}\\s+)?(OQ-\\d{3})\\s+—\\s+(.+)$",
+            raw.strip(),
+        )
         if heading:
             if current:
                 entries.append(current)
