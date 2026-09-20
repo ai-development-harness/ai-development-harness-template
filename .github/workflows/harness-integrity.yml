@@ -98,3 +98,10 @@ jobs:
         # Запуск dependency-free self-test на временном synthetic repository.
         # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
         run: python3 .harness/tools/execution-self-test.py
+
+      # Проверить исторически критичные update/migration invariants на synthetic legacy state.
+      # Пример: routing/reload, relocation layout, project templates, ignored artifacts и deferred REQ migration.
+      - name: Validate update migration regression
+        # Dependency-free smoke test не запускает agent, а проверяет deterministic contract updater-а.
+        # Пример: legacy v0.4.0 route обязан безопасно достигать текущего latest через v0.4.2 bridge.
+        run: python3 .harness/tools/update-migration-self-test.py

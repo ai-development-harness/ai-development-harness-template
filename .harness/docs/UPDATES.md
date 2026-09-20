@@ -257,6 +257,27 @@ Target release с `.harness/**` **не хранит активную `[bootstrap
 
 Для discovery старых updater’ов `v0.4.0`/`v0.4.1` moving `main` дополнительно хранит **замороженный compatibility routing endpoint** `.project/harness-update-graph.json`. Legacy-маршрут должен вести не в `v0.5.0`, а в corrective release `v0.5.1`: `v0.5.0` впервые объявил уже существующие project templates managed и поэтому небезопасен как landing target для старых проектов. После `v0.4.2` updater переключается на `.harness/harness-update-graph.json`; `v0.5.0` остаётся валидным immutable release для уже обновлённых/new-layout проектов, но legacy route его обходит.
 
+## Regression checklist перед bridge/layout release
+
+Перед release, который меняет update graph, ownership policy, bootstrap paths, document model или reload semantics, проверь минимум:
+
+- старый поддерживаемый updater находит routing graph и строит однозначный route до current `latest`;
+- обязательный bridge/reload boundary не обходится и lock продвигается только после postcondition;
+- bootstrap relocation создаёт новый control plane и не возвращает retired legacy paths;
+- существующие project-owned files не становятся managed без явной migration/adoption semantics;
+- shared/marker files сохраняют project-specific settings и generated blocks;
+- ignored untracked runtime artifacts внутри managed directories не входят в update scope, а untracked non-ignored collisions блокируют mutation;
+- изменение модели project-owned документов не делает control-plane hop невозможным: deferred migration допускается только в явно распознанном transitional state;
+- strict `GIT CHECK`/CI после required reconciliation снова проходит.
+
+Dependency-free regression smoke test:
+
+```bash
+python3 .harness/tools/update-migration-self-test.py
+```
+
+Тест не эмулирует LLM/agent decisions. Он закрепляет deterministic invariants, которые updater обязан соблюдать, и намеренно использует synthetic legacy state для regression cases.
+
 ## Postcondition update
 
 Перед записью lock для каждого hop updater обязан убедиться, что фактический результат соответствует заранее рассчитанному hop plan и что required Harness artifacts соответствующего target присутствуют. Перед первой mutation весь route до конечного target должен быть успешно смоделирован read-only.

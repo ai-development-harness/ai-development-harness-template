@@ -17,9 +17,12 @@ python3 .harness/tools/validate.py --mode ci
 python3 .harness/tools/check-command-references.py --json
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
+python3 .harness/tools/update-migration-self-test.py
 ```
 
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
+
+Update migration self-test создаёт synthetic legacy state и проверяет deterministic update-contract: legacy route/reload boundaries, target relocation layout, ownership project templates и marker blocks, tracked-vs-ignored Git scope, deferred REQ migration и согласованность release metadata. Он не запускает LLM/agent и не заменяет периодический real-project dogfood.
 
 Baseline validator также детерминированно проверяет requirements document model: уникальность `REQ-NNN`, соответствие filename/H1 и обязательных standalone-секций, одинаковый набор REQ в `SPEC.md`/`STATUS.md`, прямые ссылки projections на canonical `REQ-NNN-*.md` и совпадение названий. Смысл requirement validator не интерпретирует.
 
