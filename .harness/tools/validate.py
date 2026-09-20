@@ -320,7 +320,10 @@ def is_legacy_requirements_layout(canonical_filenames: list[str], spec_text: str
 # post-update состояние до PROJECT RECONCILE. Смешанный/частично мигрированный layout
 # сюда намеренно не попадает: он должен оставаться deterministic validation failure.
 def legacy_requirements_migration_pending(root: Path) -> bool:
-    requirements_root = requirements_directory(root)
+    try:
+        requirements_root = requirements_directory(root)
+    except ValueError:
+        return False
     spec_path = requirements_root / "SPEC.md"
     status_path = requirements_root / "STATUS.md"
     if not requirements_root.is_dir() or not spec_path.is_file() or not status_path.is_file():
@@ -443,7 +446,11 @@ def parse_requirement_projection(
 # Проверить canonical REQ и обе projections как единый deterministic document-model contract.
 # Validator не оценивает смысл requirement: только ID, standalone structure, projection coverage и links.
 def validate_requirements_model(root: Path, errors: list[str]) -> None:
-    requirements_root = requirements_directory(root)
+    try:
+        requirements_root = requirements_directory(root)
+    except ValueError as exc:
+        errors.append(f"requirements: {exc}")
+        return
     spec_path = requirements_root / "SPEC.md"
     status_path = requirements_root / "STATUS.md"
 
