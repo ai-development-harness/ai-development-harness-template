@@ -8,13 +8,13 @@ description: Safe repository Git workflow for GIT CHECK, GIT COMMIT, GIT PUSH, G
 
 ## Общие правила
 
-1. Прочитай `.project/git-policy.toml`.
+1. Прочитай `.harness/git-policy.toml`.
 2. До mutation изучи `git status --short --branch`, staged/unstaged diff и untracked files.
-3. Запусти `python3 tools/harness/validate.py --mode commit` (для read-only check тоже допустимо).
+3. Запусти `python3 .harness/tools/validate.py --mode commit` (для read-only check тоже допустимо).
 4. Никогда не выполняй `git reset --hard`, `git clean -fd`, force-push, automatic merge/rebase или amend без явного запроса пользователя.
 5. Не включай unrelated changes. При нескольких независимых логических изменениях останови GIT COMMIT и предложи разбиение.
 6. Секреты/local brief/generated мусор не должны попадать в index/commit.
-7. Язык commit message бери из `.project/manifest.yaml` → `language.commitMessages`; не используй отдельный скрытый default.
+7. Язык commit message бери из `.harness/manifest.yaml` → `language.commitMessages`; не используй отдельный скрытый default.
 8. STEP/REQ/ADR traceability не обязательна для подтверждённого micro-change/PROJECT QUICK FIX. Если diff без STEP меняет behavior/API/data/security/architecture/dependencies — GIT COMMIT должен остановиться и предложить `STEP ADD:`.
 
 ## GIT CHECK
@@ -31,7 +31,7 @@ Read-only. Покажи branch, upstream/ahead-behind, staged/unstaged/untracked
    - `tracked-only` — только изменённые tracked files;
    - `all-safe` — только проверенный набор относящихся к change tracked/untracked files; не использовать бездумный `git add .`.
 5. Повторно проверь staged diff и safety.
-6. Сформируй подробное сообщение по `.gitmessage` и `.project/git-policy.toml`.
+6. Сформируй подробное сообщение по `.gitmessage` и `.harness/git-policy.toml`.
 7. Выполни commit. GIT COMMIT никогда не делает push.
 8. Верни hash, branch, subject, files, verification и следующую рекомендуемую команду.
 
