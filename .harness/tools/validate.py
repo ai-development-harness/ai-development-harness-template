@@ -312,7 +312,7 @@ REQ_REQUIRED_SECTIONS = ("Requirement", "Rationale", "Acceptance", "Traceability
 def is_legacy_requirements_layout(canonical_filenames: list[str], spec_text: str) -> bool:
     if canonical_filenames:
         return False
-    return bool(re.search(r"(?m)^#{2,}\\s+REQ-\\d{3}\\b", spec_text))
+    return bool(re.search(r"(?m)^#{2,}\s+REQ-\d{3}\b", spec_text))
 
 
 # Определить точный legacy-layout requirements, который допустим только как временное
