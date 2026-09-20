@@ -15,7 +15,7 @@ Resolve task → dependencies → REQ → ADR → architecture → code/tests/co
 После сохранения plan обязательно выполни:
 
 ```bash
-python3 tools/harness/execution-state.py stamp-plan STEP-NNN
+python3 .harness/tools/execution-state.py stamp-plan STEP-NNN
 ```
 
 `stamp-plan` детерминированно выставляет `Plan status: Ready`, увеличивает revision, записывает `Plan basis: sha256:...` от текущего task contract и timestamp.
