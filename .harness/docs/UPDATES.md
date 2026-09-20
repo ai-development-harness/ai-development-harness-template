@@ -228,6 +228,22 @@ THEIRS v0.2.x:
 
 `HARNESS UPDATE CHECK` обязан показать introduced, retired и ownership-reclassified paths до mutation.
 
+## Переход с legacy control plane через `v0.4.2`
+
+`v0.4.2` — обязательный bridge release перед первым release с control plane в `.harness/**`. Проекты на `v0.4.0` сначала проходят обычный hop `v0.4.0 → v0.4.1`, затем bridge `v0.4.1 → v0.4.2` с `reloadRequired: true`.
+
+Сам relocation выполняет **updater из `v0.4.2`**, пока доверенный bootstrap ещё находится в `.project/**`. Его current policy заранее фиксирует exact target-policy candidates и пары переноса:
+
+- `.project` metadata/policies → `.harness/**`;
+- `docs/harness/**` → `.harness/docs/**`;
+- `planning/EXECUTION_PROTOCOL.md` → `.harness/docs/EXECUTION_PROTOCOL.md`;
+- `tools/harness/**` → `.harness/tools/**`;
+- shared `.project/manifest.yaml` и `.project/git-policy.toml` → rename-aware 3-way merge в `.harness/**`;
+- lock создаётся по новому пути только после target postcondition, после чего старый lock retire-ится;
+- `.project/local/**` не мигрируется и остаётся только legacy ignored state.
+
+Target release с `.harness/**` **не хранит активную `[bootstrap_relocation]` policy**: после успешного relocation trust boundary уже находится в `.harness/harness-update.toml`. Это намеренно однонаправленная граница совместимости, а не постоянный dual-layout режим.
+
 ## Postcondition update
 
 Перед записью lock для каждого hop updater обязан убедиться, что фактический результат соответствует заранее рассчитанному hop plan и что required Harness artifacts соответствующего target присутствуют. Перед первой mutation весь route до конечного target должен быть успешно смоделирован read-only.
