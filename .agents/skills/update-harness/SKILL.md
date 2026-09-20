@@ -68,6 +68,9 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 7. Path, удалённый из target policy/target tree, обрабатывай по BASE ownership: `harness_owned` можно удалить только при `OURS == BASE`; для `shared`/`marker_merge` применяй обычную 3-way семантику.
 8. Если ownership class существующего path меняется, а OURS расходится с BASE, остановись с `OWNERSHIP_CLASS_CHANGE`; при чистом `OURS == BASE` можно принять target class.
 9. Unknown paths вне transition scope не трогай.
+10. Concrete managed scope для OURS формируй **по Git state**, а не рекурсивным обходом filesystem: immutable BASE/THEIRS trees + `git ls-files` для tracked OURS. Локальный файл не становится managed только потому, что физически лежит под managed glob.
+11. Если при проверке конкретного managed/destination path обнаружен untracked OURS path, классифицируй его через `git check-ignore`: ignored artifact исключается из transition scope, не переносится, не удаляется и не является blocker; untracked **неignored** path остаётся collision/blocker.
+12. Binary/non-UTF-8 blocker применяется только к path, который реально входит в managed transition scope (BASE/THEIRS/tracked OURS). Не сканируй ignored caches (`__pycache__/`, bytecode, build/cache artifacts) как managed content.
 
 Эта схема позволяет release безопасно добавлять новый runtime adapter, не превращая target policy в право перезаписи уже существующих project files.
 
@@ -84,7 +87,7 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 3. Построй единственный допустимый route current → target. Если route нет — `NO_UPDATE_PATH`.
 4. Проверь schema graph, monotonic semver, допустимые transition kinds и существование/immutability всех tags route.
 5. Для каждого hop последовательно выполни Policy transition, используя predicted state предыдущего hop как projected OURS следующего.
-6. Для каждого hop прочитай BASE/THEIRS trees/files только для transition scope.
+6. Для каждого hop прочитай BASE/THEIRS trees/files только для transition scope. OURS path-set бери из tracked Git paths; ignored untracked filesystem artifacts под managed glob не включай.
 7. Для `shared` вычисли 3-way merge без записи; для `marker_merge` сохрани projected local generated blocks.
 8. Отдельно собери introduced, retired и ownership-reclassified managed paths по каждому hop.
 9. Проверь predicted required Harness artifacts каждого hop; target `.harness/harness-policy.toml` читается как данные.
@@ -147,4 +150,4 @@ Handoff: `GIT CHECK > COMMIT` либо те же команды отдельно
 
 ## Failure policy
 
-Любой conflict, неизвестный BASE, invalid lock, source ambiguity, invalid/unsupported `.harness/harness-update-graph.json`, `NO_UPDATE_PATH`, невалидный/неimmutable route tag, truncated tree, binary/non-UTF-8 managed file, `NEW_MANAGED_PATH_COLLISION`, небезопасный `OWNERSHIP_CLASS_CHANGE` или невалидный current Harness блокирует mutation. Не заменяй blocker «наиболее вероятным» предположением.
+Любой conflict, неизвестный BASE, invalid lock, source ambiguity, invalid/unsupported `.harness/harness-update-graph.json`, `NO_UPDATE_PATH`, невалидный/неimmutable route tag, truncated tree, binary/non-UTF-8 **managed Git path**, untracked non-ignored collision под managed/destination path, `NEW_MANAGED_PATH_COLLISION`, небезопасный `OWNERSHIP_CLASS_CHANGE` или невалидный current Harness блокирует mutation. Ignored untracked artifacts не являются managed paths и не блокируют update. Не заменяй blocker «наиболее вероятным» предположением.

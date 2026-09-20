@@ -25,6 +25,7 @@ Thumbs.db
 *.tmp
 *.swp
 __pycache__/
+*.py[cod]
 .venv/
 node_modules/
 dist/

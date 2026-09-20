@@ -227,6 +227,18 @@ THEIRS v0.2.x:
 
 `HARNESS UPDATE CHECK` обязан показать introduced, retired и ownership-reclassified paths до mutation.
 
+### Git working tree и ignored artifacts
+
+Managed glob описывает **repository ownership**, а не всё содержимое каталога на диске. Updater не должен рекурсивно считать произвольные локальные файлы managed только из-за совпадения пути.
+
+Concrete OURS scope строится из tracked Git paths (`git ls-files`) вместе с concrete paths из immutable BASE/THEIRS trees. Если конкретный target/destination path уже существует локально, но не tracked:
+
+- `git check-ignore` подтверждает ignored → path считается local runtime artifact, исключается из transition scope, не переносится и не удаляется;
+- path не ignored → update блокируется как untracked collision;
+- tracked binary/non-UTF-8 path внутри managed scope по-прежнему блокирует автоматический text merge/relocation.
+
+Например `tools/harness/__pycache__/*.pyc` не должен блокировать relocation `tools/harness/** → .harness/tools/**`, если bytecode untracked и ignored. После relocation такой cache может физически остаться в legacy directory до обычной локальной очистки; updater не получает права удалять неизвестный local state.
+
 ## Переход с legacy control plane через `v0.4.2`
 
 `v0.4.2` — обязательный bridge release перед первым release с control plane в `.harness/**`. Проекты на `v0.4.0` сначала проходят обычный hop `v0.4.0 → v0.4.1`, затем bridge `v0.4.1 → v0.4.2` с `reloadRequired: true`.

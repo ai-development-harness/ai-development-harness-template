@@ -956,6 +956,8 @@ def main() -> int:
         ".codex/local/",
         ".claude/local/",
         ".claude/settings.local.json",
+        "__pycache__/",
+        "*.py[cod]",
     ]:
         if ignored not in gitignore:
             errors.append(f".gitignore must ignore {ignored}")
