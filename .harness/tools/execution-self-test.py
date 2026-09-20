@@ -19,6 +19,7 @@ import tempfile
 from command_transitions import load_transition_table
 from execution_status import (
     begin_command,
+    block_execution,
     complete_command,
     find_completed,
     load_status,
@@ -469,7 +470,6 @@ STEP-001
         )
         assert exhausted["fixReviewCycles"] == 1, exhausted
         assert exhausted["maxFixReviewCycles"] == 1, exhausted
-        from execution_status import block_execution
         blocked = block_execution(
             root,
             limited_root,
