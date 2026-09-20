@@ -2,9 +2,9 @@
 
 Команды — стабильный человеко-машинный интерфейс. Каноническая форма начинается с явного namespace: `<DOMAIN> <ACTION> ...`. Подробный синтаксис и chain operator `>` описаны в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
 
-Допустимость переходов между командами определяется **только** machine-readable graph `.project/command-transitions.json`. Полная человекочитаемая матрица — [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). До skill routing canonical command проходит deterministic `tools/harness/validate-command.py`.
+Допустимость переходов между командами определяется **только** machine-readable graph `.harness/command-transitions.json`. Полная человекочитаемая матрица — [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). До skill routing canonical command проходит deterministic `.harness/tools/validate-command.py`.
 
-State transitions выполнения описаны в `docs/harness/EXECUTION_PROTOCOL.md`.
+State transitions выполнения описаны в `.harness/docs/EXECUTION_PROTOCOL.md`.
 
 Старые ненеймспейсные формы не являются каноническими alias. Локальные пользовательские alias-команды можно добавить только явно в `AGENTS.local.md`; они читаются после `AGENTS.md`.
 
@@ -18,7 +18,7 @@ STEP PLAN STEP-024 > IMPLEMENT > REVIEW
 HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
-Вся цепочка сначала нормализуется и проверяется по `.project/command-transitions.json`. Отсутствующий edge означает `INVALID_CHAIN` и ноль выполненных сегментов. После structural PASS дальнейшее выполнение определяется `onPreviousResult` и `runtimePreconditions` конкретного edge. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) и [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md).
+Вся цепочка сначала нормализуется и проверяется по `.harness/command-transitions.json`. Отсутствующий edge означает `INVALID_CHAIN` и ноль выполненных сегментов. После structural PASS дальнейшее выполнение определяется `onPreviousResult` и `runtimePreconditions` конкретного edge. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) и [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md).
 
 ## `PROJECT INIT`
 
@@ -109,11 +109,11 @@ Read-only рекомендация следующего **unblocked** шага �
 
 ## `PROJECT RECONCILE`
 
-Работает только после успешного `PROJECT INIT` (`.project/manifest.yaml → project.initialized: true`).
+Работает только после успешного `PROJECT INIT` (`.harness/manifest.yaml → project.initialized: true`).
 
 Если проект ещё не инициализирован, команда ничего не меняет, не создаёт audit report/REQ/ADR/STEP и возвращает `PROJECT RECONCILE: NOT_APPLICABLE` с handoff → `PROJECT INIT`.
 
-В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. В обязательную evidence-проверку входит `python3 tools/harness/check-command-references.py --json`: live project-owned документы сверяются с текущим namespaced command surface, а immutable/history-oriented reports не мигрируются задним числом. Не исправляет production code молча.
+В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. В обязательную evidence-проверку входит `python3 .harness/tools/check-command-references.py --json`: live project-owned документы сверяются с текущим namespaced command surface, а immutable/history-oriented reports не мигрируются задним числом. Не исправляет production code молча.
 
 ## `RELEASE CHECK`
 
@@ -121,9 +121,9 @@ Read-only рекомендация следующего **unblocked** шага �
 
 ## `HARNESS UPDATE CHECK [TO <tag>]`
 
-Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE, `.project/harness-update.toml` как source/ownership policy и canonical remote `.project/harness-update-graph.json` как routing metadata.
+Read-only проверка доступного маршрута Harness update. Использует `.harness/harness.lock.json` как BASE, `.harness/harness-update.toml` как source/ownership policy и canonical remote `.harness/harness-update-graph.json` как routing metadata.
 
-Без `TO` конечный target берётся из `.project/harness-update-graph.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
+Без `TO` конечный target берётся из `.harness/harness-update-graph.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
 
 Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
@@ -143,7 +143,7 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 HARNESS UPDATE APPLY TO vX.X.X
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
+Updater не выполняет executable migration/install/bootstrap actions из `.harness/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## `GIT CHECK`
 
@@ -151,7 +151,7 @@ Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged
 
 ## `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
-Безопасно формирует локальный commit по `.project/git-policy.toml`: проверяет Harness/diff, исключает unrelated/suspicious files, при необходимости создаёт ветку, stage-ит разрешённые файлы и формирует подробный Conventional Commit message по `.gitmessage`. `GIT COMMIT` никогда не делает push.
+Безопасно формирует локальный commit по `.harness/git-policy.toml`: проверяет Harness/diff, исключает unrelated/suspicious files, при необходимости создаёт ветку, stage-ит разрешённые файлы и формирует подробный Conventional Commit message по `.gitmessage`. `GIT COMMIT` никогда не делает push.
 
 ## `GIT PUSH`
 
