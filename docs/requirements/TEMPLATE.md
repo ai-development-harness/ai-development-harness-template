@@ -1,7 +1,6 @@
 ### REQ-NNN — Название
 
-**Приоритет:** Критический | Высокий | Средний | Низкий
-**Источник:** brief / user / regulation / research / other
+**Приоритет:** Критический | Высокий | Средний | Низкий · **Источник:** brief / user / regulation / research / other
 
 #### Requirement
 
