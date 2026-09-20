@@ -105,7 +105,7 @@ def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
     Полный YAML parser намеренно не нужен: Harness manifest использует top-level
     sections и scalar path values. Неизвестные/сложные значения fail-closed.
     """
-    manifest = root / ".project" / "manifest.yaml"
+    manifest = root / ".harness" / "manifest.yaml"
     try:
         text = manifest.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
