@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "harnessVersion": "1",
-  "release": "0.4.2",
+  "release": "0.5.0",
   "source": {
     "repository": "ai-development-harness/ai-development-harness-template",
-    "ref": "v0.4.2"
+    "ref": "v0.5.0"
   },
   "updatedAt": null
 }
