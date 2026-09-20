@@ -537,9 +537,10 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 5. Если checker не удалось выполнить, явно записать BLOCKED в Evidence; запрещено утверждать, что command-syntax drift отсутствует.
 6. Не исправлять production code.
 7. Однозначный projection drift и чисто документальный command-syntax drift можно синхронизировать.
-8. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
-9. Новые устойчивые решения не записывать как Accepted ADR без decision process.
-10. Сохранить audit report.
+8. Если legacy-проект хранит canonical REQ внутри монолитного `docs/requirements/SPEC.md`, выполнить lossless migration в отдельные `REQ-NNN-<slug>.md`, сохранив ID, metadata, Requirement, Rationale, Acceptance и Traceability; затем перестроить `SPEC.md` как index. Lifecycle-state оставить только в `STATUS.md`. При неоднозначной структуре legacy SPEC не угадывать — зафиксировать blocker.
+9. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
+10. Новые устойчивые решения не записывать как Accepted ADR без decision process.
+11. Сохранить audit report.
 
 ## 17. `RELEASE CHECK`
 
