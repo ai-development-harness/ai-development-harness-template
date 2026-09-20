@@ -158,8 +158,7 @@ Known BASE хранится в `.harness/harness.lock.json`.
 - `CLAUDE.md`;
 - `.claude/settings.json`;
 - `.claude/agents/*.md`;
-- `.harness/manifest.yaml`;
-- colocated Harness scaffolds: `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md`, `planning/*/TEMPLATE.md`.
+- `.harness/manifest.yaml`.
 
 Для них выполняется 3-way merge:
 
@@ -171,7 +170,7 @@ THEIRS = target release
 
 Conflict означает остановку до mutation/ручного reconciliation.
 
-Model/effort tuning обоих runtime adapters и colocated scaffolds специально относятся к `shared`: update не должен молча возвращать проект к upstream defaults или затирать project-specific адаптацию template. Созданные по template REQ/ADR/STEP/reports остаются project-owned.
+Model/effort tuning обоих runtime adapters относится к `shared`: update не должен молча возвращать проект к upstream defaults. Colocated `TEMPLATE.md` рядом с REQ/ADR/STEP/reports остаются project-owned, потому что legacy projects уже могли менять их до появления этой ownership-модели.
 
 ### `marker_merge`
 
@@ -244,7 +243,7 @@ THEIRS v0.2.x:
 
 Target release с `.harness/**` **не хранит активную `[bootstrap_relocation]` policy**: после успешного relocation trust boundary уже находится в `.harness/harness-update.toml`. Это намеренно однонаправленная граница совместимости, а не постоянный dual-layout режим.
 
-Для discovery старых updater’ов `v0.4.0`/`v0.4.1` moving `main` дополнительно хранит **замороженный compatibility routing endpoint** `.project/harness-update-graph.json`. Он содержит маршрут только до `v0.5.0`, не является control plane, не используется новыми updater’ами и не должен развиваться вместе с дальнейшими release. Его единственная задача — позволить старому updater’у дойти до `v0.4.2`, после чего fallback из policy `v0.4.2` переключает routing на `.harness/harness-update-graph.json`.
+Для discovery старых updater’ов `v0.4.0`/`v0.4.1` moving `main` дополнительно хранит **замороженный compatibility routing endpoint** `.project/harness-update-graph.json`. Legacy-маршрут должен вести не в `v0.5.0`, а в corrective release `v0.5.1`: `v0.5.0` впервые объявил уже существующие project templates managed и поэтому небезопасен как landing target для старых проектов. После `v0.4.2` updater переключается на `.harness/harness-update-graph.json`; `v0.5.0` остаётся валидным immutable release для уже обновлённых/new-layout проектов, но legacy route его обходит.
 
 ## Postcondition update
 
