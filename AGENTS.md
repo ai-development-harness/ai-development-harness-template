@@ -148,7 +148,7 @@ Canonical repository artifacts имеют приоритет над local operat
 ```text
 GIT CHECK > COMMIT > PUSH > PR
 STEP PLAN STEP-024 > IMPLEMENT > REVIEW
-HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
 Перед первым выполнением проверь **всю** цепочку. Если любой сегмент невалиден, не выполняй ничего. DOMAIN наследуется от первого сегмента; для STEP и HARNESS UPDATE также наследуется неизменяемый target. Cross-domain chain запрещён: `STEP RUN STEP-024 > GIT COMMIT` не выполняется.
