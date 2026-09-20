@@ -199,6 +199,38 @@ def main() -> int:
             source / ".harness/command-transitions.json",
             root / ".harness/command-transitions.json",
         )
+        # Planning fingerprint и orchestration budget читают manifest так же,
+        # как реальный project instance. Fixture создаёт только нужный subset.
+        write(
+            root / ".harness/manifest.yaml",
+            """execution:
+  maxFixReviewCycles: 1
+sources:
+  requirements: docs/requirements
+  architecture: docs/architecture.md
+protocol:
+  taskDirectory: planning/tasks
+  reviewDirectory: planning/reviews
+""",
+        )
+        write(
+            root / "docs/requirements/REQ-001-execution-state.md",
+            """# REQ-001 — Execution state
+
+## Requirement
+Execution state работает детерминированно.
+
+## Rationale
+Self-test.
+
+## Acceptance
+Переходы воспроизводимы.
+
+## Traceability
+STEP-001
+""",
+        )
+        write(root / "docs/architecture.md", "# Architecture\n\nSynthetic baseline.\n")
         write(root / "planning/tasks/STEP-001.md", task_text())
 
         # 1. Каждая canonical Harness-команда должна отслеживаться как независимая
@@ -414,7 +446,32 @@ def main() -> int:
         complete_command(root, run_root, "STEP RUN STEP-001", "SUCCESS")
         assert resolve_root(root, run_root)["status"] == "DONE"
 
-        # 9. Повтор той же unfinished root command должен resume-ить существующий
+        # 9. maxFixReviewCycles является deterministic budget, а не подсказкой
+        # reasoning-модели. При limit=1 второй FAIL после первого FIX -> REVIEW
+        # обязан остановить RUN и запретить ещё один FIX.
+        limited_root = "STEP RUN STEP-001"
+        limited = start_execution(root, limited_root)
+        begin_command(root, limited_root, "STEP IMPLEMENT STEP-001")
+        complete_command(root, limited_root, "STEP IMPLEMENT STEP-001", "SUCCESS")
+        begin_command(root, limited_root, "STEP REVIEW STEP-001")
+        complete_command(root, limited_root, "STEP REVIEW STEP-001", "FAIL")
+        assert resolve_root(root, limited_root)["command"] == "STEP FIX STEP-001"
+        begin_command(root, limited_root, "STEP FIX STEP-001")
+        complete_command(root, limited_root, "STEP FIX STEP-001", "SUCCESS")
+        begin_command(root, limited_root, "STEP REVIEW STEP-001")
+        complete_command(root, limited_root, "STEP REVIEW STEP-001", "FAIL")
+        exhausted = resolve_root(root, limited_root)
+        assert_resolved(
+            exhausted,
+            "BLOCKED",
+            None,
+            "FIX_REVIEW_LIMIT_REACHED",
+        )
+        assert exhausted["fixReviewCycles"] == 1, exhausted
+        assert exhausted["maxFixReviewCycles"] == 1, exhausted
+
+
+        # 10. Повтор той же unfinished root command должен resume-ить существующий
         # execution record, а не создавать duplicate.
         first = start_execution(root, "PROJECT RECONCILE")
         second = start_execution(root, "PROJECT RECONCILE")
