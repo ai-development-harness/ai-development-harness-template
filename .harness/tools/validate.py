@@ -383,8 +383,8 @@ def validate_requirements_model(root: Path, errors: list[str]) -> None:
         # Required-files gate сообщит о конкретно отсутствующих обязательных artifacts.
         return
 
-    canonical: dict[str, dict[str, str]] = {}
-    for req_path in sorted(requirements_root.glob("REQ-[0-9][0-9][0-9]-*.md")):
+    canonical: dict[str, dict[str, str | None]] = {}
+    for req_path in sorted(requirements_root.glob("REQ-*.md")):
         filename_match = REQ_FILE_RE.fullmatch(req_path.name)
         if filename_match is None:
             errors.append(
