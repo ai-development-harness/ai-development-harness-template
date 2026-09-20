@@ -1,16 +1,22 @@
 # Структура репозитория
 
-Базовый template разделён на **ядро Harness**, runtime integration surfaces, project knowledge base и project planning state.
+Базовый template разделён на **Harness control plane**, runtime integration surfaces, project knowledge base и project planning state.
 
 ## Главное правило владения
 
 ```text
-.harness/**   → ядро AI Development Harness
+.harness/**   → namespace/control plane AI Development Harness
 docs/**       → документация конкретного проекта
 planning/**   → planning state и история конкретного проекта
 ```
 
-Исключение — colocated scaffold/templates рядом с project artifacts, например `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md` и `planning/tasks/TEMPLATE.md`. Они поставляются Harness как форма будущих project artifacts, но не являются документацией ядра.
+Расположение внутри `.harness/` **не является ownership class само по себе**. Внутри namespace есть:
+
+- `harness_owned` core: `.harness/docs/**`, `.harness/tools/**`, update/integrity policies и machine-readable protocol metadata;
+- `shared`: например `.harness/manifest.yaml` и `.harness/git-policy.toml`;
+- local-only state: `.harness/local/**`, который никогда не должен попадать в Git.
+
+Colocated `TEMPLATE.md` рядом с project artifacts, например `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md` и `planning/tasks/TEMPLATE.md`, остаются Harness-managed **shared scaffolds**. Updater может обновлять их через 3-way merge, но созданные по ним REQ/ADR/STEP/reports являются project-owned.
 
 Runtime integration surfaces (`AGENTS.md`, `.agents/`, `.codex/`, `.claude/`, `CLAUDE.md`) остаются в ожидаемых runtime местах и не переносятся внутрь `.harness/`.
 
@@ -22,7 +28,7 @@ Runtime integration surfaces (`AGENTS.md`, `.agents/`, `.codex/`, `.claude/`, `C
 ├── AGENTS.md                         # repository-level contract / runtime entry point
 ├── CLAUDE.md                         # Claude Code bridge: импортирует AGENTS.md
 ├── PROJECT_BRIEF.example.md          # scaffold локального сырого brief
-├── .harness/                         # ядро AI Development Harness
+├── .harness/                         # Harness namespace / control plane
 │   ├── README.md                     # краткое описание internal namespace
 │   ├── manifest.yaml                 # release, project state и Harness settings
 │   ├── harness.lock.json             # immutable source BASE текущего Harness release
@@ -81,7 +87,7 @@ Runtime integration surfaces (`AGENTS.md`, `.agents/`, `.codex/`, `.claude/`, `C
 ## Слои
 
 ```text
-HARNESS CORE
+HARNESS CONTROL PLANE
 .harness/**
                      ↓
 RUNTIME INTEGRATION
