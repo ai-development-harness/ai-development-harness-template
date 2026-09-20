@@ -71,6 +71,10 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 
 Эта схема позволяет release безопасно добавлять новый runtime adapter, не превращая target policy в право перезаписи уже существующих project files.
 
+## Legacy relocation boundary
+
+`v0.4.2` является bridge release для перехода со старого bootstrap namespace `.project/**` на `.harness/**`. Сам relocation выполняет updater `v0.4.2` до reload, используя trusted policy из старого layout. После успешного relocation и reload текущий updater работает только с `.harness/**`; не восстанавливай `.project/harness-update.toml`, `.project/harness.lock.json` или dual-layout fallback.
+
 ## `HARNESS UPDATE CHECK [TO <tag>]`
 
 Строго read-only:
@@ -121,9 +125,9 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
      --result PASS \
      --latest
    ```
-6. Reuse CHECK допустим только если его `details.resolvedTarget`, `details.route` и `details.lockRef` точно совпадают с текущими resolved target/route/lock. Тогда не повторяй expensive CHECK после session restart.
-7. Если latest completed execution другая, metadata отсутствует/не совпадает или route/lock изменились — полностью выполни fresh read-only CHECK до mutation.
-8. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
+3. Reuse CHECK допустим только если его `details.resolvedTarget`, `details.route` и `details.lockRef` точно совпадают с текущими resolved target/route/lock. Тогда не повторяй expensive CHECK после session restart.
+4. Если latest completed execution другая, metadata отсутствует/не совпадает или route/lock изменились — полностью выполни fresh read-only CHECK до mutation.
+5. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
 6. Проверь текущий Harness через `python3 .harness/tools/validate.py --mode manual`.
 7. Применяй route строго hop-by-hop; нельзя перепрыгивать edge даже если конечный tag существует.
 8. Для каждого hop повторно используй заранее рассчитанный transition scope: `harness_owned` только при OURS == BASE, `shared` через 3-way, `marker_merge` с восстановлением local blocks.
