@@ -56,8 +56,8 @@ HARNESS UPDATE CHECK TO vMAJOR.MINOR.PATCH
 Команда:
 
 - читает `.project/harness.lock.json`;
-- читает canonical `.project/harness-update-graph.json` из `source.default_branch` как **routing metadata**;
-- без `TO <tag>` использует `.project/harness-update-graph.json → latest` как конечный target и проверяет, что соответствующий immutable tag реально существует;
+- читает routing manifest из `source.update_manifest`; если primary path отсутствует, разрешены только exact fallback paths из `source.update_manifest_fallbacks`;
+- без `TO <tag>` использует `latest` выбранного routing manifest как конечный target и проверяет, что соответствующий immutable tag реально существует;
 - с `TO <tag>` использует именно указанный release как конечный target и не заменяет его более новым;
 - строит детерминированный route от текущего lock release до target; отсутствие route является blocker;
 - последовательно моделирует BASE / projected OURS / THEIRS для каждого hop до mutation;
@@ -103,9 +103,9 @@ GIT PR
 
 ## Update manifest и выбор target
 
-Канонический source repository хранит `.project/harness-update-graph.json`.
+Primary routing manifest задаётся текущей trusted policy через `source.update_manifest`. Bridge release может дополнительно задать `source.update_manifest_fallbacks`: fallback читается только если primary path отсутствует и остаётся только routing metadata из configured `default_branch`.
 
-`.project/harness-update-graph.json` — **не migration script** и не source baseline. Это только machine-readable routing metadata:
+Routing manifest — **не migration script** и не source baseline. Это только machine-readable routing metadata:
 
 - `schemaVersion` задаёт понятую updater-ом схему;
 - `latest` задаёт конечный target для команды без `TO`;
@@ -118,7 +118,7 @@ GIT PR
 
 Без `TO <tag>`:
 
-1. прочитай remote `.project/harness-update-graph.json` из `source.default_branch`;
+1. прочитай remote routing manifest по `source.update_manifest`; только при отсутствии primary попробуй exact `source.update_manifest_fallbacks` по порядку;
 2. возьми `latest`;
 3. построй route от current lock release до `latest`;
 4. проверь существование/immutability каждого tag, участвующего в route;
@@ -225,6 +225,23 @@ THEIRS v0.2.x:
 
 `HARNESS UPDATE CHECK` обязан показать introduced, retired и ownership-reclassified paths до mutation.
 
+## Bootstrap relocation bridge
+
+Bridge release может заранее установить capability для безопасной смены bootstrap/control-plane namespace, например `.project/** → .harness/**`. Эта возможность описывается **только текущей доверенной** `.project/harness-update.toml → [bootstrap_relocation]`; target release не имеет права сам расширять relocation scope.
+
+Правила:
+
+1. target policy читается только по exact `target_policy_candidates`; в immutable target tag должен существовать ровно один candidate;
+2. все rename pairs берутся только из current trusted policy;
+3. `harness_owned_moves`: source должен совпадать с BASE, destination не должен существовать в projected OURS, THEIRS(destination) обязан существовать;
+4. `shared_moves`: выполняется rename-aware 3-way merge `BASE(source) / OURS(source) / THEIRS(destination)`, чтобы сохранить project-specific настройки;
+5. source удаляется только после успешного merge/copy destination и target postcondition;
+6. lock переносится отдельно: сначала создаётся `lock_to` с новым release/ref, затем retire `lock_from`; старый lock нельзя удалять первым;
+7. local operational state активной execution автоматически не переносится между namespaces; после relocation выполняется fresh updater run;
+8. relocation hop обязан завершаться `reloadRequired: true`.
+
+Если relocation config отсутствует/невалиден, target policy отсутствует или неоднозначна, destination уже занят неизвестным local path либо shared merge конфликтует — mutation блокируется.
+
 ## Postcondition update
 
 Перед записью lock для каждого hop updater обязан убедиться, что фактический результат соответствует заранее рассчитанному hop plan и что required Harness artifacts соответствующего target присутствуют. Перед первой mutation весь route до конечного target должен быть успешно смоделирован read-only.
@@ -257,9 +274,9 @@ Moving branch `main` не является update baseline.
 
 ## Security boundary
 
-Updater-agent начинает с allowlist BASE policy. До выбора THEIRS ему разрешено прочитать только canonical remote `.project/harness-update-graph.json` из настроенного `source.default_branch`; этот JSON используется исключительно для выбора release refs и не может задавать filesystem paths, shell commands, hooks или произвольные инструкции.
+Updater-agent начинает с allowlist BASE policy. До выбора THEIRS ему разрешено прочитать moving `source.default_branch` только по `source.update_manifest` и exact `source.update_manifest_fallbacks`; routing JSON используется исключительно для выбора release refs и не может задавать filesystem paths, shell commands, hooks или произвольные инструкции.
 
-После выбора очередного hop единственное расширение bootstrap scope — чтение target `.project/harness-update.toml` по тому же уже управляемому пути, после чего target policy используется только для вычисления безопасного transition scope.
+После выбора очередного hop target policy по умолчанию читается по текущему управляемому пути. Только current trusted `[bootstrap_relocation]` может разрешить exact альтернативные `target_policy_candidates`; target policy сама не может расширить этот список.
 
 Новый target policy не может автоматически захватить существующий неизвестный local path. Любая такая коллизия блокирует mutation.
 
@@ -267,4 +284,4 @@ Updater-agent начинает с allowlist BASE policy. До выбора THEIR
 
 Текущий validator запускается **до** mutation. После `HARNESS UPDATE APPLY` пользователь/агент обязан сначала проверить diff; выполнение нового tooling относится уже к обычному `GIT CHECK`/verification после review изменений.
 
-Remote `.project/harness-update-graph.json` не делает moving `main` baseline: любое содержимое protocol layer, применяемое к проекту, должно происходить из immutable tag, проверенного для конкретного hop.
+Remote routing manifest, включая разрешённый fallback path, не делает moving `main` baseline: любое содержимое protocol layer, применяемое к проекту, должно происходить из immutable tag, проверенного для конкретного hop.
