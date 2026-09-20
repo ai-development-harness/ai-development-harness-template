@@ -154,7 +154,7 @@ Canonical artifacts имеют приоритет над local operational state
 
 ### Requirement (`REQ-NNN`)
 
-Проверяемый продуктовый/системный контракт: **что должно быть обеспечено**.
+Проверяемый продуктовый/системный контракт: **что должно быть обеспечено**. Canonical definition хранится в отдельном `docs/requirements/REQ-NNN-*.md`; `SPEC.md` и `STATUS.md` являются projections.
 
 ### ADR (`ADR-NNN`)
 
@@ -242,14 +242,14 @@ Precondition: `.project/manifest.yaml → project.initialized: false`.
 1. Проверить существование `PROJECT_BRIEF.local.md`.
 2. Прочитать brief и референсы. Если внешний source недоступен, отметить это, не подменять факт предположением.
 3. Сформировать `docs/PROJECT.md`.
-4. Извлечь проверяемые REQ и назначить стабильные IDs; в `SPEC.md` не записывать lifecycle-статус.
+4. Извлечь проверяемые REQ, назначить стабильные IDs и создать каждый отдельным `docs/requirements/REQ-NNN-<slug>.md`; удалить `REQ-001-template.md`, перестроить `SPEC.md` как index projection и не записывать lifecycle-статус ни в canonical REQ, ни в `SPEC.md`.
 5. Сформировать минимально достаточный architecture baseline.
 6. Создать ADR только для уже необходимых устойчивых решений.
 7. Неопределённости записать в `OPEN_QUESTIONS`; при необходимости создать ранний `RESEARCH`/`ADR` STEP.
 8. Построить roadmap по dependencies, а не только по удобному порядку.
 9. Создать task-файл для каждого initial STEP по template.
 10. Заполнить traceability REQ↔STEP↔ADR.
-11. Обновить `PLAN.md`, `STATUS.md` и `docs/requirements/STATUS.md`; это единственное persisted место lifecycle-статуса REQ.
+11. Обновить `PLAN.md`, `STATUS.md`, `docs/requirements/SPEC.md` и `docs/requirements/STATUS.md`; requirements `STATUS.md` остаётся единственным persisted местом lifecycle-статуса REQ.
 12. Обновить только generated blocks `README.md` и `AGENTS.md`.
 13. Заполнить `development.md` только фактами, известными из brief/выбранной архитектуры; не выдумывать CLI commands.
 14. Установить `project.initialized: true`, project name/date.
@@ -268,12 +268,12 @@ Production code mutation запрещена.
 2. До создания выполнить semantic duplicate/overlap search по tasks, PLAN, REQ, ADR и релевантному code/docs.
 3. Если запрос полностью покрыт существующим STEP — не создавать новый; вернуть найденный STEP и рекомендуемую команду.
 4. Классифицировать Type/Priority/Phase/Risk flags.
-5. Определить existing REQ. Новый REQ создавать только если запрос вводит новый продуктовый контракт.
+5. Определить existing REQ. Новый REQ создавать только если запрос вводит новый продуктовый контракт; canonical definition записывать отдельным `docs/requirements/REQ-NNN-<slug>.md`, затем обновлять `SPEC.md` и `STATUS.md` projections.
 6. Проверить ADR. Не создавать ADR на мелкую implementation detail. Если без нового устойчивого решения реализация некорректна — создать prerequisite ADR STEP либо зафиксировать ADR need.
 7. Определить hard dependencies и влияние на будущие STEP. Не перенумеровывать историю.
 8. Сформировать Goal/Context/Scope/Mutation policy/Out of scope/Acceptance/Verification/Deliverables.
 9. `Implementation plan` оставить `Not planned` — его заполняет PLAN.
-10. Создать task, обновить PLAN/STATUS и REQ traceability.
+10. Создать task, обновить PLAN/STATUS, canonical REQ traceability и requirements SPEC/STATUS projections.
 11. Проверить consistency.
 12. Вернуть `STEP PLAN STEP-NNN`.
 
