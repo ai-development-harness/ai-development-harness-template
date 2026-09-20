@@ -37,14 +37,14 @@
 
 После `PROJECT INIT` основными продуктовыми источниками становятся:
 
-- [`../PROJECT.md`](../../docs/PROJECT.md) — что это за проект и его границы;
-- [`../requirements/`](../../docs/requirements/) — canonical `REQ-NNN-*.md`;
-- [`../requirements/SPEC.md`](../../docs/requirements/SPEC.md) — index projection требований;
-- [`../requirements/STATUS.md`](../../docs/requirements/STATUS.md) — lifecycle projection REQ;
-- [`../architecture.md`](../../docs/architecture.md) — текущий архитектурный baseline;
-- [`../adr/`](../../docs/adr/) — история устойчивых архитектурных решений;
-- [`../../planning/PLAN.md`](../../planning/PLAN.md) — roadmap projection;
-- [`../../planning/tasks/`](../../planning/tasks/) — канонические task contracts;
-- [`../GLOSSARY.md`](../../docs/GLOSSARY.md) — **продуктовый** глоссарий конкретного проекта.
+- [`docs/PROJECT.md`](../../docs/PROJECT.md) — что это за проект и его границы;
+- [`docs/requirements/`](../../docs/requirements/) — canonical `REQ-NNN-*.md`;
+- [`docs/requirements/SPEC.md`](../../docs/requirements/SPEC.md) — index projection требований;
+- [`docs/requirements/STATUS.md`](../../docs/requirements/STATUS.md) — lifecycle projection REQ;
+- [`docs/architecture.md`](../../docs/architecture.md) — текущий архитектурный baseline;
+- [`docs/adr/`](../../docs/adr/) — история устойчивых архитектурных решений;
+- [`planning/PLAN.md`](../../planning/PLAN.md) — roadmap projection;
+- [`planning/tasks/`](../../planning/tasks/) — канонические task contracts;
+- [`docs/GLOSSARY.md`](../../docs/GLOSSARY.md) — **продуктовый** глоссарий конкретного проекта.
 
 Не смешивай продуктовый глоссарий с [`GLOSSARY.md`](GLOSSARY.md): последний определяет язык и сущности самого Harness.
