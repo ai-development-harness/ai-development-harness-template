@@ -314,7 +314,7 @@ root execution = complete
 Single command:
 
 ```text
-HARNESS UPDATE CHECK TO v0.4.0
+HARNESS UPDATE CHECK TO vX.X.X
 ```
 
 успешно завершилась и записана как `PASS`.
@@ -323,19 +323,19 @@ HARNESS UPDATE CHECK TO v0.4.0
 
 ```bash
 python3 tools/harness/execution-state.py find \
-  --command 'HARNESS UPDATE CHECK TO v0.4.0' \
+  --command 'HARNESS UPDATE CHECK TO vX.X.X' \
   --result PASS \
   --latest
 ```
 
-и `HARNESS UPDATE APPLY TO v0.4.0` не обязан повторять CHECK.
+и `HARNESS UPDATE APPLY TO vX.X.X` не обязан повторять CHECK.
 
 Если после CHECK завершалась другая execution, old CHECK считается stale для mutation и APPLY выполняет fresh CHECK.
 
 Explicit chain:
 
 ```text
-HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
 хранит оба segment в одной root sequence и после interruption продолжает APPLY внутри той же execution.
