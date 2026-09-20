@@ -34,6 +34,7 @@ CONTRACT_SECTIONS = (
     "Verification",
     "Deliverables",
 )
+REQUIRED_TASK_METADATA = ("Статус", "Type", "Приоритет", "Фаза", "Depends on")
 REQUIRED_TASK_SECTIONS = CONTRACT_SECTIONS + (
     "Implementation plan",
     "Evidence",
@@ -332,6 +333,10 @@ def validate_planning_contracts(root: Path) -> list[str]:
                 f"planning: filename/H1 ID mismatch for {step_id}: {h1.group(1)}"
             )
 
+        for field in REQUIRED_TASK_METADATA:
+            if not task["metadata"].get(field, "").strip():
+                errors.append(f"planning: {step_id} missing metadata '{field}'")
+
         for section in REQUIRED_TASK_SECTIONS:
             if section not in task["sections"]:
                 errors.append(f"planning: {step_id} missing section '## {section}'")
@@ -367,6 +372,34 @@ def validate_planning_contracts(root: Path) -> list[str]:
             )
 
         if plan_status == "Ready":
+            # Ready означает executable contract. Hard dependencies уже должны
+            # быть закрыты, а linked ADR — действительно Accepted.
+            for dep_id in dependency_ids(task):
+                dependency = tasks.get(dep_id)
+                if dependency is None:
+                    try:
+                        dependency = read_task(root, dep_id)
+                    except (OSError, ValueError, FileNotFoundError):
+                        dependency = None
+                if dependency is not None and dependency["metadata"].get("Статус") != "Выполнено":
+                    errors.append(
+                        f"planning: {step_id} Ready plan has incomplete dependency {dep_id}"
+                    )
+
+            for adr_id in adr_ids(task):
+                try:
+                    adr_path = canonical_adr_path(root, adr_id)
+                    adr_metadata, _ = parse_markdown(
+                        adr_path.read_text(encoding="utf-8")
+                    )
+                    if adr_metadata.get("Status") != "Accepted":
+                        errors.append(
+                            f"planning: {step_id} Ready plan references non-Accepted {adr_id}"
+                        )
+                except (OSError, ValueError, FileNotFoundError):
+                    # Missing/ambiguous ADR уже добавлен отдельной structural check.
+                    pass
+
             stored = fields.get("Plan basis", "")
             revision = fields.get("Plan revision", "")
             planned_at = fields.get("Planned at", "")
