@@ -8,7 +8,7 @@ description: Run an independent read-only review of a STEP implementation, optio
 
 Execution Status ведёт global wrapper и при старте REVIEW запоминает previous immutable review report.
 
-Обязателен независимый `reviewer`. Сверь task/REQ/ADR/plan с фактической реализацией и tests. Прочитай `.project/manifest.yaml → review.security` и `review.tests`: `auto` запускает specialized reviewer по risk/factual diff/test surface, `always` — для каждого review-прохода. Другие/отсутствующие значения — configuration blocker.
+Обязателен независимый `reviewer`. Сверь task/REQ/ADR/plan с фактической реализацией и tests. Прочитай `.harness/manifest.yaml → review.security` и `review.tests`: `auto` запускает specialized reviewer по risk/factual diff/test surface, `always` — для каждого review-прохода. Другие/отсутствующие значения — configuration blocker.
 
 Создай новый immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL` или `BLOCKED`. Global wrapper записывает тот же verdict как command result.
 

@@ -1,22 +1,22 @@
-### REQ-NNN — Название
+# REQ-NNN — Название
 
 **Приоритет:** Критический | Высокий | Средний | Низкий
 **Источник:** brief / user / regulation / research / other
 
-#### Requirement
+## Requirement
 
 Проверяемое описание требуемого поведения/результата без привязки к случайной реализации.
 
-#### Rationale
+## Rationale
 
 Почему requirement существует.
 
-#### Acceptance
+## Acceptance
 
 - Наблюдаемый критерий 1.
 - Наблюдаемый критерий 2.
 
-#### Traceability
+## Traceability
 
 - STEP: STEP-NNN
 - ADR: ADR-NNN / не требуется

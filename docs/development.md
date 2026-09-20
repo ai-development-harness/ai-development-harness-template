@@ -40,4 +40,4 @@ TBD
 
 ## Git и CI
 
-Repository Git workflow задаётся `docs/harness/GIT_WORKFLOW.md` и `.project/git-policy.toml`. Harness Integrity CI является baseline; project-specific CI добавляется после определения фактического stack/tooling.
+Repository Git workflow задаётся `.harness/docs/GIT_WORKFLOW.md` и `.harness/git-policy.toml`. Harness Integrity CI является baseline; project-specific CI добавляется после определения фактического stack/tooling.

@@ -14,17 +14,17 @@ rootCommand = STEP RUN STEP-NNN
 ```
 
 1. Resolve STEP, blockers и Type.
-2. Прочитай `.project/manifest.yaml`: `execution.maxFixReviewCycles`, `review.security`, `review.tests` должны быть валидны, если применимы.
+2. Прочитай `.harness/manifest.yaml`: `execution.maxFixReviewCycles`, `review.security`, `review.tests` должны быть валидны, если применимы.
 3. Dispatch по существующему Type: coding flow, ADR, RESEARCH, AUDIT, REVIEW, DOCUMENTATION или RELEASE. Execution profiles не существуют.
 4. Перед продолжением root execution вызови:
    ```bash
-   python3 tools/harness/resolve-next-command.py --json \
+   python3 .harness/tools/resolve-next-command.py --json \
      --root 'STEP RUN STEP-NNN'
    ```
 5. Если resolver возвращает interrupted child command — resume её.
 6. Если RUN запускает canonical child command, отметь её:
    ```bash
-   python3 tools/harness/execution-state.py begin \
+   python3 .harness/tools/execution-state.py begin \
      --root 'STEP RUN STEP-NNN' \
      --command '<child command>'
    ```

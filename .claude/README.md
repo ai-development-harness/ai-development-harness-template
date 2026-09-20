@@ -17,3 +17,5 @@ Core Harness skills остаются в `.agents/skills/`. Это vendor-neutral
 Для персонального выбора root-модели/effort используй `.claude/settings.local.json`. Для локальных инструкций Claude Code используй `CLAUDE.local.md`.
 
 Оба файла игнорируются Git. Tracked `.claude/settings.json` и `.claude/agents/*.md` считаются shared Harness files и при `HARNESS UPDATE APPLY` проходят 3-way merge, поэтому проектные настройки модели не должны молча затираться.
+
+Почему у Claude Code есть нативный project-local settings layer, а у Codex пока нет его аналога, описано в [`.harness/docs/AGENT_CONFIGURATION.md`](../.harness/docs/AGENT_CONFIGURATION.md#локальные-настройки-runtime).

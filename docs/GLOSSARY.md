@@ -4,7 +4,7 @@
 
 Термины самого AI Development Harness (`REQ`, `ADR`, `STEP`, `Evidence`, `Projection`, `Drift`, `Gate` и т. п.) определены отдельно:
 
-- [`harness/GLOSSARY.md`](harness/GLOSSARY.md)
+- [`.harness/docs/GLOSSARY.md`](../.harness/docs/GLOSSARY.md)
 
 Добавляй сюда термин только если его единое значение важно для требований, архитектуры, UX или реализации конкретного продукта.
 

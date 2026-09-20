@@ -9,7 +9,7 @@ description: Select the next executable project action using dependencies, task 
 Сначала выполни:
 
 ```bash
-python3 tools/harness/resolve-next-command.py --json
+python3 .harness/tools/resolve-next-command.py --json
 ```
 
 Resolver возвращает все unresolved executions всех namespaces. Незавершённый STEP-related execution имеет приоритет над стартом нового STEP, но не блокирует явно запрошенные пользователем независимые Git/Project/Harness commands.
