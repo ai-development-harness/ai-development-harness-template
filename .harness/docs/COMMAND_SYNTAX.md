@@ -99,19 +99,19 @@ GIT CHECK > COMMIT > PUSH
 Machine-readable source of truth для command surface и переходов:
 
 ```text
-.project/command-transitions.json
+.harness/command-transitions.json
 ```
 
 Полная документация матрицы:
 
 ```text
-docs/harness/COMMAND_TRANSITIONS.md
+.harness/docs/COMMAND_TRANSITIONS.md
 ```
 
 Canonical command сначала проходит deterministic preflight:
 
 ```bash
-python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
+python3 .harness/tools/validate-command.py --json -- '<raw canonical command>'
 ```
 
 Порядок обработки фиксирован:
@@ -204,7 +204,7 @@ HARNESS UPDATE APPLY TO vX.X.X
 
 ### GIT
 
-Git-цепочка не имеет отдельного target; каждый сегмент работает с текущим repository/branch context согласно `.project/git-policy.toml`.
+Git-цепочка не имеет отдельного target; каждый сегмент работает с текущим repository/branch context согласно `.harness/git-policy.toml`.
 
 ## 6. Разрешённые цепочки
 
@@ -276,13 +276,13 @@ HARNESS UPDATE CHECK [TO <tag>] > APPLY
 Их единственный machine-readable источник:
 
 ```text
-.project/command-transitions.json
+.harness/command-transitions.json
 ```
 
 Человекочитаемая полная таблица:
 
 ```text
-docs/harness/COMMAND_TRANSITIONS.md
+.harness/docs/COMMAND_TRANSITIONS.md
 ```
 
 Правило закрытого мира:
@@ -384,10 +384,10 @@ GIT CHECK > COMMIT > PUSH > PR
 После изменения command surface старые project-owned документы не считаются автоматически мигрированными только потому, что protocol layer уже обновлён. Для `PROJECT RECONCILE` предусмотрена отдельная deterministic проверка:
 
 ```bash
-python3 tools/harness/check-command-references.py --json
+python3 .harness/tools/check-command-references.py --json
 ```
 
-Основные project paths (`projectOverview`, `requirements`, `architecture`, `roadmap`, `status`, `taskDirectory`) checker берёт из `.project/manifest.yaml`, поэтому нестандартный layout не теряется. Дополнительно проверяются `README.md` и live project Markdown под `docs/**` (кроме `docs/harness/**` и `docs/adr/**`).
+Основные project paths (`projectOverview`, `requirements`, `architecture`, `roadmap`, `status`, `taskDirectory`) checker берёт из `.harness/manifest.yaml`, поэтому нестандартный layout не теряется. Дополнительно проверяются `README.md` и live project Markdown под `docs/**` (кроме `.harness/docs/**` и `docs/adr/**`).
 
 Исторические артефакты намеренно не переписываются и не входят в deterministic scope: immutable review/audit/release/update/search reports и ADR history могут сохранять синтаксис, который был корректен в момент создания записи.
 
