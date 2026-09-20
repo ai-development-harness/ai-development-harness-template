@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "latest": "v0.5.1",
+  "latest": "v0.5.2",
   "transitions": [
     {
       "from": "v0.1.0",
@@ -89,14 +89,20 @@
       "reason": "v0.4.2 installs trusted bootstrap relocation semantics required before the control-plane move to .harness/**"
     },
     {
-      "from": "v0.4.2",
+      "from": "v0.5.0",
       "to": "v0.5.1",
+      "kind": "standard",
+      "reloadRequired": false
+    },
+    {
+      "from": "v0.4.2",
+      "to": "v0.5.2",
       "kind": "standard",
       "reloadRequired": true
     },
     {
-      "from": "v0.5.0",
-      "to": "v0.5.1",
+      "from": "v0.5.1",
+      "to": "v0.5.2",
       "kind": "standard",
       "reloadRequired": false
     }
