@@ -621,18 +621,26 @@ def main() -> int:
     # сохранить canonical REQ внутри SPEC.md сразу после Harness update. Это не
     # разрешение коммитить drift: commit/ci остаются строгими и требуют сначала
     # выполнить PROJECT RECONCILE. Mixed/partial migration также остаётся FAIL.
-    if args.mode == "manual" and legacy_requirements_migration_pending(root):
+    legacy_requirements_pending = (
+        args.mode == "manual" and legacy_requirements_migration_pending(root)
+    )
+    if legacy_requirements_pending:
         warnings.append(
             "requirements legacy migration pending; run PROJECT RECONCILE before GIT COMMIT/CI"
+        )
+        # До RECONCILE legacy layout ещё не содержит standalone canonical REQ.
+        # Planning validator сознательно откладывается: иначе новый static gate
+        # сломал бы безопасный update bridge, который manual-mode обязан пропустить.
+        warnings.append(
+            "planning contract validation deferred until legacy requirements migration is reconciled"
         )
     else:
         validate_requirements_model(root, errors)
 
-    # --- Planning contracts ------------------------------------------------
-    # Дешёвый static gate дополняет semantic review: он ловит отсутствующие
-    # REQ/ADR/dependencies, dependency cycles, stale Ready plans и OPEN question
-    # blockers без вызова reasoning-модели.
-    errors.extend(validate_planning_contracts(root))
+        # Дешёвый static gate дополняет semantic review: он ловит отсутствующие
+        # REQ/ADR/dependencies, dependency cycles, stale Ready plans и OPEN question
+        # blockers без вызова reasoning-модели.
+        errors.extend(validate_planning_contracts(root))
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
