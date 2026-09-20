@@ -4,7 +4,7 @@
 
 Допустимость переходов между командами определяется **только** machine-readable graph `.project/command-transitions.json`. Полная человекочитаемая матрица — [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). До skill routing canonical command проходит deterministic `tools/harness/validate-command.py`.
 
-State transitions выполнения описаны в `planning/EXECUTION_PROTOCOL.md`.
+State transitions выполнения описаны в `docs/harness/EXECUTION_PROTOCOL.md`.
 
 Старые ненеймспейсные формы не являются каноническими alias. Локальные пользовательские alias-команды можно добавить только явно в `AGENTS.local.md`; они читаются после `AGENTS.md`.
 
