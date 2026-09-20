@@ -138,9 +138,9 @@ Routing manifest fallback подчиняется той же trust boundary: mov
      --result PASS \
      --latest
    ```
-6. Reuse CHECK допустим только если его `details.resolvedTarget`, `details.route` и `details.lockRef` точно совпадают с текущими resolved target/route/lock. Тогда не повторяй expensive CHECK после session restart.
-7. Если latest completed execution другая, metadata отсутствует/не совпадает или route/lock изменились — полностью выполни fresh read-only CHECK до mutation.
-8. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
+3. Reuse CHECK допустим только если его `details.resolvedTarget`, `details.route` и `details.lockRef` точно совпадают с текущими resolved target/route/lock. Тогда не повторяй expensive CHECK после session restart.
+4. Если latest completed execution другая, metadata отсутствует/не совпадает или route/lock изменились — полностью выполни fresh read-only CHECK до mutation.
+5. Если есть blocker/conflict/`NO_UPDATE_PATH` — остановись **до mutation**.
 6. Проверь текущий Harness через `python3 tools/harness/validate.py --mode manual`.
 7. Применяй route строго hop-by-hop; нельзя перепрыгивать edge даже если конечный tag существует.
 8. Для каждого hop повторно используй заранее рассчитанный transition scope: `harness_owned` только при OURS == BASE, `shared` через 3-way, `marker_merge` с восстановлением local blocks.
@@ -150,9 +150,9 @@ Routing manifest fallback подчиняется той же trust boundary: mov
 12. После каждого hop проверь postcondition и required artifacts этого target.
 13. Для обычного hop только после успешного postcondition обнови current lock на его `to` release. Для bootstrap relocation после postcondition сначала создай `lock_to` с новым release/ref и только затем retire `lock_from`. Частично применённый hop не имеет права потерять последний доказуемый BASE.
 14. Если edge имеет `reloadRequired: true`, создай durable report о достигнутом промежуточном release, остановись с `UPDATER_RELOAD_REQUIRED` и не выполняй следующие hops текущим runtime.
-14. После последнего hop создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав initial release, final target, фактически пройденный route, introduced/retired/reclassified paths и verification evidence.
-15. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
-16. Покажи итоговый diff.
+15. После последнего hop создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав initial release, final target, фактически пройденный route, introduced/retired/reclassified paths и verification evidence.
+16. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
+17. Покажи итоговый diff.
 
 Не запускай target scripts. `.project/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 
