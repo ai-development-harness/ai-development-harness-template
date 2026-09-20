@@ -41,7 +41,6 @@ harness_owned = [
   ".project/harness-policy.toml",
   ".project/harness-update.toml",
   "docs/harness/**",
-  "planning/EXECUTION_PROTOCOL.md",
   "planning/harness-updates/README.md",
   "tools/harness/**",
 ]
