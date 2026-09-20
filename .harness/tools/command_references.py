@@ -165,8 +165,10 @@ def project_live_document_paths(root: Path) -> list[Path]:
     Primary project paths и taskDirectory берутся из .harness/manifest.yaml.
     Source path может быть файлом или каталогом; каталоги рекурсивно раскрываются
     в Markdown-файлы. Дополнительно сканируются README и live project docs под docs/**.
-    Не входят docs/harness (protocol source), docs/adr (decision history) и
-    history-oriented planning records: reviews/audits/releases/updates/searches.
+    Harness docs находятся вне project-owned `docs/**` под `.harness/docs/**`
+    и поэтому сюда не попадают. Из `docs/**` исключается только `docs/adr/**`
+    как immutable decision history; также не сканируются history-oriented planning
+    records: reviews/audits/releases/updates/searches.
     """
     manifest_paths, task_directory = _manifest_project_paths(root)
     paths = [root / "README.md"]
@@ -180,10 +182,9 @@ def project_live_document_paths(root: Path) -> list[Path]:
     if docs_root.exists():
         for path in sorted(docs_root.rglob("*.md")):
             rel = path.relative_to(docs_root)
-            # docs/harness — protocol source of truth, его уже проверяет Harness Integrity.
             # docs/adr — исторические decision records; старый command syntax там может
             # намеренно отражать состояние проекта на момент принятия решения.
-            if rel.parts and rel.parts[0] in {"harness", "adr"}:
+            if rel.parts and rel.parts[0] == "adr":
                 continue
             paths.append(path)
 
