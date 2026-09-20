@@ -39,7 +39,7 @@ Templates — производное представление текущего
 
 ## Язык
 
-Язык issue/PR templates задаётся в `.project/manifest.yaml`:
+Язык issue/PR templates задаётся в `.harness/manifest.yaml`:
 
 ```yaml
 language:
