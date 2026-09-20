@@ -307,6 +307,35 @@ REQ_H1_RE = re.compile(r"^# (REQ-\d{3}) — (.+)$")
 REQ_REQUIRED_SECTIONS = ("Requirement", "Rationale", "Acceptance", "Traceability")
 
 
+# Определить точный legacy-layout requirements, который допустим только как временное
+# post-update состояние до PROJECT RECONCILE. Смешанный/частично мигрированный layout
+# сюда намеренно не попадает: он должен оставаться deterministic validation failure.
+def legacy_requirements_migration_pending(root: Path) -> bool:
+    requirements_root = root / "docs" / "requirements"
+    spec_path = requirements_root / "SPEC.md"
+    status_path = requirements_root / "STATUS.md"
+    if not requirements_root.is_dir() or not spec_path.is_file() or not status_path.is_file():
+        return False
+
+    canonical_files = [
+        path
+        for path in requirements_root.glob("REQ-*.md")
+        if REQ_FILE_RE.fullmatch(path.name)
+    ]
+    if canonical_files:
+        return False
+
+    try:
+        spec_text = spec_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return False
+
+    # Legacy v0.4.x хранит canonical definitions как Markdown headings внутри SPEC.md.
+    # Наличие хотя бы одного такого REQ при полном отсутствии standalone REQ-файлов —
+    # однозначный migration-pending state, который PROJECT RECONCILE умеет преобразовать.
+    return bool(re.search(r"(?m)^#{2,}\\s+REQ-\\d{3}\\b", spec_text))
+
+
 # Разобрать projection-таблицу REQ. Первая колонка обязана быть прямой Markdown-ссылкой
 # на canonical REQ-файл; bare ID считается drift, потому что projection должен быть navigable.
 def parse_requirement_projection(
@@ -547,7 +576,17 @@ def main() -> int:
     # --- Requirements document model --------------------------------------
     # Canonical REQ, SPEC index и STATUS lifecycle projection обязаны оставаться
     # синхронизированы детерминированно, без LLM-интерпретации.
-    validate_requirements_model(root, errors)
+    #
+    # Исключение только для manual-mode: legacy v0.4.x project может временно
+    # сохранить canonical REQ внутри SPEC.md сразу после Harness update. Это не
+    # разрешение коммитить drift: commit/ci остаются строгими и требуют сначала
+    # выполнить PROJECT RECONCILE. Mixed/partial migration также остаётся FAIL.
+    if args.mode == "manual" and legacy_requirements_migration_pending(root):
+        warnings.append(
+            "requirements legacy migration pending; run PROJECT RECONCILE before GIT COMMIT/CI"
+        )
+    else:
+        validate_requirements_model(root, errors)
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
