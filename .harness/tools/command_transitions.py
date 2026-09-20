@@ -4,7 +4,7 @@
 Этот модуль — низкоуровневая часть protocol layer. Он намеренно не читает Git,
 STEP-файлы, runtime state и не вызывает LLM. Его задача ограничена структурой
 команд: распознать canonical syntax, нормализовать shorthand chain и проверить,
-что каждый переход явно существует в .project/command-transitions.json.
+что каждый переход явно существует в .harness/command-transitions.json.
 
 Ключевой safety-инвариант: отсутствие edge означает запрет перехода. Здесь нет
 эвристик вида «так логично» или «Git обычно работает именно так».
@@ -17,7 +17,7 @@ import re
 from typing import Any
 
 # Единственный machine-readable source of truth для command surface и chain edges.
-TABLE_PATH = ".project/command-transitions.json"
+TABLE_PATH = ".harness/command-transitions.json"
 # Эти множества одновременно документируют и ограничивают schema vocabulary.
 # Новое значение нельзя «просто начать использовать» в JSON — сначала нужно явно
 # расширить parser/validator, иначе Harness Integrity обязан упасть.
