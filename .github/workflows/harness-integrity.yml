@@ -99,6 +99,13 @@ jobs:
         # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
         run: python3 .harness/tools/execution-self-test.py
 
+      # Проверить manifest-driven planning paths, transitive Plan basis и static blockers.
+      # Пример: изменение linked REQ после PLAN обязано сделать Ready plan stale без LLM.
+      - name: Validate planning contracts
+        # Dependency-free synthetic regression suite для planning_contract.py.
+        # Пример: проверяет dependency cycles, OPEN questions и custom taskDirectory.
+        run: python3 .harness/tools/planning-contract-self-test.py
+
       # Проверить исторически критичные update/migration invariants на synthetic legacy state.
       # Пример: routing/reload, relocation layout, project templates, ignored artifacts и deferred REQ migration.
       - name: Validate update migration regression
