@@ -34,6 +34,12 @@ from command_transitions import (
     parse_canonical_command,
     validate_command_text,
 )
+from planning_contract import (
+    max_fix_review_cycles,
+    planning_context_basis,
+    review_directory,
+    task_path as configured_task_path,
+)
 
 # Фиксированный project-level operational state. Один файл намеренно покрывает
 # STEP, Git, Harness update и остальные namespaces.
@@ -147,6 +153,14 @@ def validate_status(value: dict[str, Any]) -> list[str]:
         attempt = current.get("attempt")
         if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
             errors.append(f"{prefix}: current.attempt must be >= 1")
+
+        fix_review_cycles = execution.get("fixReviewCycles", 0)
+        if (
+            not isinstance(fix_review_cycles, int)
+            or isinstance(fix_review_cycles, bool)
+            or fix_review_cycles < 0
+        ):
+            errors.append(f"{prefix}: fixReviewCycles must be a non-negative integer")
     return errors
 
 
@@ -336,6 +350,7 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
             ),
         },
         "notExecuted": [],
+        "fixReviewCycles": 0,
         "startedAt": now,
         "completedAt": None,
         "updatedAt": now,
@@ -551,6 +566,21 @@ def begin_command(
         index = sequence.index(normalized_command)
         execution["currentIndex"] = index
 
+    # FIX -> REVIEW завершает один repair cycle. Счётчик хранится в root
+    # execution и переживает session restart, поэтому budget нельзя обойти
+    # перезапуском reasoning-модели.
+    previous_parsed = normalize_single_command(root, current["command"])
+    next_parsed = normalize_single_command(root, normalized_command)
+    if (
+        execution["mode"] == "orchestration"
+        and previous_parsed.get("domain") == "STEP"
+        and previous_parsed.get("operation") == "FIX"
+        and current.get("status") == "complete"
+        and current.get("result") == "SUCCESS"
+        and next_parsed.get("operation") == "REVIEW"
+    ):
+        execution["fixReviewCycles"] = int(execution.get("fixReviewCycles", 0)) + 1
+
     execution["current"] = {
         "command": normalized_command,
         "status": "running",
@@ -632,12 +662,7 @@ def parse_markdown(text: str) -> tuple[dict[str, str], dict[str, str]]:
 
 # Разрешить STEP id в canonical planning/tasks path и отклонить некорректный identifier до чтения файла.
 def task_path(root: Path, step_id: str) -> Path:
-    if not re.fullmatch(r"STEP-\d{3,}", step_id):
-        raise ValueError(f"invalid STEP id: {step_id}")
-    path = root / "planning/tasks" / f"{step_id}.md"
-    if not path.is_file():
-        raise FileNotFoundError(f"task file not found: {path.relative_to(root)}")
-    return path
+    return configured_task_path(root, step_id)
 
 
 
@@ -673,13 +698,7 @@ def contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
 
 # Посчитать SHA-256 нормализованного task contract. Hash не включает Evidence/Review status/сам план.
 def contract_basis(root: Path, step_id: str) -> str:
-    encoded = json.dumps(
-        contract_snapshot(root, step_id),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    return planning_context_basis(root, step_id)
 
 
 
@@ -761,7 +780,7 @@ def _review_verdict(path: Path) -> str | None:
 
 # Собрать immutable review reports STEP в сортируемом по filename порядке; timestamp в имени — durable ordering.
 def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
-    directory = root / "planning/reviews" / step_id
+    directory = review_directory(root) / step_id
     if not directory.is_dir():
         return []
     result: list[dict[str, Any]] = []
@@ -983,6 +1002,28 @@ def resolve_execution(
             and result in edge.get("onPreviousResult", [])
         ]
         if len(candidates) == 1:
+            # execution.maxFixReviewCycles — deterministic orchestration budget,
+            # а не рекомендация агенту. После исчерпания лимита REVIEW FAIL не
+            # может открыть ещё один FIX даже при повторной session.
+            if (
+                parsed.get("domain") == "STEP"
+                and parsed.get("operation") == "REVIEW"
+                and result == "FAIL"
+                and candidates[0].get("to") == "FIX"
+            ):
+                cycles = int(execution.get("fixReviewCycles", 0))
+                limit = max_fix_review_cycles(root)
+                if cycles >= limit:
+                    return {
+                        "status": "BLOCKED",
+                        "executionId": execution["executionId"],
+                        "rootCommand": execution["rootCommand"],
+                        "command": None,
+                        "reasonCode": "FIX_REVIEW_LIMIT_REACHED",
+                        "fixReviewCycles": cycles,
+                        "maxFixReviewCycles": limit,
+                    }
+
             next_command = _build_next_from_edge(root, current["command"], candidates[0])
             return {
                 "status": "NEXT",
