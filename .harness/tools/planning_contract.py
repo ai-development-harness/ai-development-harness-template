@@ -300,7 +300,7 @@ def open_question_affects(root: Path) -> list[dict[str, Any]]:
     current: dict[str, Any] | None = None
     for raw in path.read_text(encoding="utf-8").splitlines():
         heading = re.match(
-            r"^(?:#{1,6}\\s+)?(OQ-\\d{3})\\s+—\\s+(.+)$",
+            r"^(?:#{1,6}\s+)?(OQ-\d{3})\s+—\s+(.+)$",
             raw.strip(),
         )
         if heading:
@@ -356,7 +356,7 @@ def validate_planning_contracts(
             (line.strip() for line in task["text"].splitlines() if line.strip()),
             "",
         )
-        h1 = re.fullmatch(r"# (STEP-\\d{3,}) — .+", first_nonempty)
+        h1 = re.fullmatch(r"# (STEP-\d{3,}) — .+", first_nonempty)
         if h1 is None:
             errors.append(
                 f"planning: {step_id} must start with '# {step_id} — <title>'"
