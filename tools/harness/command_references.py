@@ -151,24 +151,30 @@ def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
             raise RuntimeError(f"Harness manifest path escapes repository: {value}")
         return root / rel
 
-    files = [
+    project_paths = [
         resolve_repo_path(values[("sources", key)])
         for key in ("projectOverview", "requirements", "architecture", "roadmap", "status")
     ]
     task_directory = resolve_repo_path(values[("protocol", "taskDirectory")])
-    return files, task_directory
+    return project_paths, task_directory
 
 
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
 
-    Primary project files и taskDirectory берутся из .project/manifest.yaml;
-    дополнительно сканируются README и live project docs под docs/**.
+    Primary project paths и taskDirectory берутся из .project/manifest.yaml.
+    Source path может быть файлом или каталогом; каталоги рекурсивно раскрываются
+    в Markdown-файлы. Дополнительно сканируются README и live project docs под docs/**.
     Не входят docs/harness (protocol source), docs/adr (decision history) и
     history-oriented planning records: reviews/audits/releases/updates/searches.
     """
-    manifest_files, task_directory = _manifest_project_paths(root)
-    paths = [root / "README.md", *manifest_files]
+    manifest_paths, task_directory = _manifest_project_paths(root)
+    paths = [root / "README.md"]
+    for path in manifest_paths:
+        if path.is_dir():
+            paths.extend(sorted(path.rglob("*.md")))
+        else:
+            paths.append(path)
 
     docs_root = root / "docs"
     if docs_root.exists():
