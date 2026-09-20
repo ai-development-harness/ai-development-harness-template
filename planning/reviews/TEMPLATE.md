@@ -14,6 +14,16 @@
 
 ## Findings
 
+Для каждого material finding укажи:
+
+- **Severity:** critical | high | medium | low
+- **Category:** implementation | evidence | contract
+- **Location:** файл/символ/участок
+- **Scenario:** воспроизводимый сценарий
+- **Impact:** что ломается/не доказано
+- **Fix direction:** направление исправления или corrective prerequisite
+
+
 ### F-001 — Severity — Title
 
 **Location:** path:line / component
