@@ -3,7 +3,7 @@
 ## Требования к локальному окружению
 
 - Git — Harness использует repository state, diff/index и Git workflow как часть deterministic gates.
-- Python 3.11+ — нужен только для `tools/harness/validate.py`; product runtime от Python не зависит.
+- Python 3.11+ — нужен только для `.harness/tools/validate.py`; product runtime от Python не зависит.
 - Один поддерживаемый AI runtime: Codex или Claude Code. Для Claude-specific project configuration см. [`CLAUDE_CODE.md`](CLAUDE_CODE.md).
 
 В CI версия Python задаётся явно. Переписывать validator на Bash только ради устранения Python dependency не рекомендуется: validator разбирает TOML стандартным `tomllib`, JSON стандартным `json` и выполняет структурные проверки, которые shell-скрипт без дополнительного парсера воспроизводил бы менее надёжно.
@@ -14,7 +14,7 @@
 
 Если template клонируется напрямую, перед первым `GIT PUSH` замени `origin` на репозиторий нового проекта.
 
-Template уже содержит `.project/harness.lock.json`: это BASE для будущих `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
+Template уже содержит `.harness/harness.lock.json`: это BASE для будущих `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
 
 ## 2. Создай локальный project brief
 
@@ -90,7 +90,7 @@ Initializer должен:
 - связать REQ ↔ ADR ↔ STEP;
 - заполнить scope, out of scope, dependencies, acceptance criteria и verification;
 - заменить generated project blocks в `README.md` и `AGENTS.md`;
-- выставить `project.initialized: true` в `.project/manifest.yaml` только после consistency check;
+- выставить `project.initialized: true` в `.harness/manifest.yaml` только после consistency check;
 - не создавать production code;
 - не изменять Harness release/lock как часть INIT.
 
@@ -149,7 +149,7 @@ Tracked runtime configs сохраняются при Harness update через 
 GIT CHECK > COMMIT > PUSH
 ```
 
-Политика веток/PR задаётся в `.project/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
+Политика веток/PR задаётся в `.harness/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
 
 ## 10. Начни разработку
 
@@ -207,4 +207,4 @@ cp AGENTS.local.example.md AGENTS.local.md
 
 Claude-specific private instructions можно хранить в `CLAUDE.local.md`; Claude Code автоматически читает его рядом с `CLAUDE.md`. Файл также игнорируется Git.
 
-Перед INIT при необходимости настрой языки в `.project/manifest.yaml` → `language`.
+Перед INIT при необходимости настрой языки в `.harness/manifest.yaml` → `language`.
