@@ -133,12 +133,12 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 8. Для каждого hop повторно используй заранее рассчитанный transition scope: `harness_owned` только при OURS == BASE, `shared` через 3-way, `marker_merge` с восстановлением local blocks.
 9. Target-only managed paths создавай только если они отсутствовали в BASE и projected OURS и были допущены read-only check.
 10. Project-owned/unknown paths не трогай.
-11. После каждого hop проверь postcondition и required artifacts этого target.
+11. После каждого hop проверь postcondition и required artifacts этого target. Если target `python3 .harness/tools/validate.py --mode manual` возвращает PASS с warning `requirements legacy migration pending`, это допустимое deferred project migration состояние: hop считается применимым, но до `PROJECT RECONCILE` запрещены GIT COMMIT/CI. Любая другая validation failure остаётся blocker.
 12. Только после успешного postcondition hop обнови `.harness/harness.lock.json` на его `to` release. Частично применённый hop не имеет права продвинуть lock.
 13. Если edge имеет `reloadRequired: true`, создай durable report о достигнутом промежуточном release, остановись с `UPDATER_RELOAD_REQUIRED` и не выполняй следующие hops текущим runtime.
 14. После последнего hop создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав initial release, final target, фактически пройденный route, introduced/retired/reclassified paths и verification evidence.
 15. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
-16. Если target protocol изменяет модель project-owned документов, не мигрируй их внутри updater. Для initialized project зафиксируй follow-up `PROJECT RECONCILE`; для pre-init project migration выполнит будущий `PROJECT INIT`.
+16. Если target protocol изменяет модель project-owned документов, не мигрируй их внутри updater. Для initialized project legacy requirements могут остаться migration-pending после успешного hop; зафиксируй обязательный follow-up `PROJECT RECONCILE` **до GIT COMMIT/CI**. Для pre-init project migration выполнит будущий `PROJECT INIT`.
 17. Покажи итоговый diff.
 
 Не запускай target scripts. `.harness/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.

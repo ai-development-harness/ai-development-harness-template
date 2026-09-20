@@ -35,6 +35,8 @@ Baseline validator также детерминированно проверяе�
 python3 .harness/tools/validate.py --mode manual
 ```
 
+`manual` остаётся строгим для обычного состояния, но имеет одно узкое migration-исключение: точный legacy REQ-layout из `v0.4.x` сразу после Harness update возвращает PASS с warning `requirements legacy migration pending`. Это нужно только для атомарного завершения control-plane hop; `commit` и `ci` такое состояние не принимают. Перед commit необходимо выполнить `PROJECT RECONCILE`.
+
 Для GIT COMMIT / GIT PUSH agent использует:
 
 ```bash
