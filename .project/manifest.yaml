@@ -105,8 +105,8 @@ sources:
 # Пример: taskDirectory=`planning/tasks`.
 protocol:
   # Формальная семантика INIT/ADD/PLAN/IMPLEMENT/REVIEW и других команд.
-  # Пример: planning/EXECUTION_PROTOCOL.md.
-  file: planning/EXECUTION_PROTOCOL.md
+  # Пример: docs/harness/EXECUTION_PROTOCOL.md.
+  file: docs/harness/EXECUTION_PROTOCOL.md
   # Каталог canonical task-файлов STEP-NNN.
   # Пример: planning/tasks.
   taskDirectory: planning/tasks
