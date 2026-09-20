@@ -212,6 +212,33 @@ def test_deferred_requirements_migration() -> None:
         )
 
 
+def test_manifest_requirements_path() -> None:
+    with tempfile.TemporaryDirectory(prefix="harness-custom-req-path-") as tmp:
+        root = Path(tmp)
+        harness = root / ".harness"
+        harness.mkdir(parents=True)
+        (harness / "manifest.yaml").write_text(
+            """sources:
+  requirements: spec/requirements
+""",
+            encoding="utf-8",
+        )
+        req = root / "spec/requirements"
+        req.mkdir(parents=True)
+        (req / "SPEC.md").write_text(
+            "# Requirements Specification\n\n"
+            "### REQ-001 — Legacy requirement\n\n"
+            "#### Requirement\n\nLegacy contract.\n",
+            encoding="utf-8",
+        )
+        (req / "STATUS.md").write_text("# Requirements Status\n", encoding="utf-8")
+
+        require(
+            harness_validate.legacy_requirements_migration_pending(root),
+            "legacy detector must honor manifest sources.requirements",
+        )
+
+
 def test_release_metadata(root: Path) -> None:
     graph = load_json(root / ".harness/harness-update-graph.json")
     lock = load_json(root / ".harness/harness.lock.json")
@@ -232,6 +259,7 @@ def main() -> int:
         ("ownership/templates/markers", lambda: test_ownership_contract(root)),
         ("ignored runtime artifacts", test_ignored_runtime_artifacts),
         ("deferred requirements migration", test_deferred_requirements_migration),
+        ("manifest requirements path", test_manifest_requirements_path),
         ("release metadata", lambda: test_release_metadata(root)),
     ]
     for name, test in tests:
