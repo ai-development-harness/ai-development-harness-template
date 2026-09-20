@@ -49,7 +49,7 @@ HARNESS UPDATE APPLY
 
 Known BASE проекта фиксируется в `.project/harness.lock.json`. Moving `main` не используется как update baseline.
 
-Единственное разрешённое чтение moving `source.default_branch` во время self-update — canonical `.project/harness-update-graph.json`. Он содержит только machine-readable routing graph (`latest` + directed transitions). Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
+Разрешённое чтение moving `source.default_branch` во время self-update ограничено routing manifest paths из текущей trusted policy: `source.update_manifest` и, только при отсутствии primary, exact `source.update_manifest_fallbacks`. Они содержат только machine-readable routing graph (`latest` + directed transitions). Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
 
 ## Ownership
 
@@ -60,6 +60,8 @@ Known BASE проекта фиксируется в `.project/harness.lock.json`
 - `marker_merge` — 3-way merge с сохранением generated project blocks.
 
 Runtime tuning относится к `shared`: пользователь может менять model/effort в `.codex/` и tracked Claude adapter, не теряя настройки при обычном Harness update.
+
+Bridge release может дополнительно задать `[bootstrap_relocation]` для заранее известного переноса control-plane paths. Harness-owned переносится только при чистом `OURS == BASE`, shared paths — rename-aware 3-way merge, а lock переносится после target postcondition. Relocation scope всегда задаёт текущая trusted policy, не target release.
 
 Всё неизвестное считается project-owned и updater не меняет. Например project-specific `.claude/skills/**` не становится Harness-owned только потому, что находится внутри `.claude/`.
 
