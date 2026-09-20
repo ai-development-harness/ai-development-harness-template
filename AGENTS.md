@@ -299,6 +299,7 @@ Self-update protocol layer не является STEP.
 - используй `.agents/skills/update-harness/SKILL.md`;
 - не меняй working tree, Git refs, lock, STEP/REQ/ADR, commit/push/PR;
 - BASE берётся только из `.harness/harness.lock.json`;
+- legacy `.project/**` control plane обновляется через обязательный bridge `v0.4.2`; после relocation не восстанавливай dual-layout, `.harness/**` становится единственным bootstrap namespace;
 - конечный target и обязательные промежуточные releases разрешай через canonical remote `.harness/harness-update-graph.json`; moving `main` используется только для routing metadata, не как BASE/THEIRS content;
 - explicit `TO <tag>` допустим только если tag достижим из current release по update graph; отсутствие route — blocker до mutation;
 - если lock отсутствует, не угадывай baseline: переходи в legacy adoption mode;
