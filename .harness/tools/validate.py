@@ -36,6 +36,7 @@ from command_transitions import (
     validate_transition_table,
 )
 from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
+from planning_contract import validate_planning_contracts
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -626,6 +627,12 @@ def main() -> int:
         )
     else:
         validate_requirements_model(root, errors)
+
+    # --- Planning contracts ------------------------------------------------
+    # Дешёвый static gate дополняет semantic review: он ловит отсутствующие
+    # REQ/ADR/dependencies, dependency cycles, stale Ready plans и OPEN question
+    # blockers без вызова reasoning-модели.
+    errors.extend(validate_planning_contracts(root))
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
