@@ -303,7 +303,11 @@ def open_question_affects(root: Path) -> list[dict[str, Any]]:
 
 # Собрать дешёвые planning errors. Это structural/static слой; смысл требований
 # и конфликт целей всё равно проверяет mandatory semantic gate модели.
-def validate_planning_contracts(root: Path) -> list[str]:
+def validate_planning_contracts(
+    root: Path,
+    *,
+    warnings: list[str] | None = None,
+) -> list[str]:
     errors: list[str] = []
     directory = task_directory(root)
     if not directory.is_dir():
@@ -415,9 +419,19 @@ def validate_planning_contracts(root: Path) -> list[str]:
                 errors.append(f"planning: {step_id} cannot compute Ready Plan basis: {exc}")
             else:
                 if stored != current:
-                    errors.append(
-                        f"planning: {step_id} Ready plan is stale: Plan basis does not match upstream context"
+                    message = (
+                        f"planning: {step_id} Ready plan is stale: "
+                        "Plan basis does not match upstream context"
                     )
+                    # Stale plan — execution precondition, а не повреждение repo.
+                    # Resolver всё равно не разрешит IMPLEMENT без fresh PLAN.
+                    # Глобальный validator сообщает drift warning, чтобы Harness
+                    # update/другие независимые операции не требовали массового
+                    # перепланирования всех будущих STEP.
+                    if warnings is None:
+                        errors.append(message)
+                    else:
+                        warnings.append(message)
 
     # Dependency graph cycle check.
     visiting: set[str] = set()
