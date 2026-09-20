@@ -17,7 +17,7 @@
 1. фактический code/config/migrations/tests — определяет текущее реализованное состояние;
 2. Accepted ADR (`docs/adr/`) — устойчивые архитектурные контракты;
 3. `docs/architecture.md` и subsystem docs — актуальная архитектурная документация;
-4. `docs/requirements/SPEC.md` — продуктовые требования;
+4. `docs/requirements/REQ-NNN-*.md` — канонические продуктовые требования;
 5. `planning/tasks/STEP-NNN.md` — scope конкретной работы;
 6. `planning/PLAN.md` и `planning/STATUS.md` — projection-файлы;
 7. brief, chat history и неформальные заметки — только вход/контекст.
@@ -246,7 +246,7 @@ ADR → affected REQ/STEP
 STEP → REQ + ADR + evidence + review
 ```
 
-Projection-файлы (`PLAN.md`, `STATUS.md`, requirements `STATUS.md`) не должны расходиться с canonical files и фактическим evidence. `docs/requirements/SPEC.md` хранит definition/rationale/acceptance/traceability REQ без lifecycle-статуса; текущее состояние REQ фиксируется только в `docs/requirements/STATUS.md`.
+Projection-файлы (`planning/PLAN.md`, `planning/STATUS.md`, `docs/requirements/SPEC.md`, `docs/requirements/STATUS.md`) не должны расходиться с canonical files и фактическим evidence. Definition/rationale/acceptance/traceability каждого REQ хранятся только в `docs/requirements/REQ-NNN-*.md`; `SPEC.md` — индекс, а lifecycle-state фиксируется только в `docs/requirements/STATUS.md`.
 
 ## 11. Статусы STEP
 
