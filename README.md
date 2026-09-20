@@ -37,7 +37,7 @@ Harness protocol не привязан к одной модели или одн�
 - [Глоссарий терминов Harness](docs/harness/GLOSSARY.md)
 - [Структура репозитория](docs/harness/REPOSITORY_LAYOUT.md)
 - [Команды](docs/harness/COMMANDS.md)
-- [Execution Protocol](planning/EXECUTION_PROTOCOL.md)
+- [Execution Protocol](docs/harness/EXECUTION_PROTOCOL.md)
 - [Обновление Harness в существующем проекте](docs/harness/UPDATES.md)
 - [Агенты, модели и reasoning effort](docs/harness/AGENT_CONFIGURATION.md)
 - [Claude Code adapter](docs/harness/CLAUDE_CODE.md)
