@@ -4,4 +4,4 @@ description: Synchronize verified implementation changes into project documentat
 ---
 # documentation-sync
 
-Обновляй только затронутые docs после подтверждённой реализации. Source — фактический code/tests/evidence + Accepted ADR/REQ. Не придумывай API. Синхронизируй REQ traceability, PLAN/STATUS, task evidence и relevant subsystem docs; lifecycle-status REQ меняй только в `docs/requirements/STATUS.md`, не в `SPEC.md`. Accepted ADR immutable. Используй `docs` agent для механической части.
+Обновляй только затронутые docs после подтверждённой реализации. Source — фактический code/tests/evidence + Accepted ADR/REQ. Не придумывай API. Синхронизируй canonical REQ traceability, `docs/requirements/SPEC.md` index, requirements `STATUS.md`, PLAN/STATUS, task evidence и relevant subsystem docs; lifecycle-status REQ меняй только в `docs/requirements/STATUS.md`, не в canonical REQ и не в `SPEC.md`. Accepted ADR immutable. Используй `docs` agent для механической части.
