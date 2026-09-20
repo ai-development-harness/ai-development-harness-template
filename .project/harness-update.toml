@@ -18,6 +18,11 @@ tag_pattern = '^v\d+\.\d+\.\d+$'
 # Пример: ".project/harness-update-graph.json".
 update_manifest = ".project/harness-update-graph.json"
 
+# Fallback paths для routing manifest при bootstrap relocation. Они читаются только если основной update_manifest отсутствует;
+# содержимое по-прежнему считается только routing metadata из configured default_branch.
+# Пример: [".harness/harness-update-graph.json"] позволяет bridge release пережить перенос control plane.
+update_manifest_fallbacks = [".harness/harness-update-graph.json"]
+
 [state]
 # Машинный lock с текущим known BASE проекта.
 # Пример: ".project/harness.lock.json".
@@ -26,6 +31,45 @@ lock_file = ".project/harness.lock.json"
 # Каталог durable report после успешного HARNESS UPDATE APPLY.
 # Пример: "planning/harness-updates".
 report_directory = "planning/harness-updates"
+
+[bootstrap_relocation]
+# Разрешить updater-у безопасный перенос bootstrap/control-plane paths между несовместимыми layout поколениями.
+# Пример: true в bridge release; обычные releases могут оставить capability неиспользованной.
+enabled = true
+
+# Exact target-policy paths, которые текущий доверенный updater имеет право прочитать из immutable target tag.
+# Должен существовать ровно один candidate; несколько найденных policy считаются неоднозначностью и блокируют mutation.
+# Пример: old layout использует .project, новый layout — .harness.
+target_policy_candidates = [".project/harness-update.toml", ".harness/harness-update.toml"]
+
+# Текущий lock path до relocation; значение должно совпадать с state.lock_file.
+# Пример: ".project/harness.lock.json".
+lock_from = ".project/harness.lock.json"
+
+# Новый lock path после успешного relocation hop. Destination lock создаётся последним перед retirement старого lock.
+# Пример: ".harness/harness.lock.json".
+lock_to = ".harness/harness.lock.json"
+
+# Rename-aware relocation Harness-owned paths. Local source обязан совпадать с BASE; destination collision блокирует update.
+# Пример: перенос deterministic tooling из tools/harness/** в .harness/tools/**.
+harness_owned_moves = [
+  { from = ".project/harness-update-graph.json", to = ".harness/harness-update-graph.json" },
+  { from = ".project/command-transitions.json", to = ".harness/command-transitions.json" },
+  { from = ".project/README.md", to = ".harness/README.md" },
+  { from = ".project/harness-policy.toml", to = ".harness/harness-policy.toml" },
+  { from = ".project/harness-update.toml", to = ".harness/harness-update.toml" },
+  { from = "docs/harness/**", to = ".harness/docs/**" },
+  { from = "planning/EXECUTION_PROTOCOL.md", to = ".harness/docs/EXECUTION_PROTOCOL.md" },
+  { from = "tools/harness/**", to = ".harness/tools/**" },
+]
+
+# Rename-aware relocation shared paths. BASE читается по old path, OURS — из текущего проекта, THEIRS — по new path;
+# результат обычного 3-way merge записывается в destination, поэтому project-specific настройки не теряются.
+# Пример: project.initialized/language сохраняются при .project/manifest.yaml → .harness/manifest.yaml.
+shared_moves = [
+  { from = ".project/manifest.yaml", to = ".harness/manifest.yaml" },
+  { from = ".project/git-policy.toml", to = ".harness/git-policy.toml" },
+]
 
 [ownership]
 # Полностью Harness-owned paths. Updater заменяет их только если local content не расходится с BASE;
