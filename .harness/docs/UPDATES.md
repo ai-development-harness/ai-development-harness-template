@@ -158,7 +158,8 @@ Known BASE хранится в `.harness/harness.lock.json`.
 - `CLAUDE.md`;
 - `.claude/settings.json`;
 - `.claude/agents/*.md`;
-- `.harness/manifest.yaml`.
+- `.harness/manifest.yaml`;
+- colocated Harness scaffolds: `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md`, `planning/*/TEMPLATE.md`.
 
 Для них выполняется 3-way merge:
 
@@ -170,7 +171,7 @@ THEIRS = target release
 
 Conflict означает остановку до mutation/ручного reconciliation.
 
-Model/effort tuning обоих runtime adapters специально относится к `shared`: update не должен молча возвращать проект к upstream defaults.
+Model/effort tuning обоих runtime adapters и colocated scaffolds специально относятся к `shared`: update не должен молча возвращать проект к upstream defaults или затирать project-specific адаптацию template. Созданные по template REQ/ADR/STEP/reports остаются project-owned.
 
 ### `marker_merge`
 
