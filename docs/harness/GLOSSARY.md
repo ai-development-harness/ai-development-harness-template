@@ -129,7 +129,7 @@ SHA-256 fingerprint нормализованного STEP contract, сохран
 - `Отменено` — STEP сознательно больше не требуется;
 - `Заменено` — STEP исторически сохранён, но его роль выполняет другой STEP/решение.
 
-Для REQ Harness использует `Запланировано`, `Частично`, `Выполнено`, `Отложено`, `Отменено`. REQ lifecycle-state не является частью canonical definition: он хранится только в `docs/requirements/STATUS.md` и выводится из фактического STEP coverage, verification/evidence и review. `docs/requirements/SPEC.md` не должен содержать competing status field.
+Для REQ Harness использует `Запланировано`, `Частично`, `Выполнено`, `Отложено`, `Отменено`. REQ lifecycle-state не является частью canonical definition: он хранится только в `docs/requirements/STATUS.md` и выводится из фактического STEP coverage, verification/evidence и review. Lifecycle-state не должен дублироваться ни в `REQ-NNN-*.md`, ни в `SPEC.md`.
 
 ### Priority
 
@@ -218,7 +218,7 @@ REQ-AUTH-003
 
 REQ не должен описывать конкретный файл или implementation technique без необходимости. Один REQ может реализовываться несколькими STEP.
 
-Canonical source определения/acceptance: `docs/requirements/SPEC.md`. Текущий lifecycle-статус REQ находится только в `docs/requirements/STATUS.md`.
+Canonical source definition/rationale/acceptance/traceability: отдельный `docs/requirements/REQ-NNN-*.md`. `docs/requirements/SPEC.md` — только index projection; текущий lifecycle-статус REQ находится только в `docs/requirements/STATUS.md`.
 
 ### ADR — Architecture Decision Record
 
