@@ -19,6 +19,29 @@ from typing import Any
 STEP_ID_RE = re.compile(r"STEP-\d{3,}")
 REQ_ID_RE = re.compile(r"REQ-\d{3}")
 ADR_ID_RE = re.compile(r"ADR-\d{3}")
+STEP_STATUSES = {
+    "Запланировано",
+    "В работе",
+    "Выполнено",
+    "Заблокировано",
+    "Отменено",
+    "Заменено",
+}
+STEP_TYPES = {
+    "IMPLEMENTATION",
+    "BUGFIX",
+    "REFACTOR",
+    "RESEARCH",
+    "ADR",
+    "AUDIT",
+    "REVIEW",
+    "HARDENING",
+    "DOCUMENTATION",
+    "RELEASE",
+}
+UNRESOLVED_LINE_RE = re.compile(
+    r"(?mi)^\s*(?:[-*]\s*)?(?:TBD|TODO|\?\?\?)\s*$"
+)
 
 CONTRACT_METADATA = ("Type", "Depends on")
 CONTRACT_SECTIONS = (
@@ -287,11 +310,17 @@ def open_question_affects(root: Path) -> list[dict[str, Any]]:
             continue
         if current is None:
             continue
-        status = re.match(r"^Status:\s*(OPEN|RESOLVED|DEFERRED)\s*$", raw.strip())
+        status = re.match(
+            r"^(?:\*\*)?Status:(?:\*\*)?\s*(OPEN|RESOLVED|DEFERRED)\s*$",
+            raw.strip(),
+        )
         if status:
             current["status"] = status.group(1)
             continue
-        affects = re.match(r"^Affects:\s*(.+)$", raw.strip())
+        affects = re.match(
+            r"^(?:\*\*)?Affects:(?:\*\*)?\s*(.+)$",
+            raw.strip(),
+        )
         if affects:
             current["affects"].update(STEP_ID_RE.findall(affects.group(1)))
             current["affects"].update(REQ_ID_RE.findall(affects.group(1)))
@@ -341,6 +370,13 @@ def validate_planning_contracts(
             if not task["metadata"].get(field, "").strip():
                 errors.append(f"planning: {step_id} missing metadata '{field}'")
 
+        step_status = task["metadata"].get("Статус", "")
+        if step_status and step_status not in STEP_STATUSES:
+            errors.append(f"planning: {step_id} invalid Статус: {step_status}")
+        step_type = task["metadata"].get("Type", "")
+        if step_type and step_type not in STEP_TYPES:
+            errors.append(f"planning: {step_id} invalid Type: {step_type}")
+
         for section in REQUIRED_TASK_SECTIONS:
             if section not in task["sections"]:
                 errors.append(f"planning: {step_id} missing section '## {section}'")
@@ -376,6 +412,22 @@ def validate_planning_contracts(
             )
 
         if plan_status == "Ready":
+            if task["metadata"].get("Фаза") == "TBD":
+                errors.append(f"planning: {step_id} Ready plan has unresolved Phase=TBD")
+            for section_name in (
+                "Goal",
+                "Scope",
+                "Mutation policy",
+                "Acceptance criteria",
+                "Verification",
+                "Deliverables",
+            ):
+                if UNRESOLVED_LINE_RE.search(task["sections"].get(section_name, "")):
+                    errors.append(
+                        f"planning: {step_id} Ready plan contains unresolved placeholder "
+                        f"in '{section_name}'"
+                    )
+
             # Ready означает executable contract. Hard dependencies уже должны
             # быть закрыты, а linked ADR — действительно Accepted.
             for dep_id in dependency_ids(task):
@@ -457,9 +509,23 @@ def validate_planning_contracts(
     for step_id in sorted(tasks):
         visit(step_id, [])
 
+    # OPEN_QUESTIONS — часть blocking contract. Malformed entry нельзя
+    # молча проигнорировать, иначе static gate можно обойти случайным форматированием.
+    all_questions = open_question_affects(root)
+    seen_questions: set[str] = set()
+    for question in all_questions:
+        question_id = question["id"]
+        if question_id in seen_questions:
+            errors.append(f"planning: duplicate Open Question ID: {question_id}")
+        seen_questions.add(question_id)
+        if question.get("status") not in {"OPEN", "RESOLVED", "DEFERRED"}:
+            errors.append(f"planning: {question_id} missing or invalid Status")
+        if not question.get("affects"):
+            errors.append(f"planning: {question_id} missing Affects references")
+
     # Ready plan не может обходить явно OPEN вопрос, который влияет на сам STEP
     # или на linked REQ/ADR этого STEP.
-    open_questions = [item for item in open_question_affects(root) if item.get("status") == "OPEN"]
+    open_questions = [item for item in all_questions if item.get("status") == "OPEN"]
     for step_id, task in tasks.items():
         fields = _plan_fields(task)
         if fields.get("Plan status") != "Ready":
