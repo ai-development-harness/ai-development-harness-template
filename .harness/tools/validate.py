@@ -36,7 +36,7 @@ from command_transitions import (
     validate_transition_table,
 )
 from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
-from planning_contract import validate_planning_contracts
+from planning_contract import requirements_directory, validate_planning_contracts
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -320,7 +320,7 @@ def is_legacy_requirements_layout(canonical_filenames: list[str], spec_text: str
 # post-update состояние до PROJECT RECONCILE. Смешанный/частично мигрированный layout
 # сюда намеренно не попадает: он должен оставаться deterministic validation failure.
 def legacy_requirements_migration_pending(root: Path) -> bool:
-    requirements_root = root / "docs" / "requirements"
+    requirements_root = requirements_directory(root)
     spec_path = requirements_root / "SPEC.md"
     status_path = requirements_root / "STATUS.md"
     if not requirements_root.is_dir() or not spec_path.is_file() or not status_path.is_file():
@@ -443,7 +443,7 @@ def parse_requirement_projection(
 # Проверить canonical REQ и обе projections как единый deterministic document-model contract.
 # Validator не оценивает смысл requirement: только ID, standalone structure, projection coverage и links.
 def validate_requirements_model(root: Path, errors: list[str]) -> None:
-    requirements_root = root / "docs" / "requirements"
+    requirements_root = requirements_directory(root)
     spec_path = requirements_root / "SPEC.md"
     status_path = requirements_root / "STATUS.md"
 
