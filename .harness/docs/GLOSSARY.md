@@ -13,7 +13,7 @@
 
 ### Protocol Layer
 
-Стабильная часть репозитория, задающая способ работы агентов: `AGENTS.md`, `docs/harness/EXECUTION_PROTOCOL.md`, core skills, agent configs, policies и `docs/harness/*`.
+Стабильная часть репозитория, задающая способ работы агентов: `AGENTS.md`, `.harness/docs/EXECUTION_PROTOCOL.md`, core skills, agent configs, policies и `.harness/docs/*`.
 
 ### Command Transition System (CTS)
 
@@ -26,7 +26,7 @@
 - какие runtime/repository preconditions должны быть выполнены;
 - как наследуются DOMAIN и target.
 
-Machine-readable source of truth: `.project/command-transitions.json`.
+Machine-readable source of truth: `.harness/command-transitions.json`.
 
 Command Transition System **не считает сами команды состояниями**. Команда — это action/transition request. Фактическое состояние берётся из repository/runtime facts, например:
 
@@ -47,7 +47,7 @@ Structural validation CTS выполняется до command-specific interpret
 Хранится в одном фиксированном файле:
 
 ```text
-.project/local/execution/execution-status.json
+.harness/local/execution/execution-status.json
 ```
 
 Файл содержит независимые execution records. Новая пользовательская команда не затирает interrupted execution другой команды.
@@ -68,7 +68,7 @@ Mode не является пользовательской командой и�
 
 ### Execution Resolver
 
-Детерминированный механизм `tools/harness/resolve-next-command.py`, который читает Execution Status и возвращает interrupted/current/next command внутри конкретной root execution.
+Детерминированный механизм `.harness/tools/resolve-next-command.py`, который читает Execution Status и возвращает interrupted/current/next command внутри конкретной root execution.
 
 Resolver не создаёт новые transitions: для chain/orchestration он использует CTS; для single execution после completion автоматически ничего не продолжает.
 
@@ -563,7 +563,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 ### PR — Pull Request
 
-Запрос на интеграцию опубликованной ветки в base branch. Harness может создавать или переиспользовать PR согласно `.project/git-policy.toml`.
+Запрос на интеграцию опубликованной ветки в base branch. Harness может создавать или переиспользовать PR согласно `.harness/git-policy.toml`.
 
 ### GIT SYNC
 
@@ -599,7 +599,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 ## Команды Harness
 
-Канонический список пользовательских команд и их семантика находится в [`COMMANDS.md`](COMMANDS.md). State transitions — в `docs/harness/EXECUTION_PROTOCOL.md`.
+Канонический список пользовательских команд и их семантика находится в [`COMMANDS.md`](COMMANDS.md). State transitions — в `.harness/docs/EXECUTION_PROTOCOL.md`.
 
 ## PROJECT QUICK FIX
 
@@ -611,7 +611,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 ## Language Policy
 
-Централизованные языковые настройки `.project/manifest.yaml` → `language`, определяющие язык documentation, commits, comments, test names, fixtures, GitHub templates и release notes. Не меняют identifiers/API keys и не отменяют multilingual domain requirements.
+Централизованные языковые настройки `.harness/manifest.yaml` → `language`, определяющие язык documentation, commits, comments, test names, fixtures, GitHub templates и release notes. Не меняют identifiers/API keys и не отменяют multilingual domain requirements.
 
 ## GitHub Issue Form
 
