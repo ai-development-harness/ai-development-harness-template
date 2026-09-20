@@ -8,7 +8,7 @@ Skill — это не просто Markdown-справка. `SKILL.md` зада�
 
 ### `SKILL FIND: <описание>`
 
-Ищет GitHub/доступный web, инспектирует подходящие repository skills и возвращает shortlist размером не более `.project/manifest.yaml → skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Результат сохраняется в `planning/skill-searches/`, поэтому позже можно написать `SKILL INSTALL: #3`.
+Ищет GitHub/доступный web, инспектирует подходящие repository skills и возвращает shortlist размером не более `.harness/manifest.yaml → skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Результат сохраняется в `planning/skill-searches/`, поэтому позже можно написать `SKILL INSTALL: #3`.
 
 Пример:
 
