@@ -22,7 +22,7 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 ## `PROJECT INIT`
 
-Однократный bootstrap из `PROJECT_BRIEF.local.md`. Создаёт project knowledge base и initial roadmap, но не production code. Повторный INIT после `initialized: true` не выполняется автоматически.
+Однократный bootstrap из `PROJECT_BRIEF.local.md`. Создаёт project knowledge base и initial roadmap, но не production code. INIT выполняет semantic requirements review, затем независимый roadmap consistency review и deterministic validator; `project.initialized: true` разрешён только после PASS этих gates. Повторный INIT после `initialized: true` не выполняется автоматически.
 
 ## `STEP ADD: <описание>`
 
@@ -65,7 +65,7 @@ Production code не меняется.
 
 ## `STEP PLAN STEP-NNN`
 
-Проводит pre-implementation analysis и **сохраняет** результат в `## Implementation plan` task-файла. Production code не меняется. План должен быть достаточно конкретным, чтобы следующая сессия могла выполнить `STEP IMPLEMENT STEP-NNN` без истории чата.
+Сначала валидирует сам task contract (static + semantic), затем при PASS **сохраняет** результат в `## Implementation plan`. Contract contradiction/missing prerequisite даёт `BLOCKED`, а не Ready plan. Production code не меняется. `Plan basis` включает linked REQ/ADR, hard dependency contracts и architecture baseline, поэтому upstream change делает plan stale без reasoning.
 
 ## `STEP IMPLEMENT STEP-NNN`
 
@@ -73,7 +73,7 @@ Production code не меняется.
 
 ## `STEP REVIEW STEP-NNN`
 
-Независимая проверка. Reviewer read-only по product code. Security/test reviewer запускаются по `review.security` / `review.tests`: `auto` — по фактической необходимости, `always` — для каждого review-прохода. Создаётся immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL`, `BLOCKED`.
+Независимая проверка. Reviewer read-only по product code и перед verdict делает полный pass по текущему revision. Findings классифицируются как `implementation`, `evidence` или `contract`. `FAIL` используется для исправимых внутри STEP implementation/evidence defects; contract contradiction/missing prerequisite → `BLOCKED`, чтобы не запускать ложный FIX-loop. Security/test reviewer запускаются по `review.security` / `review.tests`: `auto` — по фактической необходимости, `always` — для каждого review-прохода.
 
 ## `STEP FIX STEP-NNN`
 
@@ -93,7 +93,7 @@ PLAN (если актуального плана нет)
  → CLOSE
 ```
 
-При blocker или исчерпании циклов останавливается и не маскирует failure.
+При blocker или исчерпании циклов останавливается и не маскирует failure. Лимит `execution.maxFixReviewCycles` enforce-ится Execution Resolver детерминированно и сохраняется между sessions.
 
 ## `STEP AUDIT STEP-NNN`
 
