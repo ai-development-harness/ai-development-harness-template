@@ -5,7 +5,7 @@ harness:
   # Пример: "1". Пока protocol не стабилизирован dogfooding, номер не повышается за каждую итерацию.
   version: "1"
   # Release Harness, от которого текущий project protocol layer синхронизирован.
-  # Формат: "X.X.X"; immutable source ref хранится в `.project/harness.lock.json`.
+  # Формат: "X.X.X"; immutable source ref хранится в `.harness/harness.lock.json`.
   release: "0.4.1"
 
 # Состояние конкретного проекта, созданного из template.
@@ -105,8 +105,8 @@ sources:
 # Пример: taskDirectory=`planning/tasks`.
 protocol:
   # Формальная семантика INIT/ADD/PLAN/IMPLEMENT/REVIEW и других команд.
-  # Пример: docs/harness/EXECUTION_PROTOCOL.md.
-  file: docs/harness/EXECUTION_PROTOCOL.md
+  # Пример: .harness/docs/EXECUTION_PROTOCOL.md.
+  file: .harness/docs/EXECUTION_PROTOCOL.md
   # Каталог canonical task-файлов STEP-NNN.
   # Пример: planning/tasks.
   taskDirectory: planning/tasks
@@ -127,23 +127,23 @@ protocol:
   harnessUpdateDirectory: planning/harness-updates
 
 # Пути к repository policies и deterministic validation.
-# Пример: gitPolicy=`.project/git-policy.toml`.
+# Пример: gitPolicy=`.harness/git-policy.toml`.
 repository:
   # Настройки GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC и branch policy.
-  # Пример: .project/git-policy.toml.
-  gitPolicy: .project/git-policy.toml
+  # Пример: .harness/git-policy.toml.
+  gitPolicy: .harness/git-policy.toml
   # Политика обязательных Harness artifacts/repository hygiene.
-  # Пример: .project/harness-policy.toml.
-  harnessPolicy: .project/harness-policy.toml
+  # Пример: .harness/harness-policy.toml.
+  harnessPolicy: .harness/harness-policy.toml
   # Ownership/source policy безопасного self-update.
-  # Пример: .project/harness-update.toml.
-  harnessUpdatePolicy: .project/harness-update.toml
+  # Пример: .harness/harness-update.toml.
+  harnessUpdatePolicy: .harness/harness-update.toml
   # Lock known BASE текущего Harness release.
-  # Пример: .project/harness.lock.json.
-  harnessLock: .project/harness.lock.json
+  # Пример: .harness/harness.lock.json.
+  harnessLock: .harness/harness.lock.json
   # Локальный deterministic validator, используемый GIT COMMIT / GIT PUSH/CI.
-  # Пример: tools/harness/validate.py.
-  harnessValidation: tools/harness/validate.py
+  # Пример: .harness/tools/validate.py.
+  harnessValidation: .harness/tools/validate.py
   # Baseline GitHub Actions workflow целостности Harness.
   # Пример: .github/workflows/harness-integrity.yml.
   harnessCI: .github/workflows/harness-integrity.yml
