@@ -318,6 +318,20 @@ def validate_planning_contracts(root: Path) -> list[str]:
         task = read_task(root, step_id)
         tasks[step_id] = task
 
+        first_nonempty = next(
+            (line.strip() for line in task["text"].splitlines() if line.strip()),
+            "",
+        )
+        h1 = re.fullmatch(r"# (STEP-\\d{3,}) — .+", first_nonempty)
+        if h1 is None:
+            errors.append(
+                f"planning: {step_id} must start with '# {step_id} — <title>'"
+            )
+        elif h1.group(1) != step_id:
+            errors.append(
+                f"planning: filename/H1 ID mismatch for {step_id}: {h1.group(1)}"
+            )
+
         for section in REQUIRED_TASK_SECTIONS:
             if section not in task["sections"]:
                 errors.append(f"planning: {step_id} missing section '## {section}'")
@@ -341,8 +355,27 @@ def validate_planning_contracts(root: Path) -> list[str]:
                 errors.append(f"planning: {step_id}: {exc}")
 
         fields = _plan_fields(task)
-        if fields.get("Plan status") == "Ready":
+        required_plan_fields = ("Plan status", "Plan revision", "Plan basis", "Planned at")
+        for field in required_plan_fields:
+            if field not in fields:
+                errors.append(f"planning: {step_id} missing Implementation plan field '{field}'")
+
+        plan_status = fields.get("Plan status", "")
+        if plan_status not in {"Not planned", "Ready"}:
+            errors.append(
+                f"planning: {step_id} invalid Plan status: {plan_status or '<empty>'}"
+            )
+
+        if plan_status == "Ready":
             stored = fields.get("Plan basis", "")
+            revision = fields.get("Plan revision", "")
+            planned_at = fields.get("Planned at", "")
+            if not re.fullmatch(r"[1-9][0-9]*", revision):
+                errors.append(f"planning: {step_id} Ready plan must have positive Plan revision")
+            if not re.fullmatch(r"sha256:[0-9a-f]{64}", stored):
+                errors.append(f"planning: {step_id} Ready plan has invalid Plan basis format")
+            if not planned_at or planned_at == "—":
+                errors.append(f"planning: {step_id} Ready plan must have Planned at timestamp")
             try:
                 current = planning_context_basis(root, step_id)
             except (OSError, ValueError, FileNotFoundError) as exc:
