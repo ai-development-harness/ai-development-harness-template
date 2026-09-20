@@ -19,7 +19,7 @@
 
 ## Агенты и автоматизация
 
-- [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md) — runtime-neutral роли субагентов, модели, reasoning effort и стратегии экономии.
+- [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md) — runtime-neutral роли субагентов, модели, reasoning effort, локальные runtime overrides и стратегии экономии.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md) — project settings, subagents и ownership Claude Code adapter.
 - [`WORKFLOW.md`](WORKFLOW.md) — устройство orchestration и durable handoff между стадиями.
 - [`REPORTING.md`](REPORTING.md) — требования к итоговым отчётам.
