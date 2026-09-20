@@ -74,9 +74,9 @@ Resolver не создаёт новые transitions: для chain/orchestration 
 
 ### Plan basis
 
-SHA-256 fingerprint нормализованного STEP contract, сохранённый рядом с Implementation plan.
+SHA-256 fingerprint transitive planning context, сохранённый рядом с Implementation plan.
 
-Если текущий contract hash отличается от stored Plan basis, plan считается stale и resolver возвращает `STEP PLAN STEP-NNN` без LLM reasoning.
+В fingerprint входят собственный STEP contract, linked canonical REQ, linked ADR, hard dependency contracts и текущий architecture baseline. Если любой из этих upstream inputs меняется, stored Plan basis перестаёт совпадать с текущим и plan считается stale без LLM reasoning.
 
 ### Project Knowledge Base
 
@@ -411,11 +411,13 @@ Review report хранится отдельно и не переписывает
 
 ### Verdict
 
-Итог review:
+Итог независимого review:
 
-- `PASS` — существенных проблем, блокирующих закрытие, не найдено;
-- `FAIL` — найдены подтверждённые проблемы, требующие исправления;
-- `BLOCKED` — reviewer не может достоверно завершить проверку из-за отсутствующего prerequisite/evidence/environment.
+- `PASS` — material closing problems не обнаружено, acceptance/evidence достаточны;
+- `FAIL` — подтверждены implementation/evidence defects, которые можно исправить внутри существующего STEP contract;
+- `BLOCKED` — review/planning не может безопасно продолжаться из-за contract contradiction, missing decision/prerequisite, stale planning context или другого препятствия, которое нельзя честно превратить в обычный FIX.
+
+`BLOCKED` терминален для текущей execution и не должен автоматически превращаться в `FAIL → FIX`.
 
 ### FIX
 
