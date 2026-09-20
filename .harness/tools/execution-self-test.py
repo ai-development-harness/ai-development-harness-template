@@ -469,6 +469,16 @@ STEP-001
         )
         assert exhausted["fixReviewCycles"] == 1, exhausted
         assert exhausted["maxFixReviewCycles"] == 1, exhausted
+        from execution_status import block_execution
+        blocked = block_execution(
+            root,
+            limited_root,
+            command="STEP REVIEW STEP-001",
+        )
+        assert blocked["status"] == "blocked", blocked
+        assert blocked["current"]["status"] == "complete", blocked
+        assert blocked["current"]["result"] == "FAIL", blocked
+
 
 
         # 10. Повтор той же unfinished root command должен resume-ить существующий
