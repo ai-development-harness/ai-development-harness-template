@@ -4,4 +4,4 @@ description: Review requirements for clarity, testability, duplication, conflict
 ---
 # requirements-review
 
-Проверяй REQ на атомарность, наблюдаемое acceptance, дубликаты/конфликты, приоритет, source и STEP coverage. Новый REQ нужен только когда меняется требуемое поведение/качество продукта или обязательный system contract. Технический refactor/bug correction может ссылаться на existing REQ или быть purely corrective task.
+Проверяй canonical `docs/requirements/REQ-NNN-*.md` на атомарность, наблюдаемое acceptance, дубликаты/конфликты, приоритет, source и STEP coverage. `SPEC.md` и `STATUS.md` рассматривай как projections, а не как competing source requirement definition. Новый REQ нужен только когда меняется требуемое поведение/качество продукта или обязательный system contract. Технический refactor/bug correction может ссылаться на existing REQ или быть purely corrective task.
