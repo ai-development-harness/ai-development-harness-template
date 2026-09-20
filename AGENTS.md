@@ -53,7 +53,7 @@
 - `GIT PR`
 - `GIT SYNC`
 
-Канонический синтаксис и chain operator описаны в `docs/harness/COMMAND_SYNTAX.md`. Полный machine-readable graph команд и переходов — `.project/command-transitions.json`, человекочитаемая матрица — `docs/harness/COMMAND_TRANSITIONS.md`. Точная семантика project execution находится в `planning/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`.
+Канонический синтаксис и chain operator описаны в `docs/harness/COMMAND_SYNTAX.md`. Полный machine-readable graph команд и переходов — `.project/command-transitions.json`, человекочитаемая матрица — `docs/harness/COMMAND_TRANSITIONS.md`. Точная семантика project execution находится в `docs/harness/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `docs/harness/UPDATES.md`. Термины Harness определены в `docs/harness/GLOSSARY.md`.
 
 ### Обязательный command preflight
 
@@ -174,7 +174,7 @@ Pre-init Harness update не выполняет `PROJECT INIT`, не созда�
 
 Перед работой с STEP:
 
-1. прочитай `planning/EXECUTION_PROTOCOL.md`;
+1. прочитай `docs/harness/EXECUTION_PROTOCOL.md`;
 2. прочитай `planning/PLAN.md`;
 3. открой `planning/tasks/STEP-NNN.md`;
 4. проверь status/type/priority/dependencies/risk flags;
