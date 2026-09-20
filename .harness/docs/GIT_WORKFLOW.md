@@ -1,6 +1,6 @@
 # Git workflow Harness
 
-Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются `.project/git-policy.toml`.
+Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются `.harness/git-policy.toml`.
 
 ## Команды
 
@@ -116,7 +116,7 @@ Merge/rebase конфликтующей истории автоматическ�
 GIT CHECK > COMMIT > PUSH > PR
 ```
 
-Он эквивалентен четырём отдельным canonical commands той же области. Structural validity определяется не этим prose-описанием, а `.project/command-transitions.json`; полная матрица находится в [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). Для Git graph соответствует publication flow `CHECK → COMMIT → PUSH → PR` с дополнительными explicit shortcut edges из таблицы. Обратный/неразрешённый порядок отклоняется как `INVALID_CHAIN` до любых действий. После structural PASS runtime conditions каждого edge проверяются отдельно. Уже созданный commit не откатывается автоматически, если последующий push или PR оказался blocked.
+Он эквивалентен четырём отдельным canonical commands той же области. Structural validity определяется не этим prose-описанием, а `.harness/command-transitions.json`; полная матрица находится в [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). Для Git graph соответствует publication flow `CHECK → COMMIT → PUSH → PR` с дополнительными explicit shortcut edges из таблицы. Обратный/неразрешённый порядок отклоняется как `INVALID_CHAIN` до любых действий. После structural PASS runtime conditions каждого edge проверяются отдельно. Уже созданный commit не откатывается автоматически, если последующий push или PR оказался blocked.
 
 Cross-domain chain запрещён: `STEP RUN STEP-NNN > GIT COMMIT` не является допустимой командой. Полная семантика — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
 
@@ -131,11 +131,11 @@ Harness никогда по умолчанию не выполняет:
 - commit amend;
 - staging подозрительных/несвязанных файлов.
 
-Перед `GIT COMMIT` / `GIT PUSH` запускается `tools/harness/validate.py`. CI запускает тот же валидатор, поэтому локальные и remote gates основаны на одном контракте.
+Перед `GIT COMMIT` / `GIT PUSH` запускается `.harness/tools/validate.py`. CI запускает тот же валидатор, поэтому локальные и remote gates основаны на одном контракте.
 
 ## Что настраивать
 
-Главный файл: `.project/git-policy.toml`.
+Главный файл: `.harness/git-policy.toml`.
 
 Чаще всего меняются:
 
@@ -153,4 +153,4 @@ Harness никогда по умолчанию не выполняет:
 
 Для typo/formatting/другого подтверждённого micro-change STEP не обязателен. Если пользователь уже внёс правку, достаточно `GIT CHECK > COMMIT` либо тех же команд по отдельности. Git operator обязан проверить, что diff действительно не меняет behavior/API/data/security/architecture/dependencies. Подробности: [`QUICK_CHANGES.md`](QUICK_CHANGES.md).
 
-Язык commit message берётся из `.project/manifest.yaml` → `language.commitMessages`.
+Язык commit message берётся из `.harness/manifest.yaml` → `language.commitMessages`.
