@@ -26,7 +26,11 @@
 │   ├── architecture.md               # текущий architecture baseline
 │   ├── GLOSSARY.md                   # продуктовый словарь после INIT
 │   ├── OPEN_QUESTIONS.md
-│   ├── requirements/                 # REQ definitions + status projection
+│   ├── requirements/                 # requirements knowledge domain
+│   │   ├── REQ-NNN-*.md              # canonical requirement definitions
+│   │   ├── SPEC.md                   # index projection REQ
+│   │   ├── STATUS.md                 # lifecycle projection REQ
+│   │   └── TEMPLATE.md               # шаблон отдельного REQ
 │   ├── adr/                          # immutable architecture decisions
 │   ├── skills/                       # registry/provenance дополнительных skills
 │   └── harness/                      # документация самого Harness, включая runtime adapters
