@@ -109,7 +109,7 @@ Tracked Claude adapter files разделены по ownership:
 
 ## Проверка конфигурации
 
-`tools/harness/validate.py` проверяет:
+`.harness/tools/validate.py` проверяет:
 
 - наличие Claude adapter и всех обязательных ролей;
 - валидность `.claude/settings.json`;
