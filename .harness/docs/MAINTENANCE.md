@@ -11,7 +11,7 @@
 - core `.agents/skills/`;
 - baseline `.github/` integration.
 
-Colocated `TEMPLATE.md` рядом с REQ/ADR/STEP и другими project artifacts являются Harness-managed shared scaffolds: updater обновляет их через 3-way merge, а созданные по ним project artifacts остаются project-owned.
+Colocated `TEMPLATE.md` рядом с REQ/ADR/STEP и другими project artifacts являются project-owned scaffolds. Они обязательны для структуры Harness, но updater не захватывает их ownership: legacy projects могли адаптировать эти файлы до появления текущей update-policy.
 
 ## Что относится к конкретному проекту
 
@@ -54,7 +54,7 @@ Known BASE проекта фиксируется в `.harness/harness.lock.json`
 
 `v0.4.2` — одноразовая compatibility boundary для переноса control plane из `.project/**` в `.harness/**`. Relocation выполняет updater старого layout до reload; после перехода `.harness/**` является единственным bootstrap namespace, а legacy `.project/local/**` сохраняется только как ignored transitional state.
 
-Новые updater’ы читают moving `source.default_branch` только через canonical `.harness/harness-update-graph.json`. Для updater’ов `v0.4.0`/`v0.4.1` сохраняется отдельный замороженный `.project/harness-update-graph.json` как compatibility discovery endpoint до `v0.5.0`; он не является active control plane и после перехода не используется. Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
+Новые updater’ы читают moving `source.default_branch` только через canonical `.harness/harness-update-graph.json`. Для updater’ов `v0.4.0`/`v0.4.1` сохраняется отдельный замороженный `.project/harness-update-graph.json` как compatibility discovery endpoint до corrective landing release `v0.5.1`; unsafe legacy landing `v0.5.0` обходится. Endpoint не является active control plane и после перехода не используется. Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
 
 ## Ownership
 
@@ -64,7 +64,7 @@ Known BASE проекта фиксируется в `.harness/harness.lock.json`
 - `shared` — 3-way merge;
 - `marker_merge` — 3-way merge с сохранением generated project blocks.
 
-Runtime tuning и colocated `TEMPLATE.md` относятся к `shared`: пользователь может менять model/effort в `.codex/`, tracked Claude adapter и адаптировать scaffold под проект, не теряя настройки при обычном Harness update.
+Runtime tuning относится к `shared`: пользователь может менять model/effort в `.codex/` и tracked Claude adapter, не теряя настройки при обычном Harness update. Colocated project `TEMPLATE.md` updater не меняет.
 
 Всё неизвестное считается project-owned и updater не меняет. Например project-specific `.claude/skills/**` не становится Harness-owned только потому, что находится внутри `.claude/`.
 

@@ -16,7 +16,7 @@ planning/**   → planning state и история конкретного про
 - `shared`: например `.harness/manifest.yaml` и `.harness/git-policy.toml`;
 - local-only state: `.harness/local/**`, который никогда не должен попадать в Git.
 
-Colocated `TEMPLATE.md` рядом с project artifacts, например `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md` и `planning/tasks/TEMPLATE.md`, остаются Harness-managed **shared scaffolds**. Updater может обновлять их через 3-way merge, но созданные по ним REQ/ADR/STEP/reports являются project-owned.
+Colocated `TEMPLATE.md` рядом с project artifacts, например `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md` и `planning/tasks/TEMPLATE.md`, считаются **project-owned scaffolds**. Harness требует их наличие и использует как локальные шаблоны, но self-updater не меняет их автоматически; это сохраняет legacy/custom project adaptations.
 
 Runtime integration surfaces (`AGENTS.md`, `.agents/`, `.codex/`, `.claude/`, `CLAUDE.md`) остаются в ожидаемых runtime местах и не переносятся внутрь `.harness/`.
 
