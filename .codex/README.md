@@ -6,5 +6,15 @@
 
 Перед изменением конфигурации прочитай `docs/harness/AGENT_CONFIGURATION.md`.
 
+## Локальные настройки
+
+Codex сейчас не имеет нативного project-local файла, эквивалентного Claude Code `.claude/settings.local.json`. Не создавай `.codex/config.local.toml` в расчёте на автоматическую загрузку: Codex такой слой конфигурации пока не поддерживает.
+
+Для пользовательских defaults используй `~/.codex/config.toml`, для именованных профилей — `~/.codex/<profile>.config.toml` + `--profile`, а для переопределения project settings — CLI flags и `--config`. Project `.codex/config.toml` имеет более высокий приоритет, чем profile.
+
+Если нужен постоянный project-local launcher или helper, его можно хранить в gitignored `.codex/local/`, но Codex этот каталог автоматически не читает.
+
+Подробное сравнение с Claude Code, примеры и upstream feature request: [`docs/harness/AGENT_CONFIGURATION.md`](../docs/harness/AGENT_CONFIGURATION.md#локальные-настройки-runtime).
+
 - `skill-curator` — поиск, inspection, установка и создание repository skills.
 - `harness-updater` — безопасный `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY` с сохранением project-owned state.
