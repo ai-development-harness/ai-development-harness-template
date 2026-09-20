@@ -192,6 +192,8 @@ Updater их не меняет вообще. В частности:
 - project-native и third-party skills, отсутствующие в upstream tree;
 - project-specific `.claude/skills/**` и другие неизвестные runtime additions.
 
+Если новый Harness release меняет **модель** project-owned документов, updater всё равно не переписывает их автоматически. Например, переход от legacy-монолита `docs/requirements/SPEC.md` к отдельным canonical `REQ-NNN-*.md` выполняется после update через `PROJECT RECONCILE`: он должен сохранить смысл/ID требований и остановиться с blocker, если lossless migration неоднозначна. Для неинициализированного проекта отдельная migration не нужна — новый layout создаст `PROJECT INIT`.
+
 ## Evolution ownership policy между release
 
 Ownership policy сама является частью Harness и может меняться между версиями. Например, новый release может добавить новый runtime adapter и новые managed paths.
