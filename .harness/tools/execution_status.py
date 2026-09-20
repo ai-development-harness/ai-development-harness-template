@@ -19,7 +19,6 @@ CTS остаётся единственным источником разреш�
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -617,9 +616,15 @@ def block_execution(
         normalized_command = normalize_single_command(root, command)["normalized"]
         if current.get("command") != normalized_command:
             raise ValueError("block command does not match current command")
-    current["status"] = "blocked"
-    current["result"] = "BLOCKED"
-    current["completedAt"] = utc_now()
+    # Если blocker возник после уже завершённой child command (например,
+    # REVIEW=FAIL после исчерпания FIX budget), не уничтожаем factual verdict.
+    # Для running command BLOCKED остаётся result самой команды.
+    if current.get("status") == "running":
+        current["status"] = "blocked"
+        current["result"] = "BLOCKED"
+        current["completedAt"] = utc_now()
+    elif current.get("status") != "complete":
+        raise ValueError("current command must be running or complete to block root execution")
     _mark_root_complete(execution, blocked=True)
     save_status(root, status)
     return execution
