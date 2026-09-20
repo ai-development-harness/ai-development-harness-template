@@ -239,7 +239,7 @@ Lock обновляется только после успешного postcondi
 
 `HARNESS UPDATE CHECK` в таком проекте возвращает `LEGACY ADOPTION REQUIRED`. Updater не пытается подобрать «похожую» версию автоматически.
 
-Если исходный release известен из Git/history/repository evidence, выполни explicit legacy adoption через `update-harness`: укажи конкретный tag (например `v0.1.0`). Adoption создаёт lock и показывает файлы, которые уже расходятся с указанным baseline. Если baseline неизвестен, нужен ручной reconciliation; безопасный автоматический 3-way merge невозможен.
+Если исходный release известен из Git/history/repository evidence, выполни explicit legacy adoption через `update-harness`: укажи конкретный tag (например `vX.X.X`). Adoption создаёт lock и показывает файлы, которые уже расходятся с указанным baseline. Если baseline неизвестен, нужен ручной reconciliation; безопасный автоматический 3-way merge невозможен.
 
 ## Release lifecycle source repository
 
