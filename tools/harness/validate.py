@@ -617,7 +617,7 @@ def main() -> int:
         root / "docs/harness/COMMAND_SYNTAX.md",
         root / "docs/harness/COMMAND_TRANSITIONS.md",
         root / "docs/harness/COMMANDS.md",
-        root / "planning/EXECUTION_PROTOCOL.md",
+        root / "docs/harness/EXECUTION_PROTOCOL.md",
     ]
     for command in policy.get("required_commands", []):
         for p in command_files:
@@ -634,7 +634,7 @@ def main() -> int:
         root / ".project/harness-policy.toml",
         root / ".project/harness-update.toml",
         root / ".codex/config.toml",
-        root / "planning/EXECUTION_PROTOCOL.md",
+        root / "docs/harness/EXECUTION_PROTOCOL.md",
     ]
     deprecated_scan_paths.extend((root / "docs/harness").glob("*.md"))
     deprecated_scan_paths.extend((root / ".agents/skills").glob("*/SKILL.md"))
