@@ -242,7 +242,7 @@ Precondition: `.project/manifest.yaml → project.initialized: false`.
 1. Проверить существование `PROJECT_BRIEF.local.md`.
 2. Прочитать brief и референсы. Если внешний source недоступен, отметить это, не подменять факт предположением.
 3. Сформировать `docs/PROJECT.md`.
-4. Извлечь проверяемые REQ, назначить стабильные IDs и создать каждый отдельным `docs/requirements/REQ-NNN-<slug>.md`; удалить `REQ-001-template.md`, перестроить `SPEC.md` как index projection и не записывать lifecycle-статус ни в canonical REQ, ни в `SPEC.md`.
+4. Извлечь проверяемые REQ, назначить стабильные IDs и создать каждый отдельным `docs/requirements/REQ-NNN-<slug>.md`; удалить `REQ-001-template.md`, если он существует, перестроить `SPEC.md` как index projection и не записывать lifecycle-статус ни в canonical REQ, ни в `SPEC.md`.
 5. Сформировать минимально достаточный architecture baseline.
 6. Создать ADR только для уже необходимых устойчивых решений.
 7. Неопределённости записать в `OPEN_QUESTIONS`; при необходимости создать ранний `RESEARCH`/`ADR` STEP.
