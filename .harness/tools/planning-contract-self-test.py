@@ -283,7 +283,17 @@ self-test
         )
         assert validate_planning_contracts(root) == [], validate_planning_contracts(root)
 
-        # 8. OPEN question, влияющий на STEP/linked REQ, не совместим с Ready.
+        # 8. Ready contract не должен содержать unresolved placeholders.
+        ready_text = (root / "work/tasks/STEP-001.md").read_text(encoding="utf-8")
+        write(
+            root / "work/tasks/STEP-001.md",
+            ready_text.replace("**Фаза:** Test", "**Фаза:** TBD"),
+        )
+        errors = validate_planning_contracts(root)
+        assert any("unresolved Phase=TBD" in item for item in errors), errors
+        write(root / "work/tasks/STEP-001.md", ready_text)
+
+        # 9. OPEN question, влияющий на STEP/linked REQ, не совместим с Ready.
         write(
             root / "docs/OPEN_QUESTIONS.md",
             """# Open Questions
@@ -299,7 +309,21 @@ Resolution: —
         errors = validate_planning_contracts(root)
         assert any("blocked by OQ-001" in item for item in errors), errors
 
-        # 9. Dependency cycle ловится без модели.
+        # Malformed blocking metadata не должен молча исчезать из static gate.
+        write(
+            root / "docs/OPEN_QUESTIONS.md",
+            """# Open Questions
+
+### OQ-002 — Некорректная запись
+Status: UNKNOWN
+Context: self-test
+""",
+        )
+        errors = validate_planning_contracts(root)
+        assert any("OQ-002 missing or invalid Status" in item for item in errors), errors
+        assert any("OQ-002 missing Affects references" in item for item in errors), errors
+
+        # 10. Dependency cycle ловится без модели.
         (root / "docs/OPEN_QUESTIONS.md").unlink()
         step2 = (root / "work/tasks/STEP-002.md").read_text(encoding="utf-8")
         step2 = step2.replace("**Depends on:** —", "**Depends on:** STEP-001")
@@ -307,7 +331,7 @@ Resolution: —
         errors = validate_planning_contracts(root)
         assert any("dependency cycle" in item for item in errors), errors
 
-        # 10. Missing canonical REQ — deterministic contract failure.
+        # 11. Missing canonical REQ — deterministic contract failure.
         (root / "spec/requirements/REQ-001-contract.md").unlink()
         errors = validate_planning_contracts(root)
         assert any("expected exactly one canonical requirement file" in item for item in errors), errors
