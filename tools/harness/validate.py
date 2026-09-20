@@ -302,6 +302,123 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
 
 
 
+# Проверить optional bootstrap relocation policy, используемую bridge release для безопасной смены control-plane paths.
+def validate_bootstrap_relocation_policy(root: Path, errors: list[str]) -> None:
+    path = root / ".project" / "harness-update.toml"
+    if not path.is_file():
+        return
+
+    try:
+        policy = load_toml(path)
+    except Exception:
+        return
+
+    relocation = policy.get("bootstrap_relocation")
+    if relocation is None:
+        return
+    if not isinstance(relocation, dict):
+        errors.append(".project/harness-update.toml bootstrap_relocation must be a table")
+        return
+    if relocation.get("enabled") is not True:
+        errors.append(".project/harness-update.toml bootstrap_relocation.enabled must be true")
+
+    def safe_repo_path(value: object) -> bool:
+        if not isinstance(value, str) or not value or value.startswith(("/", "\\")):
+            return False
+        normalized = value.replace("\\", "/")
+        return ".." not in normalized.split("/")
+
+    source = policy.get("source", {})
+    primary_manifest = source.get("update_manifest") if isinstance(source, dict) else None
+    fallbacks = source.get("update_manifest_fallbacks", []) if isinstance(source, dict) else []
+    if not isinstance(fallbacks, list) or not fallbacks:
+        errors.append(".project/harness-update.toml source.update_manifest_fallbacks must be a non-empty array")
+        fallbacks = []
+    elif any(not safe_repo_path(item) for item in fallbacks):
+        errors.append(".project/harness-update.toml source.update_manifest_fallbacks contains unsafe path")
+    elif len(set(fallbacks)) != len(fallbacks):
+        errors.append(".project/harness-update.toml source.update_manifest_fallbacks contains duplicates")
+
+    candidates = relocation.get("target_policy_candidates")
+    if not isinstance(candidates, list) or not candidates:
+        errors.append(".project/harness-update.toml bootstrap_relocation.target_policy_candidates must be a non-empty array")
+        candidates = []
+    elif any(not safe_repo_path(item) for item in candidates):
+        errors.append(".project/harness-update.toml bootstrap_relocation.target_policy_candidates contains unsafe path")
+    elif len(set(candidates)) != len(candidates):
+        errors.append(".project/harness-update.toml bootstrap_relocation.target_policy_candidates contains duplicates")
+
+    current_policy = ".project/harness-update.toml"
+    if candidates and current_policy not in candidates:
+        errors.append(".project/harness-update.toml bootstrap relocation must keep current policy path as a candidate")
+
+    state = policy.get("state", {})
+    lock_from = relocation.get("lock_from")
+    lock_to = relocation.get("lock_to")
+    if not safe_repo_path(lock_from) or not safe_repo_path(lock_to):
+        errors.append(".project/harness-update.toml bootstrap relocation lock paths are invalid")
+    else:
+        if lock_from == lock_to:
+            errors.append(".project/harness-update.toml bootstrap relocation lock_from and lock_to must differ")
+        if isinstance(state, dict) and state.get("lock_file") != lock_from:
+            errors.append(".project/harness-update.toml bootstrap relocation lock_from must match state.lock_file")
+
+    ownership = policy.get("ownership", {})
+    current_owned = set(ownership.get("harness_owned", [])) if isinstance(ownership, dict) else set()
+    current_shared = set(ownership.get("shared", [])) if isinstance(ownership, dict) else set()
+
+    seen_sources: set[str] = set()
+    seen_destinations: set[str] = set()
+    move_pairs: dict[str, str] = {}
+
+    def validate_moves(key: str, expected_sources: set[str]) -> None:
+        moves = relocation.get(key)
+        if not isinstance(moves, list) or not moves:
+            errors.append(f".project/harness-update.toml bootstrap_relocation.{key} must be a non-empty array")
+            return
+        for index, move in enumerate(moves):
+            prefix = f".project/harness-update.toml bootstrap_relocation.{key}[{index}]"
+            if not isinstance(move, dict):
+                errors.append(f"{prefix} must be an inline table")
+                continue
+            source_path = move.get("from")
+            target_path = move.get("to")
+            if not safe_repo_path(source_path) or not safe_repo_path(target_path):
+                errors.append(f"{prefix} contains invalid path")
+                continue
+            if source_path == target_path:
+                errors.append(f"{prefix} source and destination must differ")
+            if source_path in seen_sources:
+                errors.append(f"{prefix} duplicates relocation source {source_path}")
+            if target_path in seen_destinations:
+                errors.append(f"{prefix} duplicates relocation destination {target_path}")
+            seen_sources.add(source_path)
+            seen_destinations.add(target_path)
+            move_pairs[source_path] = target_path
+            if source_path not in expected_sources:
+                errors.append(f"{prefix} source is not in current ownership class: {source_path}")
+
+    validate_moves("harness_owned_moves", current_owned)
+    validate_moves("shared_moves", current_shared)
+
+    if lock_from in seen_sources or lock_to in seen_destinations:
+        errors.append(".project/harness-update.toml lock relocation must be handled separately from path moves")
+
+    relocated_policy = move_pairs.get(current_policy)
+    if relocated_policy is None:
+        errors.append(".project/harness-update.toml bootstrap relocation must relocate its own policy")
+    elif candidates and relocated_policy not in candidates:
+        errors.append(".project/harness-update.toml relocated policy destination must be an allowed target candidate")
+
+    if isinstance(primary_manifest, str):
+        relocated_manifest = move_pairs.get(primary_manifest)
+        if relocated_manifest is None:
+            errors.append(".project/harness-update.toml bootstrap relocation must relocate source.update_manifest")
+        elif fallbacks and relocated_manifest not in fallbacks:
+            errors.append(".project/harness-update.toml relocated update manifest must be declared as fallback")
+
+
+
 # Запустить полный набор integrity checks, вывести все найденные ошибки и вернуть стабильный exit code для CI.
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -328,6 +445,7 @@ def main() -> int:
         return 2
 
     validate_update_graph(root, errors)
+    validate_bootstrap_relocation_policy(root, errors)
 
     # Semantics harness-policy должны быть валидны до того, как значения policy
     # начнут использоваться в остальных проверках.
