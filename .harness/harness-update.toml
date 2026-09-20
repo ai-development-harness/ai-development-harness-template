@@ -46,7 +46,8 @@ harness_owned = [
 ]
 
 # Shared paths могут содержать project-specific настройки; при расхождении local/base/target применяется 3-way merge.
-# Пример: пользователь может менять model/effort в Codex и Claude Code runtime adapters.
+# Colocated TEMPLATE.md остаются Harness-managed scaffolds, но созданные по ним project artifacts не становятся managed.
+# Пример: пользователь может менять model/effort в runtime adapters или адаптировать TEMPLATE.md под проект.
 shared = [
   ".codex/config.toml",
   ".codex/agents/**",
@@ -58,6 +59,13 @@ shared = [
   ".gitmessage",
   ".harness/git-policy.toml",
   ".harness/manifest.yaml",
+  "docs/requirements/TEMPLATE.md",
+  "docs/adr/TEMPLATE.md",
+  "planning/tasks/TEMPLATE.md",
+  "planning/reviews/TEMPLATE.md",
+  "planning/audits/TEMPLATE.md",
+  "planning/releases/TEMPLATE.md",
+  "planning/skill-searches/TEMPLATE.md",
   "AGENTS.local.example.md",
   "PROJECT_BRIEF.example.md",
 ]
