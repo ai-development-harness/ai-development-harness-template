@@ -38,7 +38,7 @@ python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
 ```text
 GIT CHECK > COMMIT > PUSH > PR
 STEP PLAN STEP-024 > IMPLEMENT > REVIEW
-HARNESS UPDATE CHECK TO v0.4.0 > APPLY
+HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
 Правила:
