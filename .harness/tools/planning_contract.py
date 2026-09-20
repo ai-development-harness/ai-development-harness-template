@@ -134,7 +134,20 @@ def configured_path(
     default: str,
 ) -> Path:
     value = manifest_scalar(root, section, key, default) or default
-    return root / value
+    rel = Path(value)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError(
+            f"manifest {section}.{key} path must stay inside repository: {value}"
+        )
+    base = root.resolve()
+    candidate = (base / rel).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(
+            f"manifest {section}.{key} path escapes repository: {value}"
+        ) from exc
+    return candidate
 
 
 def task_directory(root: Path) -> Path:
@@ -338,7 +351,10 @@ def validate_planning_contracts(
     warnings: list[str] | None = None,
 ) -> list[str]:
     errors: list[str] = []
-    directory = task_directory(root)
+    try:
+        directory = task_directory(root)
+    except ValueError as exc:
+        return [f"planning: {exc}"]
     if not directory.is_dir():
         return errors
 
