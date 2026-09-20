@@ -1,6 +1,5 @@
 # Planning
 
-- `EXECUTION_PROTOCOL.md` — каноническая семантика команд и state transitions.
 - `PLAN.md` — roadmap projection.
 - `STATUS.md` — project execution projection.
 - `tasks/STEP-NNN.md` — canonical task contracts.
