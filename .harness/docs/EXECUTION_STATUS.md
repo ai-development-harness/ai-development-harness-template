@@ -340,6 +340,19 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 хранит оба segment в одной root sequence и после interruption продолжает APPLY внутри той же execution.
 
+## FIX → REVIEW budget
+
+Для `STEP RUN STEP-NNN` execution record хранит `fixReviewCycles`. Счётчик увеличивается после успешного `FIX → REVIEW` и сохраняется в `.harness/local/execution/execution-status.json`, поэтому restart session не сбрасывает budget.
+
+Когда REVIEW снова возвращает `FAIL` и `fixReviewCycles >= execution.maxFixReviewCycles`, resolver возвращает:
+
+```text
+status     = BLOCKED
+reasonCode = FIX_REVIEW_LIMIT_REACHED
+```
+
+Следующий FIX внутри этого root execution запрещён детерминированно. Это не инструкция reasoning-модели и не soft recommendation.
+
 ## Durable recovery optimizations
 
 Основное правило остаётся простым:
@@ -353,7 +366,7 @@ running
 
 ### STEP PLAN
 
-Task хранит `Plan basis` — SHA-256 нормализованного STEP contract.
+Task хранит `Plan basis` — SHA-256 transitive planning context: STEP contract + linked REQ/ADR + hard dependency contracts + architecture baseline.
 
 Если PLAN state = running, но:
 
