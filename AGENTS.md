@@ -299,7 +299,7 @@ Self-update protocol layer не является STEP.
 - используй `.agents/skills/update-harness/SKILL.md`;
 - не меняй working tree, Git refs, lock, STEP/REQ/ADR, commit/push/PR;
 - BASE берётся только из `.project/harness.lock.json`;
-- конечный target и обязательные промежуточные releases разрешай через canonical remote `.project/harness-update-graph.json`; moving `main` используется только для routing metadata, не как BASE/THEIRS content;
+- конечный target и обязательные промежуточные releases разрешай через routing manifest, указанный current `.project/harness-update.toml`; fallback path допустим только из `source.update_manifest_fallbacks`, moving `main` используется только для routing metadata, не как BASE/THEIRS content;
 - explicit `TO <tag>` допустим только если tag достижим из current release по update graph; отсутствие route — blocker до mutation;
 - если lock отсутствует, не угадывай baseline: переходи в legacy adoption mode;
 - неизвестные/project-owned paths не трогай даже при сходстве имён.
@@ -308,9 +308,10 @@ Self-update protocol layer не является STEP.
 
 - разрешён только после успешного check без blockers для того же конечного target и route;
 - применяет update graph строго hop-by-hop и не перепрыгивает обязательные bridge releases;
-- lock продвигается только после postcondition очередного hop; `reloadRequired` завершает текущий запуск на bridge и требует нового updater run;
+- lock продвигается только после postcondition очередного hop; при bootstrap relocation сначала создаётся destination lock, затем retire old lock; `reloadRequired` завершает текущий запуск на bridge и требует нового updater run;
 - меняет только allowlist из `.project/harness-update.toml`;
-- `shared` → 3-way merge;
+- bootstrap/control-plane relocation разрешён только через current trusted `[bootstrap_relocation]`; target не может сам расширить список переносов;
+- `shared` → 3-way merge, а relocated `shared` → rename-aware `BASE(source) / OURS(source) / THEIRS(destination)` merge;
 - `README.md`/`AGENTS.md` → 3-way merge с сохранением local generated blocks;
 - local modification `harness_owned` файла → blocker, а не overwrite;
 - target migration/install/bootstrap scripts автоматически не запускаются;

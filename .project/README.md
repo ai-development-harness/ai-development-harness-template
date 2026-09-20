@@ -22,9 +22,9 @@
 
 - `git-policy.toml` — поведение GIT COMMIT / GIT PUSH / GIT PR / GIT SYNC, ветки и commit messages.
 - `harness-policy.toml` — deterministic integrity/safety checks для local preflight и CI.
-- `harness-update.toml` — source repository, ownership classes, путь к remote update manifest и merge policy для self-update.
+- `harness-update.toml` — source repository, ownership classes, primary/fallback routing manifest paths, merge policy и optional bootstrap relocation bridge для self-update.
 - `harness.lock.json` — машинный known BASE текущего Harness release; JSON намеренно не требует inline-комментариев.
-- `harness-update-graph.json` — machine-readable граф допустимых переходов между immutable Harness releases; локальная копия входит в protocol layer, а выбор маршрута делается по версии из canonical `default_branch`.
+- `harness-update-graph.json` — machine-readable граф допустимых переходов между immutable Harness releases; локальная копия входит в protocol layer, а remote routing path выбирается только из current trusted `harness-update.toml`.
 - `command-transitions.json` — machine-readable source of truth для canonical command surface, chain eligibility, explicit transition edges, `onPreviousResult` и runtime preconditions. До skill routing canonical command проходит structural validation по этому graph.
 `.project/local/execution/execution-status.json` — единый local operational state всех canonical Harness executions. Он игнорируется Git, не является product evidence и может хранить несколько независимых running/completed records. Canonical repository artifacts имеют приоритет над local state.
 

@@ -121,9 +121,9 @@ Read-only рекомендация следующего **unblocked** шага �
 
 ## `HARNESS UPDATE CHECK [TO <tag>]`
 
-Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE, `.project/harness-update.toml` как source/ownership policy и canonical remote `.project/harness-update-graph.json` как routing metadata.
+Read-only проверка доступного маршрута Harness update. Использует `.project/harness.lock.json` как BASE и `.project/harness-update.toml` как current trusted source/ownership policy. Routing metadata читается по `source.update_manifest`; если primary path отсутствует, допускаются только exact `source.update_manifest_fallbacks`.
 
-Без `TO` конечный target берётся из `.project/harness-update-graph.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
+Без `TO` конечный target берётся из `latest` выбранного routing manifest. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
 
 Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
@@ -133,7 +133,7 @@ Read-only проверка доступного маршрута Harness update.
 
 Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же конечного target и route**.
 
-Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
+Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Если target меняет bootstrap/control-plane paths, перенос разрешён только current trusted `[bootstrap_relocation]`; shared paths проходят rename-aware 3-way merge. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
 
 Команда разрешена до `PROJECT INIT`. Pre-init update обновляет только protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`.
 
@@ -143,7 +143,7 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 HARNESS UPDATE APPLY TO v0.2.3
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `.project/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
+Updater не выполняет executable migration/install/bootstrap actions из routing manifest или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## `GIT CHECK`
 
