@@ -223,7 +223,7 @@ protocol:
             root / "docs/OPEN_QUESTIONS.md",
             """# Open Questions
 
-OQ-001 — Нужен выбор
+## OQ-001 — Нужен выбор
 Status: OPEN
 Affects: REQ-001, STEP-001
 Context: self-test
