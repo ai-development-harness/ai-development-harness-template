@@ -640,7 +640,7 @@ def main() -> int:
         # Дешёвый static gate дополняет semantic review: он ловит отсутствующие
         # REQ/ADR/dependencies, dependency cycles, stale Ready plans и OPEN question
         # blockers без вызова reasoning-модели.
-        errors.extend(validate_planning_contracts(root))
+        errors.extend(validate_planning_contracts(root, warnings=warnings))
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
