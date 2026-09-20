@@ -4,7 +4,7 @@ Harness обновляется отдельно от product development. Обн
 
 ## Обновление до `PROJECT INIT`
 
-`HARNESS UPDATE CHECK` и `HARNESS UPDATE APPLY` разрешены при `.project/manifest.yaml → project.initialized: false`. Инициализация проекта не является precondition для self-update: достаточны валидный Harness lock/source policy и выполнение обычных update safety checks.
+`HARNESS UPDATE CHECK` и `HARNESS UPDATE APPLY` разрешены при `.harness/manifest.yaml → project.initialized: false`. Инициализация проекта не является precondition для self-update: достаточны валидный Harness lock/source policy и выполнение обычных update safety checks.
 
 Это поддерживает сценарий, когда репозиторий уже создан из template и `PROJECT_BRIEF.local.md` заполнен, но до запуска initializer вышел новый immutable Harness release:
 
@@ -19,7 +19,7 @@ PROJECT INIT
 
 Pre-init update:
 
-- обновляет только Harness protocol layer и `.project/harness.lock.json`;
+- обновляет только Harness protocol layer и `.harness/harness.lock.json`;
 - не читает brief как команду на bootstrap и не создаёт product REQ/ADR/STEP;
 - не выполняет `PROJECT INIT` автоматически;
 - не переводит `project.initialized` в `true`;
@@ -55,9 +55,9 @@ HARNESS UPDATE CHECK TO vMAJOR.MINOR.PATCH
 
 Команда:
 
-- читает `.project/harness.lock.json`;
-- читает canonical `.project/harness-update-graph.json` из `source.default_branch` как **routing metadata**;
-- без `TO <tag>` использует `.project/harness-update-graph.json → latest` как конечный target и проверяет, что соответствующий immutable tag реально существует;
+- читает `.harness/harness.lock.json`;
+- читает canonical `.harness/harness-update-graph.json` из `source.default_branch` как **routing metadata**;
+- без `TO <tag>` использует `.harness/harness-update-graph.json → latest` как конечный target и проверяет, что соответствующий immutable tag реально существует;
 - с `TO <tag>` использует именно указанный release как конечный target и не заменяет его более новым;
 - строит детерминированный route от текущего lock release до target; отсутствие route является blocker;
 - последовательно моделирует BASE / projected OURS / THEIRS для каждого hop до mutation;
@@ -103,9 +103,9 @@ GIT PR
 
 ## Update manifest и выбор target
 
-Канонический source repository хранит `.project/harness-update-graph.json`.
+Канонический source repository хранит `.harness/harness-update-graph.json`.
 
-`.project/harness-update-graph.json` — **не migration script** и не source baseline. Это только machine-readable routing metadata:
+`.harness/harness-update-graph.json` — **не migration script** и не source baseline. Это только machine-readable routing metadata:
 
 - `schemaVersion` задаёт понятую updater-ом схему;
 - `latest` задаёт конечный target для команды без `TO`;
@@ -118,7 +118,7 @@ GIT PR
 
 Без `TO <tag>`:
 
-1. прочитай remote `.project/harness-update-graph.json` из `source.default_branch`;
+1. прочитай remote `.harness/harness-update-graph.json` из `source.default_branch`;
 2. возьми `latest`;
 3. построй route от current lock release до `latest`;
 4. проверь существование/immutability каждого tag, участвующего в route;
@@ -126,22 +126,22 @@ GIT PR
 
 С `TO <tag>` конечный target задаёт пользователь. Updater обязан доказать достижимость именно этого tag из current release. Наличие самого tag недостаточно.
 
-Moving `main` разрешено читать только для `.project/harness-update-graph.json`. Содержимое Harness для BASE/THEIRS всегда читается из immutable release tags.
+Moving `main` разрешено читать только для `.harness/harness-update-graph.json`. Содержимое Harness для BASE/THEIRS всегда читается из immutable release tags.
 
 ## Version и release — разные вещи
 
-`.project/manifest.yaml` содержит:
+`.harness/manifest.yaml` содержит:
 
 - `harness.version` — поколение protocol/schema layer;
 - `harness.release` — конкретный semver release шаблона.
 
 Повышать `harness.version` на каждую поставку нельзя. Обычные поставки идут release-тегами формата `vX.X.X`.
 
-Known BASE хранится в `.project/harness.lock.json`.
+Known BASE хранится в `.harness/harness.lock.json`.
 
 ## Ownership model
 
-Политика находится в `.project/harness-update.toml`.
+Политика находится в `.harness/harness-update.toml`.
 
 ### `harness_owned`
 
@@ -158,7 +158,7 @@ Known BASE хранится в `.project/harness.lock.json`.
 - `CLAUDE.md`;
 - `.claude/settings.json`;
 - `.claude/agents/*.md`;
-- `.project/manifest.yaml`.
+- `.harness/manifest.yaml`.
 
 Для них выполняется 3-way merge:
 
@@ -203,8 +203,8 @@ Ownership policy сама является частью Harness и может м
 Поэтому transition рассчитывается так:
 
 1. BASE policy читается из immutable release текущего lock.
-2. Local `.project/harness-update.toml` должен совпадать с BASE; local modification этого `harness_owned` файла блокирует update.
-3. THEIRS `.project/harness-update.toml` читается из target tag через путь, уже разрешённый BASE policy, и рассматривается только как данные.
+2. Local `.harness/harness-update.toml` должен совпадать с BASE; local modification этого `harness_owned` файла блокирует update.
+3. THEIRS `.harness/harness-update.toml` читается из target tag через путь, уже разрешённый BASE policy, и рассматривается только как данные.
 4. Transition scope — union managed paths BASE policy и THEIRS policy.
 5. Новый target-managed path можно создать автоматически только если его не существовало ни в BASE, ни в OURS.
 6. Если target policy впервые объявляет managed path, который уже существует локально и не был managed в BASE, update останавливается с `NEW_MANAGED_PATH_COLLISION`.
@@ -231,13 +231,13 @@ THEIRS v0.2.x:
 
 Перед записью lock для каждого hop updater обязан убедиться, что фактический результат соответствует заранее рассчитанному hop plan и что required Harness artifacts соответствующего target присутствуют. Перед первой mutation весь route до конечного target должен быть успешно смоделирован read-only.
 
-Target `.project/harness-policy.toml` можно читать как данные для проверки predicted/post-update completeness, но нельзя запускать target scripts или validator до review mutation.
+Target `.harness/harness-policy.toml` можно читать как данные для проверки predicted/post-update completeness, но нельзя запускать target scripts или validator до review mutation.
 
 Lock обновляется только после успешного postcondition конкретного hop. Нельзя записывать следующий release в lock при частично применённом hop. После завершения последнего hop lock обязан указывать конечный target; при `reloadRequired` updater завершает текущий запуск на соответствующем промежуточном release и явно требует повторить ту же команду после reload.
 
 ## Legacy adoption
 
-Проекты, созданные до появления `.project/harness.lock.json`, не имеют доказуемого BASE.
+Проекты, созданные до появления `.harness/harness.lock.json`, не имеют доказуемого BASE.
 
 `HARNESS UPDATE CHECK` в таком проекте возвращает `LEGACY ADOPTION REQUIRED`. Updater не пытается подобрать «похожую» версию автоматически.
 
@@ -253,15 +253,15 @@ vMAJOR.MINOR.PATCH
 
 Moving branch `main` не является update baseline.
 
-При подготовке release `.project/manifest.yaml` → `harness.release` и `.project/harness.lock.json` → `release` / `source.ref` должны указывать одну и ту же версию. После merge соответствующий immutable tag создаётся на фактическом release commit.
+При подготовке release `.harness/manifest.yaml` → `harness.release` и `.harness/harness.lock.json` → `release` / `source.ref` должны указывать одну и ту же версию. После merge соответствующий immutable tag создаётся на фактическом release commit.
 
 До создания этого tag новая версия **не считается доступным update target**, даже если её номер уже записан в `main`.
 
 ## Security boundary
 
-Updater-agent начинает с allowlist BASE policy. До выбора THEIRS ему разрешено прочитать только canonical remote `.project/harness-update-graph.json` из настроенного `source.default_branch`; этот JSON используется исключительно для выбора release refs и не может задавать filesystem paths, shell commands, hooks или произвольные инструкции.
+Updater-agent начинает с allowlist BASE policy. До выбора THEIRS ему разрешено прочитать только canonical remote `.harness/harness-update-graph.json` из настроенного `source.default_branch`; этот JSON используется исключительно для выбора release refs и не может задавать filesystem paths, shell commands, hooks или произвольные инструкции.
 
-После выбора очередного hop единственное расширение bootstrap scope — чтение target `.project/harness-update.toml` по тому же уже управляемому пути, после чего target policy используется только для вычисления безопасного transition scope.
+После выбора очередного hop единственное расширение bootstrap scope — чтение target `.harness/harness-update.toml` по тому же уже управляемому пути, после чего target policy используется только для вычисления безопасного transition scope.
 
 Новый target policy не может автоматически захватить существующий неизвестный local path. Любая такая коллизия блокирует mutation.
 
@@ -269,4 +269,4 @@ Updater-agent начинает с allowlist BASE policy. До выбора THEIR
 
 Текущий validator запускается **до** mutation. После `HARNESS UPDATE APPLY` пользователь/агент обязан сначала проверить diff; выполнение нового tooling относится уже к обычному `GIT CHECK`/verification после review изменений.
 
-Remote `.project/harness-update-graph.json` не делает moving `main` baseline: любое содержимое protocol layer, применяемое к проекту, должно происходить из immutable tag, проверенного для конкретного hop.
+Remote `.harness/harness-update-graph.json` не делает moving `main` baseline: любое содержимое protocol layer, применяемое к проекту, должно происходить из immutable tag, проверенного для конкретного hop.
