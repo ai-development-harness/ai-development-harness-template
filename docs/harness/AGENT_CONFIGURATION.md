@@ -128,9 +128,89 @@ Root defaults находятся в `.claude/settings.json`:
 }
 ```
 
-Для персонального override без repository diff используй `.claude/settings.local.json`.
-
 Tracked Codex и Claude role configs относятся к `shared`, поэтому пользовательские изменения сохраняются при Harness update через 3-way merge.
+
+## Локальные настройки runtime
+
+AI Development Harness использует нативную модель конфигурации каждого runtime. Поэтому локальные файлы Codex и Claude Code намеренно не симметричны.
+
+### Claude Code
+
+Claude Code нативно поддерживает project-local настройки:
+
+```text
+.claude/settings.local.json
+```
+
+Используй этот файл для персональных настроек текущего проекта, которые не должны попадать в Git: например, для локального выбора root-модели, effort или permission overrides.
+
+Shared project defaults остаются в:
+
+```text
+.claude/settings.json
+```
+
+`settings.local.json` является нативным механизмом Claude Code, поэтому Harness поддерживает его напрямую и исключает из Git.
+
+### Codex
+
+Codex сейчас не имеет отдельного project-local файла, эквивалентного `.claude/settings.local.json`.
+
+Shared project settings Harness остаются в:
+
+```text
+.codex/config.toml
+```
+
+Не создавай `.codex/config.local.toml`: пока Codex не поддерживает такой файл как отдельный слой конфигурации, его наличие создаст ложное впечатление, что runtime читает его автоматически.
+
+Для персональных настроек Codex доступны следующие нативные варианты.
+
+**Пользовательские defaults для всех проектов:**
+
+```text
+~/.codex/config.toml
+```
+
+**Переиспользуемый пользовательский профиль:**
+
+```text
+~/.codex/<profile>.config.toml
+```
+
+```bash
+codex --profile <profile>
+```
+
+Project `.codex/config.toml` имеет более высокий приоритет, чем profile. Поэтому profile полезен для набора пользовательских defaults, но не является полным аналогом Claude `settings.local.json` и не переопределит значение, уже заданное project-конфигурацией.
+
+**Локальный override для конкретного запуска:**
+
+```bash
+codex \
+  --model <model> \
+  --config model_reasoning_effort='"high"'
+```
+
+CLI flags и `--config` имеют более высокий приоритет, чем `.codex/config.toml`, поэтому это нативный способ переопределить project setting без изменения tracked-файла.
+
+Если для конкретного проекта нужен постоянный локальный launcher или другой вспомогательный механизм, его можно хранить под:
+
+```text
+.codex/local/
+```
+
+Этот каталог исключён из Git. Важно: `.codex/local/` является только зарезервированным Harness местом для пользовательских локальных файлов; Codex не читает его автоматически. Launcher или внешний инструмент должен сам передать необходимые значения через поддерживаемые CLI overrides.
+
+### Почему Harness не создаёт `.codex/config.local.toml`
+
+Harness не вводит искусственный `.codex/config.local.toml` только ради одинаковой структуры каталогов. Runtime adapters должны использовать нативные возможности соответствующего инструмента, а не имитировать несуществующую семантику.
+
+У Codex уже есть открытый upstream feature request на нативный gitignored project-local override layer:
+
+- [`openai/codex#24961 — Add explicit config scopes with a gitignored project-local override layer`](https://github.com/openai/codex/issues/24961)
+
+Как только такой механизм появится в Codex, Harness добавит его поддержку в следующем совместимом релизе. До этого Harness использует только официально поддерживаемые способы конфигурации и явно обозначает `.codex/local/` как user-owned helper area, а не как автоматически загружаемый configuration layer.
 
 ## Профили
 
