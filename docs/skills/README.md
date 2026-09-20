@@ -6,4 +6,4 @@
 - Third-party skill рассматривается как внешний код/инструкции: перед установкой обязателен inspection.
 - Установка не должна молча менять product code или общие repository rules.
 
-Команды: `SKILL FIND`, `SKILL INSTALL`, `SKILL CREATE`. Подробно: `docs/harness/SKILL_MANAGEMENT.md`.
+Команды: `SKILL FIND`, `SKILL INSTALL`, `SKILL CREATE`. Подробно: `.harness/docs/SKILL_MANAGEMENT.md`.
