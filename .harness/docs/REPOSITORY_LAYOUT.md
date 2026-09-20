@@ -1,72 +1,97 @@
 # Структура репозитория
 
-Базовый template разделён на protocol layer, runtime adapters, project knowledge base и будущую реализацию.
+Базовый template разделён на **ядро Harness**, runtime integration surfaces, project knowledge base и project planning state.
+
+## Главное правило владения
+
+```text
+.harness/**   → ядро AI Development Harness
+docs/**       → документация конкретного проекта
+planning/**   → planning state и история конкретного проекта
+```
+
+Исключение — colocated scaffold/templates рядом с project artifacts, например `docs/requirements/TEMPLATE.md`, `docs/adr/TEMPLATE.md` и `planning/tasks/TEMPLATE.md`. Они поставляются Harness как форма будущих project artifacts, но не являются документацией ядра.
+
+Runtime integration surfaces (`AGENTS.md`, `.agents/`, `.codex/`, `.claude/`, `CLAUDE.md`) остаются в ожидаемых runtime местах и не переносятся внутрь `.harness/`.
+
+## Layout
 
 ```text
 .
 ├── README.md                         # project entry point; generated PROJECT block сохраняется при update
-├── AGENTS.md                         # канонические repository-level инструкции Harness
+├── AGENTS.md                         # repository-level contract / runtime entry point
 ├── CLAUDE.md                         # Claude Code bridge: импортирует AGENTS.md
-├── PROJECT_BRIEF.example.md          # шаблон локального сырого brief
-├── .harness/
-│   ├── manifest.yaml                 # protocol generation + current release + project state
+├── PROJECT_BRIEF.example.md          # scaffold локального сырого brief
+├── .harness/                         # ядро AI Development Harness
+│   ├── README.md                     # краткое описание internal namespace
+│   ├── manifest.yaml                 # release, project state и Harness settings
 │   ├── harness.lock.json             # immutable source BASE текущего Harness release
 │   ├── harness-update-graph.json     # machine-readable граф маршрутов Harness update
 │   ├── command-transitions.json      # canonical command/chain transition graph
 │   ├── harness-update.toml           # source/ownership/merge policy self-update
 │   ├── harness-policy.toml           # deterministic integrity policy
-│   └── git-policy.toml               # Git workflow policy
-├── .codex/                           # Codex project-scoped roles и model/effort configuration
-├── .claude/                          # Claude Code project settings и role profiles
-│   ├── settings.json
-│   └── agents/
-├── .agents/skills/                   # runtime-neutral core workflow + project/technology skills
-├── docs/
-│   ├── PROJECT.md                    # нормализованное описание конкретного проекта
-│   ├── architecture.md               # текущий architecture baseline
-│   ├── GLOSSARY.md                   # продуктовый словарь после INIT
+│   ├── git-policy.toml               # Git workflow policy
+│   ├── docs/                         # human-readable документация ядра
+│   │   ├── README.md
+│   │   ├── EXECUTION_PROTOCOL.md
+│   │   ├── COMMANDS.md
+│   │   ├── COMMAND_SYNTAX.md
+│   │   ├── COMMAND_TRANSITIONS.md
+│   │   └── ...
+│   ├── tools/                        # dependency-free deterministic tooling
+│   │   ├── validate.py
+│   │   ├── command_transitions.py
+│   │   ├── command_references.py
+│   │   ├── validate-command.py
+│   │   ├── check-command-references.py
+│   │   ├── execution_status.py
+│   │   ├── execution-state.py
+│   │   ├── resolve-next-command.py
+│   │   └── execution-self-test.py
+│   └── local/                        # local-only operational state, gitignored
+│       └── execution/
+│           └── execution-status.json
+├── .agents/skills/                   # runtime-neutral core + project/technology skills
+├── .codex/                           # Codex integration surface
+├── .claude/                          # Claude Code integration surface
+├── docs/                             # только project knowledge/scaffold
+│   ├── PROJECT.md
+│   ├── architecture.md
+│   ├── GLOSSARY.md
 │   ├── OPEN_QUESTIONS.md
-│   ├── requirements/                 # requirements knowledge domain
+│   ├── requirements/
 │   │   ├── REQ-NNN-*.md              # canonical requirement definitions
 │   │   ├── SPEC.md                   # index projection REQ
 │   │   ├── STATUS.md                 # lifecycle projection REQ
-│   │   └── TEMPLATE.md               # шаблон отдельного REQ
-│   ├── adr/                          # immutable architecture decisions
-│   ├── skills/                       # registry/provenance дополнительных skills
-│   └── harness/                      # документация самого Harness, включая runtime adapters и EXECUTION_PROTOCOL.md
-├── planning/
+│   │   └── TEMPLATE.md               # colocated scaffold
+│   ├── adr/                          # project architecture decisions + template
+│   └── skills/                       # project skill registry/provenance
+├── planning/                         # только project planning/history/scaffold
 │   ├── PLAN.md
 │   ├── STATUS.md
-│   ├── tasks/                        # canonical STEP files
-│   ├── reviews/                      # immutable review reports
-│   ├── audits/                       # audit/reconcile reports
-│   ├── releases/                     # release reports
-│   ├── harness-updates/              # durable HARNESS UPDATE APPLY reports
-│   └── skill-searches/               # durable SKILL FIND results
-├── .harness/tools/
-│   ├── validate.py                   # deterministic integrity/safety validator
-│   ├── command_transitions.py        # parser + graph validator + Markdown renderer
-│   ├── command_references.py         # detector legacy command references + project-doc scope
-│   ├── validate-command.py           # pre-interpretation structural command gate
-│   ├── check-command-references.py   # CLI проверки command-syntax drift для RECONCILE
-│   ├── execution_status.py           # universal crash-safe execution state + resolver
-│   ├── execution-state.py            # CLI управления execution-status.json
-│   ├── resolve-next-command.py       # deterministic next/resume resolver
-│   └── execution-self-test.py        # self-test single/chain/orchestration recovery
-└── .github/                          # PR template + Harness CI
+│   ├── tasks/
+│   ├── reviews/
+│   ├── audits/
+│   ├── releases/
+│   ├── harness-updates/              # история update конкретного project instance
+│   └── skill-searches/
+└── .github/                          # collaboration/CI integration surface
 ```
 
 ## Слои
 
 ```text
-HARNESS / PROTOCOL
-AGENTS + commands + skills + policies + templates
+HARNESS CORE
+.harness/**
                      ↓
-RUNTIME ADAPTERS
-Codex (.codex) / Claude Code (CLAUDE.md + .claude)
+RUNTIME INTEGRATION
+AGENTS / .agents / .codex / .claude / CLAUDE.md
                      ↓
-PROJECT KNOWLEDGE BASE
-PROJECT + REQ + ADR + architecture + planning
+PROJECT KNOWLEDGE
+docs/**
+                     ↓
+PROJECT PLANNING / HISTORY
+planning/**
                      ↓
 IMPLEMENTATION
 code + tests + migrations + runtime configuration
@@ -74,8 +99,8 @@ code + tests + migrations + runtime configuration
 
 Runtime adapter не является источником семантики Harness. Один и тот же STEP/REQ/ADR/Git contract должен исполняться одинаково независимо от Codex или Claude Code.
 
-Command transition graph также относится к protocol layer: отсутствие edge в `.harness/command-transitions.json` означает запрет перехода независимо от runtime/LLM interpretation.
+Command transition graph относится к ядру: отсутствие edge в `.harness/command-transitions.json` означает запрет перехода независимо от runtime/LLM interpretation.
 
 Product implementation folders намеренно отсутствуют из template и появляются только после инициализации/реальных STEP.
 
-Self-updater использует allowlist source paths и по умолчанию считает всё неизвестное project-owned. Допустимый target и обязательные промежуточные releases определяются remote `.harness/harness-update-graph.json`; moving `main` при этом не становится source baseline — содержимое каждого hop читается только из immutable tag.
+Self-updater использует ownership policy из `.harness/harness-update.toml` и по умолчанию считает неизвестные paths project-owned. Допустимый target и обязательные промежуточные releases определяются remote `.harness/harness-update-graph.json`; moving `main` при этом не становится source baseline — содержимое каждого hop читается только из immutable tag.
