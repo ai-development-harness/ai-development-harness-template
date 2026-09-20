@@ -54,6 +54,8 @@ Runtime integration surfaces (`AGENTS.md`, `.agents/`, `.codex/`, `.claude/`, `C
 │   │   ├── execution-state.py
 │   │   ├── resolve-next-command.py
 │   │   ├── execution-self-test.py
+│   │   ├── planning_contract.py
+│   │   ├── planning-contract-self-test.py
 │   │   └── update-migration-self-test.py
 │   └── local/                        # local-only operational state, gitignored
 │       └── execution/
