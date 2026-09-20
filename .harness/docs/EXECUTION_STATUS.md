@@ -20,12 +20,12 @@ Execution Resolver
 Во всём проекте используется один файл:
 
 ```text
-.project/local/execution/execution-status.json
+.harness/local/execution/execution-status.json
 ```
 
 Per-STEP файлы запрещены.
 
-Каталог `.project/local/` исключён из Git. Execution Status является operational state, а не product evidence.
+Каталог `.harness/local/` исключён из Git. Execution Status является operational state, а не product evidence.
 
 ## Execution record
 
@@ -178,7 +178,7 @@ RESUME current.command
 После structural validation, но до command-specific dispatch:
 
 ```bash
-python3 tools/harness/execution-state.py start \
+python3 .harness/tools/execution-state.py start \
   --command 'GIT CHECK > COMMIT > PUSH > PR'
 ```
 
@@ -198,7 +198,7 @@ Partial JSON после process crash не считается нормальны
 Для explicit chain или `STEP RUN`:
 
 ```bash
-python3 tools/harness/execution-state.py begin \
+python3 .harness/tools/execution-state.py begin \
   --root 'STEP RUN STEP-001' \
   --command 'STEP IMPLEMENT STEP-001'
 ```
@@ -206,7 +206,7 @@ python3 tools/harness/execution-state.py begin \
 После завершения:
 
 ```bash
-python3 tools/harness/execution-state.py complete \
+python3 .harness/tools/execution-state.py complete \
   --root 'STEP RUN STEP-001' \
   --command 'STEP IMPLEMENT STEP-001' \
   --result SUCCESS
@@ -219,14 +219,14 @@ python3 tools/harness/execution-state.py complete \
 Для конкретного root execution:
 
 ```bash
-python3 tools/harness/resolve-next-command.py --json \
+python3 .harness/tools/resolve-next-command.py --json \
   --root 'STEP RUN STEP-001'
 ```
 
 Без `--root`:
 
 ```bash
-python3 tools/harness/resolve-next-command.py --json
+python3 .harness/tools/resolve-next-command.py --json
 ```
 
 возвращаются все unresolved executions.
@@ -322,7 +322,7 @@ HARNESS UPDATE CHECK TO vX.X.X
 Если следующая завершённая execution всё ещё этот CHECK, новая session может проверить handoff:
 
 ```bash
-python3 tools/harness/execution-state.py find \
+python3 .harness/tools/execution-state.py find \
   --command 'HARNESS UPDATE CHECK TO vX.X.X' \
   --result PASS \
   --latest
