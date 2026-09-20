@@ -162,7 +162,7 @@ def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
 
-    Primary project paths и taskDirectory берутся из .project/manifest.yaml.
+    Primary project paths и taskDirectory берутся из .harness/manifest.yaml.
     Source path может быть файлом или каталогом; каталоги рекурсивно раскрываются
     в Markdown-файлы. Дополнительно сканируются README и live project docs под docs/**.
     Не входят docs/harness (protocol source), docs/adr (decision history) и
