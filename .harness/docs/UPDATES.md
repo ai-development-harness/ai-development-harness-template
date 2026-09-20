@@ -251,6 +251,10 @@ Target release с `.harness/**` **не хранит активную `[bootstrap
 
 Target `.harness/harness-policy.toml` можно читать как данные для проверки predicted/post-update completeness, но нельзя запускать target scripts или validator до review mutation.
 
+Для initialized legacy project postcondition разделяет **целостность Harness control plane** и **deferred migration project-owned документов**. Если после применения target `python3 .harness/tools/validate.py --mode manual` распознаёт точный legacy REQ-layout (standalone `REQ-NNN-*.md` ещё отсутствуют, definitions остаются в `SPEC.md`), validator возвращает PASS с warning `requirements legacy migration pending`. Такой warning **не откатывает успешный Harness hop** и не мешает продвижению lock.
+
+Это состояние временное: `--mode commit` и `--mode ci` остаются строгими и обязаны FAIL до `PROJECT RECONCILE`. Поэтому после update initialized project выполняет `PROJECT RECONCILE` до `GIT COMMIT`/CI. Mixed/частично мигрированный REQ-layout не считается legacy migration-pending и остаётся blocker даже в manual-mode.
+
 Lock обновляется только после успешного postcondition конкретного hop. Нельзя записывать следующий release в lock при частично применённом hop. После завершения последнего hop lock обязан указывать конечный target; при `reloadRequired` updater завершает текущий запуск на соответствующем промежуточном release и явно требует повторить ту же команду после reload.
 
 ## Legacy adoption
