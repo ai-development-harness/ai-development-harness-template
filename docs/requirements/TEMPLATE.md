@@ -1,6 +1,7 @@
 ### REQ-NNN — Название
 
 **Приоритет:** Критический | Высокий | Средний | Низкий
+**Источник:** brief / user / regulation / research / other
 
 #### Requirement
 
@@ -17,6 +18,5 @@
 
 #### Traceability
 
-- Источник: brief / user / regulation / research / other
 - STEP: STEP-NNN
 - ADR: ADR-NNN / не требуется
