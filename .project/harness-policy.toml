@@ -5,7 +5,7 @@
 version = 1
 
 # Файлы, без которых repository больше не считается валидным экземпляром Harness.
-# Пример: удаление `planning/EXECUTION_PROTOCOL.md` или runtime adapter должно ломать CI.
+# Пример: удаление `docs/harness/EXECUTION_PROTOCOL.md` или runtime adapter должно ломать CI.
 required_files = [
   "AGENTS.md",
   ".project/harness-update-graph.json",
@@ -38,7 +38,7 @@ required_files = [
   "docs/harness/GITHUB_TEMPLATES.md",
   "docs/harness/UPDATES.md",
   "docs/harness/CLAUDE_CODE.md",
-  "planning/EXECUTION_PROTOCOL.md",
+  "docs/harness/EXECUTION_PROTOCOL.md",
   "planning/harness-updates/README.md",
   "planning/tasks/TEMPLATE.md",
   "docs/requirements/SPEC.md",
@@ -179,7 +179,7 @@ format_paths = [
   ".codex",
   ".claude",
   "docs/harness",
-  "planning/EXECUTION_PROTOCOL.md",
+  "docs/harness/EXECUTION_PROTOCOL.md",
   "planning/README.md",
   "planning/harness-updates",
   "tools/harness",
