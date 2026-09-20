@@ -5,8 +5,9 @@
 ## Продуктовые документы
 
 - `PROJECT.md` — назначение, пользователи, границы, цели и ограничения проекта.
-- `requirements/SPEC.md` — канонические продуктовые требования.
-- `requirements/STATUS.md` — projection состояния REQ.
+- `requirements/REQ-NNN-*.md` — канонические продуктовые требования.
+- `requirements/SPEC.md` — index projection REQ.
+- `requirements/STATUS.md` — lifecycle projection REQ.
 - `architecture.md` — текущий архитектурный baseline.
 - `adr/` — immutable history устойчивых архитектурных решений.
 - `development.md` — команды, environments, testing/build conventions после появления кода.
