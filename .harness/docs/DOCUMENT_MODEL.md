@@ -74,7 +74,9 @@ flowchart TD
 
 Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ definition/rationale/acceptance/traceability остаются в отдельном `REQ-NNN-*.md`; `SPEC.md` содержит только индекс, а lifecycle-state — только `STATUS.md`.
 
-Legacy-проекты, инициализированные старым Harness, могут всё ещё хранить canonical REQ внутри монолитного `SPEC.md` и/или содержать `**Статус:**` рядом с definition. `HARNESS UPDATE APPLY` не разрезает такие project-owned документы автоматически. `PROJECT RECONCILE` выполняет lossless migration: сохраняет ID и текст каждого requirement в отдельный `REQ-NNN-*.md`, перестраивает `SPEC.md` как index и оставляет lifecycle-state только в `STATUS.md`. Если однозначно доказать разбиение нельзя, migration блокируется вместо угадывания.
+Legacy-проекты, инициализированные старым Harness, могут всё ещё хранить canonical REQ внутри монолитного `SPEC.md` и/или содержать `**Статус:**` рядом с definition. `HARNESS UPDATE APPLY` не разрезает такие project-owned документы автоматически. `PROJECT RECONCILE` выполняет lossless migration: каждый requirement переносится в отдельный `REQ-NNN-*.md` по текущему `docs/requirements/TEMPLATE.md` с сохранением ID, названия, metadata, Requirement, Rationale, Acceptance и Traceability без изменения смысла; `SPEC.md` и `STATUS.md` перестраиваются в текущий projection-format с сохранением lifecycle-state/coverage/evidence. Если lossless отображение в текущую модель неоднозначно, migration блокируется вместо угадывания.
+
+`.harness/tools/validate.py` проверяет структурную согласованность `REQ-NNN-*.md ↔ SPEC.md ↔ STATUS.md`: ID, filename/H1, обязательные standalone-секции, projection coverage, прямые ссылки на canonical-файлы и названия. Семантику требований validator намеренно не оценивает.
 
 ## Иерархия источников истины
 
