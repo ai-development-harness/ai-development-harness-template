@@ -244,6 +244,8 @@ THEIRS v0.2.x:
 
 Target release с `.harness/**` **не хранит активную `[bootstrap_relocation]` policy**: после успешного relocation trust boundary уже находится в `.harness/harness-update.toml`. Это намеренно однонаправленная граница совместимости, а не постоянный dual-layout режим.
 
+Для discovery старых updater’ов `v0.4.0`/`v0.4.1` moving `main` дополнительно хранит **замороженный compatibility routing endpoint** `.project/harness-update-graph.json`. Он содержит маршрут только до `v0.5.0`, не является control plane, не используется новыми updater’ами и не должен развиваться вместе с дальнейшими release. Его единственная задача — позволить старому updater’у дойти до `v0.4.2`, после чего fallback из policy `v0.4.2` переключает routing на `.harness/harness-update-graph.json`.
+
 ## Postcondition update
 
 Перед записью lock для каждого hop updater обязан убедиться, что фактический результат соответствует заранее рассчитанному hop plan и что required Harness artifacts соответствующего target присутствуют. Перед первой mutation весь route до конечного target должен быть успешно смоделирован read-only.
