@@ -13,7 +13,7 @@
 
 ### Protocol Layer
 
-Стабильная часть репозитория, задающая способ работы агентов: `AGENTS.md`, `planning/EXECUTION_PROTOCOL.md`, core skills, agent configs, policies и `docs/harness/*`.
+Стабильная часть репозитория, задающая способ работы агентов: `AGENTS.md`, `docs/harness/EXECUTION_PROTOCOL.md`, core skills, agent configs, policies и `docs/harness/*`.
 
 ### Command Transition System (CTS)
 
@@ -599,7 +599,7 @@ Harness дополняет его body с Context / Changes / Verification / Tra
 
 ## Команды Harness
 
-Канонический список пользовательских команд и их семантика находится в [`COMMANDS.md`](COMMANDS.md). State transitions — в `planning/EXECUTION_PROTOCOL.md`.
+Канонический список пользовательских команд и их семантика находится в [`COMMANDS.md`](COMMANDS.md). State transitions — в `docs/harness/EXECUTION_PROTOCOL.md`.
 
 ## PROJECT QUICK FIX
 
