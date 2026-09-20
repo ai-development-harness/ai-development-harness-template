@@ -8,14 +8,14 @@ Harness разделяет **идею продукта**, **требования
 flowchart TD
     BRIEF[PROJECT_BRIEF.local.md\nсырой локальный вход] -->|PROJECT INIT| PROJECT[docs/PROJECT.md\nнормализованное описание проекта]
 
-    PROJECT --> REQ[docs/requirements/SPEC.md\nREQ — продуктовые требования]
+    PROJECT --> REQ[docs/requirements/REQ-NNN-*.md\ncanonical REQ]
     PROJECT --> ARCH[docs/architecture.md\nтекущий архитектурный baseline]
     PROJECT --> OQ[docs/OPEN_QUESTIONS.md\nнеразрешённые вопросы]
 
     OQ -->|решение необходимо| ADRSTEP[ADR / RESEARCH STEP]
     ADRSTEP --> ADR[docs/adr/ADR-NNN-*.md\nустойчивое решение]
 
-    REQ -->|реализуется / доказывается| STEP[planning/tasks/STEP-NNN.md\nканонический task contract]
+    REQ -->|проецируется| REQSPEC[docs/requirements/SPEC.md\nREQ index projection]\n    REQ -->|реализуется / доказывается| STEP[planning/tasks/STEP-NNN.md\nканонический task contract]
     ADR -->|ограничивает / объясняет| STEP
     ARCH -->|текущий контекст| STEP
 
@@ -44,7 +44,7 @@ flowchart TD
 | `PROJECT → REQ` | описание проекта нормализуется в проверяемые продуктовые контракты |
 | `PROJECT → architecture` | из целей и ограничений формируется текущий архитектурный baseline |
 | `Open Question → ADR/RESEARCH STEP` | неопределённость сначала исследуется, а не маскируется выдуманным решением |
-| `REQ → STEP` | STEP реализует или предоставляет evidence для одного или нескольких требований |
+| `REQ → SPEC` | `SPEC.md` — компактный индекс canonical REQ-файлов, а не competing source определения требования |\n| `REQ → STEP` | STEP реализует или предоставляет evidence для одного или нескольких требований |
 | `ADR → STEP` | Accepted ADR ограничивает способ реализации STEP |
 | `architecture → STEP` | STEP обязан учитывать текущее устройство системы |
 | `STEP → PLAN / STATUS` | `PLAN.md` и `STATUS.md` — производные проекции task-файлов, а не самостоятельный competing truth |
@@ -69,9 +69,9 @@ flowchart TD
 - `docs/requirements/SPEC.md` — canonical requirement definitions; lifecycle-статус в нём намеренно не хранится;
 - `docs/requirements/STATUS.md` — единственная persisted requirement status projection, вычисляемая из STEP/evidence/review.
 
-Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ определение и acceptance остаются в `SPEC.md`, а lifecycle-state не дублируется туда из `STATUS.md`.
+Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ definition/rationale/acceptance/traceability остаются в отдельном `REQ-NNN-*.md`; `SPEC.md` содержит только индекс, а lifecycle-state — только `STATUS.md`.
 
-Legacy-проекты, инициализированные старым Harness, могут всё ещё содержать `**Статус:**` внутри REQ в `SPEC.md`. Такой field считается устаревшим metadata, а не authoritative state: Harness update не делает его breaking validator error; при `PROJECT RECONCILE` его можно удалить после сверки `docs/requirements/STATUS.md` с STEP/evidence/review без изменения смысла requirement.
+Legacy-проекты, инициализированные старым Harness, могут всё ещё хранить canonical REQ внутри монолитного `SPEC.md` и/или содержать `**Статус:**` рядом с definition. `HARNESS UPDATE APPLY` не разрезает такие project-owned документы автоматически. `PROJECT RECONCILE` выполняет lossless migration: сохраняет ID и текст каждого requirement в отдельный `REQ-NNN-*.md`, перестраивает `SPEC.md` как index и оставляет lifecycle-state только в `STATUS.md`. Если однозначно доказать разбиение нельзя, migration блокируется вместо угадывания.
 
 ## Иерархия источников истины
 
