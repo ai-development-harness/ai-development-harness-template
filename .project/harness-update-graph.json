@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "latest": "v0.4.1",
+  "latest": "v0.4.2",
   "transitions": [
     {
       "from": "v0.1.0",
@@ -80,6 +80,13 @@
       "to": "v0.4.1",
       "kind": "standard",
       "reloadRequired": false
+    },
+    {
+      "from": "v0.4.1",
+      "to": "v0.4.2",
+      "kind": "bridge",
+      "reloadRequired": true,
+      "reason": "v0.4.2 installs trusted bootstrap relocation semantics required before the control-plane move to .harness/**"
     }
   ]
 }
