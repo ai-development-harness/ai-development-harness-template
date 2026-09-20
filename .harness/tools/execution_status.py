@@ -2,7 +2,7 @@
 """Универсальное crash-safe состояние выполнения Harness-команд.
 
 Модуль хранит operational history всех canonical invocations в одном локальном
-файле .project/local/execution/execution-status.json. Он не является audit log
+файле .harness/local/execution/execution-status.json. Он не является audit log
 и не заменяет canonical project artifacts.
 
 Модель намеренно простая:
@@ -37,7 +37,7 @@ from command_transitions import (
 
 # Фиксированный project-level operational state. Один файл намеренно покрывает
 # STEP, Git, Harness update и остальные namespaces.
-STATUS_PATH = ".project/local/execution/execution-status.json"
+STATUS_PATH = ".harness/local/execution/execution-status.json"
 # mode описывает форму уже существующего пользовательского ввода и НЕ является
 # новой командой/профилем. Пользователь никогда не выбирает mode вручную.
 EXECUTION_MODES = {"single", "chain", "orchestration"}
