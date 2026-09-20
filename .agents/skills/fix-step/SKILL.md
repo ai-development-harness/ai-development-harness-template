@@ -1,6 +1,6 @@
 ---
 name: fix-step
-description: Fix confirmed findings from the latest failing review of a STEP, then hand off to a fresh independent review.
+description: Fix confirmed implementation findings from the latest failing review of a STEP, then hand off to a fresh independent review.
 ---
 # fix-step
 
@@ -8,12 +8,14 @@ description: Fix confirmed findings from the latest failing review of a STEP, th
 
 Execution Status ведёт global wrapper.
 
-Найди последний применимый FAIL review. Передай подтверждённые findings implementer. Исправляй только их и необходимый supporting code в scope. Новый architecture/product scope → corrective STEP, а не скрытое расширение.
+Найди последний применимый FAIL review. FIX имеет право исправлять только findings категорий `implementation` и `evidence`, которые остаются внутри существующих Scope/Mutation policy/REQ/ADR.
 
-Если command resume-ится после interruption, сначала изучи существующий diff и продолжи незавершённые findings.
+Если review фактически требует изменить product contract, Acceptance, architecture decision, dependency graph или добавить отсутствующий prerequisite, не «чинить» это кодом. Заверши как `BLOCKED` и создай/предложи corrective STEP, RESEARCH или ADR согласно типу проблемы.
+
+Передай подтверждённые findings implementer и исправь их вместе с необходимым supporting code в scope. Если command resume-ится после interruption, сначала изучи существующий diff и продолжи незавершённые findings.
 
 Запусти relevant verification, обнови Evidence с command/exit code/observed facts; не выдавай реконструированный terminal output за буквальный.
 
 После полного исправления command завершается result `SUCCESS`. Старый review не изменяй.
 
-Single FIX после SUCCESS останавливается. Только explicit chain или `STEP RUN` может продолжить к свежему REVIEW.
+Single FIX после SUCCESS останавливается. Только explicit chain или `STEP RUN` может продолжить к свежему REVIEW. Количество `FIX → REVIEW` внутри STEP RUN ограничивает deterministic Execution Resolver по `execution.maxFixReviewCycles`; агент не должен вести собственный счётчик в памяти.
