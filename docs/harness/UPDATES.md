@@ -135,7 +135,7 @@ Moving `main` разрешено читать только для `.project/harn
 - `harness.version` — поколение protocol/schema layer;
 - `harness.release` — конкретный semver release шаблона.
 
-Повышать `harness.version` на каждую поставку нельзя. Обычные поставки идут release-тегами `v0.1.0`, `v0.2.0`, ...
+Повышать `harness.version` на каждую поставку нельзя. Обычные поставки идут release-тегами формата `vX.X.X`.
 
 Known BASE хранится в `.project/harness.lock.json`.
 
