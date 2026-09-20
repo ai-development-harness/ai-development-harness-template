@@ -8,7 +8,7 @@
 ├── AGENTS.md                         # канонические repository-level инструкции Harness
 ├── CLAUDE.md                         # Claude Code bridge: импортирует AGENTS.md
 ├── PROJECT_BRIEF.example.md          # шаблон локального сырого brief
-├── .project/
+├── .harness/
 │   ├── manifest.yaml                 # protocol generation + current release + project state
 │   ├── harness.lock.json             # immutable source BASE текущего Harness release
 │   ├── harness-update-graph.json     # machine-readable граф маршрутов Harness update
@@ -43,7 +43,7 @@
 │   ├── releases/                     # release reports
 │   ├── harness-updates/              # durable HARNESS UPDATE APPLY reports
 │   └── skill-searches/               # durable SKILL FIND results
-├── tools/harness/
+├── .harness/tools/
 │   ├── validate.py                   # deterministic integrity/safety validator
 │   ├── command_transitions.py        # parser + graph validator + Markdown renderer
 │   ├── command_references.py         # detector legacy command references + project-doc scope
@@ -74,8 +74,8 @@ code + tests + migrations + runtime configuration
 
 Runtime adapter не является источником семантики Harness. Один и тот же STEP/REQ/ADR/Git contract должен исполняться одинаково независимо от Codex или Claude Code.
 
-Command transition graph также относится к protocol layer: отсутствие edge в `.project/command-transitions.json` означает запрет перехода независимо от runtime/LLM interpretation.
+Command transition graph также относится к protocol layer: отсутствие edge в `.harness/command-transitions.json` означает запрет перехода независимо от runtime/LLM interpretation.
 
 Product implementation folders намеренно отсутствуют из template и появляются только после инициализации/реальных STEP.
 
-Self-updater использует allowlist source paths и по умолчанию считает всё неизвестное project-owned. Допустимый target и обязательные промежуточные releases определяются remote `.project/harness-update-graph.json`; moving `main` при этом не становится source baseline — содержимое каждого hop читается только из immutable tag.
+Self-updater использует allowlist source paths и по умолчанию считает всё неизвестное project-owned. Допустимый target и обязательные промежуточные releases определяются remote `.harness/harness-update-graph.json`; moving `main` при этом не становится source baseline — содержимое каждого hop читается только из immutable tag.
