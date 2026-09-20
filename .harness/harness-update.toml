@@ -15,13 +15,13 @@ tag_pattern = '^v\d+\.\d+\.\d+$'
 
 # Machine-readable граф допустимых переходов. Updater читает его из default_branch только как routing metadata;
 # содержимое release по-прежнему берётся исключительно из immutable tags.
-# Пример: ".project/harness-update-graph.json".
-update_manifest = ".project/harness-update-graph.json"
+# Пример: ".harness/harness-update-graph.json".
+update_manifest = ".harness/harness-update-graph.json"
 
 [state]
 # Машинный lock с текущим known BASE проекта.
-# Пример: ".project/harness.lock.json".
-lock_file = ".project/harness.lock.json"
+# Пример: ".harness/harness.lock.json".
+lock_file = ".harness/harness.lock.json"
 
 # Каталог durable report после успешного HARNESS UPDATE APPLY.
 # Пример: "planning/harness-updates".
@@ -30,19 +30,19 @@ report_directory = "planning/harness-updates"
 [ownership]
 # Полностью Harness-owned paths. Updater заменяет их только если local content не расходится с BASE;
 # при local modification update блокируется вместо silent overwrite.
-# Пример: docs/harness/**, core workflow skills и runtime adapter README.
+# Пример: .harness/docs/**, core workflow skills и runtime adapter README.
 harness_owned = [
-  ".project/harness-update-graph.json",
-  ".project/command-transitions.json",
+  ".harness/harness-update-graph.json",
+  ".harness/command-transitions.json",
   ".agents/skills/**",
   ".codex/README.md",
   ".claude/README.md",
-  ".project/README.md",
-  ".project/harness-policy.toml",
-  ".project/harness-update.toml",
-  "docs/harness/**",
+  ".harness/README.md",
+  ".harness/harness-policy.toml",
+  ".harness/harness-update.toml",
+  ".harness/docs/**",
   "planning/harness-updates/README.md",
-  "tools/harness/**",
+  ".harness/tools/**",
 ]
 
 # Shared paths могут содержать project-specific настройки; при расхождении local/base/target применяется 3-way merge.
@@ -56,8 +56,8 @@ shared = [
   ".github/**",
   ".gitignore",
   ".gitmessage",
-  ".project/git-policy.toml",
-  ".project/manifest.yaml",
+  ".harness/git-policy.toml",
+  ".harness/manifest.yaml",
   "AGENTS.local.example.md",
   "PROJECT_BRIEF.example.md",
 ]
