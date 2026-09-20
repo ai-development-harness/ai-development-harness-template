@@ -1,14 +1,17 @@
 # Поддержка Harness
 
-## Что относится к protocol layer
+## Что относится к ядру Harness
+
+Основное правило: internal implementation и human-readable core documentation находятся под `.harness/**`.
+
+Отдельно снаружи остаются только integration surfaces, потому что их расположение определяется runtime/repository conventions:
 
 - `AGENTS.md` (кроме generated project blocks);
-- runtime adapters: `.codex/`, `CLAUDE.md`, baseline `.claude/`;
+- `CLAUDE.md`, `.codex/`, baseline `.claude/`;
 - core `.agents/skills/`;
-- `.harness/docs/EXECUTION_PROTOCOL.md`;
-- `.harness/docs/`;
-- `.harness/*-policy.toml`, updater/validator;
-- templates.
+- baseline `.github/` integration.
+
+Colocated `TEMPLATE.md` рядом с REQ/ADR/STEP и другими project artifacts считаются scaffold будущего project-owned содержимого, а не документацией ядра.
 
 ## Что относится к конкретному проекту
 
