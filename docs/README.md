@@ -17,12 +17,12 @@
 
 ## Документация Harness
 
-`harness/` описывает правила самого AI Development Harness и не должна смешиваться с product docs.
+Документация самого AI Development Harness находится отдельно от project knowledge base — в [`.harness/docs/`](../.harness/docs/README.md).
 
 Начни с:
 
-- `harness/README.md` — оглавление;
-- `harness/DOCUMENT_MODEL.md` — связи REQ/ADR/STEP/PLAN/STATUS/Evidence/Review;
-- `harness/GLOSSARY.md` — определения терминов Harness.
+- [`.harness/docs/README.md`](../.harness/docs/README.md) — оглавление;
+- [`.harness/docs/DOCUMENT_MODEL.md`](../.harness/docs/DOCUMENT_MODEL.md) — связи REQ/ADR/STEP/PLAN/STATUS/Evidence/Review;
+- [`.harness/docs/GLOSSARY.md`](../.harness/docs/GLOSSARY.md) — определения терминов Harness.
 
 Product-specific subsystem docs добавляются по мере появления устойчивых подсистем. Не создавай десятки пустых файлов во время INIT без необходимости.
