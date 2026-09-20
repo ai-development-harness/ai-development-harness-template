@@ -1,6 +1,6 @@
 # `.harness/`
 
-Служебная metadata AI Development Harness.
+Namespace/control plane AI Development Harness. Здесь собраны core documentation/tooling, machine-readable protocol metadata, shared Harness configuration и local operational state. Само расположение файла под `.harness/` не означает ownership `harness_owned`.
 
 `manifest.yaml` содержит только техническое состояние Harness, current release, project initialization state и ссылки на основные источники истины. Бизнес-требования, архитектурные решения и планы здесь хранить нельзя.
 
@@ -16,7 +16,15 @@
 
 Все эти значения проверяются `.harness/tools/validate.py`, поэтому отсутствующая или недопустимая настройка блокирует Harness validation до запуска orchestration.
 
-Локальные/секретные overrides при необходимости складываются в `.harness/local/`; каталог игнорируется Git.
+Локальные/секретные overrides при необходимости складываются в `.harness/local/`; каталог игнорируется Git. Legacy `.project/local/` также остаётся игнорируемым transitional path, чтобы operational state старых checkout не мог случайно попасть в commit.
+
+## Ownership внутри namespace
+
+- `docs/**`, `tools/**` и core policies/protocol metadata — преимущественно `harness_owned`;
+- `manifest.yaml` и `git-policy.toml` — `shared`;
+- `local/**` — local-only и никогда не tracked.
+
+Точный source of truth ownership — `harness-update.toml`; filesystem namespace не заменяет эту policy.
 
 ## Repository policies
 
