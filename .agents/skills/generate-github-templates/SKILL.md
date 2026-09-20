@@ -14,7 +14,7 @@ description: Regenerate GitHub Issue Forms and Pull Request template from the pr
 
 Перед генерацией изучи, что реально существует:
 
-1. `.project/manifest.yaml`, особенно `language.githubTemplates`;
+1. `.harness/manifest.yaml`, особенно `language.githubTemplates`;
 2. `docs/PROJECT.md`, requirements, architecture, development docs;
 3. package/build manifests и workspace configs;
 4. test/lint/typecheck/build scripts/targets;
@@ -47,6 +47,6 @@ description: Regenerate GitHub Issue Forms and Pull Request template from the pr
 ## После генерации
 
 1. Проверь YAML syntax issue forms.
-2. Запусти `python3 tools/harness/validate.py --mode manual`.
+2. Запусти `python3 .harness/tools/validate.py --mode manual`.
 3. Покажи список заменённых/созданных файлов и основные изменения.
 4. Не делай GIT COMMIT/GIT PUSH автоматически.
