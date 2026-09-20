@@ -194,7 +194,7 @@ def main() -> int:
     # repository и не оставляет local artifacts после CI.
     with tempfile.TemporaryDirectory(prefix="harness-execution-") as tmp:
         root = Path(tmp)
-        (root / ".project").mkdir(parents=True)
+        (root / ".harness").mkdir(parents=True)
         shutil.copy2(
             source / ".harness/command-transitions.json",
             root / ".harness/command-transitions.json",
