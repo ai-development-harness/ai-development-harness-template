@@ -33,9 +33,8 @@
 │   │   └── TEMPLATE.md               # шаблон отдельного REQ
 │   ├── adr/                          # immutable architecture decisions
 │   ├── skills/                       # registry/provenance дополнительных skills
-│   └── harness/                      # документация самого Harness, включая runtime adapters
+│   └── harness/                      # документация самого Harness, включая runtime adapters и EXECUTION_PROTOCOL.md
 ├── planning/
-│   ├── EXECUTION_PROTOCOL.md
 │   ├── PLAN.md
 │   ├── STATUS.md
 │   ├── tasks/                        # canonical STEP files
