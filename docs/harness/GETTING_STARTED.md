@@ -132,6 +132,8 @@ STEP NEXT
 
 Если Claude model/effort нужно изменить только локально, используй `.claude/settings.local.json`, не создавая repository diff.
 
+У Codex сейчас нет нативного project-local файла с такой семантикой. Не создавай `.codex/config.local.toml`; варианты персонального override и причина различия между runtime описаны в [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md#локальные-настройки-runtime).
+
 Базовый принцип:
 
 - reasoning-heavy роли — сильная модель и высокий effort;
