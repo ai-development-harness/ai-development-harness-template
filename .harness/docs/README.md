@@ -1,6 +1,6 @@
 # AI Development Harness — документация
 
-Эта папка описывает **сам Harness**, а не конкретный продукт. После `PROJECT INIT` продуктовая документация живёт уровнем выше в `docs/`, а правила разработки остаются здесь.
+Эта папка описывает **сам Harness**, а не конкретный продукт. После `PROJECT INIT` продуктовая документация остаётся в repository-level `docs/` и `planning/`, а документация ядра Harness — здесь.
 
 ## С чего начать
 
@@ -37,14 +37,14 @@
 
 После `PROJECT INIT` основными продуктовыми источниками становятся:
 
-- [`../PROJECT.md`](../PROJECT.md) — что это за проект и его границы;
-- [`../requirements/`](../requirements/) — canonical `REQ-NNN-*.md`;
-- [`../requirements/SPEC.md`](../requirements/SPEC.md) — index projection требований;
-- [`../requirements/STATUS.md`](../requirements/STATUS.md) — lifecycle projection REQ;
-- [`../architecture.md`](../architecture.md) — текущий архитектурный baseline;
-- [`../adr/`](../adr/) — история устойчивых архитектурных решений;
+- [`../PROJECT.md`](../../docs/PROJECT.md) — что это за проект и его границы;
+- [`../requirements/`](../../docs/requirements/) — canonical `REQ-NNN-*.md`;
+- [`../requirements/SPEC.md`](../../docs/requirements/SPEC.md) — index projection требований;
+- [`../requirements/STATUS.md`](../../docs/requirements/STATUS.md) — lifecycle projection REQ;
+- [`../architecture.md`](../../docs/architecture.md) — текущий архитектурный baseline;
+- [`../adr/`](../../docs/adr/) — история устойчивых архитектурных решений;
 - [`../../planning/PLAN.md`](../../planning/PLAN.md) — roadmap projection;
 - [`../../planning/tasks/`](../../planning/tasks/) — канонические task contracts;
-- [`../GLOSSARY.md`](../GLOSSARY.md) — **продуктовый** глоссарий конкретного проекта.
+- [`../GLOSSARY.md`](../../docs/GLOSSARY.md) — **продуктовый** глоссарий конкретного проекта.
 
 Не смешивай продуктовый глоссарий с [`GLOSSARY.md`](GLOSSARY.md): последний определяет язык и сущности самого Harness.
