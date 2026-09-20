@@ -4,7 +4,7 @@
 
 Настройки модели/effort находятся в `.codex/agents/*.toml`, чтобы стоимость и качество можно было менять независимо для каждой роли.
 
-Перед изменением конфигурации прочитай `docs/harness/AGENT_CONFIGURATION.md`.
+Перед изменением конфигурации прочитай `.harness/docs/AGENT_CONFIGURATION.md`.
 
 ## Локальные настройки
 
@@ -14,7 +14,7 @@ Codex сейчас не имеет нативного project-local файла, 
 
 Если нужен постоянный project-local launcher или helper, его можно хранить в gitignored `.codex/local/`, но Codex этот каталог автоматически не читает.
 
-Подробное сравнение с Claude Code, примеры и upstream feature request: [`docs/harness/AGENT_CONFIGURATION.md`](../docs/harness/AGENT_CONFIGURATION.md#локальные-настройки-runtime).
+Подробное сравнение с Claude Code, примеры и upstream feature request: [`.harness/docs/AGENT_CONFIGURATION.md`](../.harness/docs/AGENT_CONFIGURATION.md#локальные-настройки-runtime).
 
 - `skill-curator` — поиск, inspection, установка и создание repository skills.
 - `harness-updater` — безопасный `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY` с сохранением project-owned state.
