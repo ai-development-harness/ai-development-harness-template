@@ -537,7 +537,7 @@ Precondition: `.harness/manifest.yaml → project.initialized: true`.
 5. Если checker не удалось выполнить, явно записать BLOCKED в Evidence; запрещено утверждать, что command-syntax drift отсутствует.
 6. Не исправлять production code.
 7. Однозначный projection drift и чисто документальный command-syntax drift можно синхронизировать.
-8. Если legacy-проект хранит canonical REQ внутри монолитного `docs/requirements/SPEC.md`, выполнить lossless migration в отдельные `REQ-NNN-<slug>.md`, сохранив ID, metadata, Requirement, Rationale, Acceptance и Traceability; затем перестроить `SPEC.md` как index. Lifecycle-state оставить только в `STATUS.md`. При неоднозначной структуре legacy SPEC не угадывать — зафиксировать blocker.
+8. Если legacy-проект хранит canonical REQ внутри монолитного `docs/requirements/SPEC.md`, выполнить lossless migration: каждый `REQ-NNN-<slug>.md` создать по текущему `docs/requirements/TEMPLATE.md`, используя актуальную standalone-структуру и уровни заголовков, но сохраняя ID, название, metadata, Requirement, Rationale, Acceptance и Traceability без изменения смысла и без template placeholders. После split перестроить `SPEC.md` и `STATUS.md` в текущем projection-формате, сохранив lifecycle-state, STEP coverage и Evidence; lifecycle-state оставить только в `STATUS.md`. Если legacy-содержимое нельзя lossless отобразить в текущий template/projections или структура SPEC неоднозначна, не угадывать — зафиксировать blocker.
 9. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
 10. Новые устойчивые решения не записывать как Accepted ADR без decision process.
 11. Сохранить audit report.
