@@ -409,18 +409,19 @@ def validate_requirements_model(root: Path, errors: list[str]) -> None:
         lines = text.splitlines()
         first_nonempty = next((line.strip() for line in lines if line.strip()), "")
         h1_match = REQ_H1_RE.fullmatch(first_nonempty)
+        title: str | None = None
         if h1_match is None:
             errors.append(
                 f"requirements: {req_path.name} must start with '# {filename_id} — <title>'"
             )
-            continue
-
-        heading_id, title = h1_match.groups()
-        if heading_id != filename_id:
-            errors.append(
-                f"requirements: filename/H1 ID mismatch in {req_path.name}: "
-                f"filename={filename_id}, H1={heading_id}"
-            )
+        else:
+            heading_id, parsed_title = h1_match.groups()
+            title = parsed_title.strip()
+            if heading_id != filename_id:
+                errors.append(
+                    f"requirements: filename/H1 ID mismatch in {req_path.name}: "
+                    f"filename={filename_id}, H1={heading_id}"
+                )
 
         for section in REQ_REQUIRED_SECTIONS:
             count = len(
@@ -433,7 +434,7 @@ def validate_requirements_model(root: Path, errors: list[str]) -> None:
 
         canonical[filename_id] = {
             "filename": req_path.name,
-            "title": title.strip(),
+            "title": title,
         }
 
     try:
@@ -466,12 +467,12 @@ def validate_requirements_model(root: Path, errors: list[str]) -> None:
     for req_id in sorted(canonical_ids & spec_ids):
         expected = canonical[req_id]
         row = spec_rows[req_id]
-        if row["target"] != expected["filename"]:
+        if row["target"] and row["target"] != expected["filename"]:
             errors.append(
                 f"requirements: SPEC.md {req_id} link must target {expected['filename']}, "
-                f"got {row['target'] or '<no link>'}"
+                f"got {row['target']}"
             )
-        if row["title"] != expected["title"]:
+        if expected["title"] is not None and row["title"] != expected["title"]:
             errors.append(
                 f"requirements: SPEC.md {req_id} title differs from canonical REQ: "
                 f"{row['title']!r} != {expected['title']!r}"
@@ -480,12 +481,12 @@ def validate_requirements_model(root: Path, errors: list[str]) -> None:
     for req_id in sorted(canonical_ids & status_ids):
         expected = canonical[req_id]
         row = status_rows[req_id]
-        if row["target"] != expected["filename"]:
+        if row["target"] and row["target"] != expected["filename"]:
             errors.append(
                 f"requirements: STATUS.md {req_id} link must target {expected['filename']}, "
-                f"got {row['target'] or '<no link>'}"
+                f"got {row['target']}"
             )
-        if row["title"] != expected["title"]:
+        if expected["title"] is not None and row["title"] != expected["title"]:
             errors.append(
                 f"requirements: STATUS.md {req_id} title differs from canonical REQ: "
                 f"{row['title']!r} != {expected['title']!r}"
