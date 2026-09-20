@@ -6,7 +6,7 @@
 version = 1
 
 [commit]
-# Язык commit message задаётся централизованно в `.project/manifest.yaml` → `language.commitMessages`.
+# Язык commit message задаётся централизованно в `.harness/manifest.yaml` → `language.commitMessages`.
 # Пример: `ru` создаёт русский subject/body при неизменных Conventional Commit type/scope.
 # Формат subject commit message.
 # Пример: "conventional" → `feat(auth): добавь refresh rotation`.
