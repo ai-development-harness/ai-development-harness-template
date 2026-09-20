@@ -4,7 +4,7 @@ PROJECT_BRIEF.local.md
 # Local/private harness overrides.
 AGENTS.local.md
 CLAUDE.local.md
-.project/local/
+.harness/local/
 .codex/local/
 .claude/local/
 .claude/settings.local.json
