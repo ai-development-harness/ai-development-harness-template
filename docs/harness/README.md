@@ -38,7 +38,7 @@
 После `PROJECT INIT` основными продуктовыми источниками становятся:
 
 - [`../PROJECT.md`](../PROJECT.md) — что это за проект и его границы;
-- [`../requirements/SPEC.md`](../requirements/SPEC.md) — требования;
+- [`../requirements/`](../requirements/) — canonical `REQ-NNN-*.md`;\n- [`../requirements/SPEC.md`](../requirements/SPEC.md) — index projection требований;\n- [`../requirements/STATUS.md`](../requirements/STATUS.md) — lifecycle projection REQ;
 - [`../architecture.md`](../architecture.md) — текущий архитектурный baseline;
 - [`../adr/`](../adr/) — история устойчивых архитектурных решений;
 - [`../../planning/PLAN.md`](../../planning/PLAN.md) — roadmap projection;
