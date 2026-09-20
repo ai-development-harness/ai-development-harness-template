@@ -134,7 +134,8 @@ HARNESS UPDATE APPLY TO vMAJOR.MINOR.PATCH
 13. Если edge имеет `reloadRequired: true`, создай durable report о достигнутом промежуточном release, остановись с `UPDATER_RELOAD_REQUIRED` и не выполняй следующие hops текущим runtime.
 14. После последнего hop создай `planning/harness-updates/UPDATE-<timestamp>.md`, указав initial release, final target, фактически пройденный route, introduced/retired/reclassified paths и verification evidence.
 15. Если `project.initialized` был `false`, сохрани его `false`; self-update не выполняет bootstrap проекта.
-16. Покажи итоговый diff.
+16. Если target protocol изменяет модель project-owned документов, не мигрируй их внутри updater. Для initialized project зафиксируй follow-up `PROJECT RECONCILE`; для pre-init project migration выполнит будущий `PROJECT INIT`.
+17. Покажи итоговый diff.
 
 Не запускай target scripts. `.project/harness-update-graph.json` не может содержать executable actions. Не создавай STEP/REQ/ADR только ради update. Не делай commit/push/PR автоматически.
 
