@@ -1,17 +1,17 @@
 # Поддержка Harness
 
-## Что относится к ядру Harness
+## Что относится к control plane Harness
 
-Основное правило: internal implementation и human-readable core documentation находятся под `.harness/**`.
+Основное правило: internal implementation и human-readable core documentation собраны под `.harness/**`, но сам namespace не является единой ownership class. `.harness/docs/**` и `.harness/tools/**` относятся к core, `.harness/manifest.yaml` и `.harness/git-policy.toml` являются shared, а `.harness/local/**` — local-only operational state.
 
-Отдельно снаружи остаются только integration surfaces, потому что их расположение определяется runtime/repository conventions:
+Отдельно снаружи остаются integration surfaces, потому что их расположение определяется runtime/repository conventions:
 
 - `AGENTS.md` (кроме generated project blocks);
 - `CLAUDE.md`, `.codex/`, baseline `.claude/`;
 - core `.agents/skills/`;
 - baseline `.github/` integration.
 
-Colocated `TEMPLATE.md` рядом с REQ/ADR/STEP и другими project artifacts считаются scaffold будущего project-owned содержимого, а не документацией ядра.
+Colocated `TEMPLATE.md` рядом с REQ/ADR/STEP и другими project artifacts являются Harness-managed shared scaffolds: updater обновляет их через 3-way merge, а созданные по ним project artifacts остаются project-owned.
 
 ## Что относится к конкретному проекту
 
@@ -62,7 +62,7 @@ Known BASE проекта фиксируется в `.harness/harness.lock.json`
 - `shared` — 3-way merge;
 - `marker_merge` — 3-way merge с сохранением generated project blocks.
 
-Runtime tuning относится к `shared`: пользователь может менять model/effort в `.codex/` и tracked Claude adapter, не теряя настройки при обычном Harness update.
+Runtime tuning и colocated `TEMPLATE.md` относятся к `shared`: пользователь может менять model/effort в `.codex/`, tracked Claude adapter и адаптировать scaffold под проект, не теряя настройки при обычном Harness update.
 
 Всё неизвестное считается project-owned и updater не меняет. Например project-specific `.claude/skills/**` не становится Harness-owned только потому, что находится внутри `.claude/`.
 
