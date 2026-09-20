@@ -13,10 +13,10 @@ Bash не используется как реализация validator: тек
 Workflow запускает baseline validator и dependency-free smoke/self-tests protocol tooling:
 
 ```bash
-python3 tools/harness/validate.py --mode ci
-python3 tools/harness/check-command-references.py --json
-python3 tools/harness/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
-python3 tools/harness/execution-self-test.py
+python3 .harness/tools/validate.py --mode ci
+python3 .harness/tools/check-command-references.py --json
+python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
+python3 .harness/tools/execution-self-test.py
 ```
 
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
@@ -30,17 +30,17 @@ python3 tools/harness/execution-self-test.py
 Требуются Git и Python 3.11+:
 
 ```bash
-python3 tools/harness/validate.py --mode manual
+python3 .harness/tools/validate.py --mode manual
 ```
 
 Для GIT COMMIT / GIT PUSH agent использует:
 
 ```bash
-python3 tools/harness/validate.py --mode commit
+python3 .harness/tools/validate.py --mode commit
 ```
 
 Если Python 3.11+ отсутствует, validator должен считаться недоступным gate, а не молча заменяться частичной shell-проверкой. То же относится к отсутствующему Git binary/repository metadata: проверки tracked state требуют реального Git index, поэтому validator возвращает `HARNESS VALIDATION: BLOCKED` (exit code 2), а не подменяет tracked files содержимым filesystem.
 
 ## Настройка
 
-`.project/harness-policy.toml` определяет required files/skills/agents/commands, forbidden tracked globs, managed formatting paths, максимальный размер tracked file и список self-documented YAML/TOML configs. Для этих configs validator требует комментарий и либо пример, либо описание формата непосредственно рядом с каждым параметром. Ослабляй правило только осознанно; если project действительно должен хранить необычный артефакт, добавь узкое исключение вместо отключения всего класса checks.
+`.harness/harness-policy.toml` определяет required files/skills/agents/commands, forbidden tracked globs, managed formatting paths, максимальный размер tracked file и список self-documented YAML/TOML configs. Для этих configs validator требует комментарий и либо пример, либо описание формата непосредственно рядом с каждым параметром. Ослабляй правило только осознанно; если project действительно должен хранить необычный артефакт, добавь узкое исключение вместо отключения всего класса checks.
