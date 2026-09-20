@@ -753,7 +753,7 @@ def main() -> int:
 
     # --- Самодокументируемые config files --------------------------------
     # Каждый параметр managed YAML/TOML обязан иметь соседний комментарий и
-    # пример: пользователь должен понимать настройки без чтения Python-кода.
+    # пример или описание формата: пользователь должен понимать настройки без чтения Python-кода.
     if policy.get("check_config_parameter_comments", True):
         config_patterns = policy.get("documented_config_globs", [])
         require_example = policy.get("check_config_parameter_examples", True)
@@ -773,8 +773,12 @@ def main() -> int:
                 if not comments:
                     errors.append(f"config parameter lacks comment: {rel}:{idx + 1} ({key})")
                     continue
-                if require_example and not any(("Пример:" in item or "Example:" in item) for item in comments):
-                    errors.append(f"config parameter comment lacks example: {rel}:{idx + 1} ({key})")
+                if require_example and not any(
+                    marker in item
+                    for item in comments
+                    for marker in ("Пример:", "Формат:", "Example:", "Format:")
+                ):
+                    errors.append(f"config parameter comment lacks example/format: {rel}:{idx + 1} ({key})")
 
     # --- Политики языка, execution и review -------------------------------
     # Manifest хранит центральные knobs Harness. Здесь проверяем не только
