@@ -209,23 +209,23 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        errors.append(f"invalid .project/harness-update-graph.json: {exc}")
+        errors.append(f"invalid .harness/harness-update-graph.json: {exc}")
         return
 
     if not isinstance(data, dict):
-        errors.append(".project/harness-update-graph.json root must be an object")
+        errors.append(".harness/harness-update-graph.json root must be an object")
         return
     if data.get("schemaVersion") != 1:
-        errors.append(".project/harness-update-graph.json schemaVersion must be 1")
+        errors.append(".harness/harness-update-graph.json schemaVersion must be 1")
 
     latest = data.get("latest")
     if not isinstance(latest, str) or semver_tag_tuple(latest) is None:
-        errors.append(".project/harness-update-graph.json latest must be vMAJOR.MINOR.PATCH")
+        errors.append(".harness/harness-update-graph.json latest must be vMAJOR.MINOR.PATCH")
         latest = None
 
     transitions = data.get("transitions")
     if not isinstance(transitions, list):
-        errors.append(".project/harness-update-graph.json transitions must be an array")
+        errors.append(".harness/harness-update-graph.json transitions must be an array")
         return
 
     outgoing: dict[str, str] = {}
@@ -234,7 +234,7 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
         nodes.add(latest)
 
     for index, transition in enumerate(transitions):
-        prefix = f".project/harness-update-graph.json transitions[{index}]"
+        prefix = f".harness/harness-update-graph.json transitions[{index}]"
         if not isinstance(transition, dict):
             errors.append(f"{prefix} must be an object")
             continue
@@ -261,13 +261,13 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
 
         if isinstance(source, str) and isinstance(target, str):
             if source in outgoing:
-                errors.append(f".project/harness-update-graph.json ambiguous route: multiple transitions from {source}")
+                errors.append(f".harness/harness-update-graph.json ambiguous route: multiple transitions from {source}")
             else:
                 outgoing[source] = target
             nodes.update({source, target})
 
     if latest and latest in outgoing:
-        errors.append(".project/harness-update-graph.json latest must be terminal (no outgoing transition)")
+        errors.append(".harness/harness-update-graph.json latest must be terminal (no outgoing transition)")
 
     if latest:
         for start in sorted(nodes):
@@ -275,12 +275,12 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
             seen: set[str] = set()
             while current != latest:
                 if current in seen:
-                    errors.append(f".project/harness-update-graph.json cycle detected from {start}")
+                    errors.append(f".harness/harness-update-graph.json cycle detected from {start}")
                     break
                 seen.add(current)
                 nxt = outgoing.get(current)
                 if nxt is None:
-                    errors.append(f".project/harness-update-graph.json release {start} cannot reach latest {latest}")
+                    errors.append(f".harness/harness-update-graph.json release {start} cannot reach latest {latest}")
                     break
                 current = nxt
 
@@ -295,7 +295,7 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
                         break
                 if manifest_release and latest != f"v{manifest_release}":
                     errors.append(
-                        f".project/harness-update-graph.json latest {latest} does not match manifest harness.release v{manifest_release}"
+                        f".harness/harness-update-graph.json latest {latest} does not match manifest harness.release v{manifest_release}"
                     )
             except UnicodeDecodeError:
                 pass
@@ -318,7 +318,7 @@ def main() -> int:
     # Без policy невозможно понять, какие paths/skills/commands обязаны
     # существовать. Это bootstrap blocker, поэтому здесь допустим ранний exit.
     if not policy_path.exists():
-        print("ERROR: missing .project/harness-policy.toml", file=sys.stderr)
+        print("ERROR: missing .harness/harness-policy.toml", file=sys.stderr)
         return 2
 
     try:
@@ -360,7 +360,7 @@ def main() -> int:
     try:
         transition_table = load_transition_table(root)
     except Exception as exc:
-        errors.append(f"invalid .project/command-transitions.json: {exc}")
+        errors.append(f"invalid .harness/command-transitions.json: {exc}")
 
     if transition_table is not None:
         errors.extend(validate_transition_table(transition_table))
@@ -406,9 +406,9 @@ def main() -> int:
 
         transition_docs = [
             root / "AGENTS.md",
-            root / "docs/harness/COMMANDS.md",
-            root / "docs/harness/COMMAND_SYNTAX.md",
-            root / "docs/harness/COMMAND_TRANSITIONS.md",
+            root / ".harness/docs/COMMANDS.md",
+            root / ".harness/docs/COMMAND_SYNTAX.md",
+            root / ".harness/docs/COMMAND_TRANSITIONS.md",
         ]
         for command in sorted(table_commands):
             for p in transition_docs:
@@ -417,7 +417,7 @@ def main() -> int:
                         f"canonical command '{command}' missing from {p.relative_to(root)}"
                     )
 
-        transitions_doc = root / "docs/harness/COMMAND_TRANSITIONS.md"
+        transitions_doc = root / ".harness/docs/COMMAND_TRANSITIONS.md"
         if transitions_doc.is_file():
             text = transitions_doc.read_text(encoding="utf-8")
             start_marker = "<!-- COMMAND-TRANSITIONS:START -->"
@@ -435,7 +435,7 @@ def main() -> int:
                 expected = render_transition_markdown(transition_table).strip()
                 if actual != expected:
                     errors.append(
-                        "COMMAND_TRANSITIONS.md generated table differs from .project/command-transitions.json"
+                        "COMMAND_TRANSITIONS.md generated table differs from .harness/command-transitions.json"
                     )
 
         # Exhaustive contract test: каждая canonical command обязана парситься,
@@ -614,10 +614,10 @@ def main() -> int:
     # docs, иначе пользователь и агент увидят разные версии протокола.
     command_files = [
         root / "AGENTS.md",
-        root / "docs/harness/COMMAND_SYNTAX.md",
-        root / "docs/harness/COMMAND_TRANSITIONS.md",
-        root / "docs/harness/COMMANDS.md",
-        root / "docs/harness/EXECUTION_PROTOCOL.md",
+        root / ".harness/docs/COMMAND_SYNTAX.md",
+        root / ".harness/docs/COMMAND_TRANSITIONS.md",
+        root / ".harness/docs/COMMANDS.md",
+        root / ".harness/docs/EXECUTION_PROTOCOL.md",
     ]
     for command in policy.get("required_commands", []):
         for p in command_files:
@@ -630,11 +630,11 @@ def main() -> int:
     # не расходились после следующего изменения command surface.
     deprecated_scan_paths = [
         root / "AGENTS.md",
-        root / ".project/manifest.yaml",
-        root / ".project/harness-policy.toml",
-        root / ".project/harness-update.toml",
+        root / ".harness/manifest.yaml",
+        root / ".harness/harness-policy.toml",
+        root / ".harness/harness-update.toml",
         root / ".codex/config.toml",
-        root / "docs/harness/EXECUTION_PROTOCOL.md",
+        root / ".harness/docs/EXECUTION_PROTOCOL.md",
     ]
     deprecated_scan_paths.extend((root / "docs/harness").glob("*.md"))
     deprecated_scan_paths.extend((root / ".agents/skills").glob("*/SKILL.md"))
@@ -658,9 +658,9 @@ def main() -> int:
     # --- Локальный Execution Status ----------------------------------------
     # Operational state хранится только по одному фиксированному local-only path
     # и никогда не должен становиться tracked product/protocol artifact.
-    execution_status_rel = ".project/local/execution/execution-status.json"
+    execution_status_rel = ".harness/local/execution/execution-status.json"
     if execution_status_rel not in [
-        ".project/local/execution/execution-status.json"
+        ".harness/local/execution/execution-status.json"
     ]:
         errors.append("unexpected execution status path")
 
@@ -836,7 +836,7 @@ def main() -> int:
                     if not 1 <= max_results <= 10:
                         errors.append("manifest skills.search.maxResults must be between 1 and 10")
         except UnicodeDecodeError:
-            errors.append(".project/manifest.yaml is not UTF-8")
+            errors.append(".harness/manifest.yaml is not UTF-8")
 
     # --- Git policy: безопасные mutation rules ----------------------------
     # Проверяем semantics, от которых зависит безопасность COMMIT/PUSH/PR/SYNC:
@@ -938,7 +938,7 @@ def main() -> int:
                     "git-policy: unsupported sync settings: " + ", ".join(unexpected_sync_keys)
                 )
             if "safety" in gp:
-                errors.append("git-policy: [safety] is no longer supported; use .project/harness-policy.toml")
+                errors.append("git-policy: [safety] is no longer supported; use .harness/harness-policy.toml")
         except Exception:
             pass
 
