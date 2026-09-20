@@ -15,7 +15,7 @@
 - [`LANGUAGE_POLICY.md`](LANGUAGE_POLICY.md) — единая настройка языка для docs/commits/comments/tests/fixtures/templates.
 - [`QUICK_CHANGES.md`](QUICK_CHANGES.md) — когда мелкая правка не требует STEP.
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
-- [`../../docs/harness/EXECUTION_PROTOCOL.md`](../../docs/harness/EXECUTION_PROTOCOL.md) — формальная семантика state transitions и выполнения STEP.
+- [`EXECUTION_PROTOCOL.md`](EXECUTION_PROTOCOL.md) — формальная семантика state transitions и выполнения STEP.
 
 ## Агенты и автоматизация
 
