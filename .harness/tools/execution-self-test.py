@@ -196,8 +196,8 @@ def main() -> int:
         root = Path(tmp)
         (root / ".project").mkdir(parents=True)
         shutil.copy2(
-            source / ".project/command-transitions.json",
-            root / ".project/command-transitions.json",
+            source / ".harness/command-transitions.json",
+            root / ".harness/command-transitions.json",
         )
         write(root / "planning/tasks/STEP-001.md", task_text())
 
@@ -442,9 +442,9 @@ def main() -> int:
 
         # 11. Execution state хранится строго в одном project-level файле;
         # per-STEP JSON-файлы запрещены текущей моделью.
-        fixed = root / ".project/local/execution/execution-status.json"
+        fixed = root / ".harness/local/execution/execution-status.json"
         assert fixed.is_file(), fixed
-        assert not list((root / ".project/local/execution").glob("STEP-*.json"))
+        assert not list((root / ".harness/local/execution").glob("STEP-*.json"))
 
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
