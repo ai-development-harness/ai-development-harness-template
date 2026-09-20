@@ -302,6 +302,196 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
 
 
 
+REQ_FILE_RE = re.compile(r"^(REQ-\d{3})-(.+)\.md$")
+REQ_H1_RE = re.compile(r"^# (REQ-\d{3}) — (.+)$")
+REQ_REQUIRED_SECTIONS = ("Requirement", "Rationale", "Acceptance", "Traceability")
+
+
+# Разобрать projection-таблицу REQ. Первая колонка обязана быть прямой Markdown-ссылкой
+# на canonical REQ-файл; bare ID считается drift, потому что projection должен быть navigable.
+def parse_requirement_projection(
+    path: Path,
+    projection_name: str,
+    errors: list[str],
+) -> dict[str, dict[str, str | int]]:
+    rows: dict[str, dict[str, str | int]] = {}
+    if not path.is_file():
+        return rows
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        errors.append(f"{projection_name} is not UTF-8")
+        return rows
+
+    for line_number, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
+        if not (line.startswith("|") and line.endswith("|")):
+            continue
+
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if not cells:
+            continue
+
+        first = cells[0]
+        linked = re.fullmatch(r"\[(REQ-\d{3})\]\(([^)]+)\)", first)
+        bare = re.fullmatch(r"(REQ-\d{3})", first)
+        if linked is None and bare is None:
+            if re.search(r"\bREQ-\d{3}\b", first):
+                errors.append(
+                    f"{projection_name}:{line_number}: malformed REQ reference in first table column"
+                )
+            continue
+
+        req_id = linked.group(1) if linked else bare.group(1)
+        if req_id in rows:
+            previous_line = rows[req_id]["line"]
+            errors.append(
+                f"{projection_name}: duplicate {req_id} rows at lines {previous_line} and {line_number}"
+            )
+            continue
+
+        if len(cells) < 2 or not cells[1]:
+            errors.append(f"{projection_name}:{line_number}: {req_id} missing title")
+            title = ""
+        else:
+            title = cells[1]
+
+        target = linked.group(2).strip() if linked else ""
+        if bare:
+            errors.append(
+                f"{projection_name}:{line_number}: {req_id} must link directly to its canonical REQ file"
+            )
+
+        rows[req_id] = {
+            "target": target,
+            "title": title,
+            "line": line_number,
+        }
+
+    return rows
+
+
+# Проверить canonical REQ и обе projections как единый deterministic document-model contract.
+# Validator не оценивает смысл requirement: только ID, standalone structure, projection coverage и links.
+def validate_requirements_model(root: Path, errors: list[str]) -> None:
+    requirements_root = root / "docs" / "requirements"
+    spec_path = requirements_root / "SPEC.md"
+    status_path = requirements_root / "STATUS.md"
+
+    if not requirements_root.is_dir() or not spec_path.is_file() or not status_path.is_file():
+        # Required-files gate сообщит о конкретно отсутствующих обязательных artifacts.
+        return
+
+    canonical: dict[str, dict[str, str]] = {}
+    for req_path in sorted(requirements_root.glob("REQ-[0-9][0-9][0-9]-*.md")):
+        filename_match = REQ_FILE_RE.fullmatch(req_path.name)
+        if filename_match is None:
+            errors.append(
+                f"requirements: invalid canonical REQ filename: {req_path.relative_to(root)}"
+            )
+            continue
+
+        filename_id = filename_match.group(1)
+        if filename_id in canonical:
+            errors.append(
+                "requirements: duplicate canonical REQ ID "
+                f"{filename_id}: {canonical[filename_id]['filename']} and {req_path.name}"
+            )
+            continue
+
+        try:
+            text = req_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            errors.append(f"requirements: canonical REQ is not UTF-8: {req_path.relative_to(root)}")
+            continue
+
+        lines = text.splitlines()
+        first_nonempty = next((line.strip() for line in lines if line.strip()), "")
+        h1_match = REQ_H1_RE.fullmatch(first_nonempty)
+        if h1_match is None:
+            errors.append(
+                f"requirements: {req_path.name} must start with '# {filename_id} — <title>'"
+            )
+            continue
+
+        heading_id, title = h1_match.groups()
+        if heading_id != filename_id:
+            errors.append(
+                f"requirements: filename/H1 ID mismatch in {req_path.name}: "
+                f"filename={filename_id}, H1={heading_id}"
+            )
+
+        for section in REQ_REQUIRED_SECTIONS:
+            count = len(
+                re.findall(rf"(?m)^## {re.escape(section)}\s*$", text)
+            )
+            if count != 1:
+                errors.append(
+                    f"requirements: {req_path.name} must contain exactly one '## {section}' section"
+                )
+
+        canonical[filename_id] = {
+            "filename": req_path.name,
+            "title": title.strip(),
+        }
+
+    try:
+        spec_text = spec_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        spec_text = ""
+        errors.append("requirements: docs/requirements/SPEC.md is not UTF-8")
+
+    if re.search(r"(?m)^#{2,}\s+REQ-\d{3}\b", spec_text):
+        errors.append(
+            "requirements: SPEC.md must be an index projection and must not contain canonical REQ definitions"
+        )
+
+    spec_rows = parse_requirement_projection(spec_path, "requirements SPEC", errors)
+    status_rows = parse_requirement_projection(status_path, "requirements STATUS", errors)
+
+    canonical_ids = set(canonical)
+    spec_ids = set(spec_rows)
+    status_ids = set(status_rows)
+
+    for req_id in sorted(canonical_ids - spec_ids):
+        errors.append(f"requirements: canonical {req_id} missing from SPEC.md")
+    for req_id in sorted(spec_ids - canonical_ids):
+        errors.append(f"requirements: SPEC.md contains orphan {req_id} without canonical REQ file")
+    for req_id in sorted(canonical_ids - status_ids):
+        errors.append(f"requirements: canonical {req_id} missing from STATUS.md")
+    for req_id in sorted(status_ids - canonical_ids):
+        errors.append(f"requirements: STATUS.md contains orphan {req_id} without canonical REQ file")
+
+    for req_id in sorted(canonical_ids & spec_ids):
+        expected = canonical[req_id]
+        row = spec_rows[req_id]
+        if row["target"] != expected["filename"]:
+            errors.append(
+                f"requirements: SPEC.md {req_id} link must target {expected['filename']}, "
+                f"got {row['target'] or '<no link>'}"
+            )
+        if row["title"] != expected["title"]:
+            errors.append(
+                f"requirements: SPEC.md {req_id} title differs from canonical REQ: "
+                f"{row['title']!r} != {expected['title']!r}"
+            )
+
+    for req_id in sorted(canonical_ids & status_ids):
+        expected = canonical[req_id]
+        row = status_rows[req_id]
+        if row["target"] != expected["filename"]:
+            errors.append(
+                f"requirements: STATUS.md {req_id} link must target {expected['filename']}, "
+                f"got {row['target'] or '<no link>'}"
+            )
+        if row["title"] != expected["title"]:
+            errors.append(
+                f"requirements: STATUS.md {req_id} title differs from canonical REQ: "
+                f"{row['title']!r} != {expected['title']!r}"
+            )
+
+
 # Запустить полный набор integrity checks, вывести все найденные ошибки и вернуть стабильный exit code для CI.
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -352,6 +542,11 @@ def main() -> int:
     for rel in policy.get("required_files", []):
         if not (root / rel).is_file():
             errors.append(f"required file missing: {rel}")
+
+    # --- Requirements document model --------------------------------------
+    # Canonical REQ, SPEC index и STATUS lifecycle projection обязаны оставаться
+    # синхронизированы детерминированно, без LLM-интерпретации.
+    validate_requirements_model(root, errors)
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
