@@ -655,15 +655,6 @@ def main() -> int:
                     f"deprecated command form '{spec.legacy}' found in {p.relative_to(root)}"
                 )
 
-    # --- Локальный Execution Status ----------------------------------------
-    # Operational state хранится только по одному фиксированному local-only path
-    # и никогда не должен становиться tracked product/protocol artifact.
-    execution_status_rel = ".harness/local/execution/execution-status.json"
-    if execution_status_rel not in [
-        ".harness/local/execution/execution-status.json"
-    ]:
-        errors.append("unexpected execution status path")
-
     task_template = root / "planning/tasks/TEMPLATE.md"
     if task_template.is_file():
         task_template_text = task_template.read_text(encoding="utf-8")
@@ -686,6 +677,10 @@ def main() -> int:
         "PROJECT_BRIEF.local.md",
         "AGENTS.local.md",
         "CLAUDE.local.md",
+        ".project/local/",
+        ".harness/local/",
+        ".codex/local/",
+        ".claude/local/",
         ".claude/settings.local.json",
     ]:
         if ignored not in gitignore:
