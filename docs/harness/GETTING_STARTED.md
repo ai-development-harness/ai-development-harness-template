@@ -82,7 +82,7 @@ Initializer должен:
 
 - прочитать brief и доступные референсы;
 - создать `docs/PROJECT.md`;
-- нормализовать продуктовые требования в `docs/requirements/SPEC.md` без lifecycle-статуса и инициализировать их текущее состояние только в `docs/requirements/STATUS.md`;
+- создать каждый продуктовый REQ отдельным `docs/requirements/REQ-NNN-*.md`, перестроить `docs/requirements/SPEC.md` как index projection и инициализировать lifecycle-state только в `docs/requirements/STATUS.md`;
 - сформировать минимальный архитектурный baseline;
 - создать ADR только там, где устойчивое решение действительно принято или обязательно до реализации;
 - вынести неизвестное в `docs/OPEN_QUESTIONS.md` или ранний `RESEARCH` / `ADR` STEP;
