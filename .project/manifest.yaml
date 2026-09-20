@@ -80,7 +80,7 @@ language:
   releaseNotes: ru
 
 # Пути к основным источникам project knowledge.
-# Пример: requirements указывает на `docs/requirements/SPEC.md`.
+# Пример: requirements указывает на каталог `docs/requirements`.
 sources:
   # Локальный сырой brief пользователя; файл не должен попадать в Git.
   # Пример: PROJECT_BRIEF.local.md.
@@ -88,9 +88,9 @@ sources:
   # Нормализованное описание проекта после INIT.
   # Пример: docs/PROJECT.md.
   projectOverview: docs/PROJECT.md
-  # Канонический файл product requirements.
-  # Пример: docs/requirements/SPEC.md.
-  requirements: docs/requirements/SPEC.md
+  # Каталог canonical product requirements и их projections.
+  # Пример: docs/requirements.
+  requirements: docs/requirements
   # Текущий architecture baseline.
   # Пример: docs/architecture.md.
   architecture: docs/architecture.md
