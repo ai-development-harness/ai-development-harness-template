@@ -10,10 +10,10 @@
 
 ### 0.1. Command Transition System — structural gate всегда первым
 
-Harness использует **Command Transition System (CTS)**. Для canonical command первым выполняется deterministic structural validation по `.project/command-transitions.json`. Команда является action/transition request; фактическое state берётся из repository/runtime facts:
+Harness использует **Command Transition System (CTS)**. Для canonical command первым выполняется deterministic structural validation по `.harness/command-transitions.json`. Команда является action/transition request; фактическое state берётся из repository/runtime facts:
 
 ```bash
-python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
+python3 .harness/tools/validate-command.py --json -- '<raw canonical command>'
 ```
 
 До PASS этого gate запрещено:
@@ -23,7 +23,7 @@ python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
 - запускать subagent/runtime action;
 - выполнять mutation.
 
-`docs/harness/COMMAND_TRANSITIONS.md` содержит полную человекочитаемую матрицу. Отсутствующий edge означает `INVALID_CHAIN`; implicit transitions запрещены.
+`.harness/docs/COMMAND_TRANSITIONS.md` содержит полную человекочитаемую матрицу. Отсутствующий edge означает `INVALID_CHAIN`; implicit transitions запрещены.
 
 Каноническая команда начинается с явного namespace:
 
@@ -31,7 +31,7 @@ python3 tools/harness/validate-command.py --json -- '<raw canonical command>'
 <DOMAIN> <ACTION> [TARGET] [: free-form input]
 ```
 
-Полная грамматика находится в `docs/harness/COMMAND_SYNTAX.md`. Старые ненеймспейсные формы не считаются canonical aliases.
+Полная грамматика находится в `.harness/docs/COMMAND_SYNTAX.md`. Старые ненеймспейсные формы не считаются canonical aliases.
 
 Оператор `>` разрешает последовательность только внутри одной области:
 
@@ -47,7 +47,7 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 2. DOMAIN наследуется от первого сегмента; смена DOMAIN внутри цепочки запрещена;
 3. STEP target наследуется и остаётся неизменным;
 4. HARNESS UPDATE target `TO <tag>` наследуется от CHECK к APPLY;
-5. допустимый порядок определяется только explicit edges из `.project/command-transitions.json`;
+5. допустимый порядок определяется только explicit edges из `.harness/command-transitions.json`;
 6. same-domain reverse/invalid order (например `GIT PR > COMMIT`) = `INVALID_CHAIN`; ни один сегмент не выполняется;
 7. после выполнения segment следующий запускается только если фактический result входит в `onPreviousResult` соответствующего edge и выполнены его runtime preconditions;
 8. `FAIL` может быть разрешающим result конкретного edge (например REVIEW → FIX); `BLOCKED` останавливает execution; остальные segments = `NOT_EXECUTED`;
@@ -61,13 +61,13 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 После structural PASS каждая canonical command регистрируется в одном local-only файле:
 
 ```text
-.project/local/execution/execution-status.json
+.harness/local/execution/execution-status.json
 ```
 
 Регистрация выполняется **до command-specific dispatch**:
 
 ```bash
-python3 tools/harness/execution-state.py start \
+python3 .harness/tools/execution-state.py start \
   --command '<raw canonical command>'
 ```
 
@@ -109,7 +109,7 @@ Result: `SUCCESS | PASS | FAIL | BLOCKED`.
 Для root execution:
 
 ```bash
-python3 tools/harness/resolve-next-command.py --json \
+python3 .harness/tools/resolve-next-command.py --json \
   --root '<root canonical command>'
 ```
 
@@ -124,7 +124,7 @@ python3 tools/harness/resolve-next-command.py --json \
 Для chain/orchestration переход к следующей child command отмечается:
 
 ```bash
-python3 tools/harness/execution-state.py begin \
+python3 .harness/tools/execution-state.py begin \
   --root '<root command>' \
   --command '<next/current child command>'
 ```
@@ -132,7 +132,7 @@ python3 tools/harness/execution-state.py begin \
 Completion:
 
 ```bash
-python3 tools/harness/execution-state.py complete \
+python3 .harness/tools/execution-state.py complete \
   --root '<root command>' \
   --command '<current command>' \
   --result <SUCCESS|PASS|FAIL|BLOCKED>
@@ -148,7 +148,7 @@ Canonical artifacts имеют приоритет над local operational state
 
 Эти проверки не создают profiles и не меняют command surface.
 
-Подробно: `docs/harness/EXECUTION_STATUS.md`.
+Подробно: `.harness/docs/EXECUTION_STATUS.md`.
 
 ## 1. Сущности
 
@@ -235,7 +235,7 @@ Risk flags управляют orchestration, но не заменяют анал
 
 ## 6. `PROJECT INIT`
 
-Precondition: `.project/manifest.yaml → project.initialized: false`.
+Precondition: `.harness/manifest.yaml → project.initialized: false`.
 
 Алгоритм:
 
@@ -281,7 +281,7 @@ Production code mutation запрещена.
 
 Product code mutation запрещена; разрешено создание search report.
 
-Перед поиском прочитай `.project/manifest.yaml → skills.search.maxResults`. Значение должно быть целым числом от 1 до 10 и определяет максимальное число кандидатов в durable search report. Диапазон проверяет deterministic Harness validator; при отсутствующем или недопустимом значении команда останавливается с configuration blocker без скрытого default.
+Перед поиском прочитай `.harness/manifest.yaml → skills.search.maxResults`. Значение должно быть целым числом от 1 до 10 и определяет максимальное число кандидатов в durable search report. Диапазон проверяет deterministic Harness validator; при отсутствующем или недопустимом значении команда останавливается с configuration blocker без скрытого default.
 
 1. Сформировать несколько search queries по intent пользователя, технологии и типу workflow.
 2. Искать прежде всего inspectable GitHub sources с `SKILL.md`/Agent Skills-compatible bundle; не ранжировать только по stars/name.
@@ -371,7 +371,7 @@ Production code mutation запрещена. Execution tracking уже заре�
 5. Сохранить `## Implementation plan`.
 6. Выполнить:
    ```bash
-   python3 tools/harness/execution-state.py stamp-plan STEP-NNN
+   python3 .harness/tools/execution-state.py stamp-plan STEP-NNN
    ```
 7. `Plan basis` = SHA-256 от нормализованного task contract: Type, Depends on, Requirements, ADR, Risk flags, Goal, Context, Scope, Mutation policy, Out of scope, Acceptance criteria, Verification, Deliverables.
 8. Если hash больше не совпадает, plan = stale без LLM reasoning.
@@ -406,7 +406,7 @@ Single IMPLEMENT после SUCCESS останавливается; внутри
 Reviewer независим и read-only относительно product code.
 
 1. Прочитать task contract, implementation plan, REQ, ADR, diff/current implementation и tests.
-2. Прочитать `.project/manifest.yaml → review.security` и `review.tests`.
+2. Прочитать `.harness/manifest.yaml → review.security` и `review.tests`.
 3. Проверить acceptance/evidence, correctness, regressions, error handling, compatibility, architecture drift и meaningful test gaps.
 4. Запустить specialized reviewers согласно policy.
 5. Findings должны быть конкретными и воспроизводимыми.
@@ -459,13 +459,13 @@ RUN по-прежнему dispatch-ит существующий STEP Type:
 2. Проверить `execution.maxFixReviewCycles`, `review.security`, `review.tests`, если они применимы.
 3. Получить состояние root:
    ```bash
-   python3 tools/harness/resolve-next-command.py --json \
+   python3 .harness/tools/resolve-next-command.py --json \
      --root 'STEP RUN STEP-NNN'
    ```
 4. Если resolver возвращает interrupted child command — resume её.
 5. Если RUN запускает canonical child command, перед dispatch:
    ```bash
-   python3 tools/harness/execution-state.py begin \
+   python3 .harness/tools/execution-state.py begin \
      --root 'STEP RUN STEP-NNN' \
      --command '<child command>'
    ```
@@ -504,7 +504,7 @@ Read-only:
 
 1. Сначала выполнить:
    ```bash
-   python3 tools/harness/resolve-next-command.py --json
+   python3 .harness/tools/resolve-next-command.py --json
    ```
 2. Resolver возвращает **все** unresolved executions, независимо от namespace.
 3. Незавершённый STEP-related execution имеет приоритет над стартом нового STEP, но не блокирует явно запрошенные пользователем независимые Git/Project/Harness commands.
@@ -515,7 +515,7 @@ Read-only:
 
 ## 16. `PROJECT RECONCILE`
 
-Precondition: `.project/manifest.yaml → project.initialized: true`.
+Precondition: `.harness/manifest.yaml → project.initialized: true`.
 
 Если `project.initialized: false`:
 
@@ -530,7 +530,7 @@ Precondition: `.project/manifest.yaml → project.initialized: true`.
 1. Сравнить code/config/migrations/tests с REQ, Accepted ADR, architecture docs, tasks и evidence.
 2. До итогового вывода выполнить deterministic command-reference check:
    ```bash
-   python3 tools/harness/check-command-references.py --json
+   python3 .harness/tools/check-command-references.py --json
    ```
 3. Найти documentation/status/architecture/requirement drift, undocumented behavior и stale Harness command references в live project-owned документах.
 4. Findings command-reference checker считать drift, если это не явно намеренная историческая цитата. Immutable/history-oriented reports и ADR history не переписывать только ради нового синтаксиса.
@@ -559,10 +559,10 @@ Release gate определяется фактическим проектом. �
 
 Read-only Git preflight:
 
-1. Прочитать `.project/git-policy.toml`.
+1. Прочитать `.harness/git-policy.toml`.
 2. Показать current branch, protected status, upstream, ahead/behind/diverged.
 3. Показать staged/unstaged/untracked и логические группы изменений.
-4. Запустить `python3 tools/harness/validate.py --mode commit`.
+4. Запустить `python3 .harness/tools/validate.py --mode commit`.
 5. Проверить suspicious/unrelated files и вероятную traceability.
 6. Ничего не stage/commit/push.
 
