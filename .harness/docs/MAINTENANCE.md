@@ -5,9 +5,9 @@
 - `AGENTS.md` (кроме generated project blocks);
 - runtime adapters: `.codex/`, `CLAUDE.md`, baseline `.claude/`;
 - core `.agents/skills/`;
-- `docs/harness/EXECUTION_PROTOCOL.md`;
-- `docs/harness/`;
-- `.project/*-policy.toml`, updater/validator;
+- `.harness/docs/EXECUTION_PROTOCOL.md`;
+- `.harness/docs/`;
+- `.harness/*-policy.toml`, updater/validator;
 - templates.
 
 ## Что относится к конкретному проекту
@@ -40,20 +40,20 @@ HARNESS UPDATE APPLY
 
 ## Version и release
 
-`.project/manifest.yaml` разделяет два понятия:
+`.harness/manifest.yaml` разделяет два понятия:
 
 - `harness.version` — поколение protocol/schema layer;
 - `harness.release` — конкретный semver release.
 
 Пока protocol generation совместимо, `harness.version` остаётся `"1"`, а поставки получают immutable tags `vMAJOR.MINOR.PATCH`.
 
-Known BASE проекта фиксируется в `.project/harness.lock.json`. Moving `main` не используется как update baseline.
+Known BASE проекта фиксируется в `.harness/harness.lock.json`. Moving `main` не используется как update baseline.
 
-Единственное разрешённое чтение moving `source.default_branch` во время self-update — canonical `.project/harness-update-graph.json`. Он содержит только machine-readable routing graph (`latest` + directed transitions). Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
+Единственное разрешённое чтение moving `source.default_branch` во время self-update — canonical `.harness/harness-update-graph.json`. Он содержит только machine-readable routing graph (`latest` + directed transitions). Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
 
 ## Ownership
 
-`.project/harness-update.toml` делит обновляемые пути на:
+`.harness/harness-update.toml` делит обновляемые пути на:
 
 - `harness_owned` — локальная модификация блокирует silent overwrite;
 - `shared` — 3-way merge;
@@ -81,7 +81,7 @@ Legacy adoption разрешён только для явно известног
 
 ## Самодокументируемые конфиги
 
-Tracked YAML/TOML в `.project/`, `.codex/` и baseline GitHub Actions должны оставаться читаемыми без перехода в отдельную справку. Каждый параметр обязан иметь рядом комментарий с назначением и примером. Harness Integrity проверяет это правило для patterns из `.project/harness-policy.toml`.
+Tracked YAML/TOML в `.harness/`, `.codex/` и baseline GitHub Actions должны оставаться читаемыми без перехода в отдельную справку. Каждый параметр обязан иметь рядом комментарий с назначением и примером. Harness Integrity проверяет это правило для patterns из `.harness/harness-policy.toml`.
 
 Claude Code settings являются strict JSON и не допускают комментариев. Поэтому их назначение и defaults документируются в [`CLAUDE_CODE.md`](CLAUDE_CODE.md), а validator проверяет JSON structure и обязательные значения отдельно.
 
