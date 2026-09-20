@@ -27,12 +27,14 @@ def task(
     step_id: str,
     depends: str = "—",
     req: str = "REQ-001",
+    adr: str = "не требуется",
+    status: str = "Запланировано",
     plan_status: str = "Not planned",
     plan_basis: str = "—",
 ) -> str:
     return f"""# {step_id} — Planning contract self-test
 
-**Статус:** Запланировано
+**Статус:** {status}
 **Type:** IMPLEMENTATION
 **Приоритет:** Средний
 **Фаза:** Test
@@ -44,7 +46,7 @@ def task(
 
 ## ADR
 
-- не требуется
+- {adr}
 
 ## Risk flags
 
@@ -172,7 +174,10 @@ protocol:
         assert basis_b != basis_c, (basis_b, basis_c)
 
         # 3. Dependency contract тоже upstream input.
-        write(root / "work/tasks/STEP-002.md", task(step_id="STEP-002", req="REQ-001"))
+        write(
+            root / "work/tasks/STEP-002.md",
+            task(step_id="STEP-002", req="REQ-001", status="Выполнено"),
+        )
         write(
             root / "work/tasks/STEP-001.md",
             task(step_id="STEP-001", depends="STEP-002"),
@@ -218,7 +223,67 @@ protocol:
             ),
         )
 
-        # 6. OPEN question, влияющий на STEP/linked REQ, не совместим с Ready.
+        # 6. Ready plan не может зависеть от незавершённого STEP.
+        dep_text = (root / "work/tasks/STEP-002.md").read_text(encoding="utf-8")
+        write(
+            root / "work/tasks/STEP-002.md",
+            dep_text.replace("**Статус:** Выполнено", "**Статус:** В работе"),
+        )
+        errors = validate_planning_contracts(root)
+        assert any("incomplete dependency STEP-002" in item for item in errors), errors
+        write(root / "work/tasks/STEP-002.md", dep_text)
+
+        # 7. Linked ADR обязан быть Accepted до Ready.
+        write(
+            root / "docs/adr/ADR-001-test.md",
+            """# ADR-001 — Test decision
+
+**Status:** Proposed
+
+## Context
+self-test
+""",
+        )
+        write(
+            root / "work/tasks/STEP-001.md",
+            task(
+                step_id="STEP-001",
+                depends="STEP-002",
+                adr="ADR-001",
+            ),
+        )
+        adr_basis = planning_context_basis(root, "STEP-001")
+        write(
+            root / "work/tasks/STEP-001.md",
+            task(
+                step_id="STEP-001",
+                depends="STEP-002",
+                adr="ADR-001",
+                plan_status="Ready",
+                plan_basis=adr_basis,
+            ),
+        )
+        errors = validate_planning_contracts(root)
+        assert any("non-Accepted ADR-001" in item for item in errors), errors
+        adr_text = (root / "docs/adr/ADR-001-test.md").read_text(encoding="utf-8")
+        write(
+            root / "docs/adr/ADR-001-test.md",
+            adr_text.replace("**Status:** Proposed", "**Status:** Accepted"),
+        )
+        accepted_basis = planning_context_basis(root, "STEP-001")
+        write(
+            root / "work/tasks/STEP-001.md",
+            task(
+                step_id="STEP-001",
+                depends="STEP-002",
+                adr="ADR-001",
+                plan_status="Ready",
+                plan_basis=accepted_basis,
+            ),
+        )
+        assert validate_planning_contracts(root) == [], validate_planning_contracts(root)
+
+        # 8. OPEN question, влияющий на STEP/linked REQ, не совместим с Ready.
         write(
             root / "docs/OPEN_QUESTIONS.md",
             """# Open Questions
@@ -234,7 +299,7 @@ Resolution: —
         errors = validate_planning_contracts(root)
         assert any("blocked by OQ-001" in item for item in errors), errors
 
-        # 7. Dependency cycle ловится без модели.
+        # 9. Dependency cycle ловится без модели.
         (root / "docs/OPEN_QUESTIONS.md").unlink()
         step2 = (root / "work/tasks/STEP-002.md").read_text(encoding="utf-8")
         step2 = step2.replace("**Depends on:** —", "**Depends on:** STEP-001")
@@ -242,7 +307,7 @@ Resolution: —
         errors = validate_planning_contracts(root)
         assert any("dependency cycle" in item for item in errors), errors
 
-        # 8. Missing canonical REQ — deterministic contract failure.
+        # 10. Missing canonical REQ — deterministic contract failure.
         (root / "spec/requirements/REQ-001-contract.md").unlink()
         errors = validate_planning_contracts(root)
         assert any("expected exactly one canonical requirement file" in item for item in errors), errors
