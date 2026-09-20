@@ -203,7 +203,7 @@ def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
 
 # Проверить Harness update graph: schema, monotonic transitions, отсутствие cycles/ambiguity и достижимость latest.
 def validate_update_graph(root: Path, errors: list[str]) -> None:
-    path = root / ".project" / "harness-update-graph.json"
+    path = root / ".harness" / "harness-update-graph.json"
     if not path.is_file():
         return
     try:
@@ -284,7 +284,7 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
                     break
                 current = nxt
 
-        manifest_path = root / ".project" / "manifest.yaml"
+        manifest_path = root / ".harness" / "manifest.yaml"
         if manifest_path.is_file():
             try:
                 manifest_text = manifest_path.read_text(encoding="utf-8")
@@ -309,7 +309,7 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
-    policy_path = root / ".project" / "harness-policy.toml"
+    policy_path = root / ".harness" / "harness-policy.toml"
     # Ошибки намеренно накапливаются: CI/пользователь за один запуск получает
     # полный список drift/corruption. warnings не делают repository невалидным.
     errors: list[str] = []
@@ -636,7 +636,7 @@ def main() -> int:
         root / ".codex/config.toml",
         root / ".harness/docs/EXECUTION_PROTOCOL.md",
     ]
-    deprecated_scan_paths.extend((root / "docs/harness").glob("*.md"))
+    deprecated_scan_paths.extend((root / ".harness/docs").glob("*.md"))
     deprecated_scan_paths.extend((root / ".agents/skills").glob("*/SKILL.md"))
     deprecated_scan_paths.extend((root / ".codex/agents").glob("*.toml"))
     deprecated_scan_paths.extend((root / ".claude").glob("*.md"))
@@ -783,7 +783,7 @@ def main() -> int:
     # --- Политики языка, execution и review -------------------------------
     # Manifest хранит центральные knobs Harness. Здесь проверяем не только
     # наличие ключей, но и допустимые диапазоны/enum значения.
-    manifest_path = root / ".project" / "manifest.yaml"
+    manifest_path = root / ".harness" / "manifest.yaml"
     if manifest_path.exists():
         try:
             manifest_text = manifest_path.read_text(encoding="utf-8")
@@ -841,7 +841,7 @@ def main() -> int:
     # --- Git policy: безопасные mutation rules ----------------------------
     # Проверяем semantics, от которых зависит безопасность COMMIT/PUSH/PR/SYNC:
     # force-push, protected branches, staging и PR automation.
-    git_policy_path = root / ".project" / "git-policy.toml"
+    git_policy_path = root / ".harness" / "git-policy.toml"
     if git_policy_path.exists():
         try:
             gp = load_toml(git_policy_path)
