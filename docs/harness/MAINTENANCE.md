@@ -5,7 +5,7 @@
 - `AGENTS.md` (кроме generated project blocks);
 - runtime adapters: `.codex/`, `CLAUDE.md`, baseline `.claude/`;
 - core `.agents/skills/`;
-- `planning/EXECUTION_PROTOCOL.md`;
+- `docs/harness/EXECUTION_PROTOCOL.md`;
 - `docs/harness/`;
 - `.project/*-policy.toml`, updater/validator;
 - templates.
