@@ -15,7 +15,8 @@ flowchart TD
     OQ -->|решение необходимо| ADRSTEP[ADR / RESEARCH STEP]
     ADRSTEP --> ADR[docs/adr/ADR-NNN-*.md\nустойчивое решение]
 
-    REQ -->|проецируется| REQSPEC[docs/requirements/SPEC.md\nREQ index projection]\n    REQ -->|реализуется / доказывается| STEP[planning/tasks/STEP-NNN.md\nканонический task contract]
+    REQ -->|проецируется| REQSPEC[docs/requirements/SPEC.md\nREQ index projection]
+    REQ -->|реализуется / доказывается| STEP[planning/tasks/STEP-NNN.md\nканонический task contract]
     ADR -->|ограничивает / объясняет| STEP
     ARCH -->|текущий контекст| STEP
 
@@ -44,7 +45,8 @@ flowchart TD
 | `PROJECT → REQ` | описание проекта нормализуется в проверяемые продуктовые контракты |
 | `PROJECT → architecture` | из целей и ограничений формируется текущий архитектурный baseline |
 | `Open Question → ADR/RESEARCH STEP` | неопределённость сначала исследуется, а не маскируется выдуманным решением |
-| `REQ → SPEC` | `SPEC.md` — компактный индекс canonical REQ-файлов, а не competing source определения требования |\n| `REQ → STEP` | STEP реализует или предоставляет evidence для одного или нескольких требований |
+| `REQ → SPEC` | `SPEC.md` — компактный индекс canonical REQ-файлов, а не competing source определения требования |
+| `REQ → STEP` | STEP реализует или предоставляет evidence для одного или нескольких требований |
 | `ADR → STEP` | Accepted ADR ограничивает способ реализации STEP |
 | `architecture → STEP` | STEP обязан учитывать текущее устройство системы |
 | `STEP → PLAN / STATUS` | `PLAN.md` и `STATUS.md` — производные проекции task-файлов, а не самостоятельный competing truth |
@@ -66,7 +68,8 @@ flowchart TD
 - `planning/tasks/STEP-NNN.md` — canonical task contract;
 - `planning/PLAN.md` — roadmap projection по всем STEP;
 - `planning/STATUS.md` — status projection;
-- `docs/requirements/SPEC.md` — canonical requirement definitions; lifecycle-статус в нём намеренно не хранится;
+- `docs/requirements/REQ-NNN-*.md` — canonical requirement definitions;
+- `docs/requirements/SPEC.md` — index projection по canonical REQ;
 - `docs/requirements/STATUS.md` — единственная persisted requirement status projection, вычисляемая из STEP/evidence/review.
 
 Если projection расходится с canonical source и фактическим code/evidence, projection исправляется после проверки, а не становится новой истиной. Для REQ definition/rationale/acceptance/traceability остаются в отдельном `REQ-NNN-*.md`; `SPEC.md` содержит только индекс, а lifecycle-state — только `STATUS.md`.
@@ -82,7 +85,7 @@ Legacy-проекты, инициализированные старым Harness
 3. architecture/subsystem docs — **актуальное объяснение устройства системы**;
 4. requirements — **что продукт обязан обеспечивать**;
 5. STEP — **scope конкретной работы**;
-6. PLAN/STATUS — **проекции**;
+6. PLAN/STATUS и requirements SPEC/STATUS — **проекции**;
 7. brief/chat/неформальные заметки — входной контекст, но не permanent truth.
 
 Этот порядок не означает, что code автоматически «прав» при конфликте с ADR. Такое расхождение называется **architecture drift** и должно быть явно зафиксировано и разрешено.
