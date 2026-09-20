@@ -11,7 +11,7 @@ CTS также **не задаёт глобальный порядок всех 
 Machine-readable source of truth:
 
 ```text
-.project/command-transitions.json
+.harness/command-transitions.json
 ```
 
 Человекочитаемая таблица ниже должна полностью соответствовать этому JSON. Harness Integrity проверяет соответствие автоматически.
@@ -53,7 +53,7 @@ Harness не должен выводить это из здравого смыс
 5. dispatch
 ```
 
-Этот порядок зафиксирован и в `.project/command-transitions.json`.
+Этот порядок зафиксирован и в `.harness/command-transitions.json`.
 
 ### 1. Tokenize
 
@@ -342,7 +342,7 @@ Runtime `BLOCKED`, `PASS`, `SUCCESS`, `FAIL` и `NOT_EXECUTED` относятс�
 Перед интерпретацией canonical command Harness выполняет:
 
 ```bash
-python3 tools/harness/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
+python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 ```
 
 Для валидной команды tool возвращает normalized segments и metadata каждого edge.
