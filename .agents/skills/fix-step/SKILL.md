@@ -8,7 +8,7 @@ description: Fix confirmed implementation findings from the latest failing revie
 
 Execution Status ведёт global wrapper.
 
-Найди последний применимый FAIL review. FIX имеет право исправлять только findings категорий `implementation` и `evidence`, которые остаются внутри существующих Scope/Mutation policy/REQ/ADR.
+Найди последний schema-valid FAIL review в configured `protocol.reviewDirectory`, относящийся к применимой implementation revision. FIX имеет право исправлять только findings категорий `implementation` и `evidence`, которые остаются внутри существующих Scope/Mutation policy/REQ/ADR.
 
 Если review фактически требует изменить product contract, Acceptance, architecture decision, dependency graph или добавить отсутствующий prerequisite, не «чинить» это кодом. Заверши как `BLOCKED` и создай/предложи corrective STEP, RESEARCH или ADR согласно типу проблемы.
 
