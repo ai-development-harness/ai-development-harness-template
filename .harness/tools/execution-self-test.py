@@ -346,7 +346,7 @@ def main() -> int:
         # Runtime preconditions — не декоративная metadata. Direct CHECK -> PUSH
         # без доказуемого remote context блокируется до dispatch.
         direct_push = "GIT CHECK > PUSH"
-        start_execution(root, direct_push)
+        direct_execution = start_execution(root, direct_push)
         complete_command(root, direct_push, "GIT CHECK", "PASS")
         direct_next = resolve_root(root, direct_push)
         assert direct_next.get("runtimePreconditions") == ["git-push-ready"], direct_next
@@ -360,7 +360,7 @@ def main() -> int:
         assert direct_blocked["status"] == "BLOCKED", direct_blocked
         direct_record = next(
             item for item in load_status(root)["executions"]
-            if item["rootCommand"] == direct_push
+            if item["executionId"] == direct_execution["executionId"]
         )
         failures = direct_record.get("blockedBy", {}).get("failures", [])
         assert any("configured-remote-missing:publish" in item for item in failures), failures
