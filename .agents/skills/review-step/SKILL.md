@@ -14,7 +14,7 @@ description: Run an independent read-only review of an exact repository revision
    ```bash
    python3 .harness/tools/review_gates.py STEP-NNN --json
    ```
-   `auto` определяется детерминированно по risk flags, STEP type и factual changed surface; `always` обязателен всегда. Модель может добавить reviewer, но не убрать обязательный.
+   `auto` определяется детерминированно по risk flags, STEP type и factual changed surface; `always` обязателен всегда. Модель может добавить reviewer, но не убрать обязательный. Сохрани из результата exact `basis` и список `required` — это durable proof решения preselector.
 3. Получи точную revision:
    ```bash
    python3 .harness/tools/planning-state.py review-revision
@@ -29,7 +29,7 @@ description: Run an independent read-only review of an exact repository revision
    - `pass` — findings нет;
    - `fail` — есть implementation/evidence findings, исправимые внутри scope;
    - `blocked` — есть contract defect/missing prerequisite/stale planning context.
-7. Создай новый immutable schema-v1 report в configured `protocol.reviewDirectory/STEP-NNN/`. Каждый finding обязан иметь Severity, Category, Location, Scenario, Impact, Fix direction. Specialized review metadata обязана отражать preselector.
+7. Создай новый immutable schema-v1 report в configured `protocol.reviewDirectory/STEP-NNN/`. Каждый finding обязан иметь Severity, Category, Location, Scenario, Impact, Fix direction. В `specialized_reviews.gate_basis` и `specialized_reviews.required` запиши exact значения preselector; статусы security/tests обязаны им соответствовать.
 8. До completion проверь report:
    ```bash
    python3 .harness/tools/review_contract.py --file '<report-path>' --current-revision
