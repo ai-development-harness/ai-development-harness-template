@@ -1,27 +1,55 @@
 ---
 name: reconcile-project
-description: Detect code/documentation/architecture/status drift across the whole repository and create corrective work without silently changing production code.
+description: Idempotently migrate active project schema, detect cross-repository drift and create corrective work without silently changing production code.
 ---
 # reconcile-project
 
-Используй для `PROJECT RECONCILE` только после успешного `PROJECT INIT`.
+Используй для `PROJECT RECONCILE` после успешного `PROJECT INIT`.
 
-Precondition: `.harness/manifest.yaml → project.initialized: true`.
+Если `project.initialized=false`, обычный reconcile неприменим: handoff → `PROJECT INIT`. Исключение — pre-init legacy adoption прямо перед INIT, если update protocol явно требует schema migration.
 
-Если `project.initialized: false`, команда неприменима: ничего не меняй, не создавай audit report/REQ/ADR/STEP и не пытайся reconcile-ить template placeholders. Верни `PROJECT RECONCILE: NOT_APPLICABLE` и handoff → `PROJECT INIT`.
+## Schema migration first
 
-Для инициализированного проекта сравни code/config/migrations/tests с REQ, Accepted ADR, architecture docs, tasks, evidence и projections. Найди undocumented behavior, stale docs/status, architecture drift и requirement gaps.
-
-До итогового вывода обязательно запусти deterministic проверку актуальности ссылок на Harness commands:
+После Harness update сначала детерминированно проверь active schema:
 
 ```bash
-python3 .harness/tools/check-command-references.py --json
+python3 .harness/tools/migrate-project-schema.py --check --json
 ```
 
-Она берёт основные project paths и `taskDirectory` из `.harness/manifest.yaml`, дополнительно проверяет `README.md` и live project Markdown под `docs/**`, и намеренно не сканирует immutable/history-oriented reports и ADR history. Каждый finding вида `legacy → canonical` включи в reconcile report как command-syntax drift, если это не явно намеренная историческая цитата. Нельзя писать «drift не обнаружен», пока эта проверка не выполнена или её BLOCKED-состояние не раскрыто в Evidence.
+Если `MIGRATION_REQUIRED`, выполни:
 
-Production code не исправляй. Однозначные projections и чисто документальный command-syntax drift можно синхронизировать.
+```bash
+python3 .harness/tools/migrate-project-schema.py --json
+```
 
-Если проект создан старой версией Harness и canonical definitions всё ещё находятся внутри монолитного `docs/requirements/SPEC.md`, выполни lossless document-model migration. Каждый существующий REQ создай как отдельный `docs/requirements/REQ-NNN-<slug>.md` **по текущему `docs/requirements/TEMPLATE.md`**: используй актуальную структуру standalone-документа и уровни заголовков, но заполняй её только данными legacy REQ, сохраняя ID, название, metadata, Requirement, Rationale, Acceptance и Traceability без изменения смысла; template placeholders не копируй. Затем перестрой `SPEC.md` и `STATUS.md` в их **текущем projection-формате**, сохранив lifecycle-state, STEP coverage и Evidence. Lifecycle-state не переноси в canonical REQ или `SPEC.md`. Если legacy-содержимое невозможно lossless отобразить в текущий template/projections или структура legacy SPEC неоднозначна, зафиксируй blocker вместо угадывания.
+Migration:
 
-Substantive gaps → corrective STEP. Сохрани audit report.
+- идемпотентно переводит active STEP/REQ/ADR и canonical OQ на schema v1;
+- мигрирует Accepted ADR как schema change без изменения решения;
+- разбивает legacy monolithic requirements/OQ;
+- не переписывает immutable historical review/audit reports;
+- синхронизирует project-owned templates/projections;
+- сохраняет versioned migration report в configured `protocol.auditDirectory`.
+
+Старый Ready plan без durable planning-review мигрируется в draft и требует нового `STEP PLAN`.
+
+## Reconcile
+
+1. Сравни code/config/migrations/tests с REQ, Accepted ADR, architecture refs, STEP, evidence и review reports.
+2. Запусти:
+   ```bash
+   python3 .harness/tools/check-command-references.py --json
+   ```
+   Paths берутся из manifest через общий config layer.
+3. Production code не исправляй. Однозначный projection/command-syntax drift можно синхронизировать.
+4. Пересобери projections:
+   ```bash
+   python3 .harness/tools/sync-projections.py
+   ```
+5. Выполни полный deterministic gate:
+   ```bash
+   python3 .harness/tools/validate.py --mode manual
+   ```
+6. Substantive gaps превращай в corrective STEP. Итоговый reconcile/audit report сохраняй в configured `protocol.auditDirectory` с YAML frontmatter `schema: 1`.
+
+Нельзя заявлять «drift отсутствует», пока migration/check-command-references/validator не выполнены либо их BLOCKED состояние не раскрыто в Evidence.
