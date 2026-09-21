@@ -103,16 +103,18 @@ def validate_migration_report(root: Path, path: Path) -> list[str]:
     if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
         errors.append("legacy_review_reports must be a string list")
         return errors
+    review_root_rel = _configured_rel(root, review_directory(root))
     for token in values:
         digest, sep, rel = token.partition(" ")
         if not sep or not _valid_sha256(digest) or not rel:
             errors.append(f"invalid legacy review pin {token!r}")
             continue
-        candidate = (root / rel).resolve()
-        try:
-            candidate.relative_to(review_directory(root).resolve())
-        except ValueError:
+        candidate = root / rel
+        if _under_git_path(rel, review_root_rel) is None:
             errors.append(f"legacy review pin escapes configured review directory: {rel}")
+            continue
+        if candidate.is_symlink():
+            errors.append(f"legacy review pin must not reference a symlink: {rel}")
     return errors
 
 
@@ -135,13 +137,16 @@ def legacy_review_pins(root: Path) -> dict[str, str]:
             digest, sep, rel = token.partition(" ")
             if not sep or not _valid_sha256(digest) or not rel:
                 raise ValueError(f"{report.relative_to(root)}: invalid legacy review pin {token!r}")
-            candidate = (root / rel).resolve()
-            try:
-                candidate.relative_to(review_directory(root).resolve())
-            except ValueError as exc:
+            candidate = root / rel
+            review_root_rel = _configured_rel(root, review_directory(root))
+            if _under_git_path(rel, review_root_rel) is None:
                 raise ValueError(
                     f"{report.relative_to(root)}: legacy review pin escapes configured review directory: {rel}"
-                ) from exc
+                )
+            if candidate.is_symlink():
+                raise ValueError(
+                    f"{report.relative_to(root)}: legacy review pin must not reference a symlink: {rel}"
+                )
             previous = pins.get(rel)
             if previous is not None and previous != digest:
                 raise ValueError(f"conflicting legacy review pins for {rel}")
@@ -156,6 +161,8 @@ def current_legacy_review_snapshots(root: Path) -> dict[str, str]:
     if not directory.is_dir():
         return snapshots
     for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
+        if path.is_symlink():
+            continue
         try:
             text = path.read_text(encoding="utf-8")
             frontmatter, _ = split_frontmatter(text)
@@ -206,6 +213,8 @@ def trusted_review_reports(
     directory = review_directory(root) / step_id
     if directory.is_dir():
         for path in sorted(directory.glob("REVIEW-*.md")):
+            if path.is_symlink():
+                continue
             rel = path.relative_to(root).as_posix()
             expected = pins.get(rel)
             if expected is None:
@@ -274,9 +283,25 @@ def _configured_rel(root: Path, directory: Path) -> str:
         raise ValueError(f"configured directory escapes repository: {directory}") from exc
 
 
+def _normalize_git_rel(rel: str) -> str | None:
+    """Нормализовать repository-relative Git path без path traversal."""
+    normalized = rel.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    if (
+        not normalized
+        or normalized.startswith("/")
+        or any(part == ".." for part in normalized.split("/"))
+    ):
+        return None
+    return normalized
+
+
 def _under_git_path(rel: str, base: str) -> str | None:
     """Вернуть lexical suffix Git path, не разыменовывая symlink target."""
-    normalized = rel.replace("\\", "/").lstrip("./")
+    normalized = _normalize_git_rel(rel)
+    if normalized is None:
+        return None
     if normalized == base:
         return ""
     prefix = base + "/"
@@ -764,6 +789,9 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
     # Hash-pinned legacy history должна оставаться физически неизменной.
     for rel, expected in sorted(pins.items()):
         path = root / rel
+        if path.is_symlink():
+            errors.append(f"review: pinned legacy report must not be a symlink: {rel}")
+            continue
         if not path.is_file():
             errors.append(f"review: pinned legacy report missing: {rel}")
             continue
@@ -778,6 +806,9 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
     for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
         rel = path.relative_to(root).as_posix()
         expected_step_id = path.parent.name
+        if path.is_symlink():
+            errors.append(f"review: {rel}: durable review report must not be a symlink")
+            continue
         try:
             text = path.read_text(encoding="utf-8")
             frontmatter, _ = split_frontmatter(text)
