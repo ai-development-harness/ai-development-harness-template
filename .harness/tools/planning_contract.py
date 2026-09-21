@@ -20,6 +20,7 @@ from harness_config import (
     max_fix_review_cycles,
     open_questions_directory,
     planning_review_directory,
+    project_overview_path,
     requirements_directory,
     review_directory,
     task_directory,
@@ -253,21 +254,6 @@ def relevant_open_questions(root: Path, task: dict[str, Any]) -> list[dict[str, 
 def _evidence_present(task: dict[str, Any]) -> bool:
     value = task["sections"].get("Evidence", "").strip()
     return bool(value and value not in {"—", "-"} and not has_unresolved_placeholder(value))
-
-
-def _latest_review_report_path(root: Path, task: dict[str, Any]) -> Path | None:
-    review = task["frontmatter"].get("review")
-    if not isinstance(review, dict):
-        return None
-    value = review.get("latest_report")
-    if not isinstance(value, str) or not value:
-        return None
-    path = (root / value).resolve()
-    try:
-        path.relative_to(root.resolve())
-    except ValueError:
-        return None
-    return path if path.is_file() else None
 
 
 def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
@@ -708,23 +694,48 @@ def validate_planning_contracts(
 
 
 def init_review_basis(root: Path, stage: str) -> str:
+    """Fingerprint всех candidate contracts, которые semantic INIT review доказал."""
     if stage not in {"requirements", "roadmap"}:
         raise ValueError("init review stage must be requirements or roadmap")
-    payload: dict[str, Any] = {"schema": 1, "stage": stage, "requirements": {}, "open_questions": {}}
+
+    payload: dict[str, Any] = {
+        "schema": 2,
+        "stage": stage,
+        "project_overview": None,
+        "requirements": {},
+        "adrs": {},
+        "open_questions": {},
+        "architecture": None,
+    }
+
+    overview = project_overview_path(root)
+    if overview.is_file():
+        payload["project_overview"] = content_hash(overview.read_text(encoding="utf-8"))
+
     req_dir = requirements_directory(root)
     for path in sorted(req_dir.glob("REQ-*.md")):
-        if path.name == "TEMPLATE.md":
+        if path.name in {"TEMPLATE.md", "REQ-001-template.md"}:
             continue
         payload["requirements"][path.name] = content_hash(path.read_text(encoding="utf-8"))
+
+    for path in sorted(adr_directory(root).glob("ADR-*.md")):
+        if path.name == "TEMPLATE.md":
+            continue
+        payload["adrs"][path.name] = content_hash(path.read_text(encoding="utf-8"))
+
     for item in open_questions(root):
         payload["open_questions"][str(item["id"])] = content_hash(item["document"]["text"])
+
     arch = architecture_path(root)
-    payload["architecture"] = content_hash(arch.read_text(encoding="utf-8")) if arch.is_file() else None
+    if arch.is_file():
+        payload["architecture"] = content_hash(arch.read_text(encoding="utf-8"))
+
     if stage == "roadmap":
         payload["steps"] = {
             path.name: content_hash(path.read_text(encoding="utf-8"))
             for path in sorted(task_directory(root).glob("STEP-*.md"))
         }
+
     return stable_hash(payload)
 
 
