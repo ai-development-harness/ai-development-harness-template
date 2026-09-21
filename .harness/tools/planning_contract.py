@@ -809,7 +809,7 @@ def validate_planning_contracts(
                 if warnings is not None:
                     warnings.append(f"planning: legacy active STEP pending PROJECT RECONCILE: {path.relative_to(root)}")
                 continue
-            errors.append(f"planning: {exc}")
+            errors.append(f"planning: {path.relative_to(root)}: {exc}")
             continue
         tasks[path.stem] = task
         _validate_task(root, path.stem, task, errors, warnings)
