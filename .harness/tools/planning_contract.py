@@ -1,53 +1,66 @@
 #!/usr/bin/env python3
-"""Детерминированные проверки planning contract и fingerprint контекста STEP.
+"""Детерминированные planning contracts, fingerprints и lifecycle gates.
 
-Модуль намеренно не пытается заменить semantic review модели. Его задача —
-дешёво и fail-closed ловить те противоречия и stale-state, которые можно
-доказать статически: отсутствующие REQ/ADR/dependencies, циклы зависимостей,
-OPEN questions у Ready-плана и изменение upstream contracts после planning.
-
-Используется и локальным validator, и Execution Status. Только stdlib.
+Semantic reasoning остаётся за независимыми model review, но всё, что можно
+доказать schema/parser/hash/graph traversal, проверяется здесь до вызова модели.
+Новые active project documents используют versioned YAML frontmatter schema=1.
 """
 from __future__ import annotations
 
-import hashlib
-import json
+from datetime import datetime
 from pathlib import Path
 import re
 from typing import Any
 
-STEP_ID_RE = re.compile(r"STEP-\d{3,}")
-REQ_ID_RE = re.compile(r"REQ-\d{3}")
-ADR_ID_RE = re.compile(r"ADR-\d{3}")
-STEP_STATUSES = {
-    "Запланировано",
-    "В работе",
-    "Выполнено",
-    "Заблокировано",
-    "Отменено",
-    "Заменено",
-}
-STEP_TYPES = {
-    "IMPLEMENTATION",
-    "BUGFIX",
-    "REFACTOR",
-    "RESEARCH",
-    "ADR",
-    "AUDIT",
-    "REVIEW",
-    "HARDENING",
-    "DOCUMENTATION",
-    "RELEASE",
-}
-UNRESOLVED_LINE_RE = re.compile(
-    r"(?mi)^\s*(?:[-*]\s*)?(?:TBD|TODO|\?\?\?)\s*$"
+from harness_config import (
+    ConfigError,
+    adr_directory,
+    architecture_path,
+    init_review_directory,
+    max_fix_review_cycles,
+    open_questions_directory,
+    planning_review_directory,
+    requirements_directory,
+    review_directory,
+    task_directory,
+)
+from document_contract import (
+    ADR_ID_RE,
+    ADR_STATUSES,
+    DocumentError,
+    OQ_ID_RE,
+    OQ_STATUSES,
+    PLAN_STATUSES,
+    PRIORITIES,
+    REQ_ID_RE,
+    STEP_ID_RE,
+    STEP_STATUSES,
+    STEP_TYPES,
+    content_hash,
+    exact_h1,
+    has_unresolved_placeholder,
+    normalize_text,
+    parse_document,
+    require_nonempty_sections,
+    require_schema,
+    stable_hash,
+    string_list,
 )
 
-CONTRACT_METADATA = ("Type", "Depends on")
+
+RISK_FLAGS = {
+    "none",
+    "security-sensitive",
+    "data-migration",
+    "destructive",
+    "public-api",
+    "architecture",
+    "concurrency",
+    "external-integration",
+    "performance-critical",
+    "release-critical",
+}
 CONTRACT_SECTIONS = (
-    "Requirements",
-    "ADR",
-    "Risk flags",
     "Goal",
     "Context",
     "Scope",
@@ -57,130 +70,15 @@ CONTRACT_SECTIONS = (
     "Verification",
     "Deliverables",
 )
-REQUIRED_TASK_METADATA = ("Статус", "Type", "Приоритет", "Фаза", "Depends on")
 REQUIRED_TASK_SECTIONS = CONTRACT_SECTIONS + (
     "Implementation plan",
     "Evidence",
-    "Review status",
     "Blocker / Failure reason",
 )
 
 
-# Нормализовать Markdown/текст перед hashing: CRLF и trailing whitespace не должны
-# без причины инвалидировать plan, содержательные изменения — должны.
-def normalize_text(value: str) -> str:
-    lines = [line.rstrip() for line in value.replace("\r\n", "\n").split("\n")]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines)
-
-
-# Разобрать используемый Harness subset Markdown: metadata **Key:** value и ## sections.
-def parse_markdown(text: str) -> tuple[dict[str, str], dict[str, str]]:
-    metadata: dict[str, str] = {}
-    sections: dict[str, list[str]] = {}
-    current: str | None = None
-    for line in text.replace("\r\n", "\n").split("\n"):
-        heading = re.match(r"^##\s+(.+?)\s*$", line)
-        if heading:
-            current = heading.group(1).strip()
-            sections.setdefault(current, [])
-            continue
-        meta = re.match(r"^\*\*([^*]+?):\*\*\s*(.*)$", line)
-        if meta:
-            metadata[meta.group(1).strip()] = meta.group(2).strip()
-        if current is not None:
-            sections[current].append(line)
-    return metadata, {
-        name: normalize_text("\n".join(lines))
-        for name, lines in sections.items()
-    }
-
-
-# Прочитать простой scalar из двухуровневой секции manifest без YAML dependency.
-# Manifest Harness использует стабильный mapping subset; сложный YAML здесь не нужен.
-def manifest_scalar(
-    root: Path,
-    section: str,
-    key: str,
-    default: str | None = None,
-) -> str | None:
-    path = root / ".harness" / "manifest.yaml"
-    if not path.is_file():
-        return default
-    text = path.read_text(encoding="utf-8")
-    in_section = False
-    for raw in text.splitlines():
-        if re.fullmatch(rf"{re.escape(section)}:\s*(?:#.*)?", raw):
-            in_section = True
-            continue
-        if in_section and raw and not raw.startswith((" ", "\t", "#")):
-            break
-        if in_section:
-            match = re.match(rf"^  {re.escape(key)}:\s*([^#]+?)\s*(?:#.*)?$", raw)
-            if match:
-                return match.group(1).strip().strip("\"'")
-    return default
-
-
-# Вернуть manifest-driven path. Default оставлен только для bootstrap/legacy state,
-# но canonical template всегда содержит соответствующий параметр.
-def configured_path(
-    root: Path,
-    section: str,
-    key: str,
-    default: str,
-) -> Path:
-    value = manifest_scalar(root, section, key, default) or default
-    rel = Path(value)
-    if rel.is_absolute() or ".." in rel.parts:
-        raise ValueError(
-            f"manifest {section}.{key} path must stay inside repository: {value}"
-        )
-    base = root.resolve()
-    candidate = (base / rel).resolve()
-    try:
-        candidate.relative_to(base)
-    except ValueError as exc:
-        raise ValueError(
-            f"manifest {section}.{key} path escapes repository: {value}"
-        ) from exc
-    return candidate
-
-
-def task_directory(root: Path) -> Path:
-    return configured_path(root, "protocol", "taskDirectory", "planning/tasks")
-
-
-def review_directory(root: Path) -> Path:
-    return configured_path(root, "protocol", "reviewDirectory", "planning/reviews")
-
-
-def requirements_directory(root: Path) -> Path:
-    return configured_path(root, "sources", "requirements", "docs/requirements")
-
-
-def architecture_path(root: Path) -> Path:
-    return configured_path(root, "sources", "architecture", "docs/architecture.md")
-
-
-# Прочитать execution.maxFixReviewCycles без reasoning. Невалидное значение —
-# protocol error, который должен остановить orchestration.
-def max_fix_review_cycles(root: Path) -> int:
-    raw = manifest_scalar(root, "execution", "maxFixReviewCycles")
-    if raw is None or not re.fullmatch(r"[0-9]+", raw):
-        raise ValueError("manifest execution.maxFixReviewCycles must be an integer from 1 to 5")
-    value = int(raw)
-    if not 1 <= value <= 5:
-        raise ValueError("manifest execution.maxFixReviewCycles must be between 1 and 5")
-    return value
-
-
-# Разрешить STEP path через manifest, а не через hard-coded planning/tasks.
 def task_path(root: Path, step_id: str) -> Path:
-    if not STEP_ID_RE.fullmatch(step_id):
+    if STEP_ID_RE.fullmatch(step_id) is None:
         raise ValueError(f"invalid STEP id: {step_id}")
     path = task_directory(root) / f"{step_id}.md"
     if not path.is_file():
@@ -189,336 +87,592 @@ def task_path(root: Path, step_id: str) -> Path:
 
 
 def read_task(root: Path, step_id: str) -> dict[str, Any]:
-    path = task_path(root, step_id)
-    text = path.read_text(encoding="utf-8")
-    metadata, sections = parse_markdown(text)
-    return {
-        "path": path,
-        "text": text,
-        "metadata": metadata,
-        "sections": sections,
-    }
+    document = parse_document(task_path(root, step_id))
+    # compatibility alias нужен execution_status до полного удаления старого parser API.
+    document["metadata"] = document["frontmatter"]
+    return document
 
 
-# Только собственный contract STEP. Plan/Evidence/Review не входят, чтобы execution
-# facts не инвалидировали plan сами по себе.
-def task_contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
-    task = read_task(root, step_id)
-    return {
-        "metadata": {key: task["metadata"].get(key, "") for key in CONTRACT_METADATA},
-        "sections": {key: task["sections"].get(key, "") for key in CONTRACT_SECTIONS},
-    }
-
-
-def _ids(value: str, pattern: re.Pattern[str]) -> list[str]:
-    return sorted(set(pattern.findall(value)))
-
-
-# Найти ровно один canonical REQ-NNN-*.md. Дубликаты считаются ошибкой, а не
-# случайным выбором первого файла.
-def canonical_requirement_path(root: Path, req_id: str) -> Path:
-    matches = sorted(requirements_directory(root).glob(f"{req_id}-*.md"))
-    if len(matches) != 1:
-        raise ValueError(
-            f"{req_id}: expected exactly one canonical requirement file, found {len(matches)}"
-        )
-    return matches[0]
-
-
-# ADR filename в проектах может содержать slug; canonical identity — prefix ADR-NNN.
-def canonical_adr_path(root: Path, adr_id: str) -> Path:
-    directory = root / "docs" / "adr"
-    matches = sorted(directory.glob(f"{adr_id}*.md"))
-    matches = [path for path in matches if path.name != "TEMPLATE.md"]
-    if len(matches) != 1:
-        raise ValueError(f"{adr_id}: expected exactly one ADR file, found {len(matches)}")
-    return matches[0]
+def _list(meta: dict[str, Any], key: str) -> list[str]:
+    value = meta.get(key)
+    return value if isinstance(value, list) and all(isinstance(x, str) for x in value) else []
 
 
 def dependency_ids(task: dict[str, Any]) -> list[str]:
-    return _ids(task["metadata"].get("Depends on", ""), STEP_ID_RE)
+    return _list(task["frontmatter"], "depends_on")
 
 
 def requirement_ids(task: dict[str, Any]) -> list[str]:
-    return _ids(task["sections"].get("Requirements", ""), REQ_ID_RE)
+    return _list(task["frontmatter"], "requirements")
 
 
 def adr_ids(task: dict[str, Any]) -> list[str]:
-    return _ids(task["sections"].get("ADR", ""), ADR_ID_RE)
+    return _list(task["frontmatter"], "adrs")
 
 
-# Сформировать transitive planning snapshot только из upstream contracts, которые
-# действительно способны сделать сохранённый plan устаревшим.
+def architecture_refs(task: dict[str, Any]) -> list[str]:
+    return _list(task["frontmatter"], "architecture_refs")
+
+
+def canonical_requirement_path(root: Path, req_id: str) -> Path:
+    if REQ_ID_RE.fullmatch(req_id) is None:
+        raise ValueError(f"invalid REQ id: {req_id}")
+    matches = sorted(requirements_directory(root).glob(f"{req_id}-*.md"))
+    matches = [path for path in matches if path.name != "TEMPLATE.md"]
+    if len(matches) != 1:
+        raise ValueError(f"{req_id}: expected exactly one canonical REQ file, found {len(matches)}")
+    return matches[0]
+
+
+def canonical_adr_path(root: Path, adr_id: str) -> Path:
+    if ADR_ID_RE.fullmatch(adr_id) is None:
+        raise ValueError(f"invalid ADR id: {adr_id}")
+    matches = sorted(adr_directory(root).glob(f"{adr_id}-*.md"))
+    matches += [
+        path for path in sorted(adr_directory(root).glob(f"{adr_id}.md"))
+        if path not in matches
+    ]
+    matches = [path for path in matches if path.name != "TEMPLATE.md"]
+    if len(matches) != 1:
+        raise ValueError(f"{adr_id}: expected exactly one canonical ADR file, found {len(matches)}")
+    return matches[0]
+
+
+def canonical_oq_path(root: Path, oq_id: str) -> Path:
+    if OQ_ID_RE.fullmatch(oq_id) is None:
+        raise ValueError(f"invalid OQ id: {oq_id}")
+    matches = sorted(open_questions_directory(root).glob(f"{oq_id}-*.md"))
+    matches = [path for path in matches if path.name != "TEMPLATE.md"]
+    if len(matches) != 1:
+        raise ValueError(f"{oq_id}: expected exactly one canonical OQ file, found {len(matches)}")
+    return matches[0]
+
+
+def task_contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
+    task = read_task(root, step_id)
+    meta = task["frontmatter"]
+    machine = {
+        key: meta.get(key)
+        for key in (
+            "schema", "id", "type", "priority", "phase", "depends_on",
+            "requirements", "adrs", "architecture_refs", "risk_flags",
+        )
+    }
+    return {
+        "frontmatter": machine,
+        "sections": {name: task["sections"].get(name, "") for name in CONTRACT_SECTIONS},
+    }
+
+
+def _heading_slug(title: str) -> str:
+    value = title.strip().lower()
+    value = re.sub(r"[^\w\-\s]", "", value, flags=re.UNICODE)
+    return re.sub(r"[\s-]+", "-", value).strip("-")
+
+
+def _architecture_ref_snapshot(root: Path, ref: str) -> dict[str, str]:
+    path_part, marker, fragment = ref.partition("#")
+    if not path_part:
+        raise ValueError(f"architecture ref has empty path: {ref}")
+    candidate = (root / path_part).resolve()
+    base = root.resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:
+        raise ValueError(f"architecture ref escapes repository: {ref}") from exc
+    if not candidate.is_file():
+        raise ValueError(f"architecture ref file not found: {ref}")
+    text = candidate.read_text(encoding="utf-8")
+    if not marker:
+        selected = normalize_text(text)
+    else:
+        if not fragment:
+            raise ValueError(f"architecture ref has empty anchor: {ref}")
+        lines = text.replace("\r\n", "\n").split("\n")
+        start: int | None = None
+        level = 0
+        for index, line in enumerate(lines):
+            heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+            if heading and _heading_slug(heading.group(2)) == fragment:
+                start = index
+                level = len(heading.group(1))
+                break
+        if start is None:
+            raise ValueError(f"architecture anchor not found: {ref}")
+        end = len(lines)
+        for index in range(start + 1, len(lines)):
+            heading = re.match(r"^(#{1,6})\s+", lines[index])
+            if heading and len(heading.group(1)) <= level:
+                end = index
+                break
+        selected = normalize_text("\n".join(lines[start:end]))
+    return {"ref": ref, "content": selected}
+
+
+def _parse_canonical_document(path: Path, expected_id: str) -> dict[str, Any]:
+    document = parse_document(path)
+    meta = document["frontmatter"]
+    if meta.get("schema") != 1 or meta.get("id") != expected_id:
+        raise ValueError(f"{expected_id}: invalid schema/id in {path}")
+    return document
+
+
+def open_questions(root: Path) -> list[dict[str, Any]]:
+    directory = open_questions_directory(root)
+    if not directory.is_dir():
+        return []
+    result: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("OQ-*.md")):
+        if path.name == "TEMPLATE.md":
+            continue
+        document = parse_document(path)
+        meta = document["frontmatter"]
+        result.append({
+            "path": path,
+            "id": meta.get("id"),
+            "status": meta.get("status"),
+            "affects": meta.get("affects", []),
+            "document": document,
+        })
+    return result
+
+
+def relevant_open_questions(root: Path, task: dict[str, Any]) -> list[dict[str, Any]]:
+    relevant = {
+        task["frontmatter"].get("id"),
+        *requirement_ids(task),
+        *adr_ids(task),
+    }
+    return [
+        item for item in open_questions(root)
+        if isinstance(item.get("affects"), list)
+        and relevant.intersection(set(item["affects"]))
+    ]
+
+
+def _evidence_present(task: dict[str, Any]) -> bool:
+    value = task["sections"].get("Evidence", "").strip()
+    return bool(value and value not in {"—", "-"} and not has_unresolved_placeholder(value))
+
+
+def _latest_review_report_path(root: Path, task: dict[str, Any]) -> Path | None:
+    review = task["frontmatter"].get("review")
+    if not isinstance(review, dict):
+        return None
+    value = review.get("latest_report")
+    if not isinstance(value, str) or not value:
+        return None
+    path = (root / value).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
+
+def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
+    """Вернуть type-specific proof prerequisite completion.
+
+    Это structural proof. review_contract.py дополнительно доказывает корректность
+    самого immutable report и reviewed revision.
+    """
+    task = read_task(root, step_id)
+    meta = task["frontmatter"]
+    step_type = meta.get("type")
+    complete = meta.get("status") == "completed"
+    reasons: list[str] = []
+    if not complete:
+        reasons.append("status is not completed")
+
+    evidence = _evidence_present(task)
+    if step_type in {"research"}:
+        if not evidence:
+            reasons.append("research step has no durable Evidence")
+        if not task["sections"].get("Deliverables", "").strip():
+            reasons.append("research step has no Deliverables")
+    elif step_type == "adr":
+        if not evidence:
+            reasons.append("ADR step has no durable Evidence")
+        for adr_id in adr_ids(task):
+            try:
+                adr = _parse_canonical_document(canonical_adr_path(root, adr_id), adr_id)
+            except (DocumentError, ValueError, OSError) as exc:
+                reasons.append(str(exc))
+                continue
+            if adr["frontmatter"].get("status") != "accepted":
+                reasons.append(f"{adr_id} is not accepted")
+    elif step_type in {"audit", "review"}:
+        if not evidence:
+            reasons.append(f"{step_type} step has no durable Evidence")
+    else:
+        review = meta.get("review")
+        if not isinstance(review, dict) or review.get("latest_verdict") != "pass":
+            reasons.append("latest review verdict is not pass")
+        report = _latest_review_report_path(root, task)
+        if report is None:
+            reasons.append("latest review report is missing")
+        if not evidence:
+            reasons.append("step has no durable Evidence")
+
+    snapshot = {
+        "step_id": step_id,
+        "type": step_type,
+        "status": meta.get("status"),
+        "review": meta.get("review"),
+        "evidence_hash": content_hash(task["sections"].get("Evidence", "")),
+        "reasons": reasons,
+    }
+    return {
+        "complete": not reasons,
+        "reasons": reasons,
+        "snapshot": snapshot,
+        "proof_hash": stable_hash(snapshot),
+    }
+
+
 def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
 
     requirements: dict[str, str] = {}
     for req_id in requirement_ids(task):
         path = canonical_requirement_path(root, req_id)
-        requirements[req_id] = normalize_text(path.read_text(encoding="utf-8"))
+        document = _parse_canonical_document(path, req_id)
+        requirements[req_id] = content_hash(document["text"])
 
     adrs: dict[str, str] = {}
     for adr_id in adr_ids(task):
         path = canonical_adr_path(root, adr_id)
-        adrs[adr_id] = normalize_text(path.read_text(encoding="utf-8"))
+        document = _parse_canonical_document(path, adr_id)
+        adrs[adr_id] = content_hash(document["text"])
 
     dependencies: dict[str, Any] = {}
     for dependency_id in dependency_ids(task):
-        dependencies[dependency_id] = task_contract_snapshot(root, dependency_id)
+        proof = step_completion_proof(root, dependency_id)
+        dependencies[dependency_id] = {
+            "contract": task_contract_snapshot(root, dependency_id),
+            "completion": proof["snapshot"],
+            "proof_hash": proof["proof_hash"],
+        }
 
-    architecture = architecture_path(root)
-    architecture_text = (
-        normalize_text(architecture.read_text(encoding="utf-8"))
-        if architecture.is_file()
-        else ""
-    )
+    architecture = [
+        _architecture_ref_snapshot(root, ref)
+        for ref in architecture_refs(task)
+    ]
+
+    oqs: dict[str, Any] = {}
+    for item in relevant_open_questions(root, task):
+        oqs[str(item["id"])] = {
+            "status": item["status"],
+            "affects": item["affects"],
+            "hash": content_hash(item["document"]["text"]),
+        }
 
     return {
-        "schema": 2,
+        "schema": 3,
         "step": task_contract_snapshot(root, step_id),
         "requirements": requirements,
         "adrs": adrs,
         "dependencies": dependencies,
-        "architecture": {
-            "path": architecture.relative_to(root).as_posix(),
-            "content": architecture_text,
-        },
+        "architecture_refs": architecture,
+        "open_questions": oqs,
     }
 
 
-# Plan basis v2: изменение linked REQ/ADR/dependency contract/architecture делает
-# Ready-план stale автоматически, без reasoning-модели.
 def planning_context_basis(root: Path, step_id: str) -> str:
-    encoded = json.dumps(
-        planning_context_snapshot(root, step_id),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    return stable_hash(planning_context_snapshot(root, step_id))
 
 
-def _plan_fields(task: dict[str, Any]) -> dict[str, str]:
-    section = task["sections"].get("Implementation plan", "")
-    fields, _ = parse_markdown(section)
-    return fields
+def plan_content_hash(root: Path, step_id: str) -> str:
+    task = read_task(root, step_id)
+    return content_hash(task["sections"].get("Implementation plan", ""))
 
 
-# Извлечь OPEN questions и их Affects из документированного line-oriented формата.
-def open_question_affects(root: Path) -> list[dict[str, Any]]:
-    path = root / "docs" / "OPEN_QUESTIONS.md"
-    if not path.is_file():
+def planning_review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
+    directory = planning_review_directory(root) / step_id
+    if not directory.is_dir():
         return []
-    entries: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
-    in_fence = False
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        stripped = raw.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
+    result: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("PLAN-REVIEW-*.md")):
+        try:
+            document = parse_document(path)
+        except DocumentError:
             continue
-        if in_fence:
-            continue
-        heading = re.match(
-            r"^(?:#{1,6}\s+)?(OQ-\d{3})\s+—\s+(.+)$",
-            raw.strip(),
-        )
-        if heading:
-            if current:
-                entries.append(current)
-            current = {"id": heading.group(1), "status": None, "affects": set()}
-            continue
-        if current is None:
-            continue
-        status = re.match(
-            r"^(?:\*\*)?Status:(?:\*\*)?\s*(OPEN|RESOLVED|DEFERRED)\s*$",
-            raw.strip(),
-        )
-        if status:
-            current["status"] = status.group(1)
-            continue
-        affects = re.match(
-            r"^(?:\*\*)?Affects:(?:\*\*)?\s*(.+)$",
-            raw.strip(),
-        )
-        if affects:
-            current["affects"].update(STEP_ID_RE.findall(affects.group(1)))
-            current["affects"].update(REQ_ID_RE.findall(affects.group(1)))
-            current["affects"].update(ADR_ID_RE.findall(affects.group(1)))
-    if current:
-        entries.append(current)
-    return entries
+        meta = document["frontmatter"]
+        if (
+            meta.get("schema") == 1
+            and meta.get("kind") == "planning_review"
+            and meta.get("step_id") == step_id
+            and meta.get("verdict") in {"pass", "blocked"}
+        ):
+            result.append({"path": path, "document": document})
+    return result
 
 
-# Собрать дешёвые planning errors. Это structural/static слой; смысл требований
-# и конфликт целей всё равно проверяет mandatory semantic gate модели.
+def latest_matching_planning_review(root: Path, step_id: str) -> dict[str, Any] | None:
+    basis = planning_context_basis(root, step_id)
+    plan_hash = plan_content_hash(root, step_id)
+    for item in reversed(planning_review_reports(root, step_id)):
+        meta = item["document"]["frontmatter"]
+        if (
+            meta.get("verdict") == "pass"
+            and meta.get("context_basis") == basis
+            and meta.get("plan_content_hash") == plan_hash
+        ):
+            return item
+    return None
+
+
+def _validate_iso_timestamp(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[str], warnings: list[str] | None) -> None:
+    prefix = f"planning: {step_id}"
+    for issue in require_schema(task):
+        errors.append(f"{prefix}: {issue}")
+    meta = task["frontmatter"]
+    if meta.get("id") != step_id:
+        errors.append(f"{prefix}: frontmatter id must match filename")
+    if not exact_h1(task, step_id):
+        errors.append(f"{prefix}: H1 must be '# {step_id} — <title>'")
+    if meta.get("status") not in STEP_STATUSES:
+        errors.append(f"{prefix}: invalid status")
+    if meta.get("type") not in STEP_TYPES:
+        errors.append(f"{prefix}: invalid type")
+    if meta.get("priority") not in PRIORITIES:
+        errors.append(f"{prefix}: invalid priority")
+    if not isinstance(meta.get("phase"), str) or not meta.get("phase"):
+        errors.append(f"{prefix}: phase must be a non-empty string")
+
+    list_specs = {
+        "depends_on": STEP_ID_RE,
+        "requirements": REQ_ID_RE,
+        "adrs": ADR_ID_RE,
+    }
+    for key, pattern in list_specs.items():
+        values, issues = string_list(meta.get(key), key)
+        errors.extend(f"{prefix}: {issue}" for issue in issues)
+        for value in values:
+            if pattern.fullmatch(value) is None:
+                errors.append(f"{prefix}: invalid {key} reference {value}")
+
+    refs, issues = string_list(meta.get("architecture_refs"), "architecture_refs")
+    errors.extend(f"{prefix}: {issue}" for issue in issues)
+    risks, issues = string_list(meta.get("risk_flags"), "risk_flags")
+    errors.extend(f"{prefix}: {issue}" for issue in issues)
+    if not risks:
+        errors.append(f"{prefix}: risk_flags must not be empty")
+    for flag in risks:
+        if flag not in RISK_FLAGS:
+            errors.append(f"{prefix}: unknown risk flag {flag}")
+    if "none" in risks and len(risks) > 1:
+        errors.append(f"{prefix}: risk flag 'none' is mutually exclusive")
+
+    for section in REQUIRED_TASK_SECTIONS:
+        if section not in task["sections"]:
+            errors.append(f"{prefix}: missing section '## {section}'")
+    for duplicate in task["duplicate_sections"]:
+        errors.append(f"{prefix}: duplicate section '## {duplicate}'")
+
+    mutation = task["sections"].get("Mutation policy", "")
+    for heading in ("Allowed", "Conditional", "Forbidden"):
+        if len(re.findall(rf"(?m)^### {heading}\s*$", mutation)) != 1:
+            errors.append(f"{prefix}: Mutation policy requires exactly one '### {heading}'")
+
+    for dep_id in dependency_ids(task):
+        if dep_id == step_id:
+            errors.append(f"{prefix}: depends on itself")
+        elif not (task_directory(root) / f"{dep_id}.md").is_file():
+            errors.append(f"{prefix}: dependency not found: {dep_id}")
+    for req_id in requirement_ids(task):
+        try:
+            canonical_requirement_path(root, req_id)
+        except ValueError as exc:
+            errors.append(f"{prefix}: {exc}")
+    for adr_id in adr_ids(task):
+        try:
+            adr = _parse_canonical_document(canonical_adr_path(root, adr_id), adr_id)
+            if meta.get("plan", {}).get("status") == "ready" and adr["frontmatter"].get("status") != "accepted":
+                errors.append(f"{prefix}: ready plan references non-accepted {adr_id}")
+        except (DocumentError, ValueError, OSError) as exc:
+            errors.append(f"{prefix}: {exc}")
+    for ref in refs:
+        try:
+            _architecture_ref_snapshot(root, ref)
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            errors.append(f"{prefix}: {exc}")
+
+    plan = meta.get("plan")
+    if not isinstance(plan, dict):
+        errors.append(f"{prefix}: plan must be a mapping")
+        return
+    if plan.get("status") not in PLAN_STATUSES:
+        errors.append(f"{prefix}: invalid plan.status")
+        return
+    revision = plan.get("revision")
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        errors.append(f"{prefix}: plan.revision must be a non-negative integer")
+
+    if plan.get("status") == "ready":
+        for issue in require_nonempty_sections(task, CONTRACT_SECTIONS + ("Implementation plan",)):
+            errors.append(f"{prefix}: {issue}")
+        for section in CONTRACT_SECTIONS + ("Implementation plan",):
+            if has_unresolved_placeholder(task["sections"].get(section, "")):
+                errors.append(f"{prefix}: unresolved placeholder in '## {section}'")
+        if str(meta.get("phase")).upper() == "TBD":
+            errors.append(f"{prefix}: ready plan has phase=TBD")
+        for dep_id in dependency_ids(task):
+            try:
+                proof = step_completion_proof(root, dep_id)
+            except (DocumentError, ConfigError, OSError, ValueError) as exc:
+                errors.append(f"{prefix}: cannot prove dependency {dep_id}: {exc}")
+                continue
+            if not proof["complete"]:
+                errors.append(
+                    f"{prefix}: dependency {dep_id} incomplete: " + "; ".join(proof["reasons"])
+                )
+        for item in relevant_open_questions(root, task):
+            if item.get("status") == "open":
+                errors.append(f"{prefix}: ready plan is blocked by {item.get('id')}")
+
+        expected_basis = None
+        try:
+            expected_basis = planning_context_basis(root, step_id)
+        except (DocumentError, ConfigError, OSError, ValueError) as exc:
+            errors.append(f"{prefix}: cannot compute context basis: {exc}")
+        expected_content = plan_content_hash(root, step_id)
+        stored_basis = plan.get("context_basis")
+        stored_content = plan.get("content_hash")
+        if expected_basis is not None and stored_basis != expected_basis:
+            message = f"{prefix}: ready plan context_basis is stale"
+            if warnings is None:
+                errors.append(message)
+            else:
+                warnings.append(message)
+        if stored_content != expected_content:
+            errors.append(f"{prefix}: ready plan content_hash is stale")
+        if not isinstance(plan.get("reviewed_report"), str) or not plan.get("reviewed_report"):
+            errors.append(f"{prefix}: ready plan missing reviewed_report")
+        if not _validate_iso_timestamp(plan.get("planned_at")):
+            errors.append(f"{prefix}: ready plan planned_at must be ISO-8601")
+        if expected_basis is not None:
+            try:
+                matched = latest_matching_planning_review(root, step_id)
+            except (DocumentError, ConfigError, OSError, ValueError):
+                matched = None
+            if matched is None:
+                errors.append(f"{prefix}: ready plan has no PASS planning-review for current basis/content")
+            else:
+                actual = matched["path"].relative_to(root).as_posix()
+                if plan.get("reviewed_report") != actual:
+                    errors.append(f"{prefix}: plan.reviewed_report does not point to matching PASS report")
+
+
+def _validate_open_questions(root: Path, errors: list[str]) -> None:
+    known_steps = {
+        path.stem for path in task_directory(root).glob("STEP-*.md")
+        if STEP_ID_RE.fullmatch(path.stem)
+    }
+    known_reqs = {
+        match.group(1)
+        for path in requirements_directory(root).glob("REQ-*.md")
+        if (match := re.match(r"(REQ-\d{3,})-", path.name))
+    }
+    known_adrs = {
+        match.group(1)
+        for path in adr_directory(root).glob("ADR-*.md")
+        if (match := re.match(r"(ADR-\d{3,})(?:-|\.md)", path.name))
+    }
+    seen: set[str] = set()
+    for item in open_questions(root):
+        path = item["path"]
+        document = item["document"]
+        meta = document["frontmatter"]
+        oq_id = meta.get("id")
+        prefix = f"planning: {path.relative_to(root)}"
+        for issue in require_schema(document):
+            errors.append(f"{prefix}: {issue}")
+        if not isinstance(oq_id, str) or OQ_ID_RE.fullmatch(oq_id) is None:
+            errors.append(f"{prefix}: invalid OQ id")
+            continue
+        if oq_id in seen:
+            errors.append(f"planning: duplicate Open Question ID: {oq_id}")
+        seen.add(oq_id)
+        if not path.name.startswith(oq_id + "-"):
+            errors.append(f"{prefix}: filename/id mismatch")
+        if not exact_h1(document, oq_id):
+            errors.append(f"{prefix}: invalid H1")
+        if meta.get("status") not in OQ_STATUSES:
+            errors.append(f"{prefix}: invalid status")
+        affects, issues = string_list(meta.get("affects"), "affects")
+        errors.extend(f"{prefix}: {issue}" for issue in issues)
+        if not affects:
+            errors.append(f"{prefix}: affects must not be empty")
+        for target in affects:
+            if target == "PROJECT":
+                continue
+            if STEP_ID_RE.fullmatch(target):
+                exists = target in known_steps
+            elif REQ_ID_RE.fullmatch(target):
+                exists = target in known_reqs
+            elif ADR_ID_RE.fullmatch(target):
+                exists = target in known_adrs
+            else:
+                errors.append(f"{prefix}: invalid affects target {target}")
+                continue
+            if not exists:
+                errors.append(f"{prefix}: affects target does not exist: {target}")
+        errors.extend(
+            f"{prefix}: {issue}"
+            for issue in require_nonempty_sections(document, ("Context", "Decision needed"))
+        )
+
+
 def validate_planning_contracts(
     root: Path,
     *,
     warnings: list[str] | None = None,
+    allow_legacy: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     try:
         directory = task_directory(root)
-    except ValueError as exc:
+    except ConfigError as exc:
         return [f"planning: {exc}"]
     if not directory.is_dir():
         return errors
 
     tasks: dict[str, dict[str, Any]] = {}
     for path in sorted(directory.glob("STEP-*.md")):
-        match = re.fullmatch(r"(STEP-\d{3,})\.md", path.name)
-        if not match:
+        if STEP_ID_RE.fullmatch(path.stem) is None:
             errors.append(f"planning: invalid STEP filename: {path.relative_to(root)}")
             continue
-        step_id = match.group(1)
-        task = read_task(root, step_id)
-        tasks[step_id] = task
+        try:
+            task = parse_document(path)
+        except DocumentError as exc:
+            if allow_legacy and "legacy document" in str(exc):
+                if warnings is not None:
+                    warnings.append(f"planning: legacy active STEP pending PROJECT RECONCILE: {path.relative_to(root)}")
+                continue
+            errors.append(f"planning: {exc}")
+            continue
+        tasks[path.stem] = task
+        _validate_task(root, path.stem, task, errors, warnings)
 
-        first_nonempty = next(
-            (line.strip() for line in task["text"].splitlines() if line.strip()),
-            "",
-        )
-        h1 = re.fullmatch(r"# (STEP-\d{3,}) — .+", first_nonempty)
-        if h1 is None:
-            errors.append(
-                f"planning: {step_id} must start with '# {step_id} — <title>'"
-            )
-        elif h1.group(1) != step_id:
-            errors.append(
-                f"planning: filename/H1 ID mismatch for {step_id}: {h1.group(1)}"
-            )
-
-        for field in REQUIRED_TASK_METADATA:
-            if not task["metadata"].get(field, "").strip():
-                errors.append(f"planning: {step_id} missing metadata '{field}'")
-
-        step_status = task["metadata"].get("Статус", "")
-        if step_status and step_status not in STEP_STATUSES:
-            errors.append(f"planning: {step_id} invalid Статус: {step_status}")
-        step_type = task["metadata"].get("Type", "")
-        if step_type and step_type not in STEP_TYPES:
-            errors.append(f"planning: {step_id} invalid Type: {step_type}")
-
-        for section in REQUIRED_TASK_SECTIONS:
-            if section not in task["sections"]:
-                errors.append(f"planning: {step_id} missing section '## {section}'")
-
-        for dep_id in dependency_ids(task):
-            if dep_id == step_id:
-                errors.append(f"planning: {step_id} depends on itself")
-            elif not (directory / f"{dep_id}.md").is_file():
-                errors.append(f"planning: {step_id} dependency not found: {dep_id}")
-
-        for req_id in requirement_ids(task):
-            try:
-                canonical_requirement_path(root, req_id)
-            except ValueError as exc:
-                errors.append(f"planning: {step_id}: {exc}")
-
-        for adr_id in adr_ids(task):
-            try:
-                canonical_adr_path(root, adr_id)
-            except ValueError as exc:
-                errors.append(f"planning: {step_id}: {exc}")
-
-        fields = _plan_fields(task)
-        required_plan_fields = ("Plan status", "Plan revision", "Plan basis", "Planned at")
-        for field in required_plan_fields:
-            if field not in fields:
-                errors.append(f"planning: {step_id} missing Implementation plan field '{field}'")
-
-        plan_status = fields.get("Plan status", "")
-        if plan_status not in {"Not planned", "Ready"}:
-            errors.append(
-                f"planning: {step_id} invalid Plan status: {plan_status or '<empty>'}"
-            )
-
-        if plan_status == "Ready":
-            if task["metadata"].get("Фаза") == "TBD":
-                errors.append(f"planning: {step_id} Ready plan has unresolved Phase=TBD")
-            for section_name in (
-                "Goal",
-                "Scope",
-                "Mutation policy",
-                "Acceptance criteria",
-                "Verification",
-                "Deliverables",
-            ):
-                if UNRESOLVED_LINE_RE.search(task["sections"].get(section_name, "")):
-                    errors.append(
-                        f"planning: {step_id} Ready plan contains unresolved placeholder "
-                        f"in '{section_name}'"
-                    )
-
-            # Ready означает executable contract. Hard dependencies уже должны
-            # быть закрыты, а linked ADR — действительно Accepted.
-            for dep_id in dependency_ids(task):
-                dependency = tasks.get(dep_id)
-                if dependency is None:
-                    try:
-                        dependency = read_task(root, dep_id)
-                    except (OSError, ValueError, FileNotFoundError):
-                        dependency = None
-                if dependency is not None and dependency["metadata"].get("Статус") != "Выполнено":
-                    errors.append(
-                        f"planning: {step_id} Ready plan has incomplete dependency {dep_id}"
-                    )
-
-            for adr_id in adr_ids(task):
-                try:
-                    adr_path = canonical_adr_path(root, adr_id)
-                    adr_metadata, _ = parse_markdown(
-                        adr_path.read_text(encoding="utf-8")
-                    )
-                    if adr_metadata.get("Status") != "Accepted":
-                        errors.append(
-                            f"planning: {step_id} Ready plan references non-Accepted {adr_id}"
-                        )
-                except (OSError, ValueError, FileNotFoundError):
-                    # Missing/ambiguous ADR уже добавлен отдельной structural check.
-                    pass
-
-            stored = fields.get("Plan basis", "")
-            revision = fields.get("Plan revision", "")
-            planned_at = fields.get("Planned at", "")
-            if not re.fullmatch(r"[1-9][0-9]*", revision):
-                errors.append(f"planning: {step_id} Ready plan must have positive Plan revision")
-            if not re.fullmatch(r"sha256:[0-9a-f]{64}", stored):
-                errors.append(f"planning: {step_id} Ready plan has invalid Plan basis format")
-            if not planned_at or planned_at == "—":
-                errors.append(f"planning: {step_id} Ready plan must have Planned at timestamp")
-            try:
-                current = planning_context_basis(root, step_id)
-            except (OSError, ValueError, FileNotFoundError) as exc:
-                errors.append(f"planning: {step_id} cannot compute Ready Plan basis: {exc}")
-            else:
-                if stored != current:
-                    message = (
-                        f"planning: {step_id} Ready plan is stale: "
-                        "Plan basis does not match upstream context"
-                    )
-                    # Stale plan — execution precondition, а не повреждение repo.
-                    # Resolver всё равно не разрешит IMPLEMENT без fresh PLAN.
-                    # Глобальный validator сообщает drift warning, чтобы Harness
-                    # update/другие независимые операции не требовали массового
-                    # перепланирования всех будущих STEP.
-                    if warnings is None:
-                        errors.append(message)
-                    else:
-                        warnings.append(message)
-
-    # Dependency graph cycle check.
     visiting: set[str] = set()
     visited: set[str] = set()
-
     def visit(step_id: str, chain: list[str]) -> None:
         if step_id in visited:
             return
         if step_id in visiting:
             start = chain.index(step_id) if step_id in chain else 0
-            cycle = chain[start:] + [step_id]
-            errors.append("planning: dependency cycle: " + " -> ".join(cycle))
+            errors.append("planning: dependency cycle: " + " -> ".join(chain[start:] + [step_id]))
             return
         visiting.add(step_id)
         chain.append(step_id)
@@ -528,36 +682,77 @@ def validate_planning_contracts(
         chain.pop()
         visiting.remove(step_id)
         visited.add(step_id)
-
     for step_id in sorted(tasks):
         visit(step_id, [])
 
-    # OPEN_QUESTIONS — часть blocking contract. Malformed entry нельзя
-    # молча проигнорировать, иначе static gate можно обойти случайным форматированием.
-    all_questions = open_question_affects(root)
-    seen_questions: set[str] = set()
-    for question in all_questions:
-        question_id = question["id"]
-        if question_id in seen_questions:
-            errors.append(f"planning: duplicate Open Question ID: {question_id}")
-        seen_questions.add(question_id)
-        if question.get("status") not in {"OPEN", "RESOLVED", "DEFERRED"}:
-            errors.append(f"planning: {question_id} missing or invalid Status")
-        if not question.get("affects"):
-            errors.append(f"planning: {question_id} missing Affects references")
-
-    # Ready plan не может обходить явно OPEN вопрос, который влияет на сам STEP
-    # или на linked REQ/ADR этого STEP.
-    open_questions = [item for item in all_questions if item.get("status") == "OPEN"]
-    for step_id, task in tasks.items():
-        fields = _plan_fields(task)
-        if fields.get("Plan status") != "Ready":
-            continue
-        relevant = {step_id, *requirement_ids(task), *adr_ids(task)}
-        for question in open_questions:
-            if relevant.intersection(question["affects"]):
-                errors.append(
-                    f"planning: {step_id} Ready plan is blocked by {question['id']} (OPEN)"
-                )
-
+    try:
+        _validate_open_questions(root, errors)
+    except (DocumentError, ConfigError, OSError, ValueError) as exc:
+        errors.append(f"planning: open questions validation failed: {exc}")
     return errors
+
+
+def init_review_basis(root: Path, stage: str) -> str:
+    if stage not in {"requirements", "roadmap"}:
+        raise ValueError("init review stage must be requirements or roadmap")
+    payload: dict[str, Any] = {"schema": 1, "stage": stage, "requirements": {}, "open_questions": {}}
+    req_dir = requirements_directory(root)
+    for path in sorted(req_dir.glob("REQ-*.md")):
+        if path.name == "TEMPLATE.md":
+            continue
+        payload["requirements"][path.name] = content_hash(path.read_text(encoding="utf-8"))
+    for item in open_questions(root):
+        payload["open_questions"][str(item["id"])] = content_hash(item["document"]["text"])
+    arch = architecture_path(root)
+    payload["architecture"] = content_hash(arch.read_text(encoding="utf-8")) if arch.is_file() else None
+    if stage == "roadmap":
+        payload["steps"] = {
+            path.name: content_hash(path.read_text(encoding="utf-8"))
+            for path in sorted(task_directory(root).glob("STEP-*.md"))
+        }
+    return stable_hash(payload)
+
+
+def latest_matching_init_review(root: Path, stage: str) -> Path | None:
+    directory = init_review_directory(root)
+    if not directory.is_dir():
+        return None
+    basis = init_review_basis(root, stage)
+    matches: list[Path] = []
+    for path in sorted(directory.glob("INIT-REVIEW-*.md")):
+        try:
+            document = parse_document(path)
+        except DocumentError:
+            continue
+        meta = document["frontmatter"]
+        if (
+            meta.get("schema") == 1
+            and meta.get("kind") == "init_review"
+            and meta.get("stage") == stage
+            and meta.get("verdict") == "pass"
+            and meta.get("basis") == basis
+        ):
+            matches.append(path)
+    return matches[-1] if matches else None
+
+
+__all__ = [
+    "architecture_path",
+    "canonical_adr_path",
+    "canonical_requirement_path",
+    "dependency_ids",
+    "init_review_basis",
+    "latest_matching_init_review",
+    "latest_matching_planning_review",
+    "max_fix_review_cycles",
+    "plan_content_hash",
+    "planning_context_basis",
+    "read_task",
+    "requirements_directory",
+    "review_directory",
+    "step_completion_proof",
+    "task_contract_snapshot",
+    "task_directory",
+    "task_path",
+    "validate_planning_contracts",
+]
