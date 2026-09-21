@@ -305,20 +305,27 @@ def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
         if not evidence:
             reasons.append(f"{step_type} step has no durable Evidence")
     else:
-        review = meta.get("review")
-        if not isinstance(review, dict) or review.get("latest_verdict") != "pass":
-            reasons.append("latest review verdict is not pass")
-        report = _latest_review_report_path(root, task)
-        if report is None:
-            reasons.append("latest review report is missing")
-        else:
-            # Lazy import avoids module cycle: review_contract uses read_task,
-            # а completion proof вызывается уже после загрузки modules.
-            from review_contract import validate_review_report
+        # Completion dependency proof выводится из durable review history, а не
+        # только из mutable STEP metadata. Это позволяет schema migration
+        # сохранить доказательство старого completed STEP через hash-pinned
+        # immutable legacy report, не переписывая историю задним числом.
+        from review_contract import latest_trusted_review
 
-            review_errors = validate_review_report(root, report)
-            if review_errors:
-                reasons.append("latest review report is invalid: " + "; ".join(review_errors))
+        trusted = latest_trusted_review(root, step_id)
+        review_snapshot: dict[str, Any] | None = None
+        if trusted is None:
+            reasons.append("trusted PASS review is missing")
+        elif trusted.get("verdict") != "PASS":
+            reasons.append("latest trusted review verdict is not PASS")
+        else:
+            review_path = trusted["path"].relative_to(root).as_posix()
+            review_snapshot = {
+                "path": review_path,
+                "verdict": trusted["verdict"],
+                "legacy": bool(trusted.get("legacy")),
+                "content_hash": trusted.get("content_hash")
+                or content_hash(trusted["path"].read_text(encoding="utf-8")),
+            }
         if not evidence:
             reasons.append("step has no durable Evidence")
 
@@ -326,7 +333,7 @@ def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
         "step_id": step_id,
         "type": step_type,
         "status": meta.get("status"),
-        "review": meta.get("review"),
+        "review": review_snapshot if step_type not in {"research", "adr", "audit", "review"} else None,
         "evidence_hash": content_hash(task["sections"].get("Evidence", "")),
         "reasons": reasons,
     }
