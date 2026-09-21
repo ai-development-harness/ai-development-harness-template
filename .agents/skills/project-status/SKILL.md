@@ -4,4 +4,4 @@ description: Reconcile status projections with canonical tasks, requirements and
 ---
 # project-status
 
-Используй для `PROJECT STATUS`. Проверь task statuses, PLAN/STATUS projections, canonical `docs/requirements/REQ-NNN-*.md`, REQ index в `docs/requirements/SPEC.md`, statuses/coverage в `docs/requirements/STATUS.md`, latest reviews и blockers. Lifecycle-status REQ не должен дублироваться ни в canonical REQ, ни в `SPEC.md`. Однозначный projection drift можно исправить. Не меняй смысл REQ/ADR и не пиши product code. Покажи in-progress, blocked, recent completed и unblocked high-priority work.
+Используй для `PROJECT STATUS`. Все paths разрешай через `.harness/manifest.yaml`. Проверь canonical STEP/REQ/ADR/OQ, type-specific completion proofs, latest validated reviews и blockers. Projection-файлы не интерпретируй как independent state: сначала выполни `python3 .harness/tools/sync-projections.py`, затем `python3 .harness/tools/validate.py --mode manual`. Lifecycle-status REQ выводится только из canonical REQ + STEP completion proofs. Не меняй смысл REQ/ADR и не пиши product code. Покажи in-progress, blocked, recent completed и unblocked high-priority work.
