@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -62,6 +63,55 @@ def normalize_text(value: str) -> str:
 
 def content_hash(value: str) -> str:
     return "sha256:" + hashlib.sha256(normalize_text(value).encode("utf-8")).hexdigest()
+
+
+def parse_utc_timestamp(value: Any) -> datetime | None:
+    """Разобрать timezone-aware ISO-8601 instant и нормализовать его в UTC."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def timestamped_report_instant(name: str, prefix: str) -> datetime | None:
+    """Извлечь canonical whole-second UTC timestamp из durable report filename."""
+    match = re.fullmatch(rf"{re.escape(prefix)}(\d{{8}}T\d{{6}}Z)\.md", name)
+    if match is None:
+        return None
+    try:
+        parsed = datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc)
+
+
+def validate_report_timestamp_identity(
+    path: Path,
+    *,
+    prefix: str,
+    created_at: Any,
+) -> list[str]:
+    """Связать sortable filename и durable created_at одним UTC instant."""
+    errors: list[str] = []
+    filename_time = timestamped_report_instant(path.name, prefix)
+    created = parse_utc_timestamp(created_at)
+    if filename_time is None:
+        errors.append(f"filename must be {prefix}<UTC timestamp>.md")
+        return errors
+    if created is None:
+        errors.append("created_at must be timezone-aware ISO-8601")
+        return errors
+    if created.microsecond != 0:
+        errors.append("created_at must use whole-second precision matching filename")
+        return errors
+    if created != filename_time:
+        errors.append("created_at must match UTC timestamp encoded in filename")
+    return errors
 
 
 def stable_hash(value: Any) -> str:

@@ -24,6 +24,7 @@ from planning_contract import (
 )
 from project_integrity import validate_adrs, validate_requirements
 from project_migration import legacy_schema_pending
+from projection_contract import validate_projections
 from template_contract import template_targets
 
 
@@ -243,7 +244,12 @@ Self-test.
 """
 
 
-def planning_review(step_id: str, basis: str, plan_hash: str) -> str:
+def planning_review(
+    step_id: str,
+    basis: str,
+    plan_hash: str,
+    created_at: str = "2026-09-21T00:00:00Z",
+) -> str:
     return f"""---
 schema: 1
 kind: planning_review
@@ -253,7 +259,7 @@ reviewer_role: reviewer
 finding_count: 0
 context_basis: {basis}
 plan_content_hash: {plan_hash}
-created_at: 2026-09-21T00:00:00+00:00
+created_at: {created_at}
 ---
 
 # Planning Review {step_id} — self-test
@@ -272,7 +278,13 @@ Plan is consistent.
 """
 
 
-def init_review(stage: str, basis: str, verdict: str, finding_count: int) -> str:
+def init_review(
+    stage: str,
+    basis: str,
+    verdict: str,
+    finding_count: int,
+    created_at: str = "2026-09-21T00:00:00Z",
+) -> str:
     findings = "No material findings." if verdict == "pass" else "Blocking contradiction."
     return f"""---
 schema: 1
@@ -282,7 +294,7 @@ verdict: {verdict}
 reviewer_role: reviewer
 finding_count: {finding_count}
 basis: {basis}
-created_at: 2026-09-21T00:00:00+00:00
+created_at: {created_at}
 ---
 
 # PROJECT INIT Review — {stage}
@@ -366,12 +378,24 @@ def main() -> int:
         init_basis = init_review_basis(root, "requirements")
         write(
             root / "work/init-reviews/INIT-REVIEW-20260921T010000Z.md",
-            init_review("requirements", init_basis, "pass", 0),
+            init_review(
+                "requirements",
+                init_basis,
+                "pass",
+                0,
+                "2026-09-21T01:00:00Z",
+            ),
         )
         assert latest_matching_init_review(root, "requirements") is not None
         write(
             root / "work/init-reviews/INIT-REVIEW-20260921T020000Z.md",
-            init_review("requirements", init_basis, "blocked", 1),
+            init_review(
+                "requirements",
+                init_basis,
+                "blocked",
+                1,
+                "2026-09-21T02:00:00Z",
+            ),
         )
         assert latest_matching_init_review(root, "requirements") is None
         (root / "work/init-reviews/INIT-REVIEW-20260921T020000Z.md").unlink()
@@ -443,7 +467,12 @@ def main() -> int:
         # Новый BLOCKED для того же basis/content отменяет более старый PASS.
         current_basis = planning_context_basis(root, "STEP-1000")
         current_hash = plan_content_hash(root, "STEP-1000")
-        blocked = planning_review("STEP-1000", current_basis, current_hash).replace(
+        blocked = planning_review(
+            "STEP-1000",
+            current_basis,
+            current_hash,
+            "2026-09-21T01:00:00Z",
+        ).replace(
             "verdict: pass\nreviewer_role: reviewer\nfinding_count: 0",
             "verdict: blocked\nreviewer_role: reviewer\nfinding_count: 1",
         ).replace("No material findings.", "Blocking contradiction.")
@@ -545,6 +574,8 @@ Choose a mode.
         write(malformed_step, "---\nschema: [broken\n")
         planning_errors = validate_planning_contracts(root)
         assert any("STEP-2000" in item for item in planning_errors), planning_errors
+        projection_errors = validate_projections(root)
+        assert any("projection derivation failed" in item for item in projection_errors), projection_errors
         validate_adrs(root)
         assert legacy_schema_pending(root)
         malformed_step.unlink()
@@ -564,7 +595,12 @@ Choose a mode.
         assert any("duplicate section" in item for item in errors), errors
 
         # Semantic review schema is enforced, not only matching hashes.
-        malformed_review = planning_review("STEP-1000", "sha256:" + "0" * 64, "sha256:" + "1" * 64).replace(
+        malformed_review = planning_review(
+            "STEP-1000",
+            "sha256:" + "0" * 64,
+            "sha256:" + "1" * 64,
+            "2026-09-21T03:00:00Z",
+        ).replace(
             "reviewer_role: reviewer",
             "reviewer_role: implementer",
         )
@@ -615,6 +651,29 @@ Choose a mode.
             )
         )
         invalid_plan_report.unlink()
+
+        mismatched_plan_report = (
+            root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T040000Z.md"
+        )
+        write(
+            mismatched_plan_report,
+            planning_review(
+                "STEP-1000",
+                planning_context_basis(root, "STEP-1000"),
+                plan_content_hash(root, "STEP-1000"),
+                "2026-09-21T04:00:01Z",
+            ),
+        )
+        mismatch_errors = validate_planning_review_report(
+            root,
+            mismatched_plan_report,
+            expected_step_id="STEP-1000",
+        )
+        assert any(
+            "created_at must match UTC timestamp encoded in filename" in item
+            for item in mismatch_errors
+        ), mismatch_errors
+        mismatched_plan_report.unlink()
 
         invalid_init_report = root / "work/init-reviews/INIT-REVIEW-not-a-timestamp.md"
         write(

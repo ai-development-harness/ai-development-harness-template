@@ -166,6 +166,16 @@ def main() -> int:
         assert any("verdict must be ready|blocked" in item for item in errors), errors
         write(release, valid_release())
 
+        # Sortable filename не может лгать о времени создания report.
+        mismatch_release = root / "work/releases/RELEASE-20260921T081500Z.md"
+        write(mismatch_release, valid_release())
+        mismatch_errors = validate_release_report(root, mismatch_release)
+        assert any(
+            "created_at must match UTC timestamp encoded in filename" in item
+            for item in mismatch_errors
+        ), mismatch_errors
+        mismatch_release.unlink()
+
         write(audit, valid_audit().replace("## Evidence\n\nChecked.\n", ""))
         errors = validate_audit_report(root, audit)
         assert any("Evidence" in item for item in errors), errors

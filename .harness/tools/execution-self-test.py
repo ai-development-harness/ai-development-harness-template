@@ -2,8 +2,10 @@
 """Regression self-test crash-safe Execution Status on schema-v1 contracts."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -187,7 +189,7 @@ reviewer_role: reviewer
 finding_count: 0
 context_basis: {basis}
 plan_content_hash: {phash}
-created_at: 2026-09-21T00:00:00+00:00
+created_at: 2026-09-21T00:00:00Z
 ---
 
 # Planning Review STEP-001 — self-test
@@ -208,6 +210,16 @@ PASS.
 
 def review_report(root: Path, verdict: str, name: str) -> str:
     revision = repository_revision(root)
+    match = re.fullmatch(r"REVIEW-(\d{8}T\d{6}Z)\.md", name)
+    if match is None:
+        created_at = "2026-09-21T00:00:00Z"
+    else:
+        created_at = (
+            datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+            .replace(tzinfo=timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
     gate = required_reviewers(root, "STEP-001")
     required_block = (
         "\n".join(f"    - {item}" for item in gate["required"])
@@ -235,7 +247,7 @@ kind: step_review
 step_id: STEP-001
 verdict: {verdict.lower()}
 reviewer_role: reviewer
-created_at: 2026-09-21T00:00:00+00:00
+created_at: {created_at}
 reviewed_revision:
   git_head: {revision["git_head"] or "null"}
   worktree_hash: {revision["worktree_hash"] or "null"}
@@ -448,6 +460,20 @@ def main() -> int:
             for item in validate_review_report(root, invalid_review_name)
         )
         invalid_review_name.unlink()
+
+        mismatched_review = root / "planning/reviews/STEP-001/REVIEW-20260921T050000Z.md"
+        review_report(root, "PASS", mismatched_review.name)
+        mismatch_text = mismatched_review.read_text(encoding="utf-8").replace(
+            "created_at: 2026-09-21T05:00:00Z",
+            "created_at: 2026-09-21T05:00:01Z",
+        )
+        write(mismatched_review, mismatch_text)
+        mismatch_errors = validate_review_report(root, mismatched_review)
+        assert any(
+            "created_at must match UTC timestamp encoded in filename" in item
+            for item in mismatch_errors
+        ), mismatch_errors
+        mismatched_review.unlink()
 
         # STEP RUN recovers completed PLAN from matching basis+content+planning-review.
         run_root = "STEP RUN STEP-001"
