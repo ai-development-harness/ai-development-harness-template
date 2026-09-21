@@ -328,7 +328,9 @@ def repository_revision(root: Path) -> dict[str, str | None]:
         raise ValueError("cannot read git worktree state")
 
     def excluded(rel: str) -> bool:
-        normalized = rel.replace("\\", "/").lstrip("./")
+        normalized = _normalize_git_rel(rel)
+        if normalized is None:
+            return False
         if normalized == ".harness/local" or normalized.startswith(".harness/local/"):
             return True
         # Configurable reviewDirectory не является blanket trust boundary:
