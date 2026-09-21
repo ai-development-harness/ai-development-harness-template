@@ -432,6 +432,23 @@ def test_project_owned_migration() -> None:
         pins = legacy_review_pins(root)
         legacy_rel = legacy_review_path.relative_to(root).as_posix()
         require(legacy_rel in pins, f"legacy review was not pinned: {pins}")
+
+        # Migration report сам является trust anchor для legacy pins и потому
+        # обязан проходить строгую schema validation.
+        migration_report = root / first["report"]
+        migration_before = migration_report.read_text(encoding="utf-8")
+        migration_report.write_text(
+            migration_before.replace("result: complete", "result: draft"),
+            encoding="utf-8",
+        )
+        try:
+            legacy_review_pins(root)
+        except ValueError as exc:
+            require("result must be complete" in str(exc), str(exc))
+        else:
+            raise AssertionError("invalid migration trust report was accepted")
+        migration_report.write_text(migration_before, encoding="utf-8")
+
         require(not validate_all_review_reports(root), validate_all_review_reports(root))
         proof = step_completion_proof(root, "STEP-001")
         require(proof["complete"], f"legacy PASS review did not preserve completion proof: {proof}")
