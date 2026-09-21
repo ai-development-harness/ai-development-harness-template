@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Canonical schema-v1 project-owned templates used only by PROJECT RECONCILE.
+"""Canonical schema-v1 project-owned templates used by PROJECT RECONCILE.
 
-HARNESS UPDATE не перезаписывает project-owned templates. RECONCILE refreshes
-их из protocol-owned definitions here, что сохраняет ownership boundary.
+HARNESS UPDATE сохраняет ownership project files. RECONCILE refreshes templates
+из этих protocol-owned definitions, поэтому existing project получает новую
+schema без silent overwrite внутри updater.
 """
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ from harness_config import (
     skill_search_directory,
     task_directory,
 )
-
 
 STEP_TEMPLATE = """---
 schema: 1
@@ -57,7 +57,7 @@ review:
 
 ## Context
 
-Почему задача появилась.
+Почему задача появилась и какое текущее состояние важно.
 
 ## Scope
 
@@ -67,11 +67,11 @@ review:
 
 ### Allowed
 
-- Допустимые области mutation.
+- Явно перечислить допустимые области mutation.
 
 ### Conditional
 
-- Условно допустимые изменения.
+- Указать изменения, допустимые только при доказанной необходимости.
 
 ### Forbidden
 
@@ -79,27 +79,28 @@ review:
 
 ## Out of scope
 
-- Явные границы.
+- Явно перечислить то, что легко случайно реализовать «заодно».
 
 ## Acceptance criteria
 
-- Проверяемый критерий.
+- Проверяемый критерий 1.
+- Проверяемый критерий 2.
 
 ## Verification
 
-- Реальные проверки.
+- Реальные команды/проверки; не выдумывать отсутствующие scripts.
 
 ## Deliverables
 
-- Expected artifacts.
+- Expected code/docs/tests/config artifacts.
 
 ## Implementation plan
 
-Заполняется STEP PLAN.
+Заполняется командой `STEP PLAN STEP-NNN`. Пока semantic planning-review не дал PASS для текущих context basis + content hash, `plan.status` не может быть `ready`.
 
 ## Evidence
 
-Заполняется по факту.
+Заполняется по факту реализации и verification. Для каждой значимой проверки указывай Command, Exit code и Observed.
 
 ## Blocker / Failure reason
 
@@ -120,7 +121,7 @@ adrs: []
 
 ## Requirement
 
-Проверяемое требование.
+Проверяемое описание требуемого поведения/результата без привязки к случайной реализации.
 
 ## Rationale
 
@@ -128,7 +129,8 @@ adrs: []
 
 ## Acceptance
 
-- Наблюдаемый критерий.
+- Наблюдаемый критерий 1.
+- Наблюдаемый критерий 2.
 """
 
 ADR_TEMPLATE = """---
@@ -149,35 +151,41 @@ steps:
 
 ## Context
 
-TBD
+Почему требуется устойчивое решение.
 
 ## Problem
 
-TBD
+Какую архитектурную проблему нужно решить.
 
 ## Decision
 
-TBD
+Принятое решение.
 
 ## Alternatives considered
 
-TBD
+### Вариант A
+
+Плюсы/минусы.
+
+### Вариант B
+
+Плюсы/минусы.
 
 ## Consequences
 
-TBD
+Положительные и отрицательные последствия.
 
 ## Security implications
 
-TBD
+Если не применимо — явно указать.
 
 ## Data / migration implications
 
-TBD
+Если не применимо — явно указать.
 
 ## Compatibility / operational implications
 
-TBD
+Если не применимо — явно указать.
 """
 
 OQ_TEMPLATE = """---
@@ -194,7 +202,7 @@ resolved_at: null
 
 ## Context
 
-Почему вопрос существенный.
+Почему вопрос существенный и почему его нельзя безопасно решить предположением.
 
 ## Decision needed
 
@@ -202,7 +210,7 @@ resolved_at: null
 
 ## Resolution
 
-
+Заполняется после решения вопроса. Для `status: open` может быть пустым.
 """
 
 REVIEW_TEMPLATE = """---
@@ -218,17 +226,21 @@ reviewed_revision:
 specialized_reviews:
   security: not_required
   security_report: null
-  security_reason: reason
+  security_reason: null
   tests: not_required
   tests_report: null
-  tests_reason: reason
+  tests_reason: null
 ---
 
 # STEP REVIEW STEP-NNN — YYYY-MM-DD HH:MM
 
 ## Scope checked
 
-TBD
+- Task contract
+- REQ/ADR/OQ/architecture refs
+- Implementation plan
+- Diff/current code
+- Tests/verification
 
 ## Findings
 
@@ -238,18 +250,18 @@ TBD
 
 **Severity:** high
 **Category:** implementation
-**Location:** path:line
+**Location:** path:line / component
 **Scenario:** Given / When / Then
 **Impact:** ...
 **Fix direction:** ...
 
 ## Verification observations
 
-TBD
+Зафиксировать реальные проверки и ограничения доказательств.
 
 ## Verdict rationale
 
-TBD
+Кратко объяснить, почему verdict следует из findings и evidence.
 """
 
 PLAN_REVIEW_TEMPLATE = """---
@@ -267,11 +279,16 @@ created_at: YYYY-MM-DDTHH:MM:SSZ
 
 ## Scope checked
 
-TBD
+- STEP contract
+- Dependencies/completion proofs
+- Linked REQ/Accepted ADR/Open Questions
+- Architecture refs
+- Proposed Implementation plan
+- Verification feasibility
 
 ## Findings
 
-TBD
+При PASS material semantic contradictions отсутствуют.
 
 ## Verdict rationale
 
@@ -288,7 +305,7 @@ basis: sha256:...
 created_at: YYYY-MM-DDTHH:MM:SSZ
 ---
 
-# PROJECT INIT Review — YYYY-MM-DD HH:MM
+# PROJECT INIT Review — requirements | roadmap — YYYY-MM-DD HH:MM
 
 ## Scope checked
 
@@ -332,7 +349,7 @@ TBD
 
 ## Corrective actions
 
-- none
+- STEP-NNN / none
 """
 
 RELEASE_TEMPLATE = """---
@@ -379,25 +396,39 @@ candidate_count: 0
 
 ## Search strategy
 
-TBD
+- queries/sources used
 
 ## Ranking criteria
 
-TBD
+- relevance;
+- SKILL.md / Agent Skills compatibility;
+- workflow quality;
+- provenance/maintenance;
+- license;
+- safety.
 
 ## Candidates
 
-TBD
+### #1 — name
+
+- Repository: owner/repo
+- Path: path
+- URL: url
+- Ref/commit inspected: ref
+- License: license/unknown
+- Why it fits: ...
+- Limitations: ...
+- Safety notes: ...
+- Recommendation: ...
 
 ## Rejected / notable alternatives
 
-TBD
+- candidate: reason
 
 ## Next command
 
-TBD
+`SKILL INSTALL: #1` либо `SKILL CREATE: <description>`.
 """
-
 
 def template_targets(root: Path) -> dict[Path, str]:
     return {
@@ -423,3 +454,13 @@ def refresh_project_templates(root: Path) -> list[str]:
             path.write_text(expected, encoding="utf-8", newline="\n")
             changed.append(path.relative_to(root).as_posix())
     return changed
+
+
+def validate_project_templates(root: Path) -> list[str]:
+    errors: list[str] = []
+    for path, expected in template_targets(root).items():
+        if not path.is_file():
+            errors.append(f"project template missing: {path.relative_to(root)}")
+        elif path.read_text(encoding="utf-8") != expected:
+            errors.append(f"project template drift: {path.relative_to(root)}")
+    return errors
