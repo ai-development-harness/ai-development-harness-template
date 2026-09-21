@@ -199,12 +199,20 @@ def migrate_monolithic_requirements(root: Path) -> list[str]:
     if not spec.is_file():
         return []
     text = spec.read_text(encoding="utf-8")
-    if list(directory.glob("REQ-*.md")):
-        return []
     matches = list(re.finditer(r"(?m)^#{2,}\s+(REQ-\d{3,})\s+—\s+(.+)$", text))
+    existing_ids: set[str] = set()
+    for existing in directory.glob("REQ-*.md"):
+        if existing.name == "TEMPLATE.md":
+            continue
+        match = re.match(r"(REQ-\d{3,})-", existing.name)
+        if match:
+            existing_ids.add(match.group(1))
+
     changed: list[str] = []
     for index, match in enumerate(matches):
         req_id, title = match.group(1), match.group(2).strip()
+        if req_id in existing_ids:
+            continue
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         chunk = text[match.start():end]
         sub: dict[str, str] = {}
@@ -267,6 +275,24 @@ def migrate_legacy_adr(path: Path) -> bool:
     return True
 
 
+def _legacy_oq_field(chunk: str, label: str) -> str:
+    """Прочитать legacy OQ field целиком до следующего известного field header."""
+    header = re.search(
+        rf"(?mi)^(?:\*\*)?{re.escape(label)}:(?:\*\*)?[ \t]*(.*)$",
+        chunk,
+    )
+    if not header:
+        return ""
+    first = header.group(1).strip()
+    tail = chunk[header.end():]
+    next_header = re.search(
+        r"(?mi)^(?:\*\*)?(?:Status|Affects|Context|Decision needed|Resolution):(?:\*\*)?",
+        tail,
+    )
+    extra = tail[: next_header.start() if next_header else len(tail)].strip()
+    return "\n".join(part for part in (first, extra) if part).strip()
+
+
 def migrate_monolithic_open_questions(root: Path) -> list[str]:
     index = open_questions_index_path(root)
     if not index.is_file():
@@ -277,36 +303,43 @@ def migrate_monolithic_open_questions(root: Path) -> list[str]:
     directory = open_questions_directory(root)
     directory.mkdir(parents=True, exist_ok=True)
     starts = list(re.finditer(r"(?m)^(?:#{1,6}\s+)?(OQ-\d{3,})\s+—\s+(.+)$", text))
+    existing_ids = {
+        match.group(1)
+        for path in directory.glob("OQ-*.md")
+        if (match := re.match(r"(OQ-\d{3,})-", path.name))
+    }
     changed: list[str] = []
     for pos, match in enumerate(starts):
         oq_id, title = match.group(1), match.group(2).strip()
+        if oq_id in existing_ids:
+            continue
         end = starts[pos + 1].start() if pos + 1 < len(starts) else len(text)
         chunk = text[match.end():end]
-        status_match = re.search(r"(?mi)^(?:\*\*)?Status:(?:\*\*)?\s*(OPEN|RESOLVED|DEFERRED)", chunk)
-        affects_match = re.search(r"(?mi)^(?:\*\*)?Affects:(?:\*\*)?\s*(.+)$", chunk)
-        context = re.search(r"(?mi)^(?:\*\*)?Context:(?:\*\*)?\s*(.+)$", chunk)
-        decision = re.search(r"(?mi)^(?:\*\*)?Decision needed:(?:\*\*)?\s*(.+)$", chunk)
-        resolution = re.search(r"(?mi)^(?:\*\*)?Resolution:(?:\*\*)?\s*(.+)$", chunk)
+        status_value = _legacy_oq_field(chunk, "Status").splitlines()[0] if _legacy_oq_field(chunk, "Status") else ""
+        affects_value = _legacy_oq_field(chunk, "Affects")
+        context = _legacy_oq_field(chunk, "Context")
+        decision = _legacy_oq_field(chunk, "Decision needed")
+        resolution = _legacy_oq_field(chunk, "Resolution")
         affects: list[str] = []
-        if affects_match:
-            affects.extend(_ids(affects_match.group(1), STEP_ID_RE))
-            affects.extend(_ids(affects_match.group(1), REQ_ID_RE))
-            affects.extend(_ids(affects_match.group(1), ADR_ID_RE))
-            if "PROJECT" in affects_match.group(1):
+        if affects_value:
+            affects.extend(_ids(affects_value, STEP_ID_RE))
+            affects.extend(_ids(affects_value, REQ_ID_RE))
+            affects.extend(_ids(affects_value, ADR_ID_RE))
+            if "PROJECT" in affects_value:
                 affects.append("PROJECT")
         frontmatter = {
             "schema": 1,
             "id": oq_id,
-            "status": (status_match.group(1).lower() if status_match else "open"),
+            "status": (status_value.lower() if status_value.upper() in {"OPEN", "RESOLVED", "DEFERRED"} else "open"),
             "affects": sorted(set(affects)) or ["PROJECT"],
             "created_at": None,
             "resolved_at": None,
         }
         body = (
             f"# {oq_id} — {title}\n\n"
-            f"## Context\n\n{context.group(1).strip() if context else 'Legacy context not structured.'}\n\n"
-            f"## Decision needed\n\n{decision.group(1).strip() if decision else 'Требуется решение.'}\n\n"
-            f"## Resolution\n\n{resolution.group(1).strip() if resolution else ''}"
+            f"## Context\n\n{context or 'Legacy context not structured.'}\n\n"
+            f"## Decision needed\n\n{decision or 'Требуется решение.'}\n\n"
+            f"## Resolution\n\n{resolution}"
         )
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "question"
         path = directory / f"{oq_id}-{slug}.md"
@@ -359,8 +392,17 @@ def legacy_schema_pending(root: Path) -> bool:
         except (OSError, UnicodeDecodeError, DocumentError):
             return True
     spec = requirements_directory(root) / "SPEC.md"
-    if spec.is_file() and not list(requirements_directory(root).glob("REQ-*.md")):
-        if re.search(r"(?m)^#{2,}\s+REQ-\d{3,}\b", spec.read_text(encoding="utf-8")):
+    if spec.is_file():
+        spec_ids = set(
+            re.findall(r"(?m)^#{2,}\s+(REQ-\d{3,})\b", spec.read_text(encoding="utf-8"))
+        )
+        existing_ids = {
+            match.group(1)
+            for path in requirements_directory(root).glob("REQ-*.md")
+            if path.name != "TEMPLATE.md"
+            if (match := re.match(r"(REQ-\d{3,})-", path.name))
+        }
+        if spec_ids - existing_ids:
             return True
     index = open_questions_index_path(root)
     if index.is_file():
