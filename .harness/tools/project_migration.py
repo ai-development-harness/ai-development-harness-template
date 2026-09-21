@@ -403,7 +403,15 @@ def migrate_project(root: Path) -> dict[str, Any]:
     # Project-owned templates не обновляются HARNESS UPDATE. RECONCILE
     # синхронизирует их из protocol-owned definitions и затем projections.
     changed.extend(refresh_project_templates(root))
-    changed.extend(write_projections(root))
+    # Pending legacy review pins участвуют в final projection calculation
+    # в этом же migration run. После этого тот же exact pin set публикуется
+    # в immutable migration report, поэтому второй RECONCILE — настоящий no-op.
+    changed.extend(
+        write_projections(
+            root,
+            extra_legacy_review_pins=pending_legacy_reviews,
+        )
+    )
 
     unique_changed = sorted(set(changed))
     if not unique_changed and not pending_legacy_reviews:
