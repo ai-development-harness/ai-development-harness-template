@@ -42,6 +42,7 @@ from harness_config import (
     language_value,
     load_manifest,
     load_update_policy,
+    local_brief_path,
     max_fix_review_cycles,
     repository_path,
     review_policy,
@@ -549,7 +550,7 @@ def validate_requirements_model(root: Path, errors: list[str]) -> None:
         spec_text = spec_path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         spec_text = ""
-        errors.append("requirements: docs/requirements/SPEC.md is not UTF-8")
+        errors.append(f"requirements: {spec_path.relative_to(root)} is not UTF-8")
 
     if re.search(r"(?m)^#{2,}\s+REQ-\d{3}\b", spec_text):
         errors.append(
@@ -995,8 +996,13 @@ def main() -> int:
             errors.append(f"AGENTS generated markers invalid: {start} / {end}")
 
     gitignore = (root / ".gitignore").read_text(encoding="utf-8") if (root / ".gitignore").exists() else ""
-    for ignored in [
-        "PROJECT_BRIEF.local.md",
+    try:
+        configured_local_brief = local_brief_path(root).relative_to(root).as_posix()
+    except (ConfigError, ValueError) as exc:
+        configured_local_brief = None
+        errors.append(f"local brief config: {exc}")
+
+    required_ignored = [
         "AGENTS.local.md",
         "CLAUDE.local.md",
         ".project/local/",
@@ -1006,7 +1012,10 @@ def main() -> int:
         ".claude/settings.local.json",
         "__pycache__/",
         "*.py[cod]",
-    ]:
+    ]
+    if configured_local_brief is not None:
+        required_ignored.insert(0, configured_local_brief)
+    for ignored in required_ignored:
         if ignored not in gitignore:
             errors.append(f".gitignore must ignore {ignored}")
 
@@ -1020,6 +1029,8 @@ def main() -> int:
 
     forbidden = policy.get("forbidden_tracked_globs", [])
     allowed = policy.get("allowed_tracked_globs", [])
+    if configured_local_brief is not None and configured_local_brief in files:
+        errors.append(f"configured local brief must not be tracked: {configured_local_brief}")
     max_size_mb = max_tracked_file_size_mb if isinstance(max_tracked_file_size_mb, int) and not isinstance(max_tracked_file_size_mb, bool) and max_tracked_file_size_mb > 0 else 10
     max_size = max_size_mb * 1024 * 1024
 
