@@ -52,6 +52,8 @@ def _valid_sha256(value: Any) -> bool:
 def validate_migration_report(root: Path, path: Path) -> list[str]:
     """Проверить durable migration report до использования его hash-pins."""
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable migration report must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
@@ -264,13 +266,27 @@ def _git(root: Path, *args: str) -> tuple[int, bytes]:
     return proc.returncode, proc.stdout
 
 
-def _is_step_review_report_path(root: Path, path: Path) -> bool:
-    """Проверить, является ли path именно implementation review report."""
+def _configured_rel(root: Path, directory: Path) -> str:
+    """Вернуть configured directory как repository-relative lexical Git path."""
     try:
-        suffix = path.resolve().relative_to(review_directory(root).resolve()).as_posix()
-    except ValueError:
-        return False
-    return re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", suffix) is not None
+        return directory.relative_to(root.resolve()).as_posix().rstrip("/")
+    except ValueError as exc:
+        raise ValueError(f"configured directory escapes repository: {directory}") from exc
+
+
+def _under_git_path(rel: str, base: str) -> str | None:
+    """Вернуть lexical suffix Git path, не разыменовывая symlink target."""
+    normalized = rel.replace("\\", "/").lstrip("./")
+    if normalized == base:
+        return ""
+    prefix = base + "/"
+    return normalized[len(prefix):] if normalized.startswith(prefix) else None
+
+
+def _is_step_review_report_rel(root: Path, rel: str) -> bool:
+    """Проверить Git path implementation review без symlink dereference."""
+    suffix = _under_git_path(rel, _configured_rel(root, review_directory(root)))
+    return suffix is not None and re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", suffix) is not None
 
 
 def repository_revision(root: Path) -> dict[str, str | None]:
@@ -286,18 +302,13 @@ def repository_revision(root: Path) -> dict[str, str | None]:
     if code != 0:
         raise ValueError("cannot read git worktree state")
 
-    ignored_local = (root / ".harness" / "local").resolve()
-
-    def excluded(path: Path) -> bool:
-        resolved = path.resolve()
-        try:
-            resolved.relative_to(ignored_local)
+    def excluded(rel: str) -> bool:
+        normalized = rel.replace("\\", "/").lstrip("./")
+        if normalized == ".harness/local" or normalized.startswith(".harness/local/"):
             return True
-        except ValueError:
-            pass
         # Configurable reviewDirectory не является blanket trust boundary:
-        # исключаем только файлы, которые STEP REVIEW сам создаёт после snapshot.
-        return _is_step_review_report_path(root, path)
+        # исключаем только report-shaped Git paths, не symlink targets.
+        return _is_step_review_report_rel(root, normalized)
 
     entries = [entry for entry in status.split(b"\0") if entry]
     changed: list[tuple[bytes, str, str | None]] = []
@@ -321,7 +332,7 @@ def repository_revision(root: Path) -> dict[str, str | None]:
         # STEP REVIEW создаёт новый report уже после snapshot. Поэтому можно
         # исключить только новое A/?? report-состояние. Mutation/rename уже
         # существующей immutable history обязана остаться частью exact revision.
-        new_review_report = excluded(path) and (xy == b"??" or xy[:1] == b"A")
+        new_review_report = excluded(rel) and (xy == b"??" or xy[:1] == b"A")
         if new_review_report and source_rel is None:
             continue
         changed.append((xy, rel, source_rel))
@@ -412,6 +423,8 @@ def validate_review_report(
     expected_step_id: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable review report must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
@@ -462,13 +475,12 @@ def validate_review_report(
     else:
         git_head = revision.get("git_head")
         worktree_hash = revision.get("worktree_hash")
-        if git_head is not None and (not isinstance(git_head, str) or not git_head.strip()):
-            errors.append("reviewed_revision.git_head must be null or non-empty string")
-        if worktree_hash is not None and (
-            not isinstance(worktree_hash, str)
-            or not worktree_hash.startswith("sha256:")
-            or len(worktree_hash) != 71
+        if git_head is not None and (
+            not isinstance(git_head, str)
+            or re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", git_head) is None
         ):
+            errors.append("reviewed_revision.git_head must be null or a 40/64-hex Git OID")
+        if worktree_hash is not None and not _valid_sha256(worktree_hash):
             errors.append("reviewed_revision.worktree_hash must be null or sha256")
         if git_head is None and worktree_hash is None:
             errors.append("reviewed_revision must contain git_head or worktree_hash")
@@ -640,22 +652,18 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
 
 
 def _is_immutable_review_path(root: Path, rel: str) -> bool:
-    """Распознать только реальные immutable reports, не TEMPLATE.md."""
-    candidate = (root / rel).resolve()
+    """Распознать immutable report по lexical Git path, не symlink target."""
     patterns = (
-        (review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
-        (planning_review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
-        (init_review_directory(root).resolve(), re.compile(r"^INIT-REVIEW-.+\.md$")),
-        (audit_directory(root).resolve(), re.compile(r"^(?:MIGRATION|AUDIT)-.+\.md$")),
-        (release_directory(root).resolve(), re.compile(r"^RELEASE-.+\.md$")),
-        (skill_search_directory(root).resolve(), re.compile(r"^SKILL-SEARCH-.+\.md$")),
+        (_configured_rel(root, review_directory(root)), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
+        (_configured_rel(root, planning_review_directory(root)), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
+        (_configured_rel(root, init_review_directory(root)), re.compile(r"^INIT-REVIEW-.+\.md$")),
+        (_configured_rel(root, audit_directory(root)), re.compile(r"^(?:MIGRATION|AUDIT)-.+\.md$")),
+        (_configured_rel(root, release_directory(root)), re.compile(r"^RELEASE-.+\.md$")),
+        (_configured_rel(root, skill_search_directory(root)), re.compile(r"^SKILL-SEARCH-.+\.md$")),
     )
     for base, pattern in patterns:
-        try:
-            suffix = candidate.relative_to(base).as_posix()
-        except ValueError:
-            continue
-        if pattern.fullmatch(suffix) is not None:
+        suffix = _under_git_path(rel, base)
+        if suffix is not None and pattern.fullmatch(suffix) is not None:
             return True
         # Configured durable directories могут перекрываться. Попадание path
         # внутрь более широкого directory не означает, что это artifact именно
@@ -805,12 +813,11 @@ def main() -> int:
     root = Path(__file__).resolve().parents[2]
 
     if args.file:
-        path = (root / args.file).resolve()
-        try:
-            path.relative_to(root.resolve())
-        except ValueError:
+        raw_path = Path(args.file)
+        if raw_path.is_absolute() or ".." in raw_path.parts:
             errors = ["review path escapes repository"]
         else:
+            path = root / raw_path
             errors = validate_review_report(
                 root,
                 path,
