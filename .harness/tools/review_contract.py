@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-"""Детерминированный contract immutable STEP review reports.
+"""Детерминированные contracts immutable review/migration history.
 
-Review recovery имеет право доверять только report, который прошёл schema
-validation и относится к точной текущей repository revision.
+Review report является trust artifact только если одновременно выполнены:
+- schema/kind/body contract;
+- canonical timestamp identity;
+- ссылка на существующий STEP;
+- корректная verdict composition;
+- specialized reviewer evidence;
+- exact reviewed repository revision при current-review gate.
+
+Historical reports immutable: addition разрешена, но изменение/delete/rename уже
+существующего review/audit/release/update/migration report блокируется.
+Legacy reviews после schema migration допускаются только по path + content hash
+pins из валидного migration report.
 """
 from __future__ import annotations
 
@@ -51,7 +61,11 @@ def _valid_sha256(value: Any) -> bool:
 
 
 def validate_migration_report(root: Path, path: Path) -> list[str]:
-    """Проверить durable migration report до использования его hash-pins."""
+    """Проверить migration trust report до использования legacy hash-pins.
+
+    Invalid report не может частично предоставить allowlist: если schema/history
+    повреждены, legacy reviews не считаются доказанными.
+    """
     errors: list[str] = []
     if path.is_symlink():
         return ["durable migration report must not be a symlink"]
@@ -436,6 +450,12 @@ def _parse_findings(document: dict[str, Any]) -> list[dict[str, str]]:
     return findings
 
 
+# ---------------------------------------------------------------------------
+# STEP REVIEW validator.
+# Структурный report contract отделён от require_current_revision: historical
+# report должен оставаться валидным для своей revision, а current gate дополнительно
+# требует совпадения с factual worktree/review gate прямо сейчас.
+# ---------------------------------------------------------------------------
 def validate_review_report(
     root: Path,
     path: Path,
@@ -649,6 +669,7 @@ def validate_review_report(
 
 
 def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
+    """Вернуть только schema-valid immutable reviews STEP в history order."""
     directory = review_directory(root) / step_id
     if not directory.is_dir():
         return []
@@ -667,6 +688,7 @@ def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
 
 
 def latest_review(root: Path, step_id: str, *, require_current_revision: bool = False) -> dict[str, Any] | None:
+    """Вернуть latest valid report; optional gate требует current revision proof."""
     reports = review_reports(root, step_id)
     if not reports:
         return None
@@ -677,6 +699,8 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
     return report
 
 
+# Lexical classifier durable history. Symlink target не используется для
+# classification: Git tracks path identity, а не место, куда указывает symlink.
 def _is_immutable_review_path(root: Path, rel: str) -> bool:
     """Распознать immutable report по lexical Git path, не symlink target."""
     patterns = (
@@ -708,6 +732,11 @@ def _git_changed_review_paths(root: Path, *diff_args: str) -> tuple[list[str], s
 
 def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[str]:
     """Запретить mutation/delete/rename immutable review/migration history.
+
+    Worktree/index checks сравнивают существующие tracked reports с HEAD.
+    В CI дополнительно сравнивается HEAD^1 -> HEAD, чтобы mutation history нельзя
+    было скрыть уже внутри commit.
+
 
     Addition допустим. До commit проверяем staged + unstaged состояние против
     HEAD. В CI сравниваем итоговый commit с первым родителем: PR merge commit
@@ -777,6 +806,13 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Review-history aggregator:
+# 1. immutable-path gate;
+# 2. validate migration pins;
+# 3. verify pinned legacy bytes;
+# 4. validate every schema-v1 STEP review.
+# ---------------------------------------------------------------------------
 def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[str]:
     errors: list[str] = []
     errors.extend(validate_review_immutability(root, ci_mode=ci_mode))
@@ -834,6 +870,15 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Public diagnostic CLI.
+#
+# Modes:
+# - --file: один report; --current-revision усиливает gate factual state-ом;
+# - --step: все reports одного STEP;
+# - без selector: полная review history + immutability/pins.
+# --json меняет только представление результата, а не validation semantics.
+# ---------------------------------------------------------------------------
 def main() -> int:
     import argparse
     import json

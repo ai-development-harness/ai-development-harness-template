@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Детерминированные tracked projections из canonical project contracts."""
+"""Детерминированный renderer/validator tracked project projections.
+
+Canonical REQ/STEP/OQ являются source of truth. Projection-файлы — только
+отслеживаемое представление для навигации и обзора.
+
+Validator не сравнивает "смысл" или отдельные поля: expected content полностью
+рендерится заново и должен byte-for-byte совпасть с tracked copy.
+
+Fail-closed: malformed canonical artifact, недоказуемый completion proof или
+ошибка relevant OQ derivation превращаются в ProjectionDerivationError, а не в
+частичную правдоподобную projection.
+"""
 from __future__ import annotations
 
 from collections import Counter
@@ -24,7 +35,11 @@ from planning_contract import (
 
 
 class ProjectionDerivationError(RuntimeError):
-    """Canonical state нельзя безопасно превратить в projection."""
+    """Canonical state нельзя безопасно превратить в projection.
+
+    Это не обычный DRIFT. Пока derivation недоказуем, writer/validator не имеют
+    права генерировать частичный snapshot.
+    """
 
 
 def _title(document: dict[str, Any]) -> str:
@@ -38,6 +53,11 @@ def _fmt_refs(values: Any) -> str:
     return ", ".join(str(item) for item in values)
 
 
+# ---------------------------------------------------------------------------
+# Canonical readers.
+# Любой parse/id mismatch прерывает derivation целиком: projection не должна
+# скрывать повреждённый canonical document.
+# ---------------------------------------------------------------------------
 def canonical_requirements(root: Path) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     directory = requirements_directory(root)
@@ -96,6 +116,10 @@ def render_requirements_spec(root: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# Derived lifecycle state REQ.
+# Статус не хранится в REQ: он вычисляется из linked STEP + completion proofs.
+# ---------------------------------------------------------------------------
 def _requirement_status(
     root: Path,
     req: dict[str, Any],
@@ -205,6 +229,11 @@ def render_roadmap(root: Path) -> str:
 
 
 def _is_unblocked_planned_step(root: Path, task: dict[str, Any]) -> bool:
+    """Проверить, можно ли показывать planned STEP как следующий unblocked work.
+
+    Missing/invalid dependency proof или OQ derivation error не трактуются как
+    "просто заблокировано": они поднимают ProjectionDerivationError.
+    """
     """Planned STEP пригоден для NEXT только без hard blockers."""
     meta = task["frontmatter"]
     if meta.get("status") != "planned":
@@ -302,6 +331,11 @@ def render_open_questions_index(root: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# Единственная карта output path -> expected content.
+# И --check, и mutation mode используют именно её, чтобы не иметь двух renderer
+# implementations с разной semantics.
+# ---------------------------------------------------------------------------
 def projection_targets(
     root: Path,
     *,
@@ -321,6 +355,11 @@ def projection_targets(
 
 
 def validate_projections(root: Path) -> list[str]:
+    """Сравнить все tracked projections с deterministic expected content.
+
+    Возвращает обычный DRIFT как errors list; derivation failure сворачивается
+    в отдельную диагностическую ошибку, чтобы caller не принял partial state.
+    """
     errors: list[str] = []
     try:
         targets = projection_targets(root)

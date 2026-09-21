@@ -1,9 +1,24 @@
 #!/usr/bin/env python3
-"""Deterministic Git preflight AI Development Harness.
+"""Deterministic Git safety preflight AI Development Harness.
 
-Tool ничего не commit/push/merge/PR. Он читает configured Git policy и
-фактическое repository state, выполняет только разрешённый fetch для
-актуализации remote refs и возвращает machine-readable mutation plan.
+Назначение
+----------
+Проверить factual Git state и strict git-policy **до** mutation.
+
+Tool сам не выполняет commit/push/PR/merge. Единственный допустимый side effect —
+configured `git fetch`, необходимый для актуального ahead/behind и PR/sync
+preflight. На PASS возвращается exact mutation plan, который исполняет caller.
+
+Fail-closed границы
+-------------------
+- malformed/unknown git-policy key -> BLOCKED;
+- detached HEAD -> BLOCKED;
+- protected branch violation -> BLOCKED;
+- remote-ahead при non-force policy -> BLOCKED;
+- unpublished/mismatching PR head -> BLOCKED;
+- diverged/dirty ff-only sync -> BLOCKED.
+
+Публичные actions CLI: check, commit, push, pr, sync.
 """
 from __future__ import annotations
 
@@ -19,7 +34,11 @@ from harness_config import ConfigError, load_git_policy
 
 
 class GitPreflightError(RuntimeError):
-    """Fail-closed blocker Git mutation."""
+    """Структурированный blocker, который CLI переводит в status=BLOCKED.
+
+    `code` стабилен для automation/tests, `message` предназначен человеку,
+    `details` хранит actionable данные вроде requiredBranch.
+    """
 
     def __init__(self, code: str, message: str, **details: Any):
         super().__init__(message)
@@ -29,6 +48,12 @@ class GitPreflightError(RuntimeError):
 
 
 class Repo:
+    """Минимальный read-model над Git CLI.
+
+    Wrapper централизует Git subprocess semantics, чтобы разные preflight actions
+    одинаково трактовали branch/HEAD/worktree/remote state.
+    """
+
     def __init__(self, root: Path):
         self.root = root.resolve()
 
@@ -70,6 +95,7 @@ class Repo:
         return int(self.git("rev-list", "--count", "HEAD").stdout.strip())
 
     def status(self) -> dict[str, Any]:
+        """Вернуть factual staged/unstaged/untracked state без mutation."""
         staged = [p for p in self.git("diff", "--cached", "--name-only", "-z").stdout.split("\0") if p]
         unstaged = [p for p in self.git("diff", "--name-only", "-z").stdout.split("\0") if p]
         untracked = [
@@ -92,6 +118,7 @@ class Repo:
         return self.git("remote", "get-url", remote, check=False).returncode == 0
 
     def fetch(self, remote: str) -> None:
+        """Обновить remote-tracking refs; это единственный сетевой side effect preflight."""
         proc = self.git("fetch", "--prune", remote, check=False)
         if proc.returncode:
             raise GitPreflightError(
@@ -105,6 +132,7 @@ class Repo:
         return proc.stdout.strip() if proc.returncode == 0 else None
 
     def ahead_behind(self, remote: str, branch: str) -> tuple[int, int] | None:
+        """Вернуть (local-ahead, remote-ahead) относительно configured remote branch."""
         if self.remote_ref(remote, branch) is None or not self.has_head():
             return None
         out = self.git(
@@ -157,6 +185,12 @@ def _exact_keys(table: dict[str, Any], allowed: set[str], *, section: str) -> No
         )
 
 
+# ---------------------------------------------------------------------------
+# Strict policy boundary.
+# Preflight не допускает "лишних" keys для forward-compatibility: неизвестный
+# safety knob опаснее явного failure, потому что пользователь может ожидать
+# поведение, которого engine не исполняет.
+# ---------------------------------------------------------------------------
 def policy(root: Path) -> dict[str, Any]:
     try:
         data = load_git_policy(root)
@@ -299,6 +333,7 @@ def policy(root: Path) -> dict[str, Any]:
 
 
 def _validator(root: Path) -> None:
+    """Запустить общий Harness validator как обязательный вложенный gate."""
     validator = root / ".harness/tools/validate.py"
     if not validator.is_file():
         raise GitPreflightError("HARNESS_VALIDATOR_MISSING", "missing .harness/tools/validate.py")
@@ -359,6 +394,11 @@ def _planned_branch(config: dict[str, Any], commit_type: str | None, slug: str |
     return candidate
 
 
+# ---------------------------------------------------------------------------
+# Action: CHECK.
+# Диагностический snapshot repository + configured remotes. Harness validation
+# здесь отражается как поле результата, но CHECK сам остаётся обзорным действием.
+# ---------------------------------------------------------------------------
 def check(root: Path) -> dict[str, Any]:
     config = policy(root)
     repo = Repo(root)
@@ -386,6 +426,12 @@ def check(root: Path) -> dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# Action: COMMIT.
+# Проверяет staged state, allow_empty/stage_mode и protected-branch policy.
+# Если нужна новая ветка, engine возвращает deterministic requiredBranch через
+# structured blocker вместо самостоятельного branch creation.
+# ---------------------------------------------------------------------------
 def commit_preflight(
     root: Path,
     *,
@@ -474,6 +520,11 @@ def _require_remote(repo: Repo, remote: str) -> None:
         raise GitPreflightError("REMOTE_MISSING", f"configured Git remote does not exist: {remote}")
 
 
+# ---------------------------------------------------------------------------
+# Action: PUSH.
+# Перед расчётом divergence при policy.fetch_before_push обновляет remote refs.
+# Force запрещён policy contract-ом; любой remote-ahead блокируется заранее.
+# ---------------------------------------------------------------------------
 def push_preflight(root: Path) -> dict[str, Any]:
     config = policy(root)
     repo = Repo(root)
@@ -554,6 +605,11 @@ def push_preflight(root: Path) -> dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# Action: PR.
+# Требует, чтобы current local HEAD уже был **точно** опубликован в remote head
+# branch. PR не должен создаваться для локальной revision, которой нет remote.
+# ---------------------------------------------------------------------------
 def pr_preflight(root: Path) -> dict[str, Any]:
     config = policy(root)
     repo = Repo(root)
@@ -626,6 +682,11 @@ def pr_preflight(root: Path) -> dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# Action: SYNC.
+# В ff-only mode preflight не делает merge сам: он либо блокирует divergence/
+# local-ahead/dirty worktree, либо возвращает exact git merge --ff-only plan.
+# ---------------------------------------------------------------------------
 def sync_preflight(root: Path) -> dict[str, Any]:
     config = policy(root)
     repo = Repo(root)
@@ -706,6 +767,10 @@ def _print(result: dict[str, Any], *, as_json: bool) -> None:
             print(f"{key}: {result[key]}")
 
 
+# ---------------------------------------------------------------------------
+# CLI boundary: любые GitPreflightError/ConfigError/OSError нормализуются в
+# status=BLOCKED + reasonCode. Exit 2 означает safety blocker, exit 0 — PASS.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(description="Deterministic Git safety preflight")
     parser.add_argument("action", choices=["check", "commit", "push", "pr", "sync"])

@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-"""Validate canonical Harness command/chain before skill routing or execution."""
+"""Публичный CLI structural validator Command Transition System.
+
+Назначение:
+- проверяет raw Harness command/chain до skill routing и mutations;
+- нормализует shorthand chain по repository-local CTS;
+- доказывает только structural validity.
+
+PASS здесь не означает, что выполнены runtime preconditions: Git divergence,
+STEP readiness, update route и другие factual gates проверяются отдельно.
+
+Exit codes:
+- 0 — structurally valid command/chain;
+- 2 — invalid syntax, target, input или transition.
+"""
 from __future__ import annotations
 
 import argparse
@@ -11,13 +24,24 @@ from command_transitions import load_transition_table, validate_command_text
 
 
 
-# Найти repository root, чтобы validation всегда использовала transition graph текущего проекта.
+# ---------------------------------------------------------------------------
+# Bootstrap repository-local CTS.
+# Validator не читает global config и не кэширует graph: source of truth —
+# .harness/command-transitions.json именно текущего checkout.
+# ---------------------------------------------------------------------------
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
 
-# Прочитать raw command, прогнать deterministic CTS validator и вернуть JSON/text + корректный process exit code.
+# ---------------------------------------------------------------------------
+# CLI flow:
+# 1. собрать raw command tokens;
+# 2. загрузить CTS table;
+# 3. нормализовать и проверить command/chain;
+# 4. вывести один и тот же result в text или JSON;
+# 5. вернуть exit code только по structural validity.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate Harness command syntax and structural transition graph."
@@ -34,7 +58,10 @@ def main() -> int:
     if raw.startswith("-- "):
         raw = raw[3:].strip()
 
+    # Table читается заново на каждый запуск, чтобы правка graph немедленно
+    # влияла на validation и stale cache не создавал ложный PASS.
     table = load_transition_table(repo_root())
+
     # Здесь заканчивается structural layer. Даже VALID_CHAIN ещё не означает,
     # что runtime preconditions (Git divergence, update route и т.п.) выполнены.
     result = validate_command_text(raw, table)

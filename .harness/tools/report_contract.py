@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-"""Строгие contracts durable AUDIT / RELEASE CHECK / SKILL FIND reports.
+"""Строгие validators durable operational reports.
 
-Эти reports используются как долговременные факты repository. Особенно важен
-SKILL SEARCH: команда SKILL INSTALL: #N resolve-ит выбор пользователя именно из
-последнего сохранённого отчёта, а не из chat history.
+Поддерживаемые kinds:
+- harness_update;
+- audit;
+- release_check;
+- skill_search.
+
+Reports являются долговременными repository facts, поэтому validator проверяет
+не только frontmatter, но и canonical filename, timestamp identity, H1 и
+обязательные sections. Symlink запрещён как trust anchor.
+
+SKILL SEARCH особенно чувствителен: последующий SKILL INSTALL: #N должен
+разрешать выбор из сохранённого report, а не из chat/session memory.
 """
 from __future__ import annotations
 
@@ -23,6 +32,8 @@ from harness_config import (
 )
 
 
+# Общий structural helper для report body. Пустая обязательная section считается
+# contract failure даже если frontmatter полностью валиден.
 def _require_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[str]:
     errors: list[str] = []
     for name in names:
@@ -32,6 +43,9 @@ def _require_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[
     return errors
 
 
+# ---------------------------------------------------------------------------
+# HARNESS UPDATE report: доказывает фактический route и конечный update result.
+# ---------------------------------------------------------------------------
 def validate_harness_update_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
     if path.is_symlink():
@@ -81,6 +95,9 @@ def validate_harness_update_report(root: Path, path: Path) -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# AUDIT report: durable snapshot источников, observed state и corrective action.
+# ---------------------------------------------------------------------------
 def validate_audit_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
     if path.is_symlink():
@@ -119,6 +136,9 @@ def validate_audit_report(root: Path, path: Path) -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# RELEASE CHECK report: ready/blocked verdict + concrete verification evidence.
+# ---------------------------------------------------------------------------
 def validate_release_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
     if path.is_symlink():
@@ -178,6 +198,9 @@ _REQUIRED_CANDIDATE_FIELDS = {
 }
 
 
+# Candidate numbering/fields — machine contract для дальнейшего SKILL INSTALL
+# по номеру. Пропуск #2 или отсутствующий provenance field делает выбор
+# неоднозначным и потому invalid.
 def _validate_skill_candidates(section: str, count: int) -> list[str]:
     errors: list[str] = []
     headings = list(_CANDIDATE_HEADING_RE.finditer(section))
@@ -202,6 +225,9 @@ def _validate_skill_candidates(section: str, count: int) -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# SKILL SEARCH report: query/result provenance и индексируемые candidates.
+# ---------------------------------------------------------------------------
 def validate_skill_search_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
     if path.is_symlink():
@@ -266,7 +292,11 @@ def validate_skill_search_report(root: Path, path: Path) -> list[str]:
 
 
 def validate_all_operational_reports(root: Path) -> list[str]:
-    """Проверить все durable operational reports, кроме migration/reviews."""
+    """Проверить все configured durable operational report directories.
+
+    Unexpected Markdown filename также ошибка: неизвестный durable artifact не
+    должен выпадать из validation просто потому, что его prefix опечатан.
+    """
     errors: list[str] = []
 
     update_root = update_report_directory(root)
@@ -324,6 +354,12 @@ def validate_all_operational_reports(root: Path) -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Public CLI:
+# --all                         -> все operational reports;
+# --file <path> --kind <kind>   -> один repository-relative report;
+# --json                        -> machine-readable result.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--file")

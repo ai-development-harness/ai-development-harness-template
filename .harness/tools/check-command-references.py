@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Проверить live project docs на устаревшие Harness command references."""
+"""Публичный read-only checker устаревших Harness command references.
+
+Checker сканирует только live project documentation, вычисленную через manifest.
+Он ничего не переписывает и не решает, является ли match фактической ошибкой:
+DRIFT — наблюдение для PROJECT RECONCILE/аудита.
+
+Exit codes:
+- 0 — scan выполнен, как для PASS, так и для DRIFT;
+- 2 — BLOCKED: scope нельзя безопасно прочитать или разрешить.
+"""
 from __future__ import annotations
 
 import argparse
@@ -10,6 +19,11 @@ import subprocess
 from command_references import project_live_document_paths, scan_files
 
 
+# ---------------------------------------------------------------------------
+# Bootstrap repository root.
+# Git root предпочтителен, потому что findings должны быть repository-relative.
+# Fallback относительно tool нужен только для ограниченного окружения без Git.
+# ---------------------------------------------------------------------------
 def repo_root() -> Path:
     here = Path(__file__).resolve()
     try:
@@ -28,6 +42,13 @@ def repo_root() -> Path:
     return here.parents[2]
 
 
+# ---------------------------------------------------------------------------
+# CLI flow:
+# - разрешить live-document scope;
+# - просканировать UTF-8 files;
+# - вывести PASS/DRIFT/BLOCKED;
+# - не превращать DRIFT в tool failure.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Detect deprecated pre-namespace Harness commands in live project documents."
@@ -40,6 +61,9 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
+
+    # Ошибка чтения хотя бы одного live document делает результат неполным.
+    # Fail-closed: unreadable file даёт BLOCKED, а не тихо исключается из scope.
     try:
         findings = scan_files(root, project_live_document_paths(root))
     except RuntimeError as exc:

@@ -1,15 +1,33 @@
 #!/usr/bin/env python3
-"""Dependency-free validator целостности и safety-инвариантов Harness.
+"""Главный dependency-free validator целостности AI Development Harness.
 
-Этот скрипт запускается локально и в Harness Integrity CI. Он проверяет именно
-protocol/repository hygiene, а не product-specific tests. Поэтому реализация
-опирается только на Python stdlib и Git CLI: validator должен работать сразу
-после checkout template, до установки зависимостей будущего проекта.
+Назначение
+----------
+Проверяет protocol/repository invariants Harness до product-specific tooling.
+Validator должен работать сразу после checkout, поэтому использует только Python
+stdlib и Git CLI.
 
-Подход fail-closed: если обязательный protocol artifact, schema, runtime binding,
-command surface или ownership rule повреждены, Harness считается невалидным.
-Большинство проверок собирают ошибки в общий список, чтобы один запуск показывал
-максимум проблем вместо цикла «исправил одну — запусти снова».
+Режимы
+------
+- manual: обычная диагностика; целостный migration-pending legacy state может
+  быть warning, чтобы разрешить PROJECT RECONCILE;
+- commit: строгий pre-commit gate;
+- ci: строгий Harness Integrity gate.
+
+Fail-closed contract
+--------------------
+Повреждённый bootstrap config, недоступный Git index или невозможность доказать
+обязательный safety invariant не подменяются filesystem guessing/partial PASS.
+
+Exit codes
+----------
+- 0: PASS;
+- 1: deterministic validation failures;
+- 2: BLOCKED/bootstrap failure.
+
+Большинство независимых checks агрегируют ошибки, чтобы один запуск показывал
+максимум drift, но malformed bootstrap/policy boundaries прекращают выполнение
+раньше, потому что дальнейшим значениям уже нельзя доверять.
 """
 from __future__ import annotations
 
@@ -83,7 +101,12 @@ def load_toml(path: Path) -> dict:
 
 
 def validate_harness_policy_schema(policy: dict, errors: list[str]) -> None:
-    """Fail-closed schema boundary для .harness/harness-policy.toml."""
+    """Проверить exact schema .harness/harness-policy.toml.
+
+    Unknown key блокируется специально: safety knob с опечаткой не должен
+    молча отключать целый класс проверок. Также обязательны все arrays/booleans,
+    которые main() использует ниже.
+    """
     allowed = {
         "version",
         "required_files",
@@ -149,7 +172,9 @@ def validate_harness_policy_schema(policy: dict, errors: list[str]) -> None:
         )
 
 
-# Получить точный список tracked paths из Git index. Проверки secrets/local-only применяются именно к тому, что реально может попасть в commit.
+# Tracked surface берётся только из Git index. Filesystem crawl здесь опасен:
+# ignored/vendor/generated файл не должен неожиданно стать частью Harness
+# contract, а untracked secret не равен уже отслеживаемому repository state.
 def tracked_files(root: Path) -> tuple[list[str], str | None]:
     code, out = run_git(root, "ls-files", "-z")
     if code != 0:
@@ -285,7 +310,12 @@ def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
 
 
 
-# Проверить Harness update graph: schema, monotonic transitions, отсутствие cycles/ambiguity и достижимость latest.
+# ---------------------------------------------------------------------------
+# Update graph validator.
+# Проверяет не только JSON schema, но и route semantics: strict forward SemVer,
+# один outgoing edge, отсутствие cycles, reachability latest и согласованность
+# latest с manifest release.
+# ---------------------------------------------------------------------------
 def validate_update_graph(root: Path, errors: list[str]) -> None:
     try:
         policy = load_update_policy(root)
@@ -407,7 +437,12 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
 
 
 
-# Запустить полный набор integrity checks, вывести все найденные ошибки и вернуть стабильный exit code для CI.
+# ---------------------------------------------------------------------------
+# Главный orchestration flow validator-а.
+# Порядок намеренно идёт от bootstrap/config boundaries к project/document/Git
+# checks: downstream validator нельзя запускать на config, которому уже нельзя
+# доверять.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["ci", "commit", "manual"], default="manual")

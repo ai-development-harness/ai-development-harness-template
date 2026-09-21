@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """Детерминированные planning contracts, fingerprints и lifecycle gates.
 
-Semantic reasoning остаётся за независимыми model review, но всё, что можно
-доказать schema/parser/hash/graph traversal, проверяется здесь до вызова модели.
-Новые active project documents используют versioned YAML frontmatter schema=1.
+Модуль проверяет всё, что можно доказать без LLM: schema, refs, dependency graph,
+completion proofs, OQ blockers, architecture refs, planning fingerprints и
+durable semantic review links.
+
+Semantic непротиворечивость плана остаётся за независимым planning-review, но
+static gate не позволяет вызвать этот review на заведомо повреждённом contract.
+
+Ключевые safety invariants:
+- completion не выводится только из mutable status;
+- Ready требует fresh context_basis + content_hash + matching PASS review;
+- dependency proof и open OQ учитываются до IMPLEMENT;
+- stale/invalid refs не заменяются предположениями;
+- legacy active docs допускаются только явным migration compatibility flow.
 """
 from __future__ import annotations
 
@@ -257,6 +267,12 @@ def _evidence_present(task: dict[str, Any]) -> bool:
     return bool(value and value not in {"—", "-"} and not has_unresolved_placeholder(value))
 
 
+# ---------------------------------------------------------------------------
+# Completion proof.
+# Статус STEP сам по себе недостаточен. Proof зависит от type и может включать
+# Evidence, immutable PASS review или accepted ADR. Результат fingerprint-ится,
+# чтобы dependent planning basis менялся при изменении доказательства.
+# ---------------------------------------------------------------------------
 def step_completion_proof(
     root: Path,
     step_id: str,
@@ -390,6 +406,7 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
 
 
 def planning_context_basis(root: Path, step_id: str) -> str:
+    """Hash exact planning context, от которого зависит корректность плана."""
     return stable_hash(planning_context_snapshot(root, step_id))
 
 
@@ -440,6 +457,11 @@ def _validate_semantic_review_sections(
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Durable planning-review validator.
+# Report доказывает semantic review exact pair context_basis + plan_content_hash.
+# Старый PASS не переносится на изменившийся contract или изменённый plan text.
+# ---------------------------------------------------------------------------
 def validate_planning_review_report(
     root: Path,
     path: Path,
@@ -520,6 +542,11 @@ def latest_matching_planning_review(root: Path, step_id: str) -> dict[str, Any] 
     )
 
 
+# ---------------------------------------------------------------------------
+# Durable PROJECT INIT semantic-review validator.
+# Stage-specific basis связывает PASS requirements/roadmap review с точным
+# candidate project state.
+# ---------------------------------------------------------------------------
 def validate_init_review_report(
     root: Path,
     path: Path,
@@ -581,6 +608,11 @@ def _validate_semantic_review_reports(root: Path, errors: list[str]) -> None:
                 errors.append(f"init-review: {path.relative_to(root)}: {issue}")
 
 
+# ---------------------------------------------------------------------------
+# STEP validator.
+# Проверяет schema/sections/refs/risk/mutation policy и отдельно усиливает
+# требования для plan.status=ready.
+# ---------------------------------------------------------------------------
 def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[str], warnings: list[str] | None) -> None:
     prefix = f"planning: {step_id}"
     for issue in require_schema(task):
@@ -738,6 +770,8 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
                     )
 
 
+# Open Question validator: ID/status/affects targets и обязательные sections.
+# PROJECT и конкретные STEP/REQ/ADR — единственные допустимые blocker targets.
 def _validate_open_questions(root: Path, errors: list[str]) -> None:
     known_steps = {
         path.stem for path in task_directory(root).glob("STEP-*.md")
@@ -798,6 +832,11 @@ def _validate_open_questions(root: Path, errors: list[str]) -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Главный planning aggregator.
+# Сканирует STEP files, проверяет каждый contract, затем dependency cycles, OQ
+# и semantic review history. allow_legacy используется только migration flow.
+# ---------------------------------------------------------------------------
 def validate_planning_contracts(
     root: Path,
     *,

@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
-"""Общий parser machine-readable Markdown документов Harness.
+"""Низкоуровневый parser/validator machine-readable Markdown Harness.
 
-Новые active contracts и durable reports используют YAML frontmatter schema=1.
-Исторические legacy reports можно читать отдельно, но новые mutations обязаны
-работать только с versioned schema. Только stdlib.
+Модуль задаёт единый syntax contract для schema-v1 active documents и durable
+reports. Более высокоуровневые validators не должны реализовывать собственный
+YAML/Markdown parser: иначе одинаковый artifact мог бы PASS в одном месте и
+FAIL в другом.
+
+Основные обязанности:
+- ограниченный YAML frontmatter через harness_config.parse_yaml_subset;
+- H1/## section parsing и duplicate detection;
+- common schema/kind/required-section checks;
+- stable/content hashes;
+- canonical durable timestamp identity;
+- crash-safe atomic UTF-8 writes.
+
+Legacy document без frontmatter разрешён только caller-у, который явно передал
+require_frontmatter=False. Новые mutations обязаны использовать schema=1.
 """
 from __future__ import annotations
 
@@ -49,9 +61,18 @@ UNRESOLVED_LINE_RE = re.compile(
 
 
 class DocumentError(ValueError):
-    """Невалидный machine-readable Harness document."""
+    """Ошибка parsing/contract boundary machine-readable Markdown.
+
+    Caller должен трактовать её как invalid/blocked artifact, а не как пустой
+    документ. Это ключевой fail-closed invariant всех document validators.
+    """
 
 
+# ---------------------------------------------------------------------------
+# Canonicalization и hashes.
+# Нормализация убирает только внешние пустые строки и trailing whitespace,
+# сохраняя смысловое содержимое. Hashes используются как durable fingerprints.
+# ---------------------------------------------------------------------------
 def normalize_text(value: str) -> str:
     lines = [line.rstrip() for line in value.replace("\r\n", "\n").split("\n")]
     while lines and not lines[0].strip():
@@ -65,6 +86,11 @@ def content_hash(value: str) -> str:
     return "sha256:" + hashlib.sha256(normalize_text(value).encode("utf-8")).hexdigest()
 
 
+# ---------------------------------------------------------------------------
+# Durable report identity.
+# Filename и created_at вычисляются из одного logical UTC instant. Если second
+# уже занят, выбирается следующий свободный second — без overwrite/suffix.
+# ---------------------------------------------------------------------------
 def durable_report_timestamp(
     prefix: str,
     *,
@@ -169,6 +195,10 @@ def atomic_write_text(path: Path, content: str) -> None:
             tmp.unlink(missing_ok=True)
 
 
+# ---------------------------------------------------------------------------
+# Markdown parsing pipeline:
+# split_frontmatter -> parse_sections -> parse_document -> higher-level checks.
+# ---------------------------------------------------------------------------
 def split_frontmatter(text: str) -> tuple[dict[str, Any] | None, str]:
     normalized = text.replace("\r\n", "\n")
     if not normalized.startswith("---\n"):
@@ -211,6 +241,11 @@ def first_h1(body: str) -> str:
 
 
 def parse_document(path: Path, *, require_frontmatter: bool = True) -> dict[str, Any]:
+    """Прочитать UTF-8 Markdown и вернуть единое parsed representation.
+
+    require_frontmatter=True — canonical mode. Legacy text без schema допустим
+    только migration/compatibility caller-ам, которые явно отключают требование.
+    """
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -231,6 +266,10 @@ def parse_document(path: Path, *, require_frontmatter: bool = True) -> dict[str,
     }
 
 
+# ---------------------------------------------------------------------------
+# Reusable validation primitives. Они не выбрасывают exception за обычный
+# contract drift, а возвращают список ошибок для агрегирующих validators.
+# ---------------------------------------------------------------------------
 def require_schema(document: dict[str, Any], *, kind: str | None = None) -> list[str]:
     errors: list[str] = []
     meta = document["frontmatter"]

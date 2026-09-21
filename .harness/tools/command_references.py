@@ -44,6 +44,11 @@ class DeprecatedCommandFinding:
     excerpt: str
 
 
+# ---------------------------------------------------------------------------
+# Closed mapping legacy syntax -> canonical syntax.
+# Pattern должен быть достаточно узким, чтобы не ловить обычную prose, но
+# достаточно широким для реально существовавших pre-namespace команд.
+# ---------------------------------------------------------------------------
 DEPRECATED_COMMAND_PATTERNS: tuple[DeprecatedCommandPattern, ...] = (
     DeprecatedCommandPattern(re.compile(r"\bINIT PROJECT\b"), "INIT PROJECT", "PROJECT INIT"),
     DeprecatedCommandPattern(re.compile(r"\bADD STEP(?=[:\s])"), "ADD STEP", "STEP ADD:"),
@@ -71,7 +76,11 @@ DEPRECATED_COMMAND_PATTERNS: tuple[DeprecatedCommandPattern, ...] = (
 
 
 def find_deprecated_commands(text: str) -> list[tuple[DeprecatedCommandPattern, re.Match[str]]]:
-    """Вернуть все legacy command matches в порядке появления."""
+    """Вернуть все legacy command matches в порядке появления.
+
+    Функция ничего не знает о path/history и не решает, допустим ли match как
+    исторический пример. Она только детерминированно распознаёт syntax.
+    """
     matches: list[tuple[DeprecatedCommandPattern, re.Match[str]]] = []
     for spec in DEPRECATED_COMMAND_PATTERNS:
         matches.extend((spec, match) for match in spec.pattern.finditer(text))
@@ -80,7 +89,11 @@ def find_deprecated_commands(text: str) -> list[tuple[DeprecatedCommandPattern, 
 
 
 def scan_files(root: Path, paths: Iterable[Path]) -> list[DeprecatedCommandFinding]:
-    """Просканировать UTF-8 text files и вернуть findings с точными line numbers."""
+    """Просканировать UTF-8 text files и вернуть line-addressable findings.
+
+    Duplicate paths дедуплицируются. Ошибка чтения любого файла блокирует весь
+    scan, потому что частичный scope создавал бы ложный PASS.
+    """
     findings: list[DeprecatedCommandFinding] = []
     seen: set[Path] = set()
     for path in paths:
@@ -112,7 +125,11 @@ def scan_files(root: Path, paths: Iterable[Path]) -> list[DeprecatedCommandFindi
 
 
 def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
-    """Вернуть configured live project paths через единый config layer."""
+    """Разрешить manifest-controlled live paths через единый config layer.
+
+    Любая ошибка config/path containment переводится в RuntimeError для
+    публичного checker-а, который затем вернёт BLOCKED.
+    """
     try:
         project_paths = [
             project_overview_path(root),
@@ -131,6 +148,11 @@ def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
 
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
+
+    Scope намеренно строится из manifest + live subsystem docs. Immutable
+    canonical ADR history исключается только точечно по lexical identity, а не
+    blanket-ignore всей configured ADR directory.
+
 
     Primary project paths, Open Questions и taskDirectory берутся через единый
     manifest config layer. Source path может быть файлом или каталогом. Дополнительно
