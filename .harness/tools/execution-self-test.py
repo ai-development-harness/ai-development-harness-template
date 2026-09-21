@@ -284,6 +284,27 @@ def main() -> int:
         run(root, "git", "add", ".")
         run(root, "git", "commit", "-qm", "fixture")
 
+        # Configurable reviewDirectory не может исключить произвольный subtree
+        # из reviewed revision. Старое blanket-exclusion поведение для docs
+        # скрывало бы изменение architecture.md.
+        original_manifest = (root / ".harness/manifest.yaml").read_text(encoding="utf-8")
+        write(
+            root / ".harness/manifest.yaml",
+            original_manifest.replace(
+                "reviewDirectory: planning/reviews",
+                "reviewDirectory: docs",
+            ),
+        )
+        run(root, "git", "add", ".harness/manifest.yaml")
+        run(root, "git", "commit", "-qm", "fixture custom review directory")
+        write(root / "docs/architecture.md", "# Architecture\n\nChanged product architecture.\n")
+        broad_review_revision = repository_revision(root)
+        assert broad_review_revision["worktree_hash"] is not None, broad_review_revision
+        run(root, "git", "checkout", "--", "docs/architecture.md")
+        write(root / ".harness/manifest.yaml", original_manifest)
+        run(root, "git", "add", ".harness/manifest.yaml")
+        run(root, "git", "commit", "-qm", "restore review directory")
+
         # Create durable planning-review matching the draft plan, then stamp Ready.
         basis = planning_context_basis(root, "STEP-001")
         phash = plan_content_hash(root, "STEP-001")
