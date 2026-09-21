@@ -300,6 +300,8 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
     verdict = meta.get("verdict")
     if verdict not in REVIEW_VERDICTS:
         errors.append("verdict must be pass|fail|blocked")
+    if meta.get("reviewer_role") != "reviewer":
+        errors.append("reviewer_role must be reviewer")
 
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):
@@ -374,14 +376,18 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
             if status not in SPECIALIZED_STATUSES:
                 errors.append(f"specialized_reviews.{kind} has invalid status")
                 continue
-            report = specialized.get(f"{kind}_report")
+            evidence = specialized.get(f"{kind}_evidence")
             reason = specialized.get(f"{kind}_reason")
             if kind in required_set and status == "not_required":
                 errors.append(f"{kind} reviewer is marked required but not_required")
             if status == "not_required" and (not isinstance(reason, str) or not reason.strip()):
                 errors.append(f"{kind} not_required requires reason")
-            if status != "not_required" and (not isinstance(report, str) or not report.strip()):
-                errors.append(f"{kind} review status {status} requires report reference")
+            if status != "not_required" and (
+                not isinstance(evidence, str) or not evidence.strip()
+            ):
+                errors.append(
+                    f"{kind} review status {status} requires evidence summary/reference"
+                )
 
         # Только current-review gate можно честно пересчитать по factual worktree.
         # Historical reports проверяются по сохранённому gate proof, иначе будущий

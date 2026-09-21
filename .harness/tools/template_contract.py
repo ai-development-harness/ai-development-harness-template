@@ -228,10 +228,10 @@ specialized_reviews:
   gate_basis: sha256:...
   required: []
   security: not_required
-  security_report: null
+  security_evidence: null
   security_reason: no_security_surface
   tests: not_required
-  tests_report: null
+  tests_evidence: null
   tests_reason: no_test_surface
 ---
 
