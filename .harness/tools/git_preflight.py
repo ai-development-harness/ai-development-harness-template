@@ -190,15 +190,14 @@ def policy(root: Path) -> dict[str, Any]:
         branch,
         {
             "protected", "when_on_protected", "allow_initial_commit_on_protected",
-            "default_base", "reuse_current_non_protected", "name_pattern",
-            "slug_max_length", "prefixes",
+            "name_pattern", "slug_max_length", "prefixes",
         },
         section="branch",
     )
     _exact_keys(
         push,
         {
-            "remote", "set_upstream", "fetch_before_push", "if_remote_ahead",
+            "remote", "set_upstream", "fetch_before_push",
             "force", "push_tags", "allow_protected",
             "allow_initial_push_to_protected", "require_harness_validation",
             "require_clean_worktree",
@@ -221,8 +220,8 @@ def policy(root: Path) -> dict[str, Any]:
         raise GitPreflightError("INVALID_GIT_POLICY", "unsupported commit.stage_mode")
     if branch.get("when_on_protected") not in {"auto-create", "stay", "block"}:
         raise GitPreflightError("INVALID_GIT_POLICY", "unsupported branch.when_on_protected")
-    if push.get("if_remote_ahead") not in {"block", "allow"} or push.get("force") != "never":
-        raise GitPreflightError("INVALID_GIT_POLICY", "unsafe/unsupported push policy")
+    if push.get("force") != "never":
+        raise GitPreflightError("INVALID_GIT_POLICY", "push.force must be never")
     if pr.get("after_push") not in {"never", "ask", "create-if-missing"}:
         raise GitPreflightError("INVALID_GIT_POLICY", "unsupported pull_request.after_push")
     if sync.get("mode") not in {"report", "ff-only"}:
@@ -233,8 +232,11 @@ def policy(root: Path) -> dict[str, Any]:
         "include_verification", "include_traceability", "allow_empty", "sign",
     ):
         _bool(commit, key, section="commit")
-    for key in ("allow_initial_commit_on_protected", "reuse_current_non_protected"):
-        _bool(branch, key, section="branch")
+    _bool(
+        branch,
+        "allow_initial_commit_on_protected",
+        section="branch",
+    )
     for key in (
         "set_upstream", "fetch_before_push", "push_tags", "allow_protected",
         "allow_initial_push_to_protected", "require_harness_validation",
@@ -263,8 +265,7 @@ def policy(root: Path) -> dict[str, Any]:
         for k, v in prefixes.items()
     ):
         raise GitPreflightError("INVALID_GIT_POLICY", "branch.prefixes must exactly match commit.types")
-    for key in ("default_base", "name_pattern"):
-        _text(branch, key, section="branch")
+    _text(branch, "name_pattern", section="branch")
     name_pattern = branch["name_pattern"]
     if "{prefix}" not in name_pattern or "{slug}" not in name_pattern:
         raise GitPreflightError(
@@ -520,10 +521,10 @@ def push_preflight(root: Path) -> dict[str, Any]:
     behind = None
     if relation is not None:
         ahead, behind = relation
-        if behind > 0 and push["if_remote_ahead"] == "block":
+        if behind > 0:
             raise GitPreflightError(
                 "REMOTE_AHEAD",
-                f"{remote}/{branch} contains {behind} commit(s) not in local HEAD",
+                f"{remote}/{branch} contains {behind} commit(s) not in local HEAD; non-force PUSH is blocked",
             )
 
     args = ["git", "push"]

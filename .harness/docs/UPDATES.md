@@ -83,7 +83,7 @@ Moving default branch не является BASE/THEIRS content source. Файл
 python3 .harness/tools/harness-update.py check [--to vX.Y.Z] --json
 ```
 
-Tool читает current policy/lock, remote routing graph, разрешает exact target, доказывает route, проверяет **Git tags** и моделирует ownership/merge до ближайшей reload boundary. Результат содержит blockers, introduced/retired/reclassified paths, `checkedThrough` и `reloadBoundary`.
+Tool читает current policy/lock, remote routing graph, разрешает exact target, доказывает route, проверяет **Git tags** и сначала доказывает, что текущие `harness_owned` files/modes точно соответствуют pinned BASE из lock. Затем моделируется ownership/merge до ближайшей reload boundary. Даже при пустом route CHECK не возвращает PASS, если current Harness drifted. Результат содержит blockers, introduced/retired/reclassified paths, `checkedThrough`, `reloadBoundary` и current-release verification.
 
 CHECK не меняет working tree, Git refs, lock, project documents, commit/push/PR. `BLOCKED` нельзя обходить ручным копированием release files.
 
@@ -97,7 +97,7 @@ Mutation выполняется deterministic engine:
 python3 .harness/tools/harness-update.py apply [--to vX.Y.Z] --json
 ```
 
-Engine перед первой записью сам повторно проверяет current Harness и делает read-only preflight. Route применяется hop-by-hop; каждый hop имеет rollback boundary, а lock обновляется внутри транзакции и считается продвинутым только после PASS target validator. Предыдущий chat/CHECK не является заменой fresh machine preflight.
+Engine перед первой записью сам повторно проверяет validator, exact current-release integrity и делает read-only preflight. `NO_UPDATE` допустим только после этих проверок. Route применяется hop-by-hop; каждый hop имеет rollback boundary, а lock обновляется внутри транзакции и считается продвинутым только после PASS target validator. Предыдущий chat/CHECK не является заменой fresh machine preflight.
 
 `reloadRequired=true`:
 
@@ -226,6 +226,8 @@ Canonical current definitions поставляются Harness control plane, а
 
 После успешного hop/final route report создаётся в configured `state.report_directory` с machine-readable YAML frontmatter `schema: 1`.
 
+Canonical имя — строго `UPDATE-<UTC timestamp>.md`; `created_at` обязан обозначать тот же whole-second UTC instant. UPDATE reports входят в immutable durable history: существующий report нельзя переписать/удалить/rename. Если текущая UTC-секунда уже занята, writer выбирает следующий свободный whole-second timestamp; альтернативных suffix-форматов нет.
+
 Report фиксирует:
 
 - initial release;
@@ -256,6 +258,19 @@ Baseline должен совпадать с current manifest release. Новый
 Legacy updater relocation переносил control plane в `.harness/**`; после успешного relocation dual-layout не восстанавливается.
 
 Compatibility endpoint `.project/harness-update-graph.json` существует только для discovery старых updater-ов и является исторической bootstrap границей. Current updater после relocation использует configured current policy/update manifest.
+
+## First deterministic-updater bridge after v0.5.3
+
+Published `v0.5.3` ещё не содержит deterministic `.harness/tools/harness-update.py`. Поэтому **первый release после v0.5.3** обязан добавить edge:
+
+- `from = v0.5.3`;
+- `kind = bridge`;
+- `reloadRequired = true`;
+- непустой `reason`.
+
+Этот edge устанавливает новый deterministic updater, завершает текущий legacy run и требует reload перед любыми следующими hops. `update-migration-self-test.py` содержит one-time release gate: как только graph `latest` станет новее `v0.5.3`, CI не пропустит release без такого bridge.
+
+Target tag не добавляется в graph заранее: release metadata публикуется вместе с реально существующим immutable tag, чтобы `latest` никогда не указывал на отсутствующий release.
 
 ## Release metadata consistency
 

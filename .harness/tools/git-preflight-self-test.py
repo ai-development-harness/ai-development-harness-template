@@ -60,8 +60,6 @@ fix = "fix"
 protected = ["main"]
 when_on_protected = "auto-create"
 allow_initial_commit_on_protected = true
-default_base = "main"
-reuse_current_non_protected = true
 name_pattern = "{prefix}/{slug}"
 slug_max_length = 32
 
@@ -73,7 +71,6 @@ fix = "bugfix"
 remote = "origin"
 set_upstream = true
 fetch_before_push = true
-if_remote_ahead = "block"
 force = "never"
 push_tags = false
 allow_protected = false

@@ -73,6 +73,26 @@ def test_policy_driven_paths(root: Path) -> None:
     require(update_report_directory(root) == root / policy["state"]["report_directory"], "report_directory config ignored")
 
 
+def require_post_v053_bridge(graph: dict) -> None:
+    """Первый release с deterministic updater обязан перезагрузить runtime."""
+    latest_tuple = tuple(int(part) for part in graph["latest"].removeprefix("v").split("."))
+    if latest_tuple <= (0, 5, 3):
+        return
+    bootstrap = next(
+        (edge for edge in graph["transitions"] if edge["from"] == "v0.5.3"),
+        None,
+    )
+    require(bootstrap is not None, "first deterministic-updater bridge from v0.5.3 is missing")
+    require(
+        bootstrap["kind"] == "bridge" and bootstrap["reloadRequired"] is True,
+        "first release after v0.5.3 must be bridge + reloadRequired=true",
+    )
+    require(
+        isinstance(bootstrap.get("reason"), str) and bootstrap["reason"].strip(),
+        "v0.5.3 deterministic-updater bridge requires reason",
+    )
+
+
 def test_routing(root: Path) -> None:
     canonical = load_json(update_manifest_path(root))
     legacy = load_json(root / ".project/harness-update-graph.json")
@@ -84,6 +104,29 @@ def test_routing(root: Path) -> None:
     require(bridge["kind"] == "bridge" and bridge["reloadRequired"] is True, "v0.4.2 bridge contract changed")
     relocation = next(edge for edge in edges if edge["from"] == "v0.4.2")
     require(relocation["reloadRequired"] is True, "bootstrap relocation must require reload")
+
+    # Canonical graph пока может завершаться на v0.5.3, но gate уже
+    # исполняется на synthetic будущей публикации и ловит неверный bridge.
+    require_post_v053_bridge(canonical)
+    synthetic = json.loads(json.dumps(canonical))
+    synthetic["latest"] = "v0.6.0"
+    synthetic["transitions"].append(
+        {
+            "from": "v0.5.3",
+            "to": "v0.6.0",
+            "kind": "bridge",
+            "reloadRequired": True,
+            "reason": "install deterministic updater and reload runtime",
+        }
+    )
+    require_post_v053_bridge(synthetic)
+    synthetic["transitions"][-1]["reloadRequired"] = False
+    try:
+        require_post_v053_bridge(synthetic)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("post-v0.5.3 release gate accepted non-reload bridge")
 
 
 def test_ownership_contract(root: Path) -> None:
@@ -344,6 +387,10 @@ def test_project_owned_migration() -> None:
         root = Path(tmp)
         (root / ".harness").mkdir(parents=True)
         (root / ".harness/manifest.yaml").write_text(synthetic_manifest(), encoding="utf-8")
+        (root / ".harness/harness-update.toml").write_text(
+            '[state]\nreport_directory = "planning/harness-updates"\n',
+            encoding="utf-8",
+        )
         (root / "docs/PROJECT.md").parent.mkdir(parents=True)
         (root / "docs/PROJECT.md").write_text("# Project\n", encoding="utf-8")
         (root / "docs/architecture.md").write_text("# Architecture\n", encoding="utf-8")

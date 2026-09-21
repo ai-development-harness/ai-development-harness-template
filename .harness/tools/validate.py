@@ -82,6 +82,73 @@ def load_toml(path: Path) -> dict:
 
 
 
+def validate_harness_policy_schema(policy: dict, errors: list[str]) -> None:
+    """Fail-closed schema boundary для .harness/harness-policy.toml."""
+    allowed = {
+        "version",
+        "required_files",
+        "required_skills",
+        "required_agents",
+        "required_commands",
+        "forbidden_tracked_globs",
+        "allowed_tracked_globs",
+        "format_paths",
+        "documented_config_globs",
+        "check_config_parameter_comments",
+        "check_config_parameter_examples",
+        "max_tracked_file_size_mb",
+        "check_utf8",
+        "check_final_newline",
+        "check_trailing_whitespace",
+        "check_private_key_material",
+        "check_merge_markers",
+    }
+    unexpected = sorted(set(policy) - allowed)
+    if unexpected:
+        errors.append(
+            "harness-policy: unsupported settings: " + ", ".join(unexpected)
+        )
+
+    if policy.get("version") != 1:
+        errors.append("harness-policy: version must be 1")
+
+    list_keys = (
+        "required_files",
+        "required_skills",
+        "required_agents",
+        "required_commands",
+        "forbidden_tracked_globs",
+        "allowed_tracked_globs",
+        "format_paths",
+        "documented_config_globs",
+    )
+    for key in list_keys:
+        value = policy.get(key)
+        if not isinstance(value, list) or not all(
+            isinstance(item, str) and item.strip() for item in value
+        ):
+            errors.append(f"harness-policy: {key} must be a string array")
+
+    bool_keys = (
+        "check_config_parameter_comments",
+        "check_config_parameter_examples",
+        "check_utf8",
+        "check_final_newline",
+        "check_trailing_whitespace",
+        "check_private_key_material",
+        "check_merge_markers",
+    )
+    for key in bool_keys:
+        if not isinstance(policy.get(key), bool):
+            errors.append(f"harness-policy: {key} must be boolean")
+
+    size = policy.get("max_tracked_file_size_mb")
+    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+        errors.append(
+            "harness-policy: max_tracked_file_size_mb must be a positive integer"
+        )
+
+
 # Получить точный список tracked paths из Git index. Проверки secrets/local-only применяются именно к тому, что реально может попасть в commit.
 def tracked_files(root: Path) -> tuple[list[str], str | None]:
     code, out = run_git(root, "ls-files", "-z")
@@ -383,21 +450,17 @@ def main() -> int:
     validate_update_graph(root, errors)
 
     # Semantics harness-policy должны быть валидны до того, как значения policy
-    # начнут использоваться в остальных проверках.
-    max_tracked_file_size_mb = policy.get("max_tracked_file_size_mb")
-    if isinstance(max_tracked_file_size_mb, bool) or not isinstance(max_tracked_file_size_mb, int) or max_tracked_file_size_mb <= 0:
-        errors.append("harness-policy: max_tracked_file_size_mb must be a positive integer")
-    for key in [
-        "check_utf8",
-        "check_final_newline",
-        "check_trailing_whitespace",
-        "check_private_key_material",
-        "check_merge_markers",
-        "check_config_parameter_comments",
-        "check_config_parameter_examples",
-    ]:
-        if not isinstance(policy.get(key), bool):
-            errors.append(f"harness-policy: {key} must be boolean")
+    # начнут использоваться в остальных проверках. Unknown/missing safety keys
+    # не могут молча отключить целый класс checks. Malformed policy не
+    # используется дальше даже ради накопления вторичных ошибок.
+    policy_errors: list[str] = []
+    validate_harness_policy_schema(policy, policy_errors)
+    if policy_errors:
+        print("HARNESS VALIDATION: FAIL")
+        for item in policy_errors:
+            print(f"  - {item}")
+        return 1
+    max_tracked_file_size_mb = policy["max_tracked_file_size_mb"]
 
     # --- Обязательные protocol artifacts ---------------------------------
     # Удаление любого required file означает, что repository больше не является
@@ -1010,13 +1073,11 @@ def main() -> int:
                 errors.append("git-policy: branch.protected must be a non-empty string array")
             if branch.get("when_on_protected") not in {"auto-create", "stay", "block"}:
                 errors.append("git-policy: invalid branch.when_on_protected")
-            for key in ["allow_initial_commit_on_protected", "reuse_current_non_protected"]:
-                if not isinstance(branch.get(key), bool):
-                    errors.append(f"git-policy: branch.{key} must be boolean")
-            for key in ["default_base", "name_pattern"]:
-                value = branch.get(key)
-                if not isinstance(value, str) or not value.strip():
-                    errors.append(f"git-policy: branch.{key} must be a non-empty string")
+            if not isinstance(branch.get("allow_initial_commit_on_protected"), bool):
+                errors.append("git-policy: branch.allow_initial_commit_on_protected must be boolean")
+            value = branch.get("name_pattern")
+            if not isinstance(value, str) or not value.strip():
+                errors.append("git-policy: branch.name_pattern must be a non-empty string")
             name_pattern = branch.get("name_pattern")
             if isinstance(name_pattern, str) and ("{prefix}" not in name_pattern or "{slug}" not in name_pattern):
                 errors.append("git-policy: branch.name_pattern must contain {prefix} and {slug}")
@@ -1037,8 +1098,6 @@ def main() -> int:
                 "protected",
                 "when_on_protected",
                 "allow_initial_commit_on_protected",
-                "default_base",
-                "reuse_current_non_protected",
                 "name_pattern",
                 "slug_max_length",
                 "prefixes",
@@ -1054,8 +1113,6 @@ def main() -> int:
             remote = push.get("remote")
             if not isinstance(remote, str) or not remote.strip():
                 errors.append("git-policy: push.remote must be a non-empty string")
-            if push.get("if_remote_ahead") not in {"block", "allow"}:
-                errors.append("git-policy: invalid push.if_remote_ahead")
             if push.get("force") != "never":
                 errors.append("git-policy: push.force must be never")
             for key in [
@@ -1073,7 +1130,6 @@ def main() -> int:
                 "remote",
                 "set_upstream",
                 "fetch_before_push",
-                "if_remote_ahead",
                 "force",
                 "push_tags",
                 "allow_protected",

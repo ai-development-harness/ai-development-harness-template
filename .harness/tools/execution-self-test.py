@@ -64,6 +64,7 @@ protocol:
   skillSearchDirectory: planning/skill-searches
 repository:
   gitPolicy: .harness/git-policy.toml
+  harnessUpdatePolicy: .harness/harness-update.toml
 """
 
 
@@ -299,6 +300,10 @@ def main() -> int:
             root / ".harness/git-policy.toml",
             '[push]\nremote = "publish"\n',
         )
+        write(
+            root / ".harness/harness-update.toml",
+            '[state]\nreport_directory = "planning/harness-updates"\n',
+        )
         shutil.copy2(source / ".harness/command-transitions.json", root / ".harness/command-transitions.json")
         write(root / "docs/requirements/REQ-001-execution.md", requirement())
         write(root / "docs/architecture.md", "# Architecture\n")
@@ -310,6 +315,20 @@ def main() -> int:
         write(root / ".gitignore", ".harness/local/\n")
         run(root, "git", "add", ".")
         run(root, "git", "commit", "-qm", "fixture")
+
+        # Harness UPDATE reports являются immutable durable history наравне с
+        # review/audit/release reports.
+        update_report = root / "planning/harness-updates/UPDATE-20260921T000000Z.md"
+        write(update_report, "immutable update report\n")
+        run(root, "git", "add", update_report.relative_to(root).as_posix())
+        run(root, "git", "commit", "-qm", "fixture update history")
+        write(update_report, "mutated update report\n")
+        immutable_errors = validate_review_immutability(root)
+        assert any(
+            "UPDATE-20260921T000000Z.md" in item
+            for item in immutable_errors
+        ), immutable_errors
+        run(root, "git", "checkout", "--", update_report.relative_to(root).as_posix())
 
         # Operational .harness/local/** не является частью reviewed revision
         # даже если такой path уже оказался tracked. Нормализация Git path не

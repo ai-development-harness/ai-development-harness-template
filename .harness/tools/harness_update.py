@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 import argparse
 import fnmatch
-import hashlib
 import json
 import os
 import re
@@ -23,6 +22,7 @@ import tempfile
 import tomllib
 from typing import Any, Iterable
 
+from document_contract import durable_report_timestamp
 from harness_config import (
     ConfigError,
     get,
@@ -235,6 +235,13 @@ class WorkingTree:
         if not target.exists() or target.is_symlink() or not target.is_file():
             return None
         return 0o755 if target.stat().st_mode & 0o111 else 0o644
+
+    def tracks_filemode(self) -> bool:
+        """Учитывает ли текущий Git filesystem executable-bit как diff."""
+        proc = self.git("config", "--bool", "core.filemode", check=False)
+        if proc.returncode != 0:
+            return True
+        return proc.stdout.decode("ascii", errors="ignore").strip().lower() != "false"
 
     def write_bytes(self, path: str, content: bytes | None, *, mode: int | None = None) -> None:
         target = self.root / path
@@ -560,6 +567,79 @@ def resolve_update(root: Path, target: str | None, source: GitSource) -> tuple[d
     return lock, route, policy
 
 
+def verify_current_release_state(
+    root: Path,
+    source: GitSource,
+    lock: dict[str, Any],
+) -> dict[str, Any]:
+    """Доказать, что Harness-owned OURS соответствует immutable release из lock.
+
+    Shared/marker_merge paths специально не сравниваются byte-for-byte: они
+    могут содержать разрешённые project modifications. Но Harness-owned слой
+    обязан быть exact BASE, иначе lock больше не описывает текущий protocol.
+    """
+    current = lock["source"]["ref"]
+    base_policy = _load_toml_text(
+        source.read_text(current, UPDATE_POLICY_PATH),
+        label=f"{current}:{UPDATE_POLICY_PATH}",
+    )
+    ownership = _ownership(base_policy)
+    if _classify(UPDATE_POLICY_PATH, ownership) != "harness_owned":
+        raise UpdateError(
+            "INVALID_UPDATE_POLICY",
+            f"{current} must classify {UPDATE_POLICY_PATH} as harness_owned",
+        )
+    entries = source.list_entries(current)
+    tree = WorkingTree(root)
+    tracked = tree.tracked()
+    concrete = _managed_paths(entries, ownership) | _managed_paths(tracked, ownership)
+    drift: list[str] = []
+    checked = 0
+    compare_modes = tree.tracks_filemode()
+
+    for path in sorted(concrete):
+        if _classify(path, ownership) != "harness_owned":
+            continue
+        checked += 1
+        base = source.read_bytes(current, path) if path in entries else MISSING
+        ours = tree.read_bytes(path)
+        base_mode = (
+            _source_permissions(entries.get(path), path=path, ref=current)
+            if path in entries
+            else None
+        )
+        ours_mode = tree.mode(path)
+
+        if base is MISSING and ours is not MISSING:
+            # До P1 historical policy ошибочно владела blanket
+            # ".agents/skills/**". Project/third-party skill, которого нет в
+            # immutable BASE, не должен превращаться в ложный release drift.
+            # Исключение действует только для exact legacy blanket pattern;
+            # современные concrete core-skill globs остаются строгими.
+            legacy_skill_blanket = ".agents/skills/**" in ownership["harness_owned"]
+            if legacy_skill_blanket and path.startswith(".agents/skills/"):
+                continue
+            drift.append(f"{path}: tracked Harness-owned path absent from pinned release")
+        elif base is not MISSING and ours is MISSING:
+            drift.append(f"{path}: pinned Harness-owned path is missing locally")
+        elif base != ours:
+            drift.append(f"{path}: content differs from pinned release")
+        elif compare_modes and base_mode != ours_mode:
+            drift.append(
+                f"{path}: file mode differs from pinned release "
+                f"({oct(ours_mode or 0)} != {oct(base_mode or 0)})"
+            )
+
+    if drift:
+        preview = "; ".join(drift[:8])
+        suffix = f"; +{len(drift) - 8} more" if len(drift) > 8 else ""
+        raise UpdateError(
+            "CURRENT_RELEASE_DRIFT",
+            f"current Harness-owned state does not match {current}: {preview}{suffix}",
+        )
+    return {"release": current, "checkedHarnessOwnedPaths": checked}
+
+
 def _local_untracked_collision(tree: WorkingTree, tracked: set[str], path: str) -> bool:
     target = tree.root / path
     if path in tracked or (not target.exists() and not target.is_symlink()):
@@ -775,11 +855,13 @@ def check_update(root: Path, *, target: str | None = None, source_url: str | Non
         # LEGACY_ADOPTION_REQUIRED, а не общий CURRENT_HARNESS_INVALID.
         lock, route, _ = resolve_update(root, target, source)
         _run_validator(root, phase="preflight")
+        current_state = verify_current_release_state(root, source, lock)
         resolved_target = target or (route[-1].target if route else lock["source"]["ref"])
         plans = _preflight_route(root, route, source)
         result = _plan_json(lock, resolved_target, plans)
         result["route"] = [lock["source"]["ref"]] + [hop.target for hop in route]
         result["checkedThrough"] = plans[-1].hop.target if plans else lock["source"]["ref"]
+        result["currentReleaseState"] = current_state
         return result
     finally:
         source.close()
@@ -839,20 +921,19 @@ def _run_validator(root: Path, *, phase: str) -> None:
         raise UpdateError(code, output or f"Harness validation failed during {phase}")
 
 
-def _report_name() -> str:
-    return datetime.now(timezone.utc).strftime("UPDATE-%Y%m%dT%H%M%SZ.md")
-
-
 def _write_report(root: Path, *, initial: str, target: str, applied: list[HopPlan], status: str) -> str:
     directory = update_report_directory(root)
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / _report_name()
+    report_name, created_at = durable_report_timestamp(
+        "UPDATE-",
+        directory=directory,
+    )
+    path = directory / report_name
     route = [initial] + [item.hop.target for item in applied]
     introduced = sorted({p for item in applied for p in item.introduced})
     retired = sorted({p for item in applied for p in item.retired})
     reclassified = sorted({p for item in applied for p in item.reclassified})
     reached = route[-1] if route else initial
-    created_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     route_yaml = "\n".join(f"  - {item}" for item in route)
     body = f"""---
 schema: 1
@@ -891,9 +972,6 @@ Reclassified:
 
 {'Reload runtime and repeat HARNESS UPDATE APPLY.' if status != 'UPDATED' else 'No update-specific follow-up.'}
 """
-    if path.exists():
-        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:12]
-        path = path.with_name(path.stem + f"-{digest}" + path.suffix)
     path.write_text(body, encoding="utf-8", newline="\n")
     return path.relative_to(root).as_posix()
 
@@ -913,10 +991,19 @@ def apply_update(root: Path, *, target: str | None = None, source_url: str | Non
         lock, route, _ = resolve_update(root, target, source)
         initial = lock["source"]["ref"]
         resolved_target = target or (route[-1].target if route else initial)
-        if not route:
-            return {"status": "NO_UPDATE", "current": initial, "resolvedTarget": resolved_target, "route": [initial]}
 
+        # Даже NO_UPDATE должен доказать, что lock действительно описывает
+        # текущий Harness-owned protocol layer.
         _run_validator(root, phase="preflight")
+        current_state = verify_current_release_state(root, source, lock)
+        if not route:
+            return {
+                "status": "NO_UPDATE",
+                "current": initial,
+                "resolvedTarget": resolved_target,
+                "route": [initial],
+                "currentReleaseState": current_state,
+            }
 
         # Read-only preflight до первой mutation. Если updater/reload boundary
         # встречается раньше final target, текущий runtime не делает вид, что

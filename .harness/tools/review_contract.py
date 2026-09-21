@@ -30,6 +30,7 @@ from harness_config import (
     release_directory,
     review_directory,
     skill_search_directory,
+    update_report_directory,
 )
 from planning_contract import read_task
 from review_gates import required_reviewers
@@ -685,6 +686,7 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
         (_configured_rel(root, audit_directory(root)), re.compile(r"^(?:MIGRATION|AUDIT)-.+\.md$")),
         (_configured_rel(root, release_directory(root)), re.compile(r"^RELEASE-.+\.md$")),
         (_configured_rel(root, skill_search_directory(root)), re.compile(r"^SKILL-SEARCH-.+\.md$")),
+        (_configured_rel(root, update_report_directory(root)), re.compile(r"^UPDATE-.+\.md$")),
     )
     for base, pattern in patterns:
         suffix = _under_git_path(rel, base)
@@ -719,6 +721,7 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
         audit_directory(root).relative_to(root).as_posix(),
         release_directory(root).relative_to(root).as_posix(),
         skill_search_directory(root).relative_to(root).as_posix(),
+        update_report_directory(root).relative_to(root).as_posix(),
     ]
 
     probes: list[tuple[str, tuple[str, ...]]] = [

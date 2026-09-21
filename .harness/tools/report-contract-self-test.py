@@ -2,14 +2,17 @@
 """Regression self-test durable operational report contracts."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 
+from document_contract import durable_report_timestamp
 from report_contract import (
     validate_all_operational_reports,
     validate_audit_report,
     validate_release_report,
     validate_skill_search_report,
+    validate_harness_update_report,
 )
 
 
@@ -26,6 +29,8 @@ protocol:
   auditDirectory: work/audits
   releaseDirectory: work/releases
   skillSearchDirectory: work/skill-searches
+repository:
+  harnessUpdatePolicy: .harness/harness-update.toml
 """
 
 
@@ -96,6 +101,39 @@ Build/test PASS.
 """
 
 
+def valid_update() -> str:
+    return """---
+schema: 1
+kind: harness_update
+initial_release: v1.0.0
+final_target: v1.1.0
+route:
+  - v1.0.0
+  - v1.1.0
+created_at: 2026-09-21T08:00:00Z
+result: success
+---
+
+# Harness Update — v1.0.0 → v1.1.0
+
+## Route
+
+v1.0.0 → v1.1.0
+
+## Managed path changes
+
+- none
+
+## Verification
+
+PASS.
+
+## Follow-up
+
+None.
+"""
+
+
 def valid_search(count: int = 1) -> str:
     candidate = """### #1 — docker-skill
 
@@ -145,16 +183,59 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-report-contract-") as tmp:
         root = Path(tmp)
         write(root / ".harness/manifest.yaml", manifest())
+        write(
+            root / ".harness/harness-update.toml",
+            """[state]
+report_directory = "work/harness-updates"
+""",
+        )
 
+        update = root / "work/harness-updates/UPDATE-20260921T080000Z.md"
         audit = root / "work/audits/AUDIT-20260921T080000Z.md"
         release = root / "work/releases/RELEASE-20260921T080000Z.md"
         search = root / "work/skill-searches/SKILL-SEARCH-20260921T080000Z.md"
+        write(update, valid_update())
         write(audit, valid_audit())
         write(release, valid_release())
         write(search, valid_search())
 
         errors = validate_all_operational_reports(root)
         assert not errors, errors
+
+        # Same-second durable collision не создаёт suffix-format и не
+        # перезаписывает history: выбирается следующий canonical UTC second.
+        collision_dir = root / "work/collision"
+        collision_dir.mkdir(parents=True, exist_ok=True)
+        fixed = datetime(2026, 9, 21, 8, 0, 0, tzinfo=timezone.utc)
+        first_name, first_created = durable_report_timestamp(
+            "UPDATE-",
+            directory=collision_dir,
+            now=fixed,
+        )
+        assert first_name == "UPDATE-20260921T080000Z.md", first_name
+        assert first_created == "2026-09-21T08:00:00Z", first_created
+        write(collision_dir / first_name, "occupied\n")
+        second_name, second_created = durable_report_timestamp(
+            "UPDATE-",
+            directory=collision_dir,
+            now=fixed,
+        )
+        assert second_name == "UPDATE-20260921T080001Z.md", second_name
+        assert second_created == "2026-09-21T08:00:01Z", second_created
+
+        write(
+            update,
+            valid_update().replace(
+                "created_at: 2026-09-21T08:00:00Z",
+                "created_at: 2026-09-21T08:00:01Z",
+            ),
+        )
+        update_errors = validate_harness_update_report(root, update)
+        assert any(
+            "created_at must match UTC timestamp encoded in filename" in item
+            for item in update_errors
+        ), update_errors
+        write(update, valid_update())
 
         write(search, valid_search(count=2))
         errors = validate_skill_search_report(root, search)

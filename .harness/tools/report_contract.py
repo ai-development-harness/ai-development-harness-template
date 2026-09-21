@@ -19,6 +19,7 @@ from harness_config import (
     release_directory,
     skill_search_directory,
     skill_search_max_results,
+    update_report_directory,
 )
 
 
@@ -28,6 +29,55 @@ def _require_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[
         value = document["sections"].get(name)
         if not isinstance(value, str) or not value.strip():
             errors.append(f"missing or empty section '## {name}'")
+    return errors
+
+
+def validate_harness_update_report(root: Path, path: Path) -> list[str]:
+    errors: list[str] = []
+    if path.is_symlink():
+        return ["durable Harness update report must not be a symlink"]
+    try:
+        document = parse_document(path)
+    except DocumentError as exc:
+        return [str(exc)]
+    meta = document["frontmatter"]
+
+    if meta.get("schema") != 1:
+        errors.append("schema must be 1")
+    if meta.get("kind") != "harness_update":
+        errors.append("kind must be harness_update")
+    for key in ("initial_release", "final_target"):
+        value = meta.get(key)
+        if not isinstance(value, str) or re.fullmatch(r"v\d+\.\d+\.\d+", value) is None:
+            errors.append(f"{key} must be vMAJOR.MINOR.PATCH")
+    route = meta.get("route")
+    if not isinstance(route, list) or not route or not all(
+        isinstance(item, str) and re.fullmatch(r"v\d+\.\d+\.\d+", item)
+        for item in route
+    ):
+        errors.append("route must be a non-empty release-tag list")
+    else:
+        if meta.get("initial_release") != route[0]:
+            errors.append("route must start with initial_release")
+        if meta.get("final_target") not in route and meta.get("result") == "success":
+            errors.append("successful route must reach final_target")
+    if meta.get("result") not in {"success", "reload_required"}:
+        errors.append("result must be success|reload_required")
+    errors.extend(
+        validate_report_timestamp_identity(
+            path,
+            prefix="UPDATE-",
+            created_at=meta.get("created_at"),
+        )
+    )
+    if not document.get("h1", "").startswith("# Harness Update — "):
+        errors.append("H1 must start with '# Harness Update — '")
+    errors.extend(
+        _require_sections(
+            document,
+            ("Route", "Managed path changes", "Verification", "Follow-up"),
+        )
+    )
     return errors
 
 
@@ -219,6 +269,19 @@ def validate_all_operational_reports(root: Path) -> list[str]:
     """Проверить все durable operational reports, кроме migration/reviews."""
     errors: list[str] = []
 
+    update_root = update_report_directory(root)
+    if update_root.is_dir():
+        for path in sorted(update_root.glob("*.md")):
+            if path.name in {"README.md", "TEMPLATE.md"}:
+                continue
+            if not path.name.startswith("UPDATE-"):
+                errors.append(
+                    f"update-report: unexpected durable artifact name: {path.relative_to(root)}"
+                )
+                continue
+            for issue in validate_harness_update_report(root, path):
+                errors.append(f"update-report: {path.relative_to(root)}: {issue}")
+
     audit_root = audit_directory(root)
     if audit_root.is_dir():
         for path in sorted(audit_root.glob("*.md")):
@@ -264,7 +327,7 @@ def validate_all_operational_reports(root: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--file")
-    parser.add_argument("--kind", choices=["audit", "release_check", "skill_search"])
+    parser.add_argument("--kind", choices=["audit", "release_check", "skill_search", "harness_update"])
     parser.add_argument("--all", action="store_true", dest="validate_all")
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args()
@@ -282,6 +345,7 @@ def main() -> int:
                 "audit": validate_audit_report,
                 "release_check": validate_release_report,
                 "skill_search": validate_skill_search_report,
+                "harness_update": validate_harness_update_report,
             }
             errors = validators[args.kind](root, path)
     else:

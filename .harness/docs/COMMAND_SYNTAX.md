@@ -258,7 +258,7 @@ STEP PLAN STEP-024 > IMPLEMENT > REVIEW
 HARNESS UPDATE CHECK [TO <tag>] > APPLY
 ```
 
-`APPLY` выполняется только после успешного matching CHECK для того же target и route.
+В chain `CHECK > APPLY` сегмент APPLY требует PASS matching CHECK для того же target/route. Standalone `HARNESS UPDATE APPLY [TO <tag>]` допустим и обязан выполнить fresh deterministic validation/preflight самостоятельно.
 
 ### Не поддерживаются
 

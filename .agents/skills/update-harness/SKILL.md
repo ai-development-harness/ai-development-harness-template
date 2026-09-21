@@ -26,7 +26,8 @@ python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
 2. Не меняй working tree, Git refs, lock, STEP/REQ/ADR.
 3. Покажи пользователю current release, resolved target, route, ближайший reload boundary и blockers.
 4. `BLOCKED` из engine является blocker. Не заменяй его догадкой или ручным merge.
-5. `PASS` означает, что engine доказал ownership/merge safety только до `checkedThrough`; при reload boundary последующие hops должен проверять уже новый updater после reload.
+5. До route-analysis engine доказывает exact current-release integrity для `harness_owned` files/modes относительно pinned BASE. `CURRENT_RELEASE_DRIFT` блокирует даже empty route.
+6. `PASS` означает, что current release доказан и engine проверил ownership/merge safety только до `checkedThrough`; при reload boundary последующие hops должен проверять уже новый updater после reload.
 
 Engine читает routing metadata из configured `source.update_manifest` на `source.default_branch`, но содержимое release берёт только из exact Git tags, matching `source.tag_pattern`.
 
@@ -35,7 +36,7 @@ Engine читает routing metadata из configured `source.update_manifest` н
 Для `HARNESS UPDATE APPLY`:
 
 1. Запусти deterministic `apply` с тем же optional `--to`.
-2. Engine сам выполняет fresh current validation и read-only preflight до mutation; не полагайся только на прошлый chat/check.
+2. Engine сам выполняет fresh validator, exact current-release verification и read-only preflight до mutation; не полагайся только на прошлый chat/check. `NO_UPDATE` также требует успешной current-release verification.
 3. Каждый hop применяется транзакционно:
    - managed paths меняются только по BASE/THEIRS ownership policy;
    - `harness_owned` требует чистый OURS относительно BASE;
@@ -88,6 +89,7 @@ Baseline обязан совпадать с current manifest release. Engine ф�
 - invalid update graph или route;
 - unsupported bootstrap update-policy topology change;
 - missing/moved release tag;
+- `CURRENT_RELEASE_DRIFT` для Harness-owned content/mode относительно pinned BASE;
 - local modification Harness-owned path;
 - 3-way conflict;
 - `NEW_MANAGED_PATH_COLLISION`;

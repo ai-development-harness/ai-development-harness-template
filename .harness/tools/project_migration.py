@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 import re
 from typing import Any
@@ -19,6 +18,7 @@ from document_contract import (
     STEP_ID_RE,
     atomic_write_text,
     content_hash,
+    durable_report_timestamp,
     render_document,
     split_frontmatter,
 )
@@ -61,10 +61,6 @@ RISK_FLAGS = {
     "architecture", "concurrency", "external-integration",
     "performance-critical", "release-critical",
 }
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _legacy_metadata(text: str) -> dict[str, str]:
@@ -546,8 +542,11 @@ def migrate_project(root: Path) -> dict[str, Any]:
 
     report_dir = audit_directory(root)
     report_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    report = report_dir / f"MIGRATION-{timestamp}.md"
+    report_name, created_at = durable_report_timestamp(
+        "MIGRATION-",
+        directory=report_dir,
+    )
+    report = report_dir / report_name
     body = "# Project Schema Migration\n\n## Changed artifacts\n\n"
     body += "\n".join(f"- {item}" for item in unique_changed) if unique_changed else "- none"
     body += (
@@ -562,7 +561,7 @@ def migrate_project(root: Path) -> dict[str, Any]:
     report_meta = {
         "schema": 1,
         "kind": "migration",
-        "created_at": _utc_now(),
+        "created_at": created_at,
         "result": "complete",
         "changed_count": len(unique_changed),
         "legacy_review_reports": [

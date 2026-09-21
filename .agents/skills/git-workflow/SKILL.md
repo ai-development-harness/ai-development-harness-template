@@ -85,7 +85,7 @@ Tool:
 - применяет `require_clean_worktree`;
 - проверяет protected branch / initial bootstrap exception;
 - считает exact ahead/behind относительно configured remote branch;
-- применяет `if_remote_ahead`;
+- блокирует remote-ahead состояние: при `force=never` безопасного автоматического push поверх неизвестных remote commits нет;
 - гарантирует `force=never`;
 - формирует `mutationPlan.argv` с `--set-upstream` / tag behavior согласно policy.
 
