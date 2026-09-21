@@ -1,47 +1,61 @@
 ---
 name: plan-step
-description: Produce and persist a concrete implementation plan for an existing STEP without changing production code.
+description: Produce, independently review, fingerprint and persist a concrete implementation plan for an existing STEP without changing production code.
 ---
 # plan-step
 
 Используй для `STEP PLAN STEP-NNN`.
 
-Execution Status для команды ведёт global command wrapper; skill не создаёт отдельный per-STEP state.
+Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
-## Phase A — Contract validation
+## Phase A — deterministic + semantic contract validation
 
-До написания Implementation plan восстанови task → hard dependencies → canonical REQ → Accepted ADR → architecture → blocking OPEN_QUESTIONS → relevant code/tests/config.
+1. Запусти:
+   ```bash
+   python3 .harness/tools/validate.py --mode manual
+   ```
+2. Восстанови STEP → type-specific dependency completion proofs → canonical REQ → Accepted ADR → explicit `architecture_refs` → relevant canonical OQ → code/tests/config.
+3. Проверь semantic consistency:
+   - Goal/Scope/Out of scope/Mutation policy согласованы;
+   - Acceptance следует из REQ/ADR и не требует forbidden mutation;
+   - Verification реально доказывает Acceptance;
+   - linked REQ совместимы;
+   - dependencies достаточны;
+   - ownership не конфликтует с соседними STEP;
+   - architecture prerequisite имеет explicit ref;
+   - OPEN OQ/TBD не блокирует решение.
+4. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
-Сначала выполни deterministic checks:
+## Phase B — draft implementation plan
 
-```bash
-python3 .harness/tools/validate.py --mode manual
-```
+1. Запиши содержательный `## Implementation plan`.
+2. Пока semantic planning-review не завершён, выставь `plan.status: draft`; не записывай Ready hashes вручную.
+3. Получи deterministic fingerprints:
+   ```bash
+   python3 .harness/tools/planning-state.py plan-context STEP-NNN
+   ```
+   `contextBasis` включает STEP contract, linked REQ/ADR, explicit architecture refs, relevant OQ и type-specific completion proof прямых dependencies. `planContentHash` отдельно fingerprint-ит сам Implementation plan.
 
-Затем проведи semantic consistency review. Для сложной задачи делегируй независимый read-only анализ `planner`. Обязательно проверь:
+## Phase C — обязательный independent planning-review
 
-- Goal не противоречит Scope/Out of scope;
-- Acceptance полностью следует из REQ/ADR и не требует запрещённой mutation;
-- Verification действительно способна доказать Acceptance;
-- linked REQ совместимы друг с другом и с Accepted ADR/architecture;
-- dependencies достаточны и не скрывают missing prerequisite;
-- текущий STEP не конфликтует по ownership с соседним roadmap STEP;
-- OPEN question/TBD не влияет на решение, которое требуется для реализации.
+Для **каждого** STEP PLAN выполни независимый semantic review планировщиком, даже для простого STEP. Создай immutable schema-v1 report в configured `protocol.planningReviewDirectory/STEP-NNN/` по template:
 
-Если найден contract conflict, missing decision/prerequisite, impossible acceptance или blocker — не создавай Ready plan и не запускай `stamp-plan`. Заверши PLAN как `BLOCKED` с конкретной причиной и предложенным RESEARCH/ADR/corrective STEP. Не исправляй продуктовый контракт догадкой.
+- `kind: planning_review`;
+- `step_id`;
+- `verdict: pass|blocked`;
+- точные `context_basis` и `plan_content_hash`;
+- reviewer role/timestamp.
 
-## Phase B — Implementation planning
+После любых правок plan/contract fingerprints пересчитай и старый report не переиспользуй.
 
-Только после PASS Phase A подготовь порядок реализации, impacted areas/files, data/API compatibility, tests, verification, risks/rollback. Root-agent сохраняет итог в `## Implementation plan`.
+## Phase D — Ready stamp
 
-После сохранения plan обязательно выполни:
+Только для matching PASS выполни:
 
 ```bash
 python3 .harness/tools/execution-state.py stamp-plan STEP-NNN
 ```
 
-`stamp-plan` детерминированно выставляет `Plan status: Ready`, увеличивает revision, записывает transitive `Plan basis: sha256:...` и timestamp. Basis включает STEP contract и upstream planning context (linked REQ/ADR, hard dependency contracts и architecture baseline), поэтому их изменение автоматически делает plan stale.
+`stamp-plan` сам откажет без matching PASS report и atomically запишет `plan.status=ready`, revision, context basis, content hash, reviewed report и timestamp.
 
-Если session оборвалась после `stamp-plan`, но до записи execution `complete`, resolver может признать PLAN завершённым по valid Plan basis и не повторять planning.
-
-Не ставь STEP `В работе` и не меняй production code.
+После изменения текста Implementation plan Ready автоматически становится stale по content hash. Изменение relevant upstream context делает stale context basis. Не ставь STEP `in_progress` и не меняй production code.
