@@ -324,18 +324,28 @@ Self-update protocol layer не является STEP.
 
 Git mutation выполняется только явными командами `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и по configured `repository.gitPolicy`.
 
-Перед `GIT COMMIT`/`GIT PUSH` обязательно:
+Safety-critical Git decision перед mutation принадлежит deterministic preflight:
 
-1. изучить branch/status/staged/unstaged/untracked;
-2. выполнить `python3 .harness/tools/validate.py --mode commit`;
-3. проверить diff на unrelated changes, secrets, local-only и generated мусор;
-4. соблюдать configured protected-branch/PR policy.
+```bash
+python3 .harness/tools/git-preflight.py check --json
+python3 .harness/tools/git-preflight.py commit --json --commit-type '<type>' --slug '<slug>'
+python3 .harness/tools/git-preflight.py push --json
+python3 .harness/tools/git-preflight.py pr --json
+python3 .harness/tools/git-preflight.py sync --json
+```
 
-`GIT COMMIT` не делает push. `GIT PUSH` не создаёт commit. Force-push, destructive reset/clean, automatic merge/rebase и amend запрещены без явного запроса пользователя.
+- Agent не переопределяет `PASS/BLOCKED`, protected branch, remote ahead/behind, publish state, PR base/tool или ff-only safety.
+- `GIT COMMIT`: сначала semantic diff/staging, затем final preflight. При `PROTECTED_BRANCH_REQUIRES_NEW_BRANCH` используй exact `details.requiredBranch`, создай branch и повтори gate.
+- `GIT PUSH`: выполняй только exact `mutationPlan.argv` после PASS; force/force-with-lease не добавляй.
+- `GIT PR`: exact HEAD обязан быть опубликован; provider/tool/base/template берутся из PASS plan.
+- `GIT SYNC`: `report` не мутирует branch; `ff-only` допускает только exact plan для clean behind-only state.
+- Fetch внутри push/pr/sync preflight разрешён как refresh remote refs и не считается publication mutation.
 
-Commit message строится по фактическому diff и `.gitmessage`; при наличии STEP/REQ/ADR использует repository traceability. При нескольких независимых changes предпочитай раздельные commits.
+`GIT COMMIT` не делает push. `GIT PUSH` не создаёт commit. Force-push, destructive reset/clean, automatic merge/rebase и amend запрещены без отдельного explicit protocol path.
 
-Harness CI (`.github/workflows/harness-integrity.yml`) не заменяет product CI: он проверяет только целостность Harness и repository hygiene. После INIT project-specific CI добавляется отдельными workflows/gates на основании реально выбранного стека.
+Semantic обязанности остаются у agent: проверить unrelated changes, secrets/local-only/generated мусор, один logical change, commit type/message и STEP/REQ/ADR traceability. Machine preflight не угадывает смысл diff.
+
+Harness CI (`.github/workflows/harness-integrity.yml`) не заменяет product CI: он проверяет целостность Harness/repository hygiene и regressions deterministic tooling. После INIT project-specific CI добавляется отдельными workflows/gates на основании реально выбранного стека.
 
 ## 18. Custom User Commands — читать последним
 

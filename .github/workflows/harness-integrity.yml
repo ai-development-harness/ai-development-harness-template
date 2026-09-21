@@ -131,6 +131,20 @@ jobs:
         # Пример: malformed release verdict и incomplete skill shortlist дают FAIL.
         run: python3 .harness/tools/report-contract-self-test.py
 
+      # Проверить fail-closed schema/unknown-key behavior Git policy через публичный validator.
+      # Пример: опечатка require_clean_worktre не должна молча игнорироваться.
+      - name: Validate Git policy regression
+        # Запустить fail-closed synthetic policy regression.
+        # Пример: неизвестный safety key обязан дать non-zero validation.
+        run: python3 .harness/tools/git-policy-self-test.py
+
+      # Прогнать deterministic Git preflight на synthetic repository + bare remote.
+      # Пример: protected branch, remote-ahead, publish/PR и ff-only sync проверяются без LLM.
+      - name: Validate deterministic Git preflight
+        # Запустить synthetic repository + bare remote lifecycle.
+        # Пример: remote-ahead PUSH блокируется, clean behind-only SYNC получает ff-only plan.
+        run: python3 .harness/tools/git-preflight-self-test.py
+
       # Прогнать настоящий deterministic updater на synthetic Git source/project.
       # Пример: 3-way merge, marker preservation, tag pinning и project-skill ownership.
       - name: Validate deterministic Harness update engine

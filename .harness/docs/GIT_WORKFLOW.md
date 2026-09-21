@@ -16,9 +16,25 @@ GIT SYNC
 GIT CHECK > COMMIT > PUSH > PR
 ```
 
+## Deterministic Git preflight
+
+Safety-critical Git decisions вынесены в dependency-free tool:
+
+```bash
+python3 .harness/tools/git-preflight.py check --json
+python3 .harness/tools/git-preflight.py commit --json --commit-type feat --slug user-search
+python3 .harness/tools/git-preflight.py push --json
+python3 .harness/tools/git-preflight.py pr --json
+python3 .harness/tools/git-preflight.py sync --json
+```
+
+Tool не создаёт commit, не выполняет push, не открывает PR и не делает fast-forward. Он возвращает `PASS/BLOCKED` и exact mutation plan. Исключение — configured `git fetch`: fetch разрешён как operational refresh remote refs и не меняет working tree.
+
+LLM/agent по-прежнему отвечает за semantic decisions — например, является ли diff одним logical change и какой commit type соответствует фактическому изменению. Но protected branch, remote divergence, publish state, force prohibition, clean-worktree requirement, PR base/tool и ff-only safety больше не интерпретируются вручную.
+
 ### `GIT CHECK`
 
-Read-only preflight: branch/upstream, ahead/behind, staged/unstaged/untracked, Harness integrity, подозрительные файлы и предполагаемый commit type/scope.
+Read-only preflight через `git-preflight.py check`: branch/protection/upstream, staged/unstaged/untracked, configured remotes/base и Harness integrity. Semantic оценку подозрительных/unrelated файлов и предполагаемого commit type/scope делает agent по фактическому diff.
 
 ### `GIT COMMIT`
 
@@ -27,9 +43,10 @@ Read-only preflight: branch/upstream, ahead/behind, staged/unstaged/untracked, H
 - проверяет Harness и staged/worktree;
 - не включает секреты, local brief, build/cache мусор;
 - выявляет unrelated changes;
-- при необходимости создаёт ветку согласно policy;
+- после staging запускает deterministic `commit` preflight;
+- при protected `auto-create` использует exact `details.requiredBranch`, затем повторяет gate;
 - формирует подробный Conventional Commit message;
-- создаёт **только локальный commit**.
+- только после `PASS` создаёт **локальный commit**.
 
 Message строится по `.gitmessage`:
 
@@ -73,11 +90,11 @@ main + chore → chore/<slug>
 when_on_protected = "auto-create" # auto-create | stay | block
 ```
 
-Первый commit пустого template repo может остаться в `main` благодаря `allow_initial_commit_on_protected=true`.
+Первый commit пустого template repo может остаться в `main` благодаря `allow_initial_commit_on_protected=true`. Для обычного commit на protected branch deterministic gate возвращает `PROTECTED_BRANCH_REQUIRES_NEW_BRANCH` либо `PROTECTED_BRANCH_COMMIT_BLOCKED` согласно policy.
 
 ### `GIT PUSH`
 
-`GIT PUSH` сначала выполняет fetch/divergence/safety checks, затем публикует текущую ветку в configured remote без force. По умолчанию:
+`GIT PUSH` сначала запускает `git-preflight.py push`. Tool использует только configured `push.remote`, при необходимости делает fetch, повторно запускает Harness validator, считает exact ahead/behind и формирует non-force `mutationPlan.argv`. Только `PASS` разрешает публикацию. По умолчанию:
 
 ```toml
 [pull_request]
@@ -95,18 +112,18 @@ after_push = "never"
 
 ### `GIT PR`
 
-`GIT PR` можно вызвать отдельно. Агент использует `pull_request.body_template` из configured `repository.gitPolicy`, не создаёт duplicate PR и заполняет traceability/verification из repository evidence. Default template — `.github/pull_request_template.md`.
+`GIT PR` можно вызвать отдельно. Перед provider action обязательный `git-preflight.py pr` доказывает, что exact local HEAD опубликован, configured base существует, preferred tool доступен и body template остаётся внутри repository. После `PASS` агент не создаёт duplicate PR при `reuse_existing=true` и заполняет traceability/verification из repository evidence. Default template — `.github/pull_request_template.md`.
 
 ### `GIT SYNC`
 
-Default `GIT SYNC` только fetch + ahead/behind report. Для автоматического безопасного fast-forward:
+Default `GIT SYNC` через `git-preflight.py sync` делает fetch + ahead/behind report. Для автоматического безопасного fast-forward:
 
 ```toml
 [sync]
 mode = "ff-only"
 ```
 
-Merge/rebase конфликтующей истории автоматически не выполняются.
+В `ff-only` tool выдаёт exact `git merge --ff-only <remote>/<branch>` только для clean behind-only state. Local-ahead/diverged/dirty state блокируется. Merge/rebase конфликтующей истории автоматически не выполняются.
 
 ## Цепочка публикации
 
@@ -131,7 +148,7 @@ Harness никогда по умолчанию не выполняет:
 - commit amend;
 - staging подозрительных/несвязанных файлов.
 
-Перед `GIT COMMIT` / `GIT PUSH` запускается `.harness/tools/validate.py`. CI запускает тот же валидатор, поэтому локальные и remote gates основаны на одном контракте.
+Перед Git mutation запускается соответствующий deterministic preflight; commit/push gates при policy requirement вызывают тот же `.harness/tools/validate.py --mode commit`, который используется Harness workflow. CI отдельно прогоняет synthetic Git preflight regression и fail-closed Git-policy regression.
 
 ## Что настраивать
 
@@ -139,7 +156,7 @@ Harness никогда по умолчанию не выполняет:
 
 Чаще всего меняются:
 
-- `commit.language`;
+- `language.commitMessages` в manifest;
 - `commit.stage_mode`;
 - `branch.when_on_protected`;
 - `branch.name_pattern` и prefixes;

@@ -1,85 +1,149 @@
 ---
 name: git-workflow
-description: Safe repository Git workflow for GIT CHECK, GIT COMMIT, GIT PUSH, GIT PR and GIT SYNC using project policy and deterministic integrity checks.
+description: Safe Git workflow using configured repository policy plus deterministic preflight gates before COMMIT, PUSH, PR and SYNC mutations.
 ---
 # git-workflow
 
-Используй для `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и сегментов валидной Git-цепочки вроде `GIT CHECK > COMMIT > PUSH > PR`.
+Используй для `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и валидных Git-chain segments.
+
+## Главный принцип
+
+Git policy остаётся в configured `.harness/manifest.yaml → repository.gitPolicy`, но safety-critical решение «можно ли сейчас выполнять mutation» принимает deterministic tool:
+
+```bash
+python3 .harness/tools/git-preflight.py check --json
+python3 .harness/tools/git-preflight.py commit --json [--commit-type <type>] [--slug <slug>]
+python3 .harness/tools/git-preflight.py push --json
+python3 .harness/tools/git-preflight.py pr --json
+python3 .harness/tools/git-preflight.py sync --json
+```
+
+Agent не должен вручную переопределять `PASS/BLOCKED`, protected-branch decision, remote ahead/behind, publish state, PR base/tool или ff-only safety.
+
+Preflight не создаёт commit, не делает push, не открывает PR и не fast-forward-ит branch. Единственная допустимая operational side effect — `git fetch` там, где policy требует актуального remote state.
 
 ## Общие правила
 
-1. Разреши `.harness/manifest.yaml → repository.gitPolicy` и прочитай configured Git policy. Не подменяй её hardcoded `.harness/git-policy.toml`.
-2. До mutation изучи `git status --short --branch`, staged/unstaged diff и untracked files.
-3. Запусти `python3 .harness/tools/validate.py --mode commit` (для read-only check тоже допустимо).
-4. Никогда не выполняй `git reset --hard`, `git clean -fd`, force-push, automatic merge/rebase или amend без явного запроса пользователя.
-5. Не включай unrelated changes. При нескольких независимых логических изменениях останови GIT COMMIT и предложи разбиение.
-6. Секреты/local brief/generated мусор не должны попадать в index/commit.
-7. Язык commit message бери из `.harness/manifest.yaml` → `language.commitMessages`; не используй отдельный скрытый default.
-8. STEP/REQ/ADR traceability не обязательна для подтверждённого micro-change/PROJECT QUICK FIX. Если diff без STEP меняет behavior/API/data/security/architecture/dependencies — GIT COMMIT должен остановиться и предложить `STEP ADD:`.
+1. До mutation изучи фактический diff/status и semantic scope.
+2. Не включай unrelated changes.
+3. `require_single_logical_change` остаётся semantic обязанностью агента: deterministic tool не угадывает смысл файлов.
+4. STEP/REQ/ADR traceability не обязательна для подтверждённого micro-change/PROJECT QUICK FIX.
+5. Если diff без STEP меняет behavior/API/data/security/architecture/dependencies — остановись и предложи `STEP ADD:`.
+6. Force-push, destructive reset/clean, automatic merge/rebase и amend запрещены без отдельного явного protocol path; обычный Git workflow их не использует.
 
 ## GIT CHECK
 
-Read-only. Покажи branch, upstream/ahead-behind, staged/unstaged/untracked, policy, suspicious files, Harness validation, вероятный commit type/scope и blockers. Ничего не stage/commit/push.
+Запусти:
+
+```bash
+python3 .harness/tools/git-preflight.py check --json
+```
+
+Покажи branch, protection, upstream, staged/unstaged/untracked, configured remotes/base и Harness validation result. CHECK ничего не stage/commit/push.
 
 ## GIT COMMIT
 
-Применяй **все** поля `[commit]` и `[branch]` configured policy; валидный, но проигнорированный параметр считается protocol defect.
+1. Определи фактический logical change по diff.
+2. Выбери commit type только из `commit.types`; optional user hint не заменяет diff.
+3. Stage согласно `commit.stage_mode`:
+   - `staged-only` — не добавлять новые paths к index;
+   - `tracked-only` — не stage новые files;
+   - `all-safe` — stage только проверенный logical change, без `git add .` вслепую.
+4. После staging и непосредственно перед commit запусти:
 
-1. Определи фактический logical change по diff; optional `GIT COMMIT: <hint>` — только подсказка, diff является источником истины.
-2. Определи commit type из `commit.types`. Если `commit.style=conventional`, используй Conventional Commit type/scope.
-3. Примени branch policy:
-   - `branch.protected` определяет protected branches;
-   - `branch.when_on_protected=auto-create|stay|block` выполняется буквально;
-   - initial commit на protected branch разрешён только при `allow_initial_commit_on_protected=true`;
-   - existing non-protected branch переиспользуй только при `reuse_current_non_protected=true`;
-   - новую branch строй из `branch.prefixes` + `branch.name_pattern`, ограничивая semantic slug через `slug_max_length`;
-   - `branch.default_base` используется как base новой branch, если явный контекст не задаёт другой.
-4. Stage согласно `commit.stage_mode`:
-   - `staged-only` — не добавлять ничего;
-   - `tracked-only` — только изменённые tracked files;
-   - `all-safe` — только проверенный набор относящихся к change tracked/untracked files; не использовать бездумный `git add .`.
-5. Если `commit.require_single_logical_change=true`, mixed logical changes блокируют commit. Если false — всё равно не добавляй unrelated/suspicious files.
-6. Если `commit.require_harness_validation=true`, Harness validation обязан PASS непосредственно перед commit.
-7. Повторно проверь staged diff. Empty commit допустим только при `commit.allow_empty=true`.
-8. Сформируй сообщение по `.gitmessage` и configured policy:
-   - subject не длиннее `commit.subject_max_length`;
-   - body обязателен только при `commit.require_body=true`;
-   - verification включай при `commit.include_verification=true`;
-   - STEP/REQ/ADR traceability включай при `commit.include_traceability=true` и наличии релевантных ссылок.
-9. При `commit.sign=true` используй обычный Git signing, уже настроенный в repository/user config; отсутствие рабочей signing-конфигурации — BLOCKED, не отключай signing молча.
-10. Выполни commit. GIT COMMIT никогда не делает push.
-11. Верни hash, branch, subject, files, verification и следующую рекомендуемую команду.
+```bash
+python3 .harness/tools/git-preflight.py commit --json \
+  --commit-type '<type>' \
+  --slug '<short semantic slug>'
+```
+
+5. Если `reasonCode=PROTECTED_BRANCH_REQUIRES_NEW_BRANCH`, используй **точный** `details.requiredBranch`, создай branch, затем повтори preflight. Не вычисляй имя повторно вручную.
+6. Только `PASS` разрешает `git commit`.
+7. Сформируй message по `.gitmessage` и policy:
+   - Conventional Commit;
+   - subject ≤ `subject_max_length`;
+   - body только согласно `require_body`;
+   - verification/traceability — согласно policy;
+   - при `sign=true` используй Git signing, не отключай его молча.
+8. Выполни commit. COMMIT никогда не делает push.
+
+Machine gate детерминированно проверяет Harness validation, empty commit, stage-mode ограничения, protected branch и initial-commit exception. Семантику logical change/message всё ещё обязан проверить агент.
 
 ## GIT PUSH
 
-1. Используй **только** `push.remote` configured policy. Если `push.fetch_before_push=true`, сначала выполни fetch этого remote.
-2. Если `push.require_harness_validation=true`, Harness validation обязан PASS непосредственно перед push.
-3. Если `push.require_clean_worktree=true`, любой staged/unstaged/untracked project change блокирует push; если false, всё равно не включай эти изменения в push автоматически.
-4. Проверь configured remote branch/ahead-behind/divergence. При remote-ahead выполняй `push.if_remote_ahead`; значение `block` останавливает mutation.
-5. `push.force` применяется буквально; schema-v1 допускает только `never`, поэтому force/force-with-lease запрещены.
-6. Protected branch push разрешён только при `push.allow_protected=true`; первый push initial commit — только при `push.allow_initial_push_to_protected=true`.
-7. При первом push устанавливай upstream только при `push.set_upstream=true`.
-8. Git tags публикуй вместе с push только при `push.push_tags=true`; иначе tags не трогай.
-9. После успешного push применяй `pull_request.after_push`:
-   - `never` — завершить;
-   - `ask` — предложить `GIT PR`;
-   - `create-if-missing` — проверить существующий PR и создать при отсутствии.
-10. PR automation использует `pull_request.provider` и `pull_request.preferred_tool`; не подменяй configured tool на `gh` или другой CLI. Если configured provider/tool недоступен или не авторизован, push остаётся успешным, а PR creation возвращает отдельный BLOCKED.
+Непосредственно перед push:
 
-## PR
+```bash
+python3 .harness/tools/git-preflight.py push --json
+```
 
-1. Используй `pull_request.provider` + `pull_request.preferred_tool`; отсутствие поддерживаемого/авторизованного configured tool — BLOCKED без выдуманного успеха.
-2. Head branch должна быть опубликована. Base бери из `pull_request.base`, а не из `branch.default_base`.
-3. При `pull_request.reuse_existing=true` переиспользуй существующий открытый PR той же head/base; при false новый PR допустим, но не создавай неявный duplicate при неоднозначности.
-4. Если `pull_request.title_from_commit=true`, title выводи из фактического основного commit/change; иначе сформируй title из фактического diff/STEP contract.
-5. Body строится по `pull_request.body_template` из configured `repository.gitPolicy`, заполненному фактическими STEP/REQ/ADR, verification, risks и review.
-6. `pull_request.draft` определяет draft/non-draft.
-7. Верни URL или конкретный blocker.
+Tool:
+
+- использует только configured `push.remote`;
+- выполняет fetch, если `fetch_before_push=true`;
+- запускает Harness validation, если требуется;
+- применяет `require_clean_worktree`;
+- проверяет protected branch / initial bootstrap exception;
+- считает exact ahead/behind относительно configured remote branch;
+- применяет `if_remote_ahead`;
+- гарантирует `force=never`;
+- формирует `mutationPlan.argv` с `--set-upstream` / tag behavior согласно policy.
+
+Выполняй только план после `PASS`. Не добавляй `--force`, `--force-with-lease` или другой remote.
+
+После успешного push применяй `pull_request.after_push`: `never | ask | create-if-missing`.
+
+## GIT PR
+
+Непосредственно перед PR:
+
+```bash
+python3 .harness/tools/git-preflight.py pr --json
+```
+
+PASS доказывает:
+
+- current HEAD полностью опубликован в configured push remote;
+- configured PR base существует;
+- `pull_request.provider` / `preferred_tool` разрешены policy и tool доступен;
+- body template существует внутри repository;
+- draft/reuse/title flags прочитаны из policy.
+
+Используй `mutationPlan` и policy буквально. Не подменяй provider/tool самостоятельно. Если `reuse_existing=true`, сначала переиспользуй существующий open PR той же head/base.
 
 ## GIT SYNC
 
-1. Fetch выполняй через `sync.fetch_remote`; не подменяй его `push.remote`.
-2. Покажи ahead/behind/diverged относительно выбранного upstream/base context.
-3. В `sync.mode=report` ничего больше не меняй.
-4. В `sync.mode=ff-only` разрешён только safe fast-forward чистой рабочей копии.
-5. Никогда автоматически не merge/rebase конфликтующую историю.
+Запусти:
+
+```bash
+python3 .harness/tools/git-preflight.py sync --json
+```
+
+Tool сначала fetch-ит только `sync.fetch_remote` и считает ahead/behind.
+
+- `mode=report` → mutation запрещена, только отчёт.
+- `mode=ff-only` → tool выдаёт `git merge --ff-only <remote>/<branch>` только для clean behind-only state.
+- local-ahead или diverged state блокирует автоматический sync.
+- automatic merge/rebase не разрешены.
+
+Выполняй mutation только если `status=PASS` и `mutationPlan.operation` содержит разрешённый ff-only plan.
+
+## Failure policy
+
+Любой `BLOCKED` останавливает текущий Git segment. Не обходи blocker ручной командой с более слабыми параметрами.
+
+Типичные blockers:
+
+- detached HEAD;
+- invalid configured Git policy;
+- Harness validation failure;
+- empty commit при `allow_empty=false`;
+- protected-branch commit/push;
+- remote missing/ahead;
+- dirty worktree при strict push/sync;
+- unpublished PR head;
+- unavailable configured PR tool;
+- missing PR base/template;
+- diverged/non-ff sync.
+
+После изменения Git policy или preflight contract обновляй synthetic regression и документацию одновременно.
