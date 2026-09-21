@@ -365,6 +365,17 @@ def main() -> int:
         failures = direct_record.get("blockedBy", {}).get("failures", [])
         assert any("configured-remote-missing:publish" in item for item in failures), failures
 
+        # Schema-v1 implementation review names участвуют в deterministic
+        # latest ordering и потому обязаны иметь canonical UTC timestamp.
+        invalid_review_name = root / "planning/reviews/STEP-001/REVIEW-not-a-timestamp.md"
+        review_report(root, "PASS", invalid_review_name.name)
+        from review_contract import validate_review_report
+        assert any(
+            "filename must be REVIEW-<UTC timestamp>.md" in item
+            for item in validate_review_report(root, invalid_review_name)
+        )
+        invalid_review_name.unlink()
+
         # STEP RUN recovers completed PLAN from matching basis+content+planning-review.
         run_root = "STEP RUN STEP-001"
         run_exec = start_execution(root, run_root)

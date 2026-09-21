@@ -416,6 +416,18 @@ def _validate_iso_timestamp(value: Any) -> bool:
     return True
 
 
+def _valid_timestamped_report_name(name: str, prefix: str) -> bool:
+    """Проверить canonical UTC timestamp naming immutable semantic report."""
+    match = re.fullmatch(rf"{re.escape(prefix)}(\d{{8}}T\d{{6}}Z)\.md", name)
+    if match is None:
+        return False
+    try:
+        datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return False
+    return True
+
+
 def _validate_semantic_review_sections(
     document: dict[str, Any],
     *,
@@ -470,6 +482,8 @@ def validate_planning_review_report(
         errors.append("plan_content_hash must be sha256")
     if not _validate_iso_timestamp(meta.get("created_at")):
         errors.append("created_at must be ISO-8601")
+    if not _valid_timestamped_report_name(path.name, "PLAN-REVIEW-"):
+        errors.append("filename must be PLAN-REVIEW-<UTC timestamp>.md")
     errors.extend(_validate_semantic_review_sections(document, verdict=verdict))
     return errors
 
@@ -541,6 +555,8 @@ def validate_init_review_report(
         errors.append("basis must be sha256")
     if not _validate_iso_timestamp(meta.get("created_at")):
         errors.append("created_at must be ISO-8601")
+    if not _valid_timestamped_report_name(path.name, "INIT-REVIEW-"):
+        errors.append("filename must be INIT-REVIEW-<UTC timestamp>.md")
     errors.extend(_validate_semantic_review_sections(document, verdict=verdict))
     return errors
 

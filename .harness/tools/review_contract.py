@@ -363,6 +363,18 @@ def _parse_findings(document: dict[str, Any]) -> list[dict[str, str]]:
     return findings
 
 
+def _valid_step_review_filename(name: str) -> bool:
+    """Schema-v1 implementation review использует sortable UTC timestamp name."""
+    match = re.fullmatch(r"REVIEW-(\d{8}T\d{6}Z)\.md", name)
+    if match is None:
+        return False
+    try:
+        datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return False
+    return True
+
+
 def validate_review_report(root: Path, path: Path, *, require_current_revision: bool = False) -> list[str]:
     errors: list[str] = []
     try:
@@ -387,6 +399,8 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
         errors.append("verdict must be pass|fail|blocked")
     if meta.get("reviewer_role") != "reviewer":
         errors.append("reviewer_role must be reviewer")
+    if not _valid_step_review_filename(path.name):
+        errors.append("filename must be REVIEW-<UTC timestamp>.md")
 
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):
