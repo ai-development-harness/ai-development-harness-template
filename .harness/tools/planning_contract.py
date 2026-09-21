@@ -462,8 +462,8 @@ def validate_planning_review_report(
     verdict = meta.get("verdict")
     if verdict not in {"pass", "blocked"}:
         errors.append("verdict must be pass|blocked")
-    if meta.get("reviewer_role") != "planner":
-        errors.append("reviewer_role must be planner")
+    if meta.get("reviewer_role") != "reviewer":
+        errors.append("reviewer_role must be reviewer (independent from planner)")
     if not _valid_sha256(meta.get("context_basis")):
         errors.append("context_basis must be sha256")
     if not _valid_sha256(meta.get("plan_content_hash")):
@@ -535,8 +535,8 @@ def validate_init_review_report(
     verdict = meta.get("verdict")
     if verdict not in {"pass", "blocked"}:
         errors.append("verdict must be pass|blocked")
-    if meta.get("reviewer_role") != "initializer":
-        errors.append("reviewer_role must be initializer")
+    if meta.get("reviewer_role") != "reviewer":
+        errors.append("reviewer_role must be reviewer (independent from initializer)")
     if not _valid_sha256(meta.get("basis")):
         errors.append("basis must be sha256")
     if not _validate_iso_timestamp(meta.get("created_at")):
