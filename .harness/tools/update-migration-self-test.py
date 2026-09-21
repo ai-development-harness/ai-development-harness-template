@@ -19,6 +19,7 @@ from harness_config import (
 from planning_contract import step_completion_proof
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending, migrate_project
 from review_contract import legacy_review_pins, validate_all_review_reports
+from template_contract import validate_project_templates
 
 
 def run(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -483,6 +484,17 @@ def test_project_owned_migration() -> None:
         reports_after = sorted((root / "planning/audits").glob("MIGRATION-*.md"))
         require(second["status"] == "NO_CHANGES", second)
         require(reports_before == reports_after, "idempotent reconcile created an extra migration report")
+        require(not validate_project_templates(root), validate_project_templates(root))
+
+        # Custom prose разрешён, но устаревшая structural schema — blocker.
+        stale_template = custom_template.replace("risk_flags:\n  - none\n", "")
+        task_template.write_text(stale_template, encoding="utf-8")
+        template_errors = validate_project_templates(root)
+        require(
+            any("missing structural key frontmatter.risk_flags" in item for item in template_errors),
+            template_errors,
+        )
+        task_template.write_text(custom_template, encoding="utf-8")
 
         # После pinning historical report становится immutable contract:
         # mutation должна обнаруживаться, а RECONCILE не имеет права re-pin её.
