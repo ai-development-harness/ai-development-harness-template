@@ -84,6 +84,8 @@ jobs:
       # Synthetic regression configurable command-reference topology.
       # Пример: custom ADR directory остаётся historical-only, custom OQ/REQ/tasks сканируются.
       - name: Validate command reference paths
+        # Synthetic regression manifest-driven scan topology.
+        # Пример: custom ADR history исключается, а custom OQ/REQ/tasks остаются live scan surface.
         run: python3 .harness/tools/command-references-self-test.py
       # Отображаемое имя smoke-test публичного command structural gate.
       # Пример: подтверждает, что CLI принимает edge из graph и отвергает отсутствующий edge.
