@@ -16,7 +16,7 @@ description: Safely inspect and install a user-selected third-party repository s
 6. Проверь collision с существующим `.agents/skills/<slug>`. Не перезаписывай существующий skill молча.
 7. Устанавливай весь необходимый skill bundle в `.agents/skills/<slug>/`, сохраняя внутреннюю структуру.
 8. Добавь `.agents/skills/<slug>/UPSTREAM.md` с source URL, owner/repo/path, pinned ref/commit, license, installation date, inspection notes и списком локальных адаптаций.
-9. Обнови `docs/skills/REGISTRY.md`: skill, source, local path, задача/trigger, ref, license, trust/risk notes.
+9. Разреши `.harness/manifest.yaml → protocol.skillRegistry` и обнови этот registry: skill, source, local path, задача/trigger, ref, license, trust/risk notes. Не подменяй configured path hardcoded `docs/skills/REGISTRY.md`.
 10. Обнови только generated block `SKILL-ROUTING` в `AGENTS.md`: кратко укажи, для каких задач этот skill следует рассматривать. Не копируй туда весь skill. Repository rules всегда имеют приоритет над third-party skill.
 11. Проверь, что `SKILL.md` доступен, ссылки/resources не сломаны, а routing не конфликтует с уже установленными skills.
 12. Финальный отчёт: что установлено, provenance, risk summary, какие файлы изменены и пример задачи, на которой skill будет использоваться.
