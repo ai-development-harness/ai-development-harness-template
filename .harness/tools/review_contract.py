@@ -233,3 +233,52 @@ def validate_all_review_reports(root: Path) -> list[str]:
         for issue in validate_review_report(root, path):
             errors.append(f"review: {path.relative_to(root)}: {issue}")
     return errors
+
+
+def main() -> int:
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file")
+    parser.add_argument("--step")
+    parser.add_argument("--current-revision", action="store_true")
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    args = parser.parse_args()
+    root = Path(__file__).resolve().parents[2]
+
+    if args.file:
+        path = (root / args.file).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError:
+            errors = ["review path escapes repository"]
+        else:
+            errors = validate_review_report(
+                root,
+                path,
+                require_current_revision=args.current_revision,
+            )
+    elif args.step:
+        errors = []
+        directory = review_directory(root) / args.step
+        for path in sorted(directory.glob("REVIEW-*.md")) if directory.is_dir() else []:
+            errors.extend(
+                f"{path.relative_to(root)}: {item}"
+                for item in validate_review_report(root, path)
+            )
+    else:
+        errors = validate_all_review_reports(root)
+
+    result = {"status": "PASS" if not errors else "FAIL", "errors": errors}
+    if args.as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(result["status"])
+        for item in errors:
+            print(f"- {item}")
+    return 0 if not errors else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
