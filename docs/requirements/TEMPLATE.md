@@ -1,7 +1,14 @@
-# REQ-NNN — Название
+---
+schema: 1
+id: REQ-NNN
+priority: medium
+source: brief
+steps:
+  - STEP-NNN
+adrs: []
+---
 
-**Приоритет:** Критический | Высокий | Средний | Низкий
-**Источник:** brief / user / regulation / research / other
+# REQ-NNN — Название
 
 ## Requirement
 
@@ -15,8 +22,3 @@
 
 - Наблюдаемый критерий 1.
 - Наблюдаемый критерий 2.
-
-## Traceability
-
-- STEP: STEP-NNN
-- ADR: ADR-NNN / не требуется
