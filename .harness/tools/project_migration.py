@@ -372,23 +372,31 @@ def migrate_project(root: Path) -> dict[str, Any]:
     changed.extend(refresh_project_templates(root))
     changed.extend(write_projections(root))
 
+    unique_changed = sorted(set(changed))
+    if not unique_changed:
+        return {
+            "status": "NO_CHANGES",
+            "changed": [],
+            "report": None,
+        }
+
     report_dir = audit_directory(root)
     report_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     report = report_dir / f"MIGRATION-{timestamp}.md"
     body = "# Project Schema Migration\n\n## Changed artifacts\n\n"
-    body += "\n".join(f"- {item}" for item in sorted(set(changed))) or "- none"
+    body += "\n".join(f"- {item}" for item in unique_changed)
     body += "\n\n## Notes\n\nHistorical immutable reports were not rewritten."
     report_meta = {
         "schema": 1,
         "kind": "migration",
         "created_at": _utc_now(),
         "result": "complete",
-        "changed_count": len(set(changed)),
+        "changed_count": len(unique_changed),
     }
     report.write_text(render_document(report_meta, body), encoding="utf-8", newline="\n")
     return {
-        "status": "MIGRATED" if changed else "NO_CHANGES",
-        "changed": sorted(set(changed)),
+        "status": "MIGRATED",
+        "changed": unique_changed,
         "report": report.relative_to(root).as_posix(),
     }
