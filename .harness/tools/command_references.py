@@ -134,8 +134,9 @@ def project_live_document_paths(root: Path) -> list[Path]:
 
     Primary project paths, Open Questions и taskDirectory берутся через единый
     manifest config layer. Source path может быть файлом или каталогом. Дополнительно
-    сканируются README и default live subsystem docs под docs/**; configured ADR
-    directory исключается как decision history независимо от его фактического пути.
+    сканируются README и default live subsystem docs под docs/**. Из configured
+    ADR directory исключаются только canonical ADR-файлы как decision history;
+    сам directory не становится blanket ignore-root.
     """
     manifest_paths, task_directory = _manifest_project_paths(root)
     paths = [root / "README.md"]
@@ -145,8 +146,9 @@ def project_live_document_paths(root: Path) -> list[Path]:
         else:
             paths.append(path)
 
-    # Default docs tree остаётся дополнительной scan surface для subsystem docs,
-    # но исключение ADR берётся из manifest, а не из жёсткого docs/adr.
+    # Default docs tree остаётся дополнительной scan surface для subsystem docs.
+    # Configurable adrDirectory может быть широким (вплоть до docs), поэтому
+    # исключаем только canonical ADR documents, а не весь subtree.
     docs_root = root / "docs"
     try:
         configured_adr = adr_directory(root).resolve()
@@ -154,11 +156,13 @@ def project_live_document_paths(root: Path) -> list[Path]:
         raise RuntimeError(f"cannot resolve configured ADR directory: {exc}") from exc
     if docs_root.exists():
         for path in sorted(docs_root.rglob("*.md")):
-            try:
-                path.resolve().relative_to(configured_adr)
+            resolved = path.resolve()
+            is_canonical_adr = (
+                resolved.parent == configured_adr
+                and re.fullmatch(r"ADR-\d{3,}(?:-.+)?\.md", path.name) is not None
+            )
+            if is_canonical_adr:
                 continue
-            except ValueError:
-                pass
             paths.append(path)
 
     paths.extend(sorted(task_directory.glob("STEP-*.md")))

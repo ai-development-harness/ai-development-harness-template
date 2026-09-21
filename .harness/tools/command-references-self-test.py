@@ -21,7 +21,7 @@ def main() -> int:
             """sources:
   projectOverview: spec/PROJECT.md
   requirements: spec/requirements
-  adrDirectory: docs/decisions
+  adrDirectory: docs
   architecture: spec/architecture.md
   openQuestions: spec/questions
   openQuestionsIndex: spec/QUESTIONS.md
@@ -40,10 +40,10 @@ protocol:
         write(root / "work/ROADMAP.md", "# Roadmap\n")
         write(root / "work/STATUS.md", "# Status\n")
         write(root / "work/tasks/STEP-001.md", "# STEP-001\n")
-        # Исторический ADR расположен нестандартно внутри docs/** и содержит
-        # намеренную legacy-команду. Его нельзя считать live command drift.
-        write(root / "docs/decisions/ADR-001-old.md", "# ADR\n\nREVIEW STEP-001\n")
-        # Обычный subsystem doc в default docs tree должен продолжать сканироваться.
+        # Даже если adrDirectory совпадает с широким docs/, историческим
+        # исключением является только canonical ADR, а не весь subtree.
+        write(root / "docs/ADR-001-old.md", "# ADR\n\nREVIEW STEP-001\n")
+        # Обычный subsystem doc в том же configured directory обязан сканироваться.
         write(root / "docs/subsystem.md", "# Subsystem\n\nCOMMIT\n")
 
         paths = project_live_document_paths(root)
@@ -52,7 +52,7 @@ protocol:
             for path in paths
             if path.is_file()
         }
-        assert "docs/decisions/ADR-001-old.md" not in rels, rels
+        assert "docs/ADR-001-old.md" not in rels, rels
         assert "spec/questions/OQ-001-test.md" in rels, rels
         assert "spec/requirements/REQ-001-test.md" in rels, rels
         assert "docs/subsystem.md" in rels, rels
@@ -62,7 +62,7 @@ protocol:
         assert ("spec/requirements/REQ-001-test.md", "PLAN STEP-NNN") in pairs, pairs
         assert ("spec/questions/OQ-001-test.md", "FIX STEP-NNN") in pairs, pairs
         assert ("docs/subsystem.md", "COMMIT") in pairs, pairs
-        assert not any(path.startswith("docs/decisions/") for path, _ in pairs), pairs
+        assert ("docs/ADR-001-old.md", "REVIEW STEP-NNN") not in pairs, pairs
 
     print("COMMAND REFERENCES SELF-TEST: PASS")
     return 0
