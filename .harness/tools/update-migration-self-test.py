@@ -475,6 +475,20 @@ def test_project_owned_migration() -> None:
             raise AssertionError("invalid migration calendar filename was accepted")
         invalid_calendar_report.unlink()
 
+        # Hash pin фиксирует bytes именно immutable path. Symlink вместо
+        # historical review не может наследовать доверие к target content.
+        legacy_backing = legacy_review_path.with_name("legacy-review-target.txt")
+        legacy_review_path.rename(legacy_backing)
+        legacy_review_path.symlink_to(legacy_backing.name)
+        try:
+            legacy_review_pins(root)
+        except ValueError as exc:
+            require("must not reference a symlink" in str(exc), str(exc))
+        else:
+            raise AssertionError("symlink legacy review was accepted as pinned history")
+        legacy_review_path.unlink()
+        legacy_backing.rename(legacy_review_path)
+
         require(not validate_all_review_reports(root), validate_all_review_reports(root))
         proof = step_completion_proof(root, "STEP-001")
         require(proof["complete"], f"legacy PASS review did not preserve completion proof: {proof}")
