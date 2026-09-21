@@ -54,6 +54,8 @@ protocol:
   auditDirectory: planning/audits
   releaseDirectory: planning/releases
   skillSearchDirectory: planning/skill-searches
+repository:
+  gitPolicy: .harness/git-policy.toml
 """
 
 
@@ -275,6 +277,10 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-execution-v1-") as tmp:
         root = Path(tmp)
         write(root / ".harness/manifest.yaml", manifest())
+        write(
+            root / ".harness/git-policy.toml",
+            '[push]\nremote = "publish"\n',
+        )
         shutil.copy2(source / ".harness/command-transitions.json", root / ".harness/command-transitions.json")
         write(root / "docs/requirements/REQ-001-execution.md", requirement())
         write(root / "docs/architecture.md", "# Architecture\n")
@@ -352,6 +358,12 @@ def main() -> int:
             raise AssertionError("git-push-ready was not enforced before dispatch")
         direct_blocked = resolve_root(root, direct_push)
         assert direct_blocked["status"] == "BLOCKED", direct_blocked
+        direct_record = next(
+            item for item in load_status(root)["executions"]
+            if item["rootCommand"] == direct_push
+        )
+        failures = direct_record.get("blockedBy", {}).get("failures", [])
+        assert any("configured-remote-missing:publish" in item for item in failures), failures
 
         # STEP RUN recovers completed PLAN from matching basis+content+planning-review.
         run_root = "STEP RUN STEP-001"
