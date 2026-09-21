@@ -166,7 +166,7 @@ Report обязан содержать:
 - `step_id`;
 - `verdict: pass | fail | blocked`;
 - exact reviewed revision;
-- specialized review metadata: persisted `gate_basis`, exact список `required`, результаты security/tests и concrete `*_evidence` summary/reference для реально выполненного specialized review;
+- specialized review metadata: persisted `gate_basis`, exact список `required`, результаты security/tests и concrete `*_evidence` summary/reference для реально выполненного specialized review. Preselector включает factual changed paths и режим поверхности; если review запускается уже на clean tree без exact implementation baseline, он fail-closed требует security + tests, а не считает последний commit полным STEP diff;
 - structured findings.
 
 Reviewed revision:
