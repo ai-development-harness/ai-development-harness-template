@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import shutil
 import subprocess
 import tempfile
 
@@ -167,6 +166,19 @@ def main() -> int:
 
         legacy = project_from_base(temp / "legacy", base_files, base_oid)
         (legacy / ".harness/harness.lock.json").unlink()
+        # Missing lock должен классифицироваться раньше общего validator failure.
+        write(
+            legacy,
+            ".harness/tools/validate.py",
+            '#!/usr/bin/env python3\nprint("HARNESS VALIDATION: FAIL")\nraise SystemExit(1)\n',
+        )
+        try:
+            check_update(legacy, target="v1.1.0", source_url=str(source))
+        except UpdateError as exc:
+            assert exc.code == "LEGACY_ADOPTION_REQUIRED", (exc.code, exc)
+        else:
+            raise AssertionError("legacy project without lock bypassed adoption boundary")
+        write(legacy, ".harness/tools/validate.py", validator())
         adopted = adopt_legacy(legacy, baseline="v1.0.0", source_url=str(source))
         assert adopted["status"] == "ADOPTED", adopted
         adopted_lock = json.loads((legacy / ".harness/harness.lock.json").read_text())
