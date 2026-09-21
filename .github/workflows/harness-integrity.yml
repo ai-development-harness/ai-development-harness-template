@@ -53,6 +53,10 @@ jobs:
           # Не оставлять GitHub token в локальном git config runner после checkout.
           # Пример: false снижает ненужные credentials в job, которому push не требуется.
           persist-credentials: false
+          # Полная история нужна CI-gate неизменяемых review reports: validator
+          # сравнивает итоговый commit/PR merge с его первым родителем.
+          # Пример: изменение уже существующего REVIEW-*.md должно быть видно как M/D/R.
+          fetch-depth: 0
 
       # Отображаемое имя шага настройки validator runtime.
       # Пример: "Setup Python".
