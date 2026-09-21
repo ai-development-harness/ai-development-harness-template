@@ -491,6 +491,32 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
                 + ", ".join(required_failed)
             )
 
+        # Preselector задаёт только минимально обязательный набор. Если reviewer
+        # дополнительно запустил необязательную specialized-проверку, её
+        # фактический FAIL/BLOCKED тоже является частью verdict composition:
+        # выполненную проверку нельзя игнорировать только потому, что она не
+        # входила в deterministic minimum.
+        optional_blocked = sorted(
+            kind
+            for kind in ("security", "tests")
+            if kind not in required_set and specialized.get(kind) == "blocked"
+        )
+        optional_failed = sorted(
+            kind
+            for kind in ("security", "tests")
+            if kind not in required_set and specialized.get(kind) == "fail"
+        )
+        if optional_blocked and verdict != "blocked":
+            errors.append(
+                "optional specialized reviewer BLOCKED requires overall BLOCKED: "
+                + ", ".join(optional_blocked)
+            )
+        if verdict == "pass" and optional_failed:
+            errors.append(
+                "PASS review cannot ignore optional specialized reviewer FAIL: "
+                + ", ".join(optional_failed)
+            )
+
         # Только current-review gate можно честно пересчитать по factual worktree.
         # Historical reports проверяются по сохранённому gate proof, иначе будущий
         # unrelated diff ретроактивно ломал бы immutable history.

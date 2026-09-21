@@ -468,6 +468,26 @@ def main() -> int:
         )
         specialized_fail.unlink()
 
+        # Deterministic preselector задаёт minimum, но reviewer может добровольно
+        # добавить security/tests review. Если такая дополнительная проверка
+        # реально выполнена и вернула FAIL, overall PASS обязан быть запрещён.
+        optional_specialized_fail = root / "planning/reviews/STEP-001/REVIEW-20260921T042000Z.md"
+        review_report(root, "PASS", optional_specialized_fail.name)
+        optional_fail_text = optional_specialized_fail.read_text(encoding="utf-8")
+        optional_fail_text = optional_fail_text.replace(
+            "  security: not_required",
+            "  security: fail",
+        ).replace(
+            "  security_evidence: null",
+            "  security_evidence: optional security review found a defect",
+        )
+        write(optional_specialized_fail, optional_fail_text)
+        assert any(
+            "PASS review cannot ignore optional specialized reviewer FAIL" in item
+            for item in validate_review_report(root, optional_specialized_fail)
+        )
+        optional_specialized_fail.unlink()
+
         blocked = block_execution(root, run_root, command="STEP REVIEW STEP-001")
         assert blocked["current"]["result"] == "FAIL"
 
