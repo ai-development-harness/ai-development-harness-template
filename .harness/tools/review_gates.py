@@ -91,7 +91,16 @@ def _git_changed_paths(root: Path) -> list[str]:
         review_root = "__invalid_review_root__"
 
     def included(rel: str) -> bool:
-        normalized = rel.replace("\\", "/").lstrip("./")
+        normalized = rel.replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        if (
+            not normalized
+            or normalized.startswith("/")
+            or any(part == ".." for part in normalized.split("/"))
+        ):
+            # Неожиданный Git path нельзя безопасно классифицировать как ignored.
+            return True
 
         # Git path identity лексическая. Symlink из product path в .harness/local
         # остаётся product change и не должен исчезать из review surface.
