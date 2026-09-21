@@ -192,6 +192,15 @@ def _git(root: Path, *args: str) -> tuple[int, bytes]:
     return proc.returncode, proc.stdout
 
 
+def _is_step_review_report_path(root: Path, path: Path) -> bool:
+    """Проверить, является ли path именно implementation review report."""
+    try:
+        suffix = path.resolve().relative_to(review_directory(root).resolve()).as_posix()
+    except ValueError:
+        return False
+    return re.fullmatch(r"STEP-\\d{3,}/REVIEW-.+\\.md", suffix) is not None
+
+
 def repository_revision(root: Path) -> dict[str, str | None]:
     """Fingerprint exact review target, excluding report/state written by review itself.
 
@@ -205,18 +214,18 @@ def repository_revision(root: Path) -> dict[str, str | None]:
     if code != 0:
         raise ValueError("cannot read git worktree state")
 
-    review_root = review_directory(root).resolve()
     ignored_local = (root / ".harness" / "local").resolve()
 
     def excluded(path: Path) -> bool:
         resolved = path.resolve()
-        for base in (review_root, ignored_local):
-            try:
-                resolved.relative_to(base)
-                return True
-            except ValueError:
-                pass
-        return False
+        try:
+            resolved.relative_to(ignored_local)
+            return True
+        except ValueError:
+            pass
+        # Configurable reviewDirectory не является blanket trust boundary:
+        # исключаем только файлы, которые STEP REVIEW сам создаёт после snapshot.
+        return _is_step_review_report_path(root, path)
 
     entries = [entry for entry in status.split(b"\0") if entry]
     changed: list[tuple[bytes, str]] = []
