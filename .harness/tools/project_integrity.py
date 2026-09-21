@@ -45,6 +45,7 @@ from planning_contract import (
 )
 from projection_contract import validate_projections
 from review_contract import validate_all_review_reports
+from template_contract import validate_project_templates
 
 
 REQ_SECTIONS = ("Requirement", "Rationale", "Acceptance")
@@ -334,6 +335,7 @@ def validate_project_integrity(
         errors.extend(validate_adrs(root))
         errors.extend(validate_all_review_reports(root))
         errors.extend(validate_projections(root))
+        errors.extend(validate_project_templates(root))
         errors.extend(validate_initialized_project(root))
     try:
         errors.extend(validate_configured_artifacts(root))
