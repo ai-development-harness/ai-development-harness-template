@@ -67,6 +67,7 @@ class PathPlan:
     target_class: str | None
     action: str
     content: bytes | None
+    mode: int | None = None
     detail: str | None = None
 
 
@@ -147,10 +148,24 @@ class GitSource:
             raise UpdateError("SOURCE_TAG_MISSING", f"immutable release tag does not exist: {tag}")
         return proc.stdout.decode("ascii", errors="strict").strip()
 
-    def list_files(self, ref: str) -> set[str]:
+    def list_entries(self, ref: str) -> dict[str, str]:
         oid = self.resolve_ref(ref)
-        proc = self._git("ls-tree", "-r", "--name-only", "-z", oid)
-        return {item.decode("utf-8") for item in proc.stdout.split(b"\0") if item}
+        proc = self._git("ls-tree", "-r", "-z", oid)
+        result: dict[str, str] = {}
+        for raw in proc.stdout.split(b"\0"):
+            if not raw:
+                continue
+            header, sep, raw_path = raw.partition(b"\t")
+            parts = header.split()
+            if not sep or len(parts) < 3:
+                raise UpdateError("SOURCE_TREE_ERROR", f"cannot parse source tree entry for {ref}")
+            mode = parts[0].decode("ascii", errors="strict")
+            path = raw_path.decode("utf-8")
+            result[path] = mode
+        return result
+
+    def list_files(self, ref: str) -> set[str]:
+        return set(self.list_entries(ref))
 
     def read_bytes(self, ref: str, path: str) -> bytes | object:
         oid = self.resolve_ref(ref)
@@ -215,7 +230,13 @@ class WorkingTree:
             raise UpdateError("NON_UTF8_MANAGED_PATH", f"managed local path is not UTF-8: {path}") from exc
         return data
 
-    def write_bytes(self, path: str, content: bytes | None) -> None:
+    def mode(self, path: str) -> int | None:
+        target = self.root / path
+        if not target.exists() or target.is_symlink() or not target.is_file():
+            return None
+        return 0o755 if target.stat().st_mode & 0o111 else 0o644
+
+    def write_bytes(self, path: str, content: bytes | None, *, mode: int | None = None) -> None:
         target = self.root / path
         if content is None:
             if target.exists() or target.is_symlink():
@@ -227,6 +248,7 @@ class WorkingTree:
         try:
             with os.fdopen(fd, "wb") as fh:
                 fh.write(content)
+            os.chmod(temp_name, mode if mode is not None else 0o644)
             os.replace(temp_name, target)
         finally:
             if os.path.exists(temp_name):
@@ -545,6 +567,19 @@ def _local_untracked_collision(tree: WorkingTree, tracked: set[str], path: str) 
     return not tree.ignored(path)
 
 
+def _source_permissions(mode: str | None, *, path: str, ref: str) -> int | None:
+    if mode is None:
+        return None
+    if mode == "100644":
+        return 0o644
+    if mode == "100755":
+        return 0o755
+    raise UpdateError(
+        "UNSUPPORTED_MANAGED_MODE",
+        f"managed source path must be regular 100644/100755 file: {ref}:{path} mode={mode}",
+    )
+
+
 def _path_plan(
     *,
     path: str,
@@ -553,6 +588,7 @@ def _path_plan(
     ours: bytes | object,
     base: bytes | object,
     theirs: bytes | object,
+    target_mode: int | None,
     target_markers: list[str],
 ) -> PathPlan:
     # Если immutable BASE файла не содержал, а target release впервые
@@ -568,15 +604,15 @@ def _path_plan(
             if ours is not MISSING and ours != base:
                 raise UpdateError("LOCAL_HARNESS_MODIFICATION", f"locally modified retired Harness path: {path}")
             if theirs is MISSING:
-                return PathPlan(path, base_class, None, "delete", None, "retired Harness path")
-        return PathPlan(path, base_class, None, "preserve", None, "path leaves managed ownership")
+                return PathPlan(path, base_class, None, "delete", None, None, "retired Harness path")
+        return PathPlan(path, base_class, None, "preserve", None, None, "path leaves managed ownership")
 
     if base_class is None:
         if ours is not MISSING:
             raise UpdateError("NEW_MANAGED_PATH_COLLISION", f"target newly manages existing project path: {path}")
         if theirs is MISSING:
-            return PathPlan(path, None, target_class, "preserve", None)
-        return PathPlan(path, None, target_class, "write", _as_bytes(theirs), "new managed path")
+            return PathPlan(path, None, target_class, "preserve", None, None)
+        return PathPlan(path, None, target_class, "write", _as_bytes(theirs), target_mode, "new managed path")
 
     if base_class != target_class and ours != base:
         raise UpdateError("OWNERSHIP_CLASS_CHANGE", f"locally changed path changes ownership class: {path}: {base_class} -> {target_class}")
@@ -585,8 +621,8 @@ def _path_plan(
         if ours != base:
             raise UpdateError("LOCAL_HARNESS_MODIFICATION", f"Harness-owned path differs from immutable BASE: {path}")
         if theirs is MISSING:
-            return PathPlan(path, base_class, target_class, "delete", None)
-        return PathPlan(path, base_class, target_class, "write", _as_bytes(theirs))
+            return PathPlan(path, base_class, target_class, "delete", None, None)
+        return PathPlan(path, base_class, target_class, "write", _as_bytes(theirs), target_mode)
 
     merge_theirs = theirs
     if target_class == "marker_merge":
@@ -594,7 +630,7 @@ def _path_plan(
     merged = _three_way(ours, base, merge_theirs, path=path)
     if merged is None:
         return PathPlan(path, base_class, target_class, "delete", None)
-    return PathPlan(path, base_class, target_class, "write", merged)
+    return PathPlan(path, base_class, target_class, "write", merged, target_mode)
 
 
 def analyze_hop(
@@ -616,8 +652,10 @@ def analyze_hop(
     base_ownership = _ownership(base_policy)
     target_ownership = _ownership(target_policy)
     target_marker_map = _markers(target_policy)
-    base_files = source.list_files(hop.source)
-    target_files = source.list_files(hop.target)
+    base_entries = source.list_entries(hop.source)
+    target_entries = source.list_entries(hop.target)
+    base_files = set(base_entries)
+    target_files = set(target_entries)
     concrete = (
         _managed_paths(base_files, base_ownership)
         | _managed_paths(target_files, target_ownership)
@@ -637,6 +675,8 @@ def analyze_hop(
             continue
         base = source.read_bytes(hop.source, path) if base_class is not None else MISSING
         theirs = source.read_bytes(hop.target, path) if target_class is not None else MISSING
+        base_mode = _source_permissions(base_entries.get(path), path=path, ref=hop.source) if path in base_entries else None
+        target_mode = _source_permissions(target_entries.get(path), path=path, ref=hop.target) if path in target_entries else None
         ours = overrides[path] if overrides is not None and path in overrides else tree.read_bytes(path)
         if target_class is not None and _local_untracked_collision(tree, tracked, path):
             raise UpdateError("UNTRACKED_MANAGED_COLLISION", f"untracked non-ignored managed path collision: {path}")
@@ -650,6 +690,7 @@ def analyze_hop(
             ours=ours,
             base=base,
             theirs=theirs,
+            target_mode=target_mode,
             target_markers=blocks,
         )
         plans.append(plan)
@@ -659,7 +700,7 @@ def analyze_hop(
             retired.append(path)
         if base_class is not None and target_class is not None and base_class != target_class:
             reclassified.append(path)
-        if path in UPDATER_RUNTIME_PATHS and base != theirs:
+        if path in UPDATER_RUNTIME_PATHS and (base != theirs or base_mode != target_mode):
             updater_changed = True
 
     return HopPlan(
@@ -744,13 +785,17 @@ def check_update(root: Path, *, target: str | None = None, source_url: str | Non
         source.close()
 
 
-def _backup_paths(tree: WorkingTree, plans: list[PathPlan]) -> dict[str, bytes | object]:
-    return {item.path: tree.read_bytes(item.path) for item in plans if item.action != "preserve"}
+def _backup_paths(tree: WorkingTree, plans: list[PathPlan]) -> dict[str, tuple[bytes | object, int | None]]:
+    return {
+        item.path: (tree.read_bytes(item.path), tree.mode(item.path))
+        for item in plans
+        if item.action != "preserve"
+    }
 
 
-def _restore_paths(tree: WorkingTree, backup: dict[str, bytes | object]) -> None:
-    for path, value in backup.items():
-        tree.write_bytes(path, None if value is MISSING else _as_bytes(value))
+def _restore_paths(tree: WorkingTree, backup: dict[str, tuple[bytes | object, int | None]]) -> None:
+    for path, (value, mode) in backup.items():
+        tree.write_bytes(path, None if value is MISSING else _as_bytes(value), mode=mode)
 
 
 def _write_lock(root: Path, target: str, target_commit: str) -> None:
@@ -889,7 +934,7 @@ def apply_update(root: Path, *, target: str | None = None, source_url: str | Non
                 for item in plan.paths:
                     if item.action == "write":
                         assert item.content is not None
-                        tree.write_bytes(item.path, item.content)
+                        tree.write_bytes(item.path, item.content, mode=item.mode)
                     elif item.action == "delete":
                         tree.write_bytes(item.path, None)
                 # Lock участвует в target validator, поэтому обновляется внутри
