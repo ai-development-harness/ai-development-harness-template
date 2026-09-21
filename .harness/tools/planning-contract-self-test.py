@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Regression self-test deterministic planning contract helpers.
+"""Regression self-test schema-v1 planning contracts.
 
-Сценарии специально проверяют то, что не должно требовать reasoning-модели:
-manifest-driven paths, transitive Plan basis, dependency cycles, missing refs и
-OPEN question blocker для Ready plan.
+Проверяет дешёвые invariants: configurable paths, 1000+ IDs, selective
+architecture refs, OQ, completion proofs, strict frontmatter, Plan hashes и
+обязательный immutable planning-review.
 """
 from __future__ import annotations
 
 from pathlib import Path
 import tempfile
 
+from document_contract import content_hash
 from planning_contract import (
+    plan_content_hash,
     planning_context_basis,
     task_path,
     validate_planning_contracts,
@@ -19,38 +21,160 @@ from planning_contract import (
 
 def write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def manifest() -> str:
+    return """execution:
+  maxFixReviewCycles: 2
+review:
+  security: auto
+  tests: auto
+sources:
+  requirements: spec/requirements
+  adrDirectory: spec/adr
+  architecture: spec/architecture.md
+  openQuestions: spec/open-questions
+  openQuestionsIndex: spec/OPEN_QUESTIONS.md
+protocol:
+  taskDirectory: work/tasks
+  reviewDirectory: work/reviews
+  planningReviewDirectory: work/plan-reviews
+  initReviewDirectory: work/init-reviews
+"""
+
+
+def requirement(req_id: str = "REQ-1000", extra: str = "") -> str:
+    return f"""---
+schema: 1
+id: {req_id}
+priority: medium
+source: self_test
+steps:
+  - STEP-1000
+adrs: []
+---
+
+# {req_id} — Planning contract
+
+## Requirement
+
+Plan учитывает upstream contract. {extra}
+
+## Rationale
+
+Self-test.
+
+## Acceptance
+
+- Fingerprint меняется только при relevant upstream change.
+"""
+
+
+def adr(status: str = "accepted") -> str:
+    return f"""---
+schema: 1
+id: ADR-1000
+status: {status}
+date: 2026-09-21
+deciders:
+  - test
+supersedes: []
+superseded_by: []
+requirements:
+  - REQ-1000
+steps:
+  - STEP-1000
+---
+
+# ADR-1000 — Test decision
+
+## Context
+
+Self-test.
+
+## Problem
+
+Нужно решение.
+
+## Decision
+
+Использовать fixture.
+
+## Alternatives considered
+
+- none.
+
+## Consequences
+
+Predictable.
+
+## Security implications
+
+Not applicable.
+
+## Data / migration implications
+
+Not applicable.
+
+## Compatibility / operational implications
+
+Not applicable.
+"""
 
 
 def task(
-    *,
     step_id: str,
-    depends: str = "—",
-    req: str = "REQ-001",
-    adr: str = "не требуется",
-    status: str = "Запланировано",
-    plan_status: str = "Not planned",
-    plan_basis: str = "—",
+    *,
+    step_type: str = "implementation",
+    status: str = "planned",
+    depends: list[str] | None = None,
+    requirements: list[str] | None = None,
+    adrs: list[str] | None = None,
+    architecture_refs: list[str] | None = None,
+    risks: list[str] | None = None,
+    plan_status: str = "not_planned",
+    plan_revision: int = 0,
+    context_basis: str | None = None,
+    plan_hash: str | None = None,
+    reviewed_report: str | None = None,
+    evidence: str = "—",
+    extra_section: str = "",
 ) -> str:
-    return f"""# {step_id} — Planning contract self-test
+    depends = depends or []
+    requirements = ["REQ-1000"] if requirements is None else requirements
+    adrs = adrs or []
+    architecture_refs = architecture_refs or ['spec/architecture.md#storage']
+    risks = risks or ["none"]
 
-**Статус:** {status}
-**Type:** IMPLEMENTATION
-**Приоритет:** Средний
-**Фаза:** Test
-**Depends on:** {depends}
+    def block(name: str, values: list[str]) -> str:
+        if not values:
+            return f"{name}: []\n"
+        return f"{name}:\n" + "".join(f'  - "{value}"\n' if "#" in value else f"  - {value}\n" for value in values)
 
-## Requirements
+    def scalar(value: str | None) -> str:
+        return "null" if value is None else value
 
-- {req}
+    return f"""---
+schema: 1
+id: {step_id}
+status: {status}
+type: {step_type}
+priority: medium
+phase: test
+{block("depends_on", depends)}{block("requirements", requirements)}{block("adrs", adrs)}{block("architecture_refs", architecture_refs)}{block("risk_flags", risks)}plan:
+  status: {plan_status}
+  revision: {plan_revision}
+  context_basis: {scalar(context_basis)}
+  content_hash: {scalar(plan_hash)}
+  reviewed_report: {scalar(reviewed_report)}
+  planned_at: {"2026-09-21T00:00:00+00:00" if plan_status == "ready" else "null"}
+review:
+  latest_verdict: not_reviewed
+  latest_report: null
+---
 
-## ADR
-
-- {adr}
-
-## Risk flags
-
-- none
+# {step_id} — Planning contract self-test
 
 ## Goal
 
@@ -68,15 +192,15 @@ Self-test.
 
 ### Allowed
 
-- fixture
+- fixture.
 
 ### Conditional
 
-- —
+- none.
 
 ### Forbidden
 
-- unrelated
+- unrelated.
 
 ## Out of scope
 
@@ -96,259 +220,209 @@ Self-test.
 
 ## Implementation plan
 
-**Plan status:** {plan_status}
-**Plan revision:** 1
-**Plan basis:** {plan_basis}
-**Planned at:** 2026-09-20T00:00:00+00:00
-
-1. fixture
+1. Проверить fixture.
+2. Зафиксировать результат.
 
 ## Evidence
 
-—
-
-## Review status
-
-**Latest verdict:** NOT REVIEWED
-**Latest report:** —
+{evidence}
 
 ## Blocker / Failure reason
 
 —
+{extra_section}
 """
 
 
-def requirement(extra: str = "") -> str:
-    return f"""# REQ-001 — Planning contract
+def planning_review(step_id: str, basis: str, plan_hash: str) -> str:
+    return f"""---
+schema: 1
+kind: planning_review
+step_id: {step_id}
+verdict: pass
+reviewer_role: planner
+context_basis: {basis}
+plan_content_hash: {plan_hash}
+created_at: 2026-09-21T00:00:00+00:00
+---
 
-## Requirement
+# Planning Review {step_id} — self-test
 
-Plan учитывает upstream contract. {extra}
+## Scope checked
 
-## Rationale
+Contract and plan.
 
-Self-test.
+## Findings
 
-## Acceptance
+No material findings.
 
-Fingerprint меняется при изменении requirement.
+## Verdict rationale
 
-## Traceability
-
-STEP-001
+Plan is consistent.
 """
+
+
+def make_ready(root: Path, step_id: str, **kwargs: object) -> None:
+    draft = task(step_id, plan_status="draft", **kwargs)
+    write(root / f"work/tasks/{step_id}.md", draft)
+    basis = planning_context_basis(root, step_id)
+    phash = plan_content_hash(root, step_id)
+    rel = f"work/plan-reviews/{step_id}/PLAN-REVIEW-20260921T000000Z.md"
+    write(root / rel, planning_review(step_id, basis, phash))
+    ready = task(
+        step_id,
+        plan_status="ready",
+        plan_revision=1,
+        context_basis=basis,
+        plan_hash=phash,
+        reviewed_report=rel,
+        **kwargs,
+    )
+    write(root / f"work/tasks/{step_id}.md", ready)
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="harness-planning-contract-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="harness-planning-v1-") as tmp:
         root = Path(tmp)
+        write(root / ".harness/manifest.yaml", manifest())
+        write(root / "spec/requirements/REQ-1000-contract.md", requirement())
+        write(root / "spec/adr/ADR-1000-test.md", adr())
+        write(
+            root / "spec/architecture.md",
+            "# Architecture\n\n## Storage\n\nStorage A.\n\n## Auth\n\nAuth A.\n",
+        )
+        write(root / "spec/OPEN_QUESTIONS.md", "# Open Questions\n")
+        write(
+            root / "work/tasks/STEP-1001.md",
+            task(
+                "STEP-1001",
+                step_type="research",
+                status="completed",
+                requirements=[],
+                architecture_refs=[],
+                evidence="Research result recorded.",
+            ),
+        )
+        write(root / "work/tasks/STEP-1000.md", task("STEP-1000", depends=["STEP-1001"]))
+
+        # Configurable layout + 1000+ IDs.
+        assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
+        assert not validate_planning_contracts(root), validate_planning_contracts(root)
+
+        # Repository containment.
+        valid_manifest = (root / ".harness/manifest.yaml").read_text(encoding="utf-8")
         write(
             root / ".harness/manifest.yaml",
-            """execution:
-  maxFixReviewCycles: 2
-sources:
-  requirements: spec/requirements
-  architecture: spec/architecture.md
-protocol:
-  taskDirectory: work/tasks
-  reviewDirectory: work/reviews
-""",
-        )
-        write(root / "spec/requirements/REQ-001-contract.md", requirement())
-        write(root / "spec/architecture.md", "# Architecture\n\nBaseline A.\n")
-        write(root / "work/tasks/STEP-001.md", task(step_id="STEP-001"))
-
-        # 1. Manifest path обязан быть source of truth; hard-coded planning/tasks
-        # здесь не существует.
-        resolved = task_path(root, "STEP-001")
-        assert resolved == root / "work/tasks/STEP-001.md", resolved
-
-        # Manifest path не имеет права читать artifacts за пределами repository.
-        manifest_path = root / ".harness/manifest.yaml"
-        valid_manifest = manifest_path.read_text(encoding="utf-8")
-        write(
-            manifest_path,
-            valid_manifest.replace(
-                "taskDirectory: work/tasks",
-                "taskDirectory: ../outside/tasks",
-            ),
+            valid_manifest.replace("taskDirectory: work/tasks", "taskDirectory: ../outside"),
         )
         errors = validate_planning_contracts(root)
-        assert any("path must stay inside repository" in item for item in errors), errors
-        write(manifest_path, valid_manifest)
+        assert any("inside repository" in item or "escapes repository" in item for item in errors), errors
+        write(root / ".harness/manifest.yaml", valid_manifest)
 
-        # 2. Linked REQ и architecture входят в transitive Plan basis.
-        basis_a = planning_context_basis(root, "STEP-001")
-        write(root / "spec/requirements/REQ-001-contract.md", requirement("Изменено."))
-        basis_b = planning_context_basis(root, "STEP-001")
-        assert basis_a != basis_b, (basis_a, basis_b)
-
-        write(root / "spec/architecture.md", "# Architecture\n\nBaseline B.\n")
-        basis_c = planning_context_basis(root, "STEP-001")
+        # Selective architecture refs: unrelated section does not invalidate basis.
+        basis_a = planning_context_basis(root, "STEP-1000")
+        write(
+            root / "spec/architecture.md",
+            "# Architecture\n\n## Storage\n\nStorage A.\n\n## Auth\n\nAuth B.\n",
+        )
+        basis_b = planning_context_basis(root, "STEP-1000")
+        assert basis_a == basis_b, (basis_a, basis_b)
+        write(
+            root / "spec/architecture.md",
+            "# Architecture\n\n## Storage\n\nStorage B.\n\n## Auth\n\nAuth B.\n",
+        )
+        basis_c = planning_context_basis(root, "STEP-1000")
         assert basis_b != basis_c, (basis_b, basis_c)
 
-        # 3. Dependency contract тоже upstream input.
-        write(
-            root / "work/tasks/STEP-002.md",
-            task(step_id="STEP-002", req="REQ-001", status="Выполнено"),
-        )
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(step_id="STEP-001", depends="STEP-002"),
-        )
-        basis_d = planning_context_basis(root, "STEP-001")
-        dep_text = (root / "work/tasks/STEP-002.md").read_text(encoding="utf-8")
-        dep_text = dep_text.replace("Проверить planning contract.", "Проверить изменённый dependency contract.")
-        write(root / "work/tasks/STEP-002.md", dep_text)
-        basis_e = planning_context_basis(root, "STEP-001")
-        assert basis_d != basis_e, (basis_d, basis_e)
+        # REQ and dependency completion proof are planning inputs.
+        write(root / "spec/requirements/REQ-1000-contract.md", requirement(extra="Changed."))
+        basis_d = planning_context_basis(root, "STEP-1000")
+        assert basis_c != basis_d
+        dep = (root / "work/tasks/STEP-1001.md").read_text(encoding="utf-8")
+        write(root / "work/tasks/STEP-1001.md", dep.replace("Research result recorded.", "Research result changed."))
+        basis_e = planning_context_basis(root, "STEP-1000")
+        assert basis_d != basis_e
 
-        # 4. Ready plan с точным basis проходит static validator.
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(step_id="STEP-001", depends="STEP-002"),
-        )
-        ready_basis = planning_context_basis(root, "STEP-001")
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(
-                step_id="STEP-001",
-                depends="STEP-002",
-                plan_status="Ready",
-                plan_basis=ready_basis,
-            ),
-        )
-        assert validate_planning_contracts(root) == [], validate_planning_contracts(root)
-
-        # 5. Изменение REQ после planning делает Ready plan stale.
-        write(root / "spec/requirements/REQ-001-contract.md", requirement("После planning."))
+        # Ready requires matching semantic planning-review and both hashes.
+        make_ready(root, "STEP-1000", depends=["STEP-1001"])
         errors = validate_planning_contracts(root)
-        assert any("Ready plan is stale" in item for item in errors), errors
+        assert not errors, errors
 
-        # Вернуть актуальный basis перед следующими независимыми checks.
-        current_basis = planning_context_basis(root, "STEP-001")
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(
-                step_id="STEP-001",
-                depends="STEP-002",
-                plan_status="Ready",
-                plan_basis=current_basis,
-            ),
-        )
-
-        # 6. Ready plan не может зависеть от незавершённого STEP.
-        dep_text = (root / "work/tasks/STEP-002.md").read_text(encoding="utf-8")
-        write(
-            root / "work/tasks/STEP-002.md",
-            dep_text.replace("**Статус:** Выполнено", "**Статус:** В работе"),
-        )
+        # Editing plan content makes Ready invalid even when context is unchanged.
+        ready = (root / "work/tasks/STEP-1000.md").read_text(encoding="utf-8")
+        write(root / "work/tasks/STEP-1000.md", ready.replace("2. Зафиксировать результат.", "2. Изменить результат."))
         errors = validate_planning_contracts(root)
-        assert any("incomplete dependency STEP-002" in item for item in errors), errors
-        write(root / "work/tasks/STEP-002.md", dep_text)
+        assert any("content_hash is stale" in item for item in errors), errors
+        write(root / "work/tasks/STEP-1000.md", ready)
 
-        # 7. Linked ADR обязан быть Accepted до Ready.
+        # Relevant canonical OQ participates in basis and blocks Ready.
         write(
-            root / "docs/adr/ADR-001-test.md",
-            """# ADR-001 — Test decision
+            root / "spec/open-questions/OQ-1000-choice.md",
+            """---
+schema: 1
+id: OQ-1000
+status: open
+affects:
+  - REQ-1000
+created_at: 2026-09-21T00:00:00+00:00
+resolved_at: null
+---
 
-**Status:** Proposed
+# OQ-1000 — Choice
 
 ## Context
-self-test
-""",
-        )
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(
-                step_id="STEP-001",
-                depends="STEP-002",
-                adr="ADR-001",
-            ),
-        )
-        adr_basis = planning_context_basis(root, "STEP-001")
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(
-                step_id="STEP-001",
-                depends="STEP-002",
-                adr="ADR-001",
-                plan_status="Ready",
-                plan_basis=adr_basis,
-            ),
-        )
-        errors = validate_planning_contracts(root)
-        assert any("non-Accepted ADR-001" in item for item in errors), errors
-        adr_text = (root / "docs/adr/ADR-001-test.md").read_text(encoding="utf-8")
-        write(
-            root / "docs/adr/ADR-001-test.md",
-            adr_text.replace("**Status:** Proposed", "**Status:** Accepted"),
-        )
-        accepted_basis = planning_context_basis(root, "STEP-001")
-        write(
-            root / "work/tasks/STEP-001.md",
-            task(
-                step_id="STEP-001",
-                depends="STEP-002",
-                adr="ADR-001",
-                plan_status="Ready",
-                plan_basis=accepted_basis,
-            ),
-        )
-        assert validate_planning_contracts(root) == [], validate_planning_contracts(root)
 
-        # 8. Ready contract не должен содержать unresolved placeholders.
-        ready_text = (root / "work/tasks/STEP-001.md").read_text(encoding="utf-8")
-        write(
-            root / "work/tasks/STEP-001.md",
-            ready_text.replace("**Фаза:** Test", "**Фаза:** TBD"),
-        )
-        errors = validate_planning_contracts(root)
-        assert any("unresolved Phase=TBD" in item for item in errors), errors
-        write(root / "work/tasks/STEP-001.md", ready_text)
+Need a decision.
 
-        # 9. OPEN question, влияющий на STEP/linked REQ, не совместим с Ready.
-        write(
-            root / "docs/OPEN_QUESTIONS.md",
-            """# Open Questions
+## Decision needed
 
-## OQ-001 — Нужен выбор
-Status: OPEN
-Affects: REQ-001, STEP-001
-Context: self-test
-Decision needed: choose
-Resolution: —
+Choose a mode.
+
+## Resolution
+
+
 """,
         )
         errors = validate_planning_contracts(root)
-        assert any("blocked by OQ-001" in item for item in errors), errors
+        assert any("blocked by OQ-1000" in item for item in errors), errors
 
-        # Malformed blocking metadata не должен молча исчезать из static gate.
-        write(
-            root / "docs/OPEN_QUESTIONS.md",
-            """# Open Questions
-
-### OQ-002 — Некорректная запись
-Status: UNKNOWN
-Context: self-test
-""",
-        )
+        # Missing affects target is rejected.
+        oq = (root / "spec/open-questions/OQ-1000-choice.md").read_text(encoding="utf-8")
+        write(root / "spec/open-questions/OQ-1000-choice.md", oq.replace("REQ-1000", "REQ-9999"))
         errors = validate_planning_contracts(root)
-        assert any("OQ-002 missing or invalid Status" in item for item in errors), errors
-        assert any("OQ-002 missing Affects references" in item for item in errors), errors
+        assert any("affects target does not exist" in item for item in errors), errors
+        (root / "spec/open-questions/OQ-1000-choice.md").unlink()
 
-        # 10. Dependency cycle ловится без модели.
-        (root / "docs/OPEN_QUESTIONS.md").unlink()
-        step2 = (root / "work/tasks/STEP-002.md").read_text(encoding="utf-8")
-        step2 = step2.replace("**Depends on:** —", "**Depends on:** STEP-001")
-        write(root / "work/tasks/STEP-002.md", step2)
+        # Unknown/mixed risk flags are deterministic errors.
+        write(root / "work/tasks/STEP-1000.md", task("STEP-1000", risks=["none", "security-sensitive"]))
+        errors = validate_planning_contracts(root)
+        assert any("mutually exclusive" in item for item in errors), errors
+        write(root / "work/tasks/STEP-1000.md", task("STEP-1000", risks=["typo-risk"]))
+        errors = validate_planning_contracts(root)
+        assert any("unknown risk flag" in item for item in errors), errors
+
+        # Duplicate contract sections are invalid instead of silently merged.
+        duplicate = task("STEP-1000") + "\n## Scope\n\nDuplicate.\n"
+        write(root / "work/tasks/STEP-1000.md", duplicate)
+        errors = validate_planning_contracts(root)
+        assert any("duplicate section" in item for item in errors), errors
+
+        # Dependency cycle is graph-detectable.
+        write(root / "work/tasks/STEP-1000.md", task("STEP-1000", depends=["STEP-1001"]))
+        write(
+            root / "work/tasks/STEP-1001.md",
+            task(
+                "STEP-1001",
+                step_type="research",
+                status="completed",
+                depends=["STEP-1000"],
+                requirements=[],
+                architecture_refs=[],
+                evidence="done",
+            ),
+        )
         errors = validate_planning_contracts(root)
         assert any("dependency cycle" in item for item in errors), errors
-
-        # 11. Missing canonical REQ — deterministic contract failure.
-        (root / "spec/requirements/REQ-001-contract.md").unlink()
-        errors = validate_planning_contracts(root)
-        assert any("expected exactly one canonical requirement file" in item for item in errors), errors
 
     print("PLANNING CONTRACT SELF-TEST: PASS")
     return 0
