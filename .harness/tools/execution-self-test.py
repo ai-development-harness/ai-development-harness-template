@@ -23,6 +23,7 @@ from planning_contract import plan_content_hash, planning_context_basis
 from review_contract import (
     latest_trusted_review,
     repository_revision,
+    review_reports,
     validate_review_immutability,
 )
 from review_gates import required_reviewers
@@ -560,6 +561,15 @@ def main() -> int:
 
         blocked = block_execution(root, run_root, command="STEP REVIEW STEP-001")
         assert blocked["current"]["result"] == "FAIL"
+
+        # Report identity привязан не только к frontmatter, но и к
+        # STEP-NNN directory. Иначе PASS другого STEP можно было подложить в
+        # чужую history.
+        cross_step = root / "planning/reviews/STEP-999/REVIEW-20260921T044000Z.md"
+        source_review = root / "planning/reviews/STEP-001/REVIEW-20260921T020000Z.md"
+        write(cross_step, source_review.read_text(encoding="utf-8"))
+        assert not review_reports(root, "STEP-999"), review_reports(root, "STEP-999")
+        cross_step.unlink()
 
         # Legacy review filenames до schema-v1 не были канонизированы. Даже
         # лексикографически "поздний" pinned legacy report остаётся historical

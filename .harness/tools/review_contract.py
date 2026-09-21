@@ -383,7 +383,13 @@ def _valid_step_review_filename(name: str) -> bool:
     return True
 
 
-def validate_review_report(root: Path, path: Path, *, require_current_revision: bool = False) -> list[str]:
+def validate_review_report(
+    root: Path,
+    path: Path,
+    *,
+    require_current_revision: bool = False,
+    expected_step_id: str | None = None,
+) -> list[str]:
     errors: list[str] = []
     try:
         document = parse_document(path)
@@ -395,6 +401,9 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
     step_id = meta.get("step_id")
     if not isinstance(step_id, str) or STEP_ID_RE.fullmatch(step_id) is None:
         errors.append("step_id must be STEP-NNN")
+        return errors
+    if expected_step_id is not None and step_id != expected_step_id:
+        errors.append(f"step_id must match review directory {expected_step_id}")
         return errors
     try:
         task = read_task(root, step_id)
@@ -568,7 +577,7 @@ def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
         return []
     result: list[dict[str, Any]] = []
     for path in sorted(directory.glob("REVIEW-*.md")):
-        errors = validate_review_report(root, path)
+        errors = validate_review_report(root, path, expected_step_id=step_id)
         if errors:
             continue
         doc = parse_document(path)
@@ -710,6 +719,7 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
 
     for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
         rel = path.relative_to(root).as_posix()
+        expected_step_id = path.parent.name
         try:
             text = path.read_text(encoding="utf-8")
             frontmatter, _ = split_frontmatter(text)
@@ -723,7 +733,11 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
                 f"review: {rel}: legacy immutable report is not hash-pinned by schema migration"
             )
             continue
-        for issue in validate_review_report(root, path):
+        for issue in validate_review_report(
+            root,
+            path,
+            expected_step_id=expected_step_id,
+        ):
             errors.append(f"review: {rel}: {issue}")
     return errors
 
