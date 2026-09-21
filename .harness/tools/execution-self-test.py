@@ -52,6 +52,8 @@ protocol:
   planningReviewDirectory: planning/plan-reviews
   initReviewDirectory: planning/init-reviews
   auditDirectory: planning/audits
+  releaseDirectory: planning/releases
+  skillSearchDirectory: planning/skill-searches
 """
 
 
