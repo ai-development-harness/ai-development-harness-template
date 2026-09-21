@@ -22,7 +22,7 @@ description: Bootstrap a new repository from the configured local brief into a d
    ```bash
    python3 .harness/tools/planning-state.py init-basis requirements
    ```
-   Сохрани immutable schema-v1 report в configured `protocol.initReviewDirectory` по template с `reviewer_role: reviewer`. PASS обязан ссылаться на текущий basis. Если остаётся существенное contradiction/missing decision — создай canonical OQ с `affects: PROJECT` либо prerequisite work и верни BLOCKED.
+   Сохрани immutable schema-v1 report `INIT-REVIEW-<UTC timestamp>.md` в configured `protocol.initReviewDirectory` по template с `reviewer_role: reviewer`. PASS обязан ссылаться на текущий basis. Если остаётся существенное contradiction/missing decision — создай canonical OQ с `affects: PROJECT` либо prerequisite work и верни BLOCKED.
 7. Построй canonical STEP roadmap по dependencies. Для каждого STEP заполни strict frontmatter refs, `architecture_refs`, `risk_flags`, contract sections и mutation policy. `plan.status=not_planned`.
 8. Передай candidate roadmap отдельному `reviewer` agent/session и выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, contract↔Acceptance, ownership, dependencies/completion prerequisites, architecture refs, OQ и Verification. Получи basis:
    ```bash

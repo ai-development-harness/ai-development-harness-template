@@ -159,7 +159,7 @@ Proof fingerprint входит в planning basis direct dependent STEP.
 
 ## Implementation review
 
-STEP REVIEW создаёт immutable schema-v1 report. STEP не хранит отдельный mutable `review.latest_*` cache: latest state выводится из immutable review history, чтобы запись результата review не меняла только что проверенную revision.
+STEP REVIEW создаёт immutable schema-v1 report `REVIEW-<UTC timestamp>.md`. Planning/INIT semantic reports аналогично используют `PLAN-REVIEW-<UTC timestamp>.md` и `INIT-REVIEW-<UTC timestamp>.md`; sortable canonical names определяют deterministic history order. STEP не хранит отдельный mutable `review.latest_*` cache: latest state выводится из immutable review history, чтобы запись результата review не меняла только что проверенную revision.
 
 Report обязан содержать:
 
