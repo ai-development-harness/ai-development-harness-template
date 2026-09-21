@@ -45,6 +45,10 @@ protocol:
         write(root / "docs/ADR-001-old.md", "# ADR\n\nREVIEW STEP-001\n")
         # Обычный subsystem doc в том же configured directory обязан сканироваться.
         write(root / "docs/subsystem.md", "# Subsystem\n\nCOMMIT\n")
+        # Symlink с ADR-shaped именем вне canonical ADR root не является
+        # historical ADR только из-за target и обязан остаться scan surface.
+        (root / "docs/subsystem").mkdir(parents=True)
+        (root / "docs/subsystem/ADR-999-linked.md").symlink_to("../ADR-001-old.md")
 
         paths = project_live_document_paths(root)
         rels = {
@@ -56,12 +60,14 @@ protocol:
         assert "spec/questions/OQ-001-test.md" in rels, rels
         assert "spec/requirements/REQ-001-test.md" in rels, rels
         assert "docs/subsystem.md" in rels, rels
+        assert "docs/subsystem/ADR-999-linked.md" in rels, rels
 
         findings = scan_files(root, paths)
         pairs = {(item.path, item.legacy) for item in findings}
         assert ("spec/requirements/REQ-001-test.md", "PLAN STEP-NNN") in pairs, pairs
         assert ("spec/questions/OQ-001-test.md", "FIX STEP-NNN") in pairs, pairs
         assert ("docs/subsystem.md", "COMMIT") in pairs, pairs
+        assert ("docs/subsystem/ADR-999-linked.md", "REVIEW STEP-NNN") in pairs, pairs
         assert ("docs/ADR-001-old.md", "REVIEW STEP-NNN") not in pairs, pairs
 
     print("COMMAND REFERENCES SELF-TEST: PASS")
