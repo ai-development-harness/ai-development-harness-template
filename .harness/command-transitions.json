@@ -44,7 +44,6 @@
     "STEP": {
       "chainEnabled": true,
       "inheritTarget": true,
-      "targetKind": "step",
       "continuationAliases": {},
       "commands": {
         "ADD": {
@@ -188,7 +187,6 @@
     "HARNESS": {
       "chainEnabled": true,
       "inheritTarget": true,
-      "targetKind": "release",
       "continuationAliases": {
         "APPLY": "UPDATE APPLY"
       },
