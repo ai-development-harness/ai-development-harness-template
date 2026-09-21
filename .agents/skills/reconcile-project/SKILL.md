@@ -27,7 +27,7 @@ Migration:
 - идемпотентно переводит active STEP/REQ/ADR и canonical OQ на schema v1;
 - мигрирует Accepted ADR как schema change без изменения решения;
 - разбивает legacy monolithic requirements/OQ;
-- не переписывает immutable historical review/audit reports;
+- не переписывает immutable historical review/audit reports; legacy review history hash-pin-ится migration report-ом, чтобы оставаться доверенным и обнаруживать последующую mutation;
 - синхронизирует project-owned templates/projections;
 - сохраняет versioned migration report в configured `protocol.auditDirectory`.
 
