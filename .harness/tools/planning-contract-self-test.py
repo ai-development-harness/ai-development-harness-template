@@ -376,6 +376,15 @@ def main() -> int:
         assert latest_matching_init_review(root, "requirements") is None
         (root / "work/init-reviews/INIT-REVIEW-20260921T020000Z.md").unlink()
 
+        # Semantic trust reports должны быть обычными immutable files, а не
+        # symlink на mutable соседний artifact.
+        init_source = root / "work/init-reviews/INIT-REVIEW-20260921T010000Z.md"
+        init_link = root / "work/init-reviews/INIT-REVIEW-20260921T015000Z.md"
+        init_link.symlink_to(init_source.name)
+        init_link_errors = validate_init_review_report(root, init_link)
+        assert any("must not be a symlink" in item for item in init_link_errors), init_link_errors
+        init_link.unlink()
+
         # Configurable layout + 1000+ IDs.
         assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
         assert not validate_planning_contracts(root), validate_planning_contracts(root)
@@ -423,6 +432,13 @@ def main() -> int:
         make_ready(root, "STEP-1000", depends=["STEP-1001"])
         errors = validate_planning_contracts(root)
         assert not errors, errors
+
+        plan_source = root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T000000Z.md"
+        plan_link = root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T003000Z.md"
+        plan_link.symlink_to(plan_source.name)
+        plan_link_errors = validate_planning_review_report(root, plan_link, expected_step_id="STEP-1000")
+        assert any("must not be a symlink" in item for item in plan_link_errors), plan_link_errors
+        plan_link.unlink()
 
         # Новый BLOCKED для того же basis/content отменяет более старый PASS.
         current_basis = planning_context_basis(root, "STEP-1000")
