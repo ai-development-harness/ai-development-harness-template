@@ -4,6 +4,8 @@ description: Review requirements for clarity, testability, duplication, conflict
 ---
 # requirements-review
 
+Human-readable review prose пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; machine schema не локализуй.
+
 Проверяй canonical REQ из configured `sources.requirements` как единый набор product/system contracts, а не по одному файлу в изоляции. `SPEC.md` и `STATUS.md` внутри configured requirements directory — deterministic projections, не competing source requirement definition. Canonical Open Questions бери из `sources.openQuestions`; `sources.openQuestionsIndex` — projection.
 
 Обязательная semantic review должна искать:
