@@ -117,6 +117,13 @@ jobs:
         # Пример: проверяет dependency cycles, OPEN questions и custom taskDirectory.
         run: python3 .harness/tools/planning-contract-self-test.py
 
+      # Проверить manifest/config boundary: language fallback/tags и manifest-driven Git policy.
+      # Пример: произвольная строка вместо BCP 47 tag должна дать deterministic FAIL.
+      - name: Validate Harness config contracts
+        # Synthetic config regression не зависит от project stack.
+        # Пример: custom repository.gitPolicy path реально загружается config layer.
+        run: python3 .harness/tools/harness-config-self-test.py
+
       # Проверить schema contracts durable audit/release/skill-search reports.
       # Пример: candidate_count должен точно соответствовать shortlist #1..#N.
       - name: Validate durable report contracts
