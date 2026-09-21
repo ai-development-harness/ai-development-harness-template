@@ -270,7 +270,7 @@ schema: 1
 kind: planning_review
 step_id: STEP-NNN
 verdict: pass
-reviewer_role: planner
+reviewer_role: reviewer
 finding_count: 0
 context_basis: sha256:...
 plan_content_hash: sha256:...
@@ -302,7 +302,7 @@ schema: 1
 kind: init_review
 stage: requirements
 verdict: pass
-reviewer_role: initializer
+reviewer_role: reviewer
 finding_count: 0
 basis: sha256:...
 created_at: YYYY-MM-DDTHH:MM:SSZ
