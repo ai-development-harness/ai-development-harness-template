@@ -14,7 +14,13 @@ from harness_config import (
     status_path,
     task_directory,
 )
-from planning_contract import open_questions, read_task, step_completion_proof
+from planning_contract import (
+    dependency_ids,
+    open_questions,
+    read_task,
+    relevant_open_questions,
+    step_completion_proof,
+)
 
 
 def _title(document: dict[str, Any]) -> str:
@@ -180,6 +186,25 @@ def render_roadmap(root: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _is_unblocked_planned_step(root: Path, task: dict[str, Any]) -> bool:
+    """Planned STEP пригоден для NEXT только без hard blockers."""
+    meta = task["frontmatter"]
+    if meta.get("status") != "planned":
+        return False
+    for dependency in dependency_ids(task):
+        try:
+            if not step_completion_proof(root, dependency)["complete"]:
+                return False
+        except Exception:
+            return False
+    try:
+        if any(item.get("status") == "open" for item in relevant_open_questions(root, task)):
+            return False
+    except Exception:
+        return False
+    return True
+
+
 def render_project_status(root: Path) -> str:
     steps = canonical_steps(root)
     groups: dict[str, list[str]] = {}
@@ -209,7 +234,15 @@ def render_project_status(root: Path) -> str:
 
     section("In progress", ("in_progress",))
     section("Blocked", ("blocked",))
-    section("Next unblocked work", ("planned",))
+
+    lines.extend(["", "## Next unblocked work", ""])
+    unblocked = [
+        str(item["document"]["frontmatter"].get("id"))
+        for item in steps
+        if _is_unblocked_planned_step(root, item["document"])
+    ]
+    lines.append(", ".join(unblocked) if unblocked else "—")
+
     section("Recent completed", ("completed",))
     return "\n".join(lines) + "\n"
 
