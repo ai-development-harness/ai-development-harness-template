@@ -6,7 +6,6 @@ validation и относится к точной текущей repository revis
 """
 from __future__ import annotations
 
-from datetime import datetime
 import hashlib
 from pathlib import Path
 import re
@@ -22,6 +21,7 @@ from document_contract import (
     require_schema,
     split_frontmatter,
     string_list,
+    validate_report_timestamp_identity,
 )
 from harness_config import (
     audit_directory,
@@ -67,14 +67,13 @@ def validate_migration_report(root: Path, path: Path) -> list[str]:
     if meta.get("result") != "complete":
         errors.append("result must be complete")
 
-    created_at = meta.get("created_at")
-    if not isinstance(created_at, str) or not created_at.strip():
-        errors.append("created_at must be non-empty ISO-8601 string")
-    else:
-        try:
-            datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        except ValueError:
-            errors.append("created_at must be valid ISO-8601")
+    errors.extend(
+        validate_report_timestamp_identity(
+            path,
+            prefix="MIGRATION-",
+            created_at=meta.get("created_at"),
+        )
+    )
 
     changed_count = meta.get("changed_count")
     if (
@@ -84,14 +83,6 @@ def validate_migration_report(root: Path, path: Path) -> list[str]:
     ):
         errors.append("changed_count must be a non-negative integer")
 
-    migration_name = re.fullmatch(r"MIGRATION-(\d{8}T\d{6}Z)\.md", path.name)
-    if migration_name is None:
-        errors.append("filename must be MIGRATION-<UTC timestamp>.md")
-    else:
-        try:
-            datetime.strptime(migration_name.group(1), "%Y%m%dT%H%M%SZ")
-        except ValueError:
-            errors.append("filename must be MIGRATION-<UTC timestamp>.md")
     if document.get("h1") != "# Project Schema Migration":
         errors.append("H1 must be '# Project Schema Migration'")
     for section in ("Changed artifacts", "Legacy immutable reviews", "Notes"):
@@ -444,18 +435,6 @@ def _parse_findings(document: dict[str, Any]) -> list[dict[str, str]]:
     return findings
 
 
-def _valid_step_review_filename(name: str) -> bool:
-    """Schema-v1 implementation review использует sortable UTC timestamp name."""
-    match = re.fullmatch(r"REVIEW-(\d{8}T\d{6}Z)\.md", name)
-    if match is None:
-        return False
-    try:
-        datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
-    except ValueError:
-        return False
-    return True
-
-
 def validate_review_report(
     root: Path,
     path: Path,
@@ -507,8 +486,13 @@ def validate_review_report(
         errors.append("verdict must be pass|fail|blocked")
     if meta.get("reviewer_role") != "reviewer":
         errors.append("reviewer_role must be reviewer")
-    if not _valid_step_review_filename(path.name):
-        errors.append("filename must be REVIEW-<UTC timestamp>.md")
+    errors.extend(
+        validate_report_timestamp_identity(
+            path,
+            prefix="REVIEW-",
+            created_at=meta.get("created_at"),
+        )
+    )
 
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):

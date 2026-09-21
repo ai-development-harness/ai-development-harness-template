@@ -23,6 +23,10 @@ from planning_contract import (
 )
 
 
+class ProjectionDerivationError(RuntimeError):
+    """Canonical state нельзя безопасно превратить в projection."""
+
+
 def _title(document: dict[str, Any]) -> str:
     h1 = document["h1"]
     return h1.split(" — ", 1)[1].strip() if " — " in h1 else h1.lstrip("# ").strip()
@@ -42,12 +46,16 @@ def canonical_requirements(root: Path) -> list[dict[str, Any]]:
             continue
         try:
             document = parse_document(path)
-        except DocumentError:
-            continue
+        except DocumentError as exc:
+            raise ProjectionDerivationError(
+                f"cannot parse canonical requirement {path.relative_to(root)}: {exc}"
+            ) from exc
         meta = document["frontmatter"]
         req_id = meta.get("id")
         if not isinstance(req_id, str) or not path.name.startswith(req_id + "-"):
-            continue
+            raise ProjectionDerivationError(
+                f"invalid canonical requirement identity: {path.relative_to(root)}"
+            )
         result.append({"path": path, "document": document})
     return result
 
@@ -57,11 +65,16 @@ def canonical_steps(root: Path) -> list[dict[str, Any]]:
     for path in sorted(task_directory(root).glob("STEP-*.md")):
         try:
             document = parse_document(path)
-        except DocumentError:
-            continue
+        except DocumentError as exc:
+            raise ProjectionDerivationError(
+                f"cannot parse canonical STEP {path.relative_to(root)}: {exc}"
+            ) from exc
         meta = document["frontmatter"]
-        if meta.get("id") == path.stem:
-            result.append({"path": path, "document": document})
+        if meta.get("id") != path.stem:
+            raise ProjectionDerivationError(
+                f"invalid canonical STEP identity: {path.relative_to(root)}"
+            )
+        result.append({"path": path, "document": document})
     return result
 
 
@@ -98,27 +111,32 @@ def _requirement_status(
     cancelled = 0
     evidence: list[str] = []
     valid_steps: list[str] = []
+    req_id = str(meta.get("id", "<unknown REQ>"))
     for step_id in steps:
         if not isinstance(step_id, str):
-            continue
+            raise ProjectionDerivationError(
+                f"{req_id}: non-string STEP reference in canonical requirement"
+            )
         try:
             task = read_task(root, step_id)
-            valid_steps.append(step_id)
-            status = task["frontmatter"].get("status")
-            if status == "deferred":
-                deferred += 1
-            elif status == "cancelled":
-                cancelled += 1
             proof = step_completion_proof(
                 root,
                 step_id,
                 extra_legacy_review_pins=extra_legacy_review_pins,
             )
-            if proof["complete"]:
-                completed += 1
-                evidence.append(proof["proof_hash"])
-        except Exception:
-            continue
+        except Exception as exc:
+            raise ProjectionDerivationError(
+                f"{req_id}: cannot derive state from {step_id}: {exc}"
+            ) from exc
+        valid_steps.append(step_id)
+        status = task["frontmatter"].get("status")
+        if status == "deferred":
+            deferred += 1
+        elif status == "cancelled":
+            cancelled += 1
+        if proof["complete"]:
+            completed += 1
+            evidence.append(proof["proof_hash"])
     total = len(valid_steps)
     if total and completed == total:
         status = "completed"
@@ -191,16 +209,23 @@ def _is_unblocked_planned_step(root: Path, task: dict[str, Any]) -> bool:
     meta = task["frontmatter"]
     if meta.get("status") != "planned":
         return False
+    step_id = str(meta.get("id", "<unknown STEP>"))
     for dependency in dependency_ids(task):
         try:
-            if not step_completion_proof(root, dependency)["complete"]:
-                return False
-        except Exception:
+            proof = step_completion_proof(root, dependency)
+        except Exception as exc:
+            raise ProjectionDerivationError(
+                f"{step_id}: cannot derive dependency proof for {dependency}: {exc}"
+            ) from exc
+        if not proof["complete"]:
             return False
     try:
-        if any(item.get("status") == "open" for item in relevant_open_questions(root, task)):
-            return False
-    except Exception:
+        questions = relevant_open_questions(root, task)
+    except Exception as exc:
+        raise ProjectionDerivationError(
+            f"{step_id}: cannot derive relevant Open Questions: {exc}"
+        ) from exc
+    if any(item.get("status") == "open" for item in questions):
         return False
     return True
 
@@ -297,7 +322,11 @@ def projection_targets(
 
 def validate_projections(root: Path) -> list[str]:
     errors: list[str] = []
-    for path, expected in projection_targets(root).items():
+    try:
+        targets = projection_targets(root)
+    except Exception as exc:
+        return [f"projection derivation failed: {exc}"]
+    for path, expected in targets.items():
         if not path.is_file():
             errors.append(f"projection missing: {path.relative_to(root)}")
             continue

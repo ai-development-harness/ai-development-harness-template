@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from projection_contract import validate_projections, write_projections
+from projection_contract import ProjectionDerivationError, validate_projections, write_projections
 
 
 def main() -> int:
@@ -27,7 +27,16 @@ def main() -> int:
                 print(f"- {item}")
         return 0 if not errors else 1
 
-    changed = write_projections(root)
+    try:
+        changed = write_projections(root)
+    except ProjectionDerivationError as exc:
+        result = {"status": "BLOCKED", "errors": [str(exc)]}
+        if args.as_json:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print("BLOCKED")
+            print(f"- {exc}")
+        return 2
     result = {"status": "UPDATED", "changed": changed}
     if args.as_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

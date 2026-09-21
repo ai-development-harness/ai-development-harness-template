@@ -131,6 +131,13 @@ jobs:
         # Пример: malformed release verdict и incomplete skill shortlist дают FAIL.
         run: python3 .harness/tools/report-contract-self-test.py
 
+      # Проверить repository-level fail-closed boundaries validator.
+      # Пример: Git ignore semantics, ignored TOML и Codex config containment.
+      - name: Validate repository hardening regressions
+        # Synthetic checkout создаётся локально из tracked files текущего commit.
+        # Пример: закомментированный AGENTS.local.md pattern обязан дать FAIL.
+        run: python3 .harness/tools/repository-hardening-self-test.py
+
       # Проверить fail-closed schema/unknown-key behavior Git policy через публичный validator.
       # Пример: опечатка require_clean_worktre не должна молча игнорироваться.
       - name: Validate Git policy regression

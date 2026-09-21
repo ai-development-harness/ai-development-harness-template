@@ -7,41 +7,19 @@ SKILL SEARCH: команда SKILL INSTALL: #N resolve-ит выбор поль�
 """
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 import argparse
 import json
 import re
 from typing import Any
 
-from document_contract import DocumentError, parse_document
+from document_contract import DocumentError, parse_document, validate_report_timestamp_identity
 from harness_config import (
     audit_directory,
     release_directory,
     skill_search_directory,
     skill_search_max_results,
 )
-
-
-def _valid_iso_timestamp(value: Any) -> bool:
-    if not isinstance(value, str) or not value.strip():
-        return False
-    try:
-        datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    return True
-
-
-def _valid_timestamped_filename(name: str, prefix: str) -> bool:
-    match = re.fullmatch(rf"{re.escape(prefix)}(\d{{8}}T\d{{6}}Z)\.md", name)
-    if match is None:
-        return False
-    try:
-        datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
-    except ValueError:
-        return False
-    return True
 
 
 def _require_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[str]:
@@ -73,10 +51,13 @@ def validate_audit_report(root: Path, path: Path) -> list[str]:
         errors.append("mode must be audit")
     if meta.get("result") != "complete":
         errors.append("result must be complete")
-    if not _valid_iso_timestamp(meta.get("created_at")):
-        errors.append("created_at must be ISO-8601")
-    if not _valid_timestamped_filename(path.name, "AUDIT-"):
-        errors.append("filename must be AUDIT-<UTC timestamp>.md")
+    errors.extend(
+        validate_report_timestamp_identity(
+            path,
+            prefix="AUDIT-",
+            created_at=meta.get("created_at"),
+        )
+    )
     if not document.get("h1", "").startswith("# Audit — "):
         errors.append("H1 must start with '# Audit — '")
     errors.extend(
@@ -106,10 +87,13 @@ def validate_release_report(root: Path, path: Path) -> list[str]:
         errors.append("target must be non-empty string")
     if meta.get("verdict") not in {"ready", "blocked"}:
         errors.append("verdict must be ready|blocked")
-    if not _valid_iso_timestamp(meta.get("created_at")):
-        errors.append("created_at must be ISO-8601")
-    if not _valid_timestamped_filename(path.name, "RELEASE-"):
-        errors.append("filename must be RELEASE-<UTC timestamp>.md")
+    errors.extend(
+        validate_report_timestamp_identity(
+            path,
+            prefix="RELEASE-",
+            created_at=meta.get("created_at"),
+        )
+    )
     if not document.get("h1", "").startswith("# Release Check — "):
         errors.append("H1 must start with '# Release Check — '")
     errors.extend(
@@ -186,8 +170,13 @@ def validate_skill_search_report(root: Path, path: Path) -> list[str]:
         errors.append("query must be non-empty string")
     if meta.get("status") != "complete":
         errors.append("status must be complete")
-    if not _valid_iso_timestamp(meta.get("created_at")):
-        errors.append("created_at must be ISO-8601")
+    errors.extend(
+        validate_report_timestamp_identity(
+            path,
+            prefix="SKILL-SEARCH-",
+            created_at=meta.get("created_at"),
+        )
+    )
 
     count = meta.get("candidate_count")
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
@@ -205,8 +194,6 @@ def validate_skill_search_report(root: Path, path: Path) -> list[str]:
                     f"candidate_count exceeds skills.search.maxResults ({maximum})"
                 )
 
-    if not _valid_timestamped_filename(path.name, "SKILL-SEARCH-"):
-        errors.append("filename must be SKILL-SEARCH-<UTC timestamp>.md")
     if not document.get("h1", "").startswith("# SKILL SEARCH — "):
         errors.append("H1 must start with '# SKILL SEARCH — '")
 

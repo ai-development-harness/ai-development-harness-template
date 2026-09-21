@@ -19,6 +19,7 @@ python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
+python3 .harness/tools/repository-hardening-self-test.py
 python3 .harness/tools/git-policy-self-test.py
 python3 .harness/tools/git-preflight-self-test.py
 python3 .harness/tools/harness-update-self-test.py
@@ -26,6 +27,8 @@ python3 .harness/tools/update-migration-self-test.py
 ```
 
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
+
+Repository hardening self-test проверяет validator boundaries на synthetic tracked checkout: фактическую Git ignore semantics через `git check-ignore`, отсутствие ignored/untracked TOML в config surface и containment Codex role configs внутри `.codex/agents`.
 
 Git policy self-test проверяет fail-closed schema boundary через публичный validator: неизвестный/опечаточный safety key не может быть молча проигнорирован.
 

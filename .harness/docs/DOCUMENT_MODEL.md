@@ -107,6 +107,8 @@ python3 .harness/tools/sync-projections.py
 
 Validation требует byte-for-byte совпадения projection с вычисленным результатом. Поэтому агент не должен вручную «синхронизировать статус» в этих файлах.
 
+Projection derivation работает fail-closed: malformed canonical REQ/STEP, недоступный completion proof или ошибка вычисления relevant OQ не превращаются в правдоподобный `planned`/«—». `sync-projections.py` возвращает `BLOCKED`, а validator — `projection derivation failed`, пока canonical state не станет доказуемым.
+
 Requirement lifecycle status выводится из canonical REQ + STEP completion proofs. Он не хранится в canonical REQ.
 
 ## Planning contract
@@ -159,7 +161,7 @@ Proof fingerprint входит в planning basis direct dependent STEP.
 
 ## Implementation review
 
-STEP REVIEW создаёт immutable schema-v1 report `REVIEW-<UTC timestamp>.md`. Planning/INIT semantic reports аналогично используют `PLAN-REVIEW-<UTC timestamp>.md` и `INIT-REVIEW-<UTC timestamp>.md`; sortable canonical names определяют deterministic history order. STEP не хранит отдельный mutable `review.latest_*` cache: latest state выводится из immutable review history, чтобы запись результата review не меняла только что проверенную revision.
+STEP REVIEW создаёт immutable schema-v1 report `REVIEW-<UTC timestamp>.md`. Planning/INIT semantic reports аналогично используют `PLAN-REVIEW-<UTC timestamp>.md` и `INIT-REVIEW-<UTC timestamp>.md`; sortable canonical names определяют deterministic history order. Для schema-v1 durable reports timestamp в filename и `created_at` обязаны обозначать один и тот же whole-second UTC instant. Поэтому report нельзя сделать «новее» только будущим filename при старом metadata timestamp. Existing durable report path immutable и не может быть перезаписан вместо создания нового. STEP не хранит отдельный mutable `review.latest_*` cache: latest state выводится из immutable review history, чтобы запись результата review не меняла только что проверенную revision.
 
 Report обязан содержать:
 

@@ -371,6 +371,15 @@ def main() -> int:
         print(f"ERROR: invalid harness policy TOML: {exc}", file=sys.stderr)
         return 2
 
+    # Все filesystem-sensitive validation surfaces опираются только на Git index
+    # и явно configured paths. Ignored/vendor/generated TOML вне tracked state
+    # не должны становиться скрытой частью Harness contract.
+    files, git_blocker = tracked_files(root)
+    if git_blocker:
+        print("HARNESS VALIDATION: BLOCKED")
+        print(f"  - {git_blocker}")
+        return 2
+
     validate_update_graph(root, errors)
 
     # Semantics harness-policy должны быть валидны до того, как значения policy
@@ -592,13 +601,16 @@ def main() -> int:
     # --- Runtime adapters: Codex / Claude ----------------------------------
     # TOML syntax и bindings Codex/Claude проверяются как protocol contract,
     # независимо от того, какой runtime используется в текущей session.
-    for p in root.rglob("*.toml"):
-        if ".git" in p.parts:
+    for rel in sorted(files):
+        if not rel.lower().endswith(".toml"):
+            continue
+        p = root / rel
+        if not p.is_file():
             continue
         try:
             load_toml(p)
         except Exception as exc:
-            errors.append(f"invalid TOML {p.relative_to(root)}: {exc}")
+            errors.append(f"invalid tracked TOML {rel}: {exc}")
 
     required_agents = policy.get("required_agents", [])
 
@@ -616,11 +628,27 @@ def main() -> int:
                 if not config_file:
                     errors.append(f"Codex agent {agent} missing config_file")
                     continue
+                if not isinstance(config_file, str):
+                    errors.append(f"Codex agent {agent} config_file must be a string")
+                    continue
+                codex_agents_root = (root / ".codex" / "agents").resolve()
                 resolved = (root / ".codex" / config_file).resolve()
+                try:
+                    resolved.relative_to(codex_agents_root)
+                except ValueError:
+                    errors.append(
+                        f"Codex agent {agent} config escapes .codex/agents: {config_file}"
+                    )
+                    continue
+                if resolved.suffix != ".toml":
+                    errors.append(
+                        f"Codex agent {agent} config must be TOML under .codex/agents: {config_file}"
+                    )
+                    continue
                 if not resolved.is_file():
                     errors.append(f"Codex agent {agent} config missing: {config_file}")
         except Exception as exc:
-            errors.append(f"git-policy: cannot parse/validate {git_policy_path.relative_to(root)}: {exc}")
+            errors.append(f"Codex config/bindings cannot be parsed or validated: {exc}")
 
     claude_settings_path = root / ".claude" / "settings.json"
     if claude_settings_path.exists():
@@ -738,37 +766,32 @@ def main() -> int:
         if start not in agents_text or end not in agents_text or agents_text.index(start) > agents_text.index(end):
             errors.append(f"AGENTS generated markers invalid: {start} / {end}")
 
-    gitignore = (root / ".gitignore").read_text(encoding="utf-8") if (root / ".gitignore").exists() else ""
     try:
         configured_local_brief = local_brief_path(root).relative_to(root).as_posix()
     except (ConfigError, ValueError) as exc:
         configured_local_brief = None
         errors.append(f"local brief config: {exc}")
 
+    # Проверяем фактическую Git ignore semantics. Это корректно учитывает
+    # parent patterns, glob-эквиваленты и не принимает закомментированный текст
+    # за действующее правило.
     required_ignored = [
-        "AGENTS.local.md",
-        "CLAUDE.local.md",
-        ".project/local/",
-        ".harness/local/",
-        ".codex/local/",
-        ".claude/local/",
-        ".claude/settings.local.json",
-        "__pycache__/",
-        "*.py[cod]",
+        ("AGENTS.local.md", "AGENTS.local.md"),
+        ("CLAUDE.local.md", "CLAUDE.local.md"),
+        (".project/local/", ".project/local/__harness_ignore_probe__"),
+        (".harness/local/", ".harness/local/__harness_ignore_probe__"),
+        (".codex/local/", ".codex/local/__harness_ignore_probe__"),
+        (".claude/local/", ".claude/local/__harness_ignore_probe__"),
+        (".claude/settings.local.json", ".claude/settings.local.json"),
+        ("__pycache__/", "__pycache__/__harness_ignore_probe__.pyc"),
+        ("*.py[cod]", "__harness_ignore_probe__.pyc"),
     ]
     if configured_local_brief is not None:
-        required_ignored.insert(0, configured_local_brief)
-    for ignored in required_ignored:
-        if ignored not in gitignore:
-            errors.append(f".gitignore must ignore {ignored}")
-
-    # Дальнейшие forbidden/local-only checks имеют смысл только при достоверном
-    # Git index. Если его нет, validator возвращает BLOCKED, а не угадывает files.
-    files, git_blocker = tracked_files(root)
-    if git_blocker:
-        print("HARNESS VALIDATION: BLOCKED")
-        print(f"  - {git_blocker}")
-        return 2
+        required_ignored.insert(0, (configured_local_brief, configured_local_brief))
+    for label, probe in required_ignored:
+        code, _ = run_git(root, "check-ignore", "-q", "--no-index", "--", probe)
+        if code != 0:
+            errors.append(f".gitignore must ignore {label}")
 
     forbidden = policy.get("forbidden_tracked_globs", [])
     allowed = policy.get("allowed_tracked_globs", [])
@@ -830,10 +853,11 @@ def main() -> int:
     if policy.get("check_config_parameter_comments", True):
         config_patterns = policy.get("documented_config_globs", [])
         require_example = policy.get("check_config_parameter_examples", True)
-        for candidate in sorted(root.rglob("*")):
+        for rel in sorted(files):
+            candidate = root / rel
             if not candidate.is_file() or candidate.suffix.lower() not in {".toml", ".yaml", ".yml"}:
                 continue
-            rel = str(candidate.relative_to(root)).replace("\\", "/")
+            rel = rel.replace("\\", "/")
             if not match_any(rel, config_patterns):
                 continue
             try:
