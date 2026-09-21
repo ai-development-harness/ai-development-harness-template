@@ -1,28 +1,48 @@
 ---
 name: init-project
-description: Bootstrap a new repository from PROJECT_BRIEF.local.md into a durable project knowledge base and initial roadmap.
+description: Bootstrap a new repository from the configured local brief into a durable, versioned project knowledge base and initial roadmap.
 ---
 # init-project
 
 Используй для `PROJECT INIT`.
 
-1. Прочитай `.harness/manifest.yaml`, включая `language`; если initialized=true, остановись и предложи `PROJECT RECONCILE`. После общих repository instructions также прочитай `AGENTS.local.md`, если он существует.
-2. Прочитай `PROJECT_BRIEF.local.md`; если файла нет, сообщи точную команду копирования example.
-3. Изучи предоставленные референсы настолько, насколько они доступны. Не подменяй недоступный источник общими знаниями без явной пометки.
-4. Создай draft project knowledge base на языке `language.documentation`: `docs/PROJECT.md`, canonical REQ, минимальный architecture baseline, OPEN_QUESTIONS и продуктовый `docs/GLOSSARY.md` по необходимости. Каждый REQ создавай отдельным `docs/requirements/REQ-NNN-<slug>.md` по template; удали template-файл `REQ-001-template.md`, если он существует. В `SPEC.md` храни только projection/index REQ, lifecycle — только в `STATUS.md`.
-5. До построения roadmap выполни отдельный semantic requirements review по skill `requirements-review`. Исправь объективные drafting defects. Если остаётся contradiction/missing decision, который меняет продуктовый контракт, зафиксируй OPEN_QUESTION или prerequisite RESEARCH/ADR work вместо догадки.
-6. ADR создавай только для реальных устойчивых решений; неопределённость не превращай в Accepted ADR.
-7. Построй draft roadmap по dependencies и создай полноценные STEP-файлы.
-8. Выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, Goal/Scope/Out of scope↔Acceptance, STEP↔STEP ownership, dependencies, architecture prerequisites, blocking OPEN_QUESTIONS и Verification. Не считай собственную генерацию доказательством согласованности.
-9. После semantic review запусти deterministic gate:
+1. Прочитай `.harness/manifest.yaml`. Все project paths бери из `sources.*` / `protocol.*`; не подменяй configurable path canonical default-ом. Язык human-readable content бери через `language.<domain>` с fallback на `language.default`. Если `project.initialized=true`, остановись и предложи `PROJECT RECONCILE`.
+2. Прочитай configured `sources.localBrief`; после общих repository instructions также прочитай `AGENTS.local.md`, если он существует.
+3. Изучи доступные референсы. Недоступный источник не заменяй предположением.
+4. Создай draft active documents в schema v1 с YAML frontmatter:
+   - configured project overview;
+   - canonical REQ в `sources.requirements`;
+   - минимальный architecture baseline;
+   - canonical OQ в `sources.openQuestions`;
+   - ADR в `sources.adrDirectory` только для устойчивых решений;
+   - STEP в `protocol.taskDirectory`.
+   Machine keys/enums frontmatter всегда protocol-English и не локализуются.
+5. Удали pre-init `REQ-001-template.md`, когда появились реальные требования. Не редактируй projection-файлы вручную.
+6. До roadmap выполни отдельный semantic requirements review по `requirements-review`. Получи точный basis:
    ```bash
-   python3 .harness/tools/validate.py --mode manual
+   python3 .harness/tools/planning-state.py init-basis requirements
    ```
-   Static validator обязан пройти для planning/requirements invariants. Semantic `BLOCKED` нельзя обходить успешным static PASS.
-10. Обеспечь traceability REQ↔STEP↔ADR и обнови только generated project block `README.md`, generated `PROJECT-CONTEXT` block `AGENTS.md` и manifest. Статические ссылки Harness в README не переписывай.
-11. `project.initialized: true` и `initializedAt` выставляй только после успешных semantic + deterministic consistency gates. До этого проект считается неинициализированным.
-12. Сохрани `.github/workflows/harness-integrity.yml` как baseline Harness CI. Если стек уже определён достаточно точно, product-specific CI проектируй отдельным STEP/документом; не выдумывай команды сборки до появления реального tooling.
-13. Не создавай production code.
-14. Финальный отчёт: созданные артефакты, результаты consistency gates, unresolved questions, agent profile recommendation, следующий STEP/команда.
+   Сохрани immutable schema-v1 report в configured `protocol.initReviewDirectory` по template. PASS обязан ссылаться на текущий basis. Если остаётся существенное contradiction/missing decision — создай canonical OQ с `affects: PROJECT` либо prerequisite work и верни BLOCKED.
+7. Построй canonical STEP roadmap по dependencies. Для каждого STEP заполни strict frontmatter refs, `architecture_refs`, `risk_flags`, contract sections и mutation policy. `plan.status=not_planned`.
+8. Выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, contract↔Acceptance, ownership, dependencies/completion prerequisites, architecture refs, OQ и Verification. Получи basis:
+   ```bash
+   python3 .harness/tools/planning-state.py init-basis roadmap
+   ```
+   Сохрани второй immutable INIT report с `stage: roadmap`.
+9. Обеспечь двустороннюю traceability REQ↔STEP и ADR↔STEP. Project-level OPEN OQ нельзя обходить.
+10. Пересобери tracked projections:
+    ```bash
+    python3 .harness/tools/sync-projections.py
+    ```
+11. Обнови generated project blocks README/AGENTS и другие разрешённые INIT artifacts. После **всех** candidate mutations запусти:
+    ```bash
+    python3 .harness/tools/validate.py --mode manual
+    ```
+12. Только после PASS atomically заверши INIT:
+    ```bash
+    python3 .harness/tools/finalize-project-init.py --name '<project-name>'
+    ```
+    Нельзя вручную выставлять `project.initialized=true`: finalizer повторно проверяет projections, active schema, оба semantic PASS report и INIT postconditions.
+13. Не создавай production code. Product-specific CI проектируй отдельным STEP после появления реального tooling.
 
-Если semantic review после одного исправляющего прохода всё ещё находит существенное противоречие, заверши INIT как `BLOCKED`, а не запускай бесконечный внутренний цикл.
+Если semantic review после одного исправляющего прохода всё ещё BLOCKED, заверши INIT как BLOCKED. Не запускай внутренний бесконечный цикл.
