@@ -8,7 +8,7 @@ description: Safe repository Git workflow for GIT CHECK, GIT COMMIT, GIT PUSH, G
 
 ## Общие правила
 
-1. Прочитай `.harness/git-policy.toml`.
+1. Разреши `.harness/manifest.yaml → repository.gitPolicy` и прочитай configured Git policy. Не подменяй её hardcoded `.harness/git-policy.toml`.
 2. До mutation изучи `git status --short --branch`, staged/unstaged diff и untracked files.
 3. Запусти `python3 .harness/tools/validate.py --mode commit` (для read-only check тоже допустимо).
 4. Никогда не выполняй `git reset --hard`, `git clean -fd`, force-push, automatic merge/rebase или amend без явного запроса пользователя.
