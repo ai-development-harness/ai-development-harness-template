@@ -1,7 +1,12 @@
-# Release Check — YYYY-MM-DD
+---
+schema: 1
+kind: release_check
+target: version-or-tag
+verdict: blocked
+created_at: YYYY-MM-DDTHH:MM:SSZ
+---
 
-**Target:** version/tag/environment
-**Verdict:** READY | BLOCKED
+# Release Check — YYYY-MM-DD
 
 ## Requirements / scope
 
