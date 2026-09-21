@@ -209,6 +209,25 @@ def main() -> int:
         assert updated_lock["source"]["commit"] == target_oid, updated_lock
         assert list((project / "reports").glob("UPDATE-*.md"))
 
+        # Lock/ref equality недостаточна: Harness-owned OURS должен точно
+        # соответствовать pinned release даже когда route пустой.
+        core_path = project / ".agents/skills/core/SKILL.md"
+        core_clean = core_path.read_text(encoding="utf-8")
+        write(project, ".agents/skills/core/SKILL.md", "locally drifted core\n")
+        try:
+            check_update(project, target="v1.1.0", source_url=str(source))
+        except UpdateError as exc:
+            assert exc.code == "CURRENT_RELEASE_DRIFT", (exc.code, exc)
+        else:
+            raise AssertionError("CHECK accepted Harness-owned drift with empty route")
+        try:
+            apply_update(project, target="v1.1.0", source_url=str(source))
+        except UpdateError as exc:
+            assert exc.code == "CURRENT_RELEASE_DRIFT", (exc.code, exc)
+        else:
+            raise AssertionError("APPLY returned NO_UPDATE for drifted Harness-owned state")
+        write(project, ".agents/skills/core/SKILL.md", core_clean)
+
         # Новый core slug не может молча захватить существующий project skill.
         collision = project_from_base(temp / "collision", base_files, base_oid)
         write(collision, ".agents/skills/new-core/SKILL.md", "project owns this slug\n")

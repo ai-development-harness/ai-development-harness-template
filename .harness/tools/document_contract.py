@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -63,6 +63,31 @@ def normalize_text(value: str) -> str:
 
 def content_hash(value: str) -> str:
     return "sha256:" + hashlib.sha256(normalize_text(value).encode("utf-8")).hexdigest()
+
+
+def durable_report_timestamp(
+    prefix: str,
+    *,
+    directory: Path | None = None,
+    now: datetime | None = None,
+) -> tuple[str, str]:
+    """Получить canonical filename + created_at из одного UTC logical instant.
+
+    Если в durable directory уже занят текущий whole-second timestamp, выбирается
+    следующий свободный UTC second. Это сохраняет sortable canonical naming и
+    исключает overwrite без альтернативных suffix-форматов.
+    """
+    instant = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+    while True:
+        filename = prefix + instant.strftime("%Y%m%dT%H%M%SZ") + ".md"
+        if directory is None:
+            break
+        candidate = directory / filename
+        if not candidate.exists() and not candidate.is_symlink():
+            break
+        instant += timedelta(seconds=1)
+    created_at = instant.isoformat(timespec="seconds").replace("+00:00", "Z")
+    return filename, created_at
 
 
 def parse_utc_timestamp(value: Any) -> datetime | None:

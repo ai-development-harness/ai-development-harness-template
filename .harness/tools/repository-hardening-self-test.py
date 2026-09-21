@@ -102,6 +102,18 @@ def main() -> int:
         ignored = validate(root)
         assert ignored.returncode == 0, ignored.stdout + ignored.stderr
 
+        # Harness policy является safety boundary: typo не должен молча
+        # отключать required-file gate.
+        harness_policy_path = root / ".harness/harness-policy.toml"
+        harness_policy_original = harness_policy_path.read_text(encoding="utf-8")
+        harness_policy_path.write_text(
+            harness_policy_original.replace("required_files = [", "required_filez = [", 1),
+            encoding="utf-8",
+        )
+        require_failure(validate(root), "harness-policy: unsupported settings: required_filez")
+        require_failure(validate(root), "harness-policy: required_files must be a string array")
+        harness_policy_path.write_text(harness_policy_original, encoding="utf-8")
+
         # Codex role config не может выйти за canonical .codex/agents даже если
         # target существует и resolve() успешно его находит.
         codex_path = root / ".codex/config.toml"

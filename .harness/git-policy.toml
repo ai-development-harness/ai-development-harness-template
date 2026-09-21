@@ -73,12 +73,6 @@ when_on_protected = "auto-create"
 # Разрешить ли самый первый commit пустого нового repository прямо в protected branch.
 # Пример: true упрощает initial bootstrap commit; false заставит создать feature/chore branch даже для него.
 allow_initial_commit_on_protected = true
-# Base branch для новых веток/PR, если контекст не задаёт другую.
-# Пример: "main".
-default_base = "main"
-# Переиспользовать ли уже открытую non-protected branch вместо создания новой.
-# Пример: true → повторный COMMIT в `feature/search` остаётся в ней.
-reuse_current_non_protected = true
 # Формат автоматически создаваемого имени ветки.
 # Пример: `{prefix}/{slug}` → `feature/user-export`.
 name_pattern = "{prefix}/{slug}"
@@ -120,9 +114,6 @@ set_upstream = true
 # Делать ли `git fetch` перед анализом ahead/behind/divergence.
 # Пример: true уменьшает риск push на устаревшее представление remote.
 fetch_before_push = true
-# Поведение, если remote branch содержит неизвестные локально commits.
-# Пример: "block" останавливает автоматический PUSH; варианты: block | allow.
-if_remote_ahead = "block"
 # Политика force push.
 # Пример: "never" — рекомендуемое значение.
 force = "never"

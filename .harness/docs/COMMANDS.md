@@ -131,7 +131,7 @@ Read-only проверка маршрута Harness update. Manifest задаё�
 
 ## `HARNESS UPDATE APPLY [TO <tag>]`
 
-Maintenance mutation protocol layer без STEP. Допускается только после успешного check **для того же конечного target и route**.
+Maintenance mutation protocol layer без STEP. Standalone APPLY сам выполняет fresh deterministic validation/preflight; в chain `CHECK > APPLY` переход разрешён только после PASS CHECK для того же target/route.
 
 Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
 

@@ -110,7 +110,7 @@ INVALID_CHAIN
 - `GIT CHECK → GIT PUSH` требует `git-push-ready`;
 - `GIT CHECK → GIT PR` требует `git-pr-ready`;
 - `STEP REVIEW → STEP FIX` выполняется только при результате review `FAIL`;
-- `HARNESS UPDATE CHECK → HARNESS UPDATE APPLY` требует matching target и route.
+- внутри chain `HARNESS UPDATE CHECK → HARNESS UPDATE APPLY` требуется matching target/route; standalone APPLY выполняет собственный fresh deterministic preflight.
 
 Отсутствие runtime precondition не превращает цепочку в `INVALID_CHAIN`. Структура остаётся валидной, но исполнение может завершиться `BLOCKED` или остановить оставшиеся segments.
 
@@ -306,7 +306,7 @@ STEP RUN STEP-024 > GIT COMMIT
 
 ### `matching-update-target-and-route`
 
-`HARNESS UPDATE APPLY` разрешён только для target/route, подтверждённых непосредственно предшествующим успешным `HARNESS UPDATE CHECK` этой chain либо соответствующим durable check state по update protocol.
+Для chain `HARNESS UPDATE CHECK > APPLY` APPLY использует target/route предшествующего PASS CHECK. Standalone `HARNESS UPDATE APPLY [TO <tag>]` не требует durable CHECK state: update engine заново валидирует current Harness и выполняет read-only preflight до mutation.
 
 ## Structural error codes
 
