@@ -256,6 +256,19 @@ def repository_revision(root: Path) -> dict[str, str | None]:
         digest.update(rel.encode("utf-8", errors="surrogateescape"))
         digest.update(b"\0")
         path = root / rel
+
+        # XY содержит отдельные index/worktree состояния. Хеш только working-tree
+        # bytes позволял двум разным staged revisions иметь одинаковый proof.
+        index_state = xy[:1]
+        if index_state not in {b" ", b"?"}:
+            index_code, index_blob = _git(root, "show", f":{rel}")
+            if index_code == 0:
+                digest.update(b"INDEX\0")
+                digest.update(index_blob)
+            else:
+                digest.update(b"INDEX_ABSENT\0")
+            digest.update(b"\0")
+
         if path.is_symlink():
             digest.update(b"SYMLINK\0")
             digest.update(str(path.readlink()).encode("utf-8", errors="surrogateescape"))
