@@ -20,9 +20,6 @@ plan:
   content_hash: null
   reviewed_report: null
   planned_at: null
-review:
-  latest_verdict: not_reviewed
-  latest_report: null
 ---
 
 # STEP-NNN — Название

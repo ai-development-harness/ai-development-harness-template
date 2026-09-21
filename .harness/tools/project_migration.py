@@ -154,10 +154,6 @@ def migrate_legacy_step(path: Path) -> bool:
             "reviewed_report": None,
             "planned_at": None,
         },
-        "review": {
-            "latest_verdict": "not_reviewed",
-            "latest_report": None,
-        },
     }
 
     kept = [
