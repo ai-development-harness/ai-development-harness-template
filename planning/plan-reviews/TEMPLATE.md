@@ -3,7 +3,7 @@ schema: 1
 kind: planning_review
 step_id: STEP-NNN
 verdict: pass
-reviewer_role: planner
+reviewer_role: reviewer
 finding_count: 0
 context_basis: sha256:...
 plan_content_hash: sha256:...
