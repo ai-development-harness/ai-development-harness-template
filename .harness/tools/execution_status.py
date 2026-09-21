@@ -33,12 +33,17 @@ from command_transitions import (
     parse_canonical_command,
     validate_command_text,
 )
+from document_contract import render_document
 from planning_contract import (
+    latest_matching_planning_review,
     max_fix_review_cycles,
+    plan_content_hash,
     planning_context_basis,
-    review_directory,
+    read_task as read_planning_task,
+    task_contract_snapshot,
     task_path as configured_task_path,
 )
+from review_contract import latest_review as latest_valid_review
 
 # Фиксированный project-level operational state. Один файл намеренно покрывает
 # STEP, Git, Harness update и остальные namespaces.
@@ -631,124 +636,96 @@ def block_execution(
 
 
 
-# Нормализовать Markdown-текст для stable hashing: убрать CRLF/trailing blank lines, не меняя смысл содержимого.
-def _normalize_text(value: str) -> str:
-    lines = [line.rstrip() for line in value.replace("\r\n", "\n").split("\n")]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines)
-
-
-
-# Разобрать простой Harness Markdown на metadata и секции без полноценного Markdown parser. Поддерживается только используемый repository subset.
-def parse_markdown(text: str) -> tuple[dict[str, str], dict[str, str]]:
-    metadata: dict[str, str] = {}
-    sections: dict[str, list[str]] = {}
-    current: str | None = None
-    for line in text.replace("\r\n", "\n").split("\n"):
-        heading = re.match(r"^##\s+(.+?)\s*$", line)
-        if heading:
-            current = heading.group(1).strip()
-            sections.setdefault(current, [])
-            continue
-        meta = re.match(r"^\*\*([^*]+?):\*\*\s*(.*)$", line)
-        if meta:
-            metadata[meta.group(1).strip()] = meta.group(2).strip()
-        if current is not None:
-            sections[current].append(line)
-    return metadata, {
-        name: _normalize_text("\n".join(lines))
-        for name, lines in sections.items()
-    }
-
-
-
-# Разрешить STEP id в canonical planning/tasks path и отклонить некорректный identifier до чтения файла.
+# Разрешить STEP id через manifest-driven config layer.
 def task_path(root: Path, step_id: str) -> Path:
     return configured_task_path(root, step_id)
 
 
-
-# Прочитать STEP и вернуть исходный текст плюс разобранные metadata/sections для deterministic recovery helpers.
+# Использовать единый versioned STEP parser; отдельной Markdown-семантики в
+# execution layer больше нет.
 def read_task(root: Path, step_id: str) -> dict[str, Any]:
-    path = task_path(root, step_id)
-    text = path.read_text(encoding="utf-8")
-    metadata, sections = parse_markdown(text)
-    return {
-        "path": path,
-        "text": text,
-        "metadata": metadata,
-        "sections": sections,
-    }
+    return read_planning_task(root, step_id)
 
 
-
-# Выбрать только поля STEP contract, изменение которых действительно должно инвалидировать Implementation plan.
 def contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
-    task = read_task(root, step_id)
-    return {
-        "metadata": {
-            key: task["metadata"].get(key, "")
-            for key in CONTRACT_METADATA
-        },
-        "sections": {
-            key: task["sections"].get(key, "")
-            for key in CONTRACT_SECTIONS
-        },
-    }
+    return task_contract_snapshot(root, step_id)
 
 
-
-# Посчитать SHA-256 нормализованного task contract. Hash не включает Evidence/Review status/сам план.
 def contract_basis(root: Path, step_id: str) -> str:
     return planning_context_basis(root, step_id)
 
 
-
-# Сопоставить stored Plan basis с текущим contract hash и определить, можно ли считать plan актуальным.
 def plan_info(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
-    section = task["sections"].get("Implementation plan", "")
-    fields, _ = parse_markdown(section)
+    plan = task["frontmatter"].get("plan")
+    if not isinstance(plan, dict):
+        return {
+            "status": None,
+            "storedBasis": None,
+            "currentBasis": None,
+            "storedContentHash": None,
+            "currentContentHash": None,
+            "ready": False,
+        }
     current_basis = contract_basis(root, step_id)
-    stored_basis = fields.get("Plan basis", "")
-    plan_status = fields.get("Plan status", "")
+    current_content = plan_content_hash(root, step_id)
+    matched = latest_matching_planning_review(root, step_id)
+    report_path = (
+        matched["path"].relative_to(root).as_posix()
+        if matched is not None
+        else None
+    )
     return {
-        "status": plan_status,
-        "storedBasis": stored_basis,
+        "status": plan.get("status"),
+        "storedBasis": plan.get("context_basis"),
         "currentBasis": current_basis,
-        "ready": plan_status == "Ready" and stored_basis == current_basis,
+        "storedContentHash": plan.get("content_hash"),
+        "currentContentHash": current_content,
+        "reviewedReport": plan.get("reviewed_report"),
+        "ready": (
+            plan.get("status") == "ready"
+            and plan.get("context_basis") == current_basis
+            and plan.get("content_hash") == current_content
+            and report_path is not None
+            and plan.get("reviewed_report") == report_path
+        ),
     }
 
 
-
-# Точечно заменить обязательное поле Implementation plan. Отсутствующее поле — ошибка template/protocol, а не повод молча добавить новое место.
-def _replace_plan_field(text: str, field: str, value: str) -> str:
-    pattern = re.compile(rf"(?m)^\*\*{re.escape(field)}:\*\*\s*.*$")
-    replacement = f"**{field}:** {value}"
-    if not pattern.search(text):
-        raise ValueError(f"task Implementation plan missing field: {field}")
-    return pattern.sub(replacement, text, count=1)
-
-
-
-# После сохранения содержательного plan детерминированно проставить Ready/revision/basis/timestamp атомарной записью STEP-файла.
+# Ready разрешён только после durable PASS planning-review для точных context
+# basis + plan content hash. Так direct stamp-plan нельзя использовать для
+# обхода semantic consistency gate.
 def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
-    section = task["sections"].get("Implementation plan", "")
-    fields, _ = parse_markdown(section)
-    try:
-        revision = int(fields.get("Plan revision", "—")) + 1
-    except (TypeError, ValueError):
-        revision = 1
-    basis = contract_basis(root, step_id)
-    updated = task["text"]
-    updated = _replace_plan_field(updated, "Plan status", "Ready")
-    updated = _replace_plan_field(updated, "Plan revision", str(revision))
-    updated = _replace_plan_field(updated, "Plan basis", basis)
-    updated = _replace_plan_field(updated, "Planned at", utc_now())
+    plan_body = task["sections"].get("Implementation plan", "").strip()
+    if not plan_body:
+        raise ValueError("Implementation plan must be non-empty before stamp-plan")
+    review = latest_matching_planning_review(root, step_id)
+    if review is None:
+        raise ValueError(
+            "no PASS planning-review matches current context basis and plan content"
+        )
+
+    meta = task["frontmatter"]
+    current_plan = meta.get("plan")
+    if not isinstance(current_plan, dict):
+        raise ValueError("task frontmatter.plan must be a mapping")
+    revision = current_plan.get("revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        raise ValueError("task plan.revision must be a non-negative integer")
+
+    basis = planning_context_basis(root, step_id)
+    content = plan_content_hash(root, step_id)
+    report_path = review["path"].relative_to(root).as_posix()
+    meta["plan"] = {
+        "status": "ready",
+        "revision": revision + 1,
+        "context_basis": basis,
+        "content_hash": content,
+        "reviewed_report": report_path,
+        "planned_at": utc_now(),
+    }
+    updated = render_document(meta, task["body"])
     fd, tmp_name = tempfile.mkstemp(
         prefix=task["path"].name + ".",
         suffix=".tmp",
@@ -766,47 +743,40 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
             tmp.unlink(missing_ok=True)
     return {
         "stepId": step_id,
-        "planStatus": "Ready",
-        "planRevision": revision,
+        "planStatus": "ready",
+        "planRevision": revision + 1,
         "planBasis": basis,
+        "planContentHash": content,
+        "planningReview": report_path,
     }
 
 
-
-# Извлечь только поддерживаемый verdict из immutable review report. Неизвестное значение не угадывается.
-def _review_verdict(path: Path) -> str | None:
-    if not path.is_file():
-        return None
-    metadata, _ = parse_markdown(path.read_text(encoding="utf-8"))
-    verdict = metadata.get("Verdict")
-    return verdict if verdict in REVIEW_VERDICTS else None
-
-
-
-# Собрать immutable review reports STEP в сортируемом по filename порядке; timestamp в имени — durable ordering.
+# Execution recovery принимает только schema-valid review report. Для REVIEW
+# дополнительно требуется совпадение точной git/worktree revision.
 def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
-    directory = review_directory(root) / step_id
-    if not directory.is_dir():
-        return []
-    result: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("REVIEW-*.md")):
-        verdict = _review_verdict(path)
-        if verdict is not None:
-            result.append(
-                {
-                    "path": path.relative_to(root).as_posix(),
-                    "verdict": verdict,
-                }
-            )
-    return result
+    from review_contract import review_reports as valid_reports
+
+    values: list[dict[str, Any]] = []
+    for item in valid_reports(root, step_id):
+        values.append({
+            "path": item["path"].relative_to(root).as_posix(),
+            "verdict": item["verdict"],
+        })
+    return values
 
 
-
-# Вернуть последний review report STEP либо None, если review ещё не существует.
-def latest_review(root: Path, step_id: str) -> dict[str, Any] | None:
-    reports = review_reports(root, step_id)
-    return reports[-1] if reports else None
-
+def latest_review(root: Path, step_id: str, *, require_current_revision: bool = False) -> dict[str, Any] | None:
+    item = latest_valid_review(
+        root,
+        step_id,
+        require_current_revision=require_current_revision,
+    )
+    if item is None:
+        return None
+    return {
+        "path": item["path"].relative_to(root).as_posix(),
+        "verdict": item["verdict"],
+    }
 
 
 # Попробовать доказать completion running command по durable artifacts и тем самым закрыть crash-window между фактом и local checkpoint.
@@ -836,7 +806,7 @@ def _durable_recovery_result(
         target = parsed.get("target")
         baseline = current.get("context", {}).get("reviewReportBefore")
         if target:
-            review = latest_review(root, target)
+            review = latest_review(root, target, require_current_revision=True)
             if review is not None and review.get("path") != baseline:
                 verdict = review.get("verdict")
                 if verdict in {"PASS", "FAIL", "BLOCKED"}:
