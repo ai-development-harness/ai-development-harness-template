@@ -505,6 +505,17 @@ def main() -> int:
             index_revision_b,
         )
 
+        # На clean tree specialized preselector не теряет уже committed
+        # implementation surface.
+        run(root, "git", "add", "src/index-proof.txt")
+        run(root, "git", "commit", "-qm", "finish index proof fixture")
+        write(root / "src/auth/session.py", "def changed_auth():\n    return True\n")
+        run(root, "git", "add", "src/auth/session.py")
+        run(root, "git", "commit", "-qm", "committed auth change")
+        committed_gate = required_reviewers(root, "STEP-001")
+        assert "security" in committed_gate["required"], committed_gate
+        assert "src/auth/session.py" in committed_gate["changedPaths"], committed_gate
+
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
 
