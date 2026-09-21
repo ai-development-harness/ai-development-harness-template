@@ -62,6 +62,27 @@ def _git_changed_paths(root: Path) -> list[str]:
             paths.update(line.strip() for line in proc.stdout.splitlines() if line.strip())
     except OSError:
         pass
+
+    # STEP REVIEW обычно идёт до Git publication, но recovery/manual workflow
+    # может прийти к review уже после commit. На полностью clean tree не теряем
+    # factual surface последнего commit; dirty state всегда имеет приоритет.
+    if not paths:
+        try:
+            proc = subprocess.run(
+                ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+                cwd=root,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if proc.returncode == 0:
+                paths.update(
+                    line.strip() for line in proc.stdout.splitlines() if line.strip()
+                )
+        except OSError:
+            pass
+
     excluded_roots = [
         review_directory(root).resolve(),
         (root / ".harness" / "local").resolve(),
