@@ -575,6 +575,32 @@ def main() -> int:
         ci_immutability_errors = validate_review_immutability(root, ci_mode=True)
         assert any("existing report changed (commit)" in item for item in ci_immutability_errors), ci_immutability_errors
 
+        # Durable directories могут перекрываться. Более широкий
+        # reviewDirectory не должен маскировать nested planningReviewDirectory
+        # при проверке immutable history.
+        overlap_manifest = (root / ".harness/manifest.yaml").read_text(encoding="utf-8")
+        write(
+            root / ".harness/manifest.yaml",
+            overlap_manifest.replace(
+                "reviewDirectory: planning/reviews",
+                "reviewDirectory: planning",
+            ),
+        )
+        run(root, "git", "add", ".harness/manifest.yaml")
+        run(root, "git", "commit", "-qm", "overlapping review directories fixture")
+        nested_plan_report = root / plan_report
+        nested_plan_original = nested_plan_report.read_text(encoding="utf-8")
+        write(nested_plan_report, nested_plan_original + "\n<!-- rewritten nested planning review -->\n")
+        overlap_errors = validate_review_immutability(root)
+        assert any(
+            "existing report changed" in item and "PLAN-REVIEW-" in item
+            for item in overlap_errors
+        ), overlap_errors
+        run(root, "git", "checkout", "--", plan_report)
+        write(root / ".harness/manifest.yaml", overlap_manifest)
+        run(root, "git", "add", ".harness/manifest.yaml")
+        run(root, "git", "commit", "-qm", "restore review directories fixture")
+
         # Exact revision различает index и working tree. Одинаковые working bytes
         # при разных staged blobs не могут давать одинаковый review proof.
         write(root / "src/index-proof.txt", "base\n")

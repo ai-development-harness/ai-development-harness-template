@@ -599,7 +599,11 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
             suffix = candidate.relative_to(base).as_posix()
         except ValueError:
             continue
-        return pattern.fullmatch(suffix) is not None
+        if pattern.fullmatch(suffix) is not None:
+            return True
+        # Configured durable directories могут перекрываться. Попадание path
+        # внутрь более широкого directory не означает, что это artifact именно
+        # этого kind; продолжаем проверку остальных configured roots.
     return False
 
 
