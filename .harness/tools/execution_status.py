@@ -34,7 +34,7 @@ from command_transitions import (
     validate_command_text,
 )
 from document_contract import render_document
-from harness_config import update_lock_path
+from harness_config import ConfigError, get, load_git_policy, update_lock_path
 from planning_contract import (
     latest_matching_planning_review,
     max_fix_review_cycles,
@@ -405,24 +405,25 @@ def _git_probe(root: Path, *args: str) -> tuple[int, str]:
     return proc.returncode, proc.stdout.strip()
 
 
-# Разрешить remote-tracking ref текущей ветки без догадок. Если upstream не
-# настроен, допускается ровно один configured remote; неоднозначность = blocker.
+# Разрешить remote-tracking ref текущей ветки строго через configured
+# git-policy.push.remote. Upstream другой remote не подменяет repository policy.
 def _published_ref(root: Path) -> tuple[str | None, str | None]:
     code, branch = _git_probe(root, "symbolic-ref", "--quiet", "--short", "HEAD")
     if code != 0 or not branch:
         return None, "detached-or-missing-branch"
 
-    code, upstream = _git_probe(
-        root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
-    )
-    if code == 0 and upstream:
-        return upstream, None
+    try:
+        policy = load_git_policy(root)
+    except ConfigError as exc:
+        return None, f"git-policy-unreadable:{exc}"
+    remote = get(policy, "push.remote")
+    if not isinstance(remote, str) or not remote.strip():
+        return None, "git-policy-push-remote-missing"
 
-    code, remotes_text = _git_probe(root, "remote")
-    remotes = [item.strip() for item in remotes_text.splitlines() if item.strip()] if code == 0 else []
-    if len(remotes) != 1:
-        return None, "missing-or-ambiguous-remote"
-    return f"{remotes[0]}/{branch}", None
+    code, _ = _git_probe(root, "remote", "get-url", remote)
+    if code != 0:
+        return None, f"configured-remote-missing:{remote}"
+    return f"{remote}/{branch}", None
 
 
 # Проверить narrow deterministic Git readiness. Это не заменяет полный GIT PUSH /
