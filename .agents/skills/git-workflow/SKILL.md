@@ -31,7 +31,7 @@ Read-only. Покажи branch, upstream/ahead-behind, staged/unstaged/untracked
    - `tracked-only` — только изменённые tracked files;
    - `all-safe` — только проверенный набор относящихся к change tracked/untracked files; не использовать бездумный `git add .`.
 5. Повторно проверь staged diff и safety.
-6. Сформируй подробное сообщение по `.gitmessage` и `.harness/git-policy.toml`.
+6. Сформируй подробное сообщение по `.gitmessage` и configured `repository.gitPolicy`.
 7. Выполни commit. GIT COMMIT никогда не делает push.
 8. Верни hash, branch, subject, files, verification и следующую рекомендуемую команду.
 
