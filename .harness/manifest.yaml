@@ -50,6 +50,7 @@ skills:
 
 # Единая языковая политика Harness и project tooling.
 # Специализированные ключи необязательны: при отсутствии используется language.default.
+# Пример: language.default=ru, documentation=en.
 language:
   # Обязательный BCP 47 fallback для всех человекочитаемых текстов.
   # Пример: ru.
@@ -80,6 +81,7 @@ language:
   releaseNotes: ru
 
 # Пути к project-owned knowledge и projections. Все paths реально используются через harness_config.py.
+# Пример: requirements=docs/requirements, roadmap=planning/PLAN.md.
 sources:
   # Локальный сырой brief пользователя; файл не должен попадать в Git.
   # Пример: PROJECT_BRIEF.local.md.
@@ -110,6 +112,7 @@ sources:
   status: planning/STATUS.md
 
 # Пути к protocol/planning artifacts Harness.
+# Пример: taskDirectory=planning/tasks, reviewDirectory=planning/reviews.
 protocol:
   # Формальная семантика команд.
   # Пример: .harness/docs/EXECUTION_PROTOCOL.md.
@@ -140,6 +143,7 @@ protocol:
   skillRegistry: docs/skills/REGISTRY.md
 
 # Пути к repository policies и deterministic tooling.
+# Пример: gitPolicy=.harness/git-policy.toml.
 repository:
   # Настройки GIT COMMIT / PUSH / PR / SYNC.
   # Пример: .harness/git-policy.toml.
