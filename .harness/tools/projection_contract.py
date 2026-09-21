@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from document_contract import DocumentError, parse_document
+from document_contract import atomic_write_text, DocumentError, parse_document
 from harness_config import (
     open_questions_index_path,
     requirements_directory,
@@ -324,6 +324,6 @@ def write_projections(
         path.parent.mkdir(parents=True, exist_ok=True)
         actual = path.read_text(encoding="utf-8") if path.is_file() else None
         if actual != expected:
-            path.write_text(expected, encoding="utf-8", newline="\n")
+            atomic_write_text(path, expected)
             changed.append(path.relative_to(root).as_posix())
     return changed
