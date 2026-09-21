@@ -32,6 +32,8 @@ from harness_config import (
     requirements_directory,
     task_directory,
     update_lock_path,
+    update_report_directory,
+    open_questions_directory,
 )
 from planning_contract import (
     adr_ids,
@@ -218,6 +220,24 @@ def validate_adrs(root: Path) -> list[str]:
     return errors
 
 
+
+def validate_configured_artifacts(root: Path) -> list[str]:
+    """Проверить обязательные project/update artifacts через configured paths."""
+    errors: list[str] = []
+    checks = [
+        (requirements_directory(root) / "TEMPLATE.md", "requirements template"),
+        (requirements_directory(root) / "SPEC.md", "requirements SPEC projection"),
+        (requirements_directory(root) / "STATUS.md", "requirements STATUS projection"),
+        (adr_directory(root) / "TEMPLATE.md", "ADR template"),
+        (task_directory(root) / "TEMPLATE.md", "STEP template"),
+        (open_questions_directory(root) / "TEMPLATE.md", "Open Question template"),
+        (update_report_directory(root) / "README.md", "Harness update report README"),
+    ]
+    for path, label in checks:
+        if not path.is_file():
+            errors.append(f"configured artifact missing ({label}): {path.relative_to(root)}")
+    return errors
+
 def validate_update_lock(root: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -315,5 +335,9 @@ def validate_project_integrity(
         errors.extend(validate_all_review_reports(root))
         errors.extend(validate_projections(root))
         errors.extend(validate_initialized_project(root))
+    try:
+        errors.extend(validate_configured_artifacts(root))
+    except ConfigError as exc:
+        errors.append(f"configured artifacts: {exc}")
     errors.extend(validate_update_lock(root))
     return errors
