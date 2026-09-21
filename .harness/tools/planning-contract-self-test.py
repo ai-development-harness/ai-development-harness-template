@@ -49,6 +49,8 @@ protocol:
   planningReviewDirectory: work/plan-reviews
   initReviewDirectory: work/init-reviews
   auditDirectory: work/audits
+  releaseDirectory: work/releases
+  skillSearchDirectory: work/skill-searches
 """
 
 
