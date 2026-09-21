@@ -10,7 +10,7 @@ import subprocess
 from typing import Any
 
 from document_contract import stable_hash
-from harness_config import review_policy
+from harness_config import review_directory, review_policy
 from planning_contract import read_task
 
 
@@ -62,7 +62,22 @@ def _git_changed_paths(root: Path) -> list[str]:
             paths.update(line.strip() for line in proc.stdout.splitlines() if line.strip())
     except OSError:
         pass
-    return sorted(paths)
+    excluded_roots = [
+        review_directory(root).resolve(),
+        (root / ".harness" / "local").resolve(),
+    ]
+
+    def included(rel: str) -> bool:
+        candidate = (root / rel).resolve()
+        for excluded in excluded_roots:
+            try:
+                candidate.relative_to(excluded)
+                return False
+            except ValueError:
+                pass
+        return True
+
+    return sorted(path for path in paths if included(path))
 
 
 def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
