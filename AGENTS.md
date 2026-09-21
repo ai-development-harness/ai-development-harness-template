@@ -208,7 +208,7 @@ Pre-init Harness update не выполняет `PROJECT INIT`, не созда�
 - `docs` — механическая синхронизация документации;
 - `mechanic` — простые локальные изменения;
 - `skill curator` (`skill_curator` / `skill-curator`) — поиск, inspection, установка и создание repository skills;
-- `git operator` (`git_operator` / `git-operator`) — безопасные branch/commit/push/PR операции по `.harness/git-policy.toml`;
+- `git operator` (`git_operator` / `git-operator`) — безопасные branch/commit/push/PR операции по policy из `.harness/manifest.yaml → repository.gitPolicy`;
 - `harness updater` (`harness_updater` / `harness-updater`) — `HARNESS UPDATE CHECK`, `HARNESS UPDATE APPLY` и legacy adoption по `.harness/harness-update.toml`.
 
 Role semantics задаются Harness protocol, а model/effort/permissions — runtime adapter. Не запускай специализированного агента, если его проверка не относится к задаче. Не используй несколько write-agents параллельно над одними файлами.
