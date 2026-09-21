@@ -4,7 +4,7 @@ description: Bootstrap a new repository from the configured local brief into a d
 ---
 # init-project
 
-Используй для `PROJECT INIT`.
+Используй для `PROJECT INIT`. Project docs, REQ/ADR/STEP/OQ и human-readable INIT review prose пиши на `language.documentation` с fallback на `language.default`; structural headings и machine schema сохраняй protocol-stable.
 
 1. Прочитай `.harness/manifest.yaml`. Все project paths бери из `sources.*` / `protocol.*`; не подменяй configurable path canonical default-ом. Язык human-readable content бери через `language.<domain>` с fallback на `language.default`. Если `project.initialized=true`, остановись и предложи `PROJECT RECONCILE`.
 2. Прочитай configured `sources.localBrief`; после общих repository instructions также прочитай `AGENTS.local.md`, если он существует.
