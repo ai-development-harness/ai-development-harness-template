@@ -14,7 +14,7 @@ description: Run an independent read-only review of an exact repository revision
    ```bash
    python3 .harness/tools/review_gates.py STEP-NNN --json
    ```
-   `auto` определяется детерминированно по risk flags, STEP type и factual changed surface; `always` обязателен всегда. Модель может добавить reviewer, но не убрать обязательный. Сохрани из результата exact `basis` и список `required` — это durable proof решения preselector.
+   `auto` определяется детерминированно по risk flags, STEP type и factual changed surface; `always` обязателен всегда. Canonical workflow REVIEW выполняется до Git publication. Если worktree уже clean после внешних/manual commits и exact implementation baseline недоступен, preselector помечает `surfaceMode=clean-tree-fallback` и fail-closed требует security + tests вместо доверия только последнему commit. Модель может добавить reviewer, но не убрать обязательный. Сохрани из результата exact `basis` и список `required` — это durable proof решения preselector.
 3. Получи точную revision:
    ```bash
    python3 .harness/tools/planning-state.py review-revision
