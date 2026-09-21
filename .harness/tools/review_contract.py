@@ -218,7 +218,15 @@ def trusted_review_reports(
                 "legacy": True,
                 "content_hash": actual,
             })
-    result.sort(key=lambda item: item["path"].name)
+    # Hash-pinned legacy reports существовали до schema-v1 migration.
+    # Их произвольные historical filenames не должны конкурировать с sortable
+    # schema-v1 naming и становиться "latest" после появления нового review.
+    result.sort(
+        key=lambda item: (
+            0 if item.get("legacy") else 1,
+            item["path"].name,
+        )
+    )
     return result
 
 

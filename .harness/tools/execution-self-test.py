@@ -18,8 +18,13 @@ from execution_status import (
     start_execution,
     unresolved_executions,
 )
+from document_contract import content_hash
 from planning_contract import plan_content_hash, planning_context_basis
-from review_contract import repository_revision, validate_review_immutability
+from review_contract import (
+    latest_trusted_review,
+    repository_revision,
+    validate_review_immutability,
+)
 from review_gates import required_reviewers
 
 
@@ -555,6 +560,28 @@ def main() -> int:
 
         blocked = block_execution(root, run_root, command="STEP REVIEW STEP-001")
         assert blocked["current"]["result"] == "FAIL"
+
+        # Legacy review filenames до schema-v1 не были канонизированы. Даже
+        # лексикографически "поздний" pinned legacy report остаётся historical
+        # и не может перекрыть новый schema-v1 review после migration.
+        legacy_rel = "planning/reviews/STEP-001/REVIEW-z-legacy.md"
+        legacy_path = root / legacy_rel
+        write(
+            legacy_path,
+            """# STEP REVIEW STEP-001 — legacy
+
+**Verdict:** PASS
+""",
+        )
+        trusted = latest_trusted_review(
+            root,
+            "STEP-001",
+            extra_legacy_pins={
+                legacy_rel: content_hash(legacy_path.read_text(encoding="utf-8"))
+            },
+        )
+        assert trusted is not None and not trusted.get("legacy"), trusted
+        legacy_path.unlink()
 
         # One fixed project-level state file, no per-STEP JSON.
         fixed = root / ".harness/local/execution/execution-status.json"
