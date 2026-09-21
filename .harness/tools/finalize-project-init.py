@@ -5,11 +5,10 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import re
-import tempfile
 
+from document_contract import atomic_write_text
 from harness_config import (
     get,
     load_manifest,
@@ -94,22 +93,23 @@ def finalize(root: Path, name: str) -> dict[str, str]:
     timestamp = utc_now()
     candidate = _replace_project_fields(original, name.strip(), timestamp)
 
-    fd, tmp_name = tempfile.mkstemp(prefix="manifest.", suffix=".tmp", dir=str(path.parent))
-    tmp = Path(tmp_name)
+    atomic_write_text(path, candidate)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(candidate)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
-    finally:
-        if tmp.exists():
-            tmp.unlink(missing_ok=True)
-
-    post = validate_project_integrity(root, allow_legacy=False)
-    if post:
-        path.write_text(original, encoding="utf-8", newline="\n")
-        raise ValueError("INIT postcondition failed; manifest rolled back: " + "; ".join(post))
+        post = validate_project_integrity(root, allow_legacy=False)
+        if post:
+            raise ValueError(
+                "INIT postcondition failed; manifest rolled back: " + "; ".join(post)
+            )
+    except Exception as exc:
+        # initialized=true является commit point INIT. Любой exception после
+        # него обязан вернуть manifest в exact pre-finalize state.
+        try:
+            atomic_write_text(path, original)
+        except Exception as rollback_exc:
+            raise RuntimeError(
+                f"INIT postcondition failed and manifest rollback failed: {rollback_exc}"
+            ) from exc
+        raise
     return {"status": "INITIALIZED", "name": name.strip(), "initializedAt": timestamp}
 
 
