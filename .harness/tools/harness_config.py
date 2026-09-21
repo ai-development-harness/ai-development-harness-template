@@ -9,6 +9,7 @@ hard-coded project paths. Неизвестная/неподдерживаема�
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import re
 import tomllib
 from typing import Any
@@ -52,15 +53,17 @@ def _scalar(raw: str) -> Any:
         return value.lower() == "true"
     if re.fullmatch(r"-?[0-9]+", value):
         return int(value)
-    if (
-        len(value) >= 2
-        and value[0] == value[-1]
-        and value[0] in {"'", '"'}
-    ):
-        body = value[1:-1]
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
         if value[0] == '"':
-            body = bytes(body, "utf-8").decode("unicode_escape")
-        return body
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ConfigError(f"invalid quoted YAML scalar: {value}") from exc
+            if not isinstance(parsed, str):
+                raise ConfigError(f"quoted YAML scalar must be a string: {value}")
+            return parsed
+        # Restricted single-quoted YAML: doubled apostrophe encodes one apostrophe.
+        return value[1:-1].replace("''", "'")
     # Harness не использует YAML anchors/tags/flow collections: их лучше
     # отвергнуть, чем интерпретировать иначе в разных tools.
     if value.startswith(("[", "{", "&", "*", "!")):
