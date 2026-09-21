@@ -256,7 +256,12 @@ def _evidence_present(task: dict[str, Any]) -> bool:
     return bool(value and value not in {"—", "-"} and not has_unresolved_placeholder(value))
 
 
-def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
+def step_completion_proof(
+    root: Path,
+    step_id: str,
+    *,
+    extra_legacy_review_pins: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Вернуть type-specific proof prerequisite completion.
 
     Это structural proof. review_contract.py дополнительно доказывает корректность
@@ -297,7 +302,11 @@ def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
         # immutable legacy report, не переписывая историю задним числом.
         from review_contract import latest_trusted_review
 
-        trusted = latest_trusted_review(root, step_id)
+        trusted = latest_trusted_review(
+            root,
+            step_id,
+            extra_legacy_pins=extra_legacy_review_pins,
+        )
         review_snapshot: dict[str, Any] | None = None
         if trusted is None:
             reasons.append("trusted PASS review is missing")
