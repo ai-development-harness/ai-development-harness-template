@@ -142,8 +142,8 @@ python3 .harness/tools/execution-state.py complete \
 
 Canonical artifacts имеют приоритет над local operational state. Для существующих команд разрешены узкие deterministic recovery proofs:
 
-- актуальный `Plan basis` может доказать завершённый `STEP PLAN`;
-- новый immutable review report может восстановить verdict `STEP REVIEW`;
+- `plan.status=ready` с совпадающими `context_basis`, `content_hash` и matching immutable planning-review PASS может доказать завершённый `STEP PLAN`;
+- новый schema-valid immutable review report для той же exact `git_head + worktree_hash` revision может восстановить verdict `STEP REVIEW`;
 - изменение Git HEAD после `GIT COMMIT` может доказать, что commit уже создан.
 
 Эти проверки не создают profiles и не меняют command surface.
@@ -166,56 +166,36 @@ Canonical artifacts имеют приоритет над local operational state
 
 ID всех сущностей стабилен, не переиспользуется и не перенумеровывается.
 
-## 2. Типы STEP
+## 2. Machine schema STEP
 
-Допустимые `Type`:
+Active STEP хранится в configured `protocol.taskDirectory` и начинается с YAML frontmatter `schema: 1`. Machine keys/enums — стабильные protocol tokens и не локализуются.
 
-- `IMPLEMENTATION` — новая функциональность;
-- `BUGFIX` — исправление доказанного дефекта;
-- `REFACTOR` — изменение структуры без намеренного изменения внешнего поведения;
-- `RESEARCH` — исследование для снятия неопределённости;
-- `ADR` — принятие/reconciliation архитектурного решения;
-- `AUDIT` — формальная проверка существующего состояния;
-- `REVIEW` — отдельная review-задача, если review сам является roadmap item;
-- `HARDENING` — security/performance/reliability hardening;
-- `DOCUMENTATION` — существенная документальная работа;
-- `RELEASE` — release/RC/deployment gate.
+Допустимые `type`:
+
+- `implementation`;
+- `bugfix`;
+- `refactor`;
+- `research`;
+- `adr`;
+- `audit`;
+- `review`;
+- `hardening`;
+- `documentation`;
+- `release`.
 
 ## 3. Статусы STEP
 
-- `Запланировано` — работа ещё не начата;
-- `В работе` — есть фактическая незавершённая реализация;
-- `Выполнено` — acceptance и verification доказаны, обязательный review PASS;
-- `Заблокировано` — выполнение начато/проанализировано и существует конкретный blocker;
-- `Отменено` — задача сознательно больше не нужна;
-- `Заменено` — task superseded другим STEP, ссылка обязательна.
+Допустимые machine values: `planned | in_progress | blocked | completed | deferred | cancelled`.
 
-Статус `Выполнено` нельзя выводить только из текста агента.
+Человекочитаемые projections/UI могут локализовать эти значения по `language.documentation`, но canonical frontmatter остаётся нейтральным. `completed` выводится только по type-specific completion contract и не может быть установлен одним текстовым утверждением агента.
 
 ## 4. Структура STEP
 
-Каждый `planning/tasks/STEP-NNN.md` должен содержать:
+Frontmatter обязан содержать `schema`, `id`, `status`, `type`, `priority`, `phase`, strict lists `depends_on`, `requirements`, `adrs`, `architecture_refs`, `risk_flags`, а также machine sections `plan` и `review`.
 
-- Status;
-- Type;
-- Priority;
-- Phase;
-- Depends on;
-- Requirements;
-- ADR;
-- Risk flags;
-- Goal;
-- Context;
-- Scope;
-- Mutation policy;
-- Out of scope;
-- Acceptance criteria;
-- Verification;
-- Deliverables;
-- Implementation plan;
-- Evidence;
-- Review status;
-- Blocker/Failure reason при необходимости.
+Markdown body содержит `Goal`, `Context`, `Scope`, `Mutation policy` с ровно одним `Allowed/Conditional/Forbidden`, `Out of scope`, `Acceptance criteria`, `Verification`, `Deliverables`, `Implementation plan`, `Evidence`, `Blocker / Failure reason`.
+
+ID `STEP/REQ/ADR/OQ` имеют минимум три цифры без верхнего предела: `STEP-001`, `STEP-1000` и т.д.
 
 ## 5. Risk flags
 
@@ -235,46 +215,33 @@ Risk flags управляют orchestration, но не заменяют анал
 
 ## 6. `PROJECT INIT`
 
-Precondition: `.harness/manifest.yaml → project.initialized: false`.
+Precondition: `project.initialized=false`.
 
-Алгоритм:
+1. Все project paths разрешаются через manifest; local brief берётся из `sources.localBrief`.
+2. Создай active schema-v1 PROJECT/REQ/ADR/OQ/STEP artifacts. OQ хранится отдельными canonical `OQ-NNN-*.md`; `OPEN_QUESTIONS.md` — projection.
+3. Выполни semantic requirements review и сохрани immutable `init_review` PASS/BLOCKED с exact basis из `planning-state.py init-basis requirements`.
+4. Построй roadmap и выполни отдельный semantic roadmap review с basis `planning-state.py init-basis roadmap`.
+5. Project-level unresolved uncertainty фиксируется OQ с `affects: [PROJECT]` и блокирует finalization.
+6. Обеспечь двустороннюю REQ↔STEP и ADR↔STEP traceability.
+7. Пересобери tracked projections через `sync-projections.py`; руками projection state не редактируй.
+8. После **всех** candidate mutations запусти `validate.py --mode manual`.
+9. Только `finalize-project-init.py --name '<name>'` имеет право atomically выставить `project.initialized=true`; он повторно проверяет оба semantic reports, projections и postconditions.
+10. Production code не создавай.
 
-1. Проверить существование `PROJECT_BRIEF.local.md`.
-2. Прочитать brief и референсы. Если внешний source недоступен, отметить это, не подменять факт предположением.
-3. Сформировать `docs/PROJECT.md`.
-4. Извлечь draft REQ, назначить стабильные IDs и создать каждый отдельным `docs/requirements/REQ-NNN-<slug>.md`; удалить `REQ-001-template.md`, если он существует, перестроить `SPEC.md` как index projection и не записывать lifecycle-статус ни в canonical REQ, ни в `SPEC.md`.
-5. Выполнить semantic requirements review: REQ↔REQ conflicts/duplicates, observable Acceptance, constraints, compatibility с architecture assumptions. Существенную неопределённость не закрывать догадкой.
-6. Сформировать минимально достаточный architecture baseline и Accepted ADR только для реально принятых устойчивых решений.
-7. Неопределённости записать в `OPEN_QUESTIONS`; blocking question должен стать prerequisite `RESEARCH`/`ADR` STEP.
-8. Построить draft roadmap по dependencies и создать task-файл для каждого initial STEP.
-9. Выполнить независимый roadmap consistency review: REQ↔ADR, STEP↔REQ, Goal/Scope/Out of scope↔Acceptance, STEP↔STEP ownership, dependencies, architecture prerequisites, blocking OPEN_QUESTIONS и Verification.
-10. Исправить объективные drafting defects; если после исправляющего прохода остаётся substantive contradiction/missing decision, INIT = `BLOCKED`, а не новый внутренний цикл.
-11. Заполнить traceability REQ↔STEP↔ADR и обновить `PLAN.md`, `STATUS.md`, requirements projections.
-12. Запустить deterministic gate `python3 .harness/tools/validate.py --mode manual`. Static PASS не отменяет semantic BLOCKED.
-13. Обновить только generated blocks `README.md` и `AGENTS.md`; `development.md` заполнять только известными фактами.
-14. Только после semantic + deterministic PASS установить `project.initialized: true`, project name/date.
-15. Production code не создавать.
-
-Если brief неоднозначен, но roadmap можно сделать безопасным через явный prerequisite, INIT не обязан блокироваться. Если противоречие делает executable roadmap недостоверным, остановись с конкретным blocker.
-
-Повторный INIT при `initialized: true` не выполняется без explicit destructive intent; предложи `PROJECT RECONCILE`.
+Если semantic contradiction нельзя безопасно снять одним исправляющим проходом, INIT = `BLOCKED`. Повторный INIT для initialized project заменяется `PROJECT RECONCILE`.
 
 ## 7. `STEP ADD: <описание>`
 
 Production code mutation запрещена.
 
-1. Найти максимальный когда-либо использованный STEP ID и взять следующий. Не заполнять «дырки».
-2. До создания выполнить semantic duplicate/overlap search по tasks, PLAN, REQ, ADR и релевантному code/docs.
-3. Если запрос полностью покрыт существующим STEP — не создавать новый; вернуть найденный STEP и рекомендуемую команду.
-4. Классифицировать Type/Priority/Phase/Risk flags.
-5. Определить existing REQ. Новый REQ создавать только если запрос вводит новый продуктовый контракт; canonical definition записывать отдельным `docs/requirements/REQ-NNN-<slug>.md`, затем обновлять `SPEC.md` и `STATUS.md` projections.
-6. Проверить ADR. Не создавать ADR на мелкую implementation detail. Если без нового устойчивого решения реализация некорректна — создать prerequisite ADR STEP либо зафиксировать ADR need.
-7. Определить hard dependencies и влияние на будущие STEP. Не перенумеровывать историю.
-8. Сформировать Goal/Context/Scope/Mutation policy/Out of scope/Acceptance/Verification/Deliverables.
-9. `Implementation plan` оставить `Not planned` — его заполняет PLAN.
-10. Создать task, обновить PLAN/STATUS, canonical REQ traceability и requirements SPEC/STATUS projections.
-11. Проверить consistency.
-12. Вернуть `STEP PLAN STEP-NNN`.
+1. Выполни duplicate/overlap search и выбери следующий неиспользованный `STEP-NNN+`.
+2. Создай schema-v1 STEP в configured `protocol.taskDirectory`; `plan.status=not_planned`.
+3. Новый REQ создавай только для нового product contract; новый OQ — отдельным canonical file; durable decision — ADR/RESEARCH prerequisite.
+4. `architecture_refs` обязаны явно перечислять relevant document/anchor inputs; whole architecture baseline не хэшируется автоматически.
+5. `risk_flags` используют закрытый enum; `none` взаимоисключающий.
+6. Обнови двустороннюю traceability, затем **пересобери**, а не редактируй вручную PLAN/STATUS/requirements/OQ projections.
+7. Запусти `sync-projections.py` и `validate.py --mode manual`.
+8. Только непротиворечивый unblocked STEP получает handoff `STEP PLAN STEP-NNN`.
 
 ## 7A. `SKILL FIND: <описание>`
 
@@ -361,25 +328,22 @@ PROJECT QUICK FIX — исключение из STEP workflow для micro-chang
 
 ## 8. `STEP PLAN STEP-NNN`
 
-Production code mutation запрещена. Execution tracking уже зарегистрирован global command wrapper; skill не создаёт отдельный per-STEP state.
+Production code mutation запрещена.
 
-1. Resolve task, hard dependencies, canonical REQ, Accepted ADR, architecture, blocking OPEN_QUESTIONS, code/tests/config.
-2. Запустить deterministic `python3 .harness/tools/validate.py --mode manual`.
-3. Выполнить semantic contract validation: Goal/Scope/Out of scope↔Acceptance, Verification↔Acceptance, REQ↔ADR↔architecture, dependencies, соседний STEP ownership, OPEN question/TBD.
-4. Contract conflict, impossible acceptance или missing decision/prerequisite → PLAN `BLOCKED`; `stamp-plan` запрещён.
-5. Только после PASS сформировать implementation approach, impacted modules/files, data/API implications, test strategy, verification sequence, risks/rollback.
-6. Сохранить `## Implementation plan`.
-7. Выполнить:
-   ```bash
-   python3 .harness/tools/execution-state.py stamp-plan STEP-NNN
-   ```
-8. `Plan basis` = SHA-256 transitive planning context: STEP contract + linked canonical REQ + linked ADR + hard dependency contracts + architecture baseline.
-9. Изменение любого upstream input делает plan stale без LLM reasoning.
-10. Не менять Status на `В работе` только из-за planning.
-11. Если session оборвалась после `stamp-plan`, но до записи execution `complete`, resolver может доказать PLAN по актуальному Plan basis.
-12. После фактического завершения global wrapper записывает result `SUCCESS`.
+1. Legacy active schema = blocker; сначала `PROJECT RECONCILE`.
+2. Static gate восстанавливает STEP, type-specific completion proofs прямых dependencies, linked REQ/ADR, explicit `architecture_refs` и relevant canonical OQ.
+3. Semantic gate проверяет внутреннюю непротиворечивость contract, feasibility Acceptance/Verification, prerequisites и ownership.
+4. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
+5. После PASS запиши содержательный `Implementation plan` как draft.
+6. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
+   - `contextBasis` — contract + linked REQ/ADR + direct dependency completion proofs + referenced architecture sections + relevant OQ;
+   - `planContentHash` — нормализованный текст самого Implementation plan.
+7. **Каждый** PLAN обязан пройти independent semantic planning-review. Immutable schema-v1 report в configured `protocol.planningReviewDirectory` хранит verdict + оба fingerprints.
+8. Только matching PASS разрешает `execution-state.py stamp-plan STEP-NNN`. Stamp atomically пишет `plan.status=ready`, revision, context/content hashes, reviewed report и timestamp.
+9. Изменение plan body делает stale content hash; изменение relevant upstream input делает stale context basis.
+10. Resolver признаёт interrupted PLAN завершённым только при полном совпадении Ready metadata и matching PASS report.
 
-Single `STEP PLAN` после SUCCESS останавливается. Только explicit chain или `STEP RUN` могут продолжить к IMPLEMENT.
+Single PLAN после SUCCESS останавливается; продолжение к IMPLEMENT возможно только explicit chain/STEP RUN.
 
 ## 9. `STEP IMPLEMENT STEP-NNN`
 
@@ -387,7 +351,7 @@ Execution tracking уже ведётся root execution wrapper.
 
 1. Требуется актуальный Implementation plan, если нет explicit user override.
 2. Проверить dependencies.
-3. Status → `В работе` при первой фактической mutation.
+3. `status → in_progress` при первой фактической mutation.
 4. При `RESUME` сначала исследовать существующий diff/Evidence и продолжить недостающее, не переделывая готовую работу.
 5. Выполнить scope/mutation policy.
 6. Не реализовывать future/unrelated work.
