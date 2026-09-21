@@ -114,8 +114,8 @@ sources:
 # Пути к protocol/planning artifacts Harness.
 # Пример: taskDirectory=planning/tasks, reviewDirectory=planning/reviews.
 protocol:
-  # Формальная семантика команд.
-  # Пример: .harness/docs/EXECUTION_PROTOCOL.md.
+  # Canonical bootstrap path формальной семантики команд; relocation не поддерживается.
+  # Формат: фиксированное значение .harness/docs/EXECUTION_PROTOCOL.md.
   file: .harness/docs/EXECUTION_PROTOCOL.md
   # Каталог canonical STEP.
   # Пример: planning/tasks.
@@ -154,9 +154,9 @@ repository:
   # Ownership/source policy self-update; update-specific paths живут только внутри неё.
   # Пример: .harness/harness-update.toml.
   harnessUpdatePolicy: .harness/harness-update.toml
-  # Локальный deterministic validator.
-  # Пример: .harness/tools/validate.py.
+  # Canonical bootstrap path локального deterministic validator; relocation не поддерживается.
+  # Формат: фиксированное значение .harness/tools/validate.py.
   harnessValidation: .harness/tools/validate.py
-  # Baseline GitHub Actions workflow.
-  # Пример: .github/workflows/harness-integrity.yml.
+  # Canonical bootstrap path baseline GitHub Actions workflow; relocation не поддерживается.
+  # Формат: фиксированное значение .github/workflows/harness-integrity.yml.
   harnessCI: .github/workflows/harness-integrity.yml
