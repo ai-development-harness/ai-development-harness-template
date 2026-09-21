@@ -151,14 +151,16 @@ def project_live_document_paths(root: Path) -> list[Path]:
     # исключаем только canonical ADR documents, а не весь subtree.
     docs_root = root / "docs"
     try:
-        configured_adr = adr_directory(root).resolve()
+        configured_adr = adr_directory(root)
     except Exception as exc:
         raise RuntimeError(f"cannot resolve configured ADR directory: {exc}") from exc
     if docs_root.exists():
         for path in sorted(docs_root.rglob("*.md")):
-            resolved = path.resolve()
+            # Исторический ADR определяется lexical repository path. Symlink
+            # из другого subsystem path в ADR target остаётся live document и
+            # не должен исчезать из command-reference scan.
             is_canonical_adr = (
-                resolved.parent == configured_adr
+                path.parent == configured_adr
                 and re.fullmatch(r"ADR-\d{3,}(?:-.+)?\.md", path.name) is not None
             )
             if is_canonical_adr:
