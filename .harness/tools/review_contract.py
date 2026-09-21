@@ -22,7 +22,12 @@ from document_contract import (
     split_frontmatter,
     string_list,
 )
-from harness_config import audit_directory, review_directory
+from harness_config import (
+    audit_directory,
+    init_review_directory,
+    planning_review_directory,
+    review_directory,
+)
 from planning_contract import read_task
 from review_gates import required_reviewers
 
@@ -453,8 +458,90 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
     return report
 
 
-def validate_all_review_reports(root: Path) -> list[str]:
+def _is_immutable_review_path(root: Path, rel: str) -> bool:
+    """Распознать только реальные immutable reports, не TEMPLATE.md."""
+    candidate = (root / rel).resolve()
+    patterns = (
+        (review_directory(root).resolve(), re.compile(r"^STEP-\\d{3,}/REVIEW-.+\\.md$")),
+        (planning_review_directory(root).resolve(), re.compile(r"^STEP-\\d{3,}/PLAN-REVIEW-.+\\.md$")),
+        (init_review_directory(root).resolve(), re.compile(r"^INIT-REVIEW-.+\\.md$")),
+    )
+    for base, pattern in patterns:
+        try:
+            suffix = candidate.relative_to(base).as_posix()
+        except ValueError:
+            continue
+        return pattern.fullmatch(suffix) is not None
+    return False
+
+
+def _git_changed_review_paths(root: Path, *diff_args: str) -> tuple[list[str], str | None]:
+    code, raw = _git(root, *diff_args)
+    if code != 0:
+        return [], "cannot inspect Git diff for immutable review reports"
+    values = raw.decode("utf-8", errors="replace").splitlines()
+    return [value for value in values if value and _is_immutable_review_path(root, value)], None
+
+
+def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[str]:
+    """Запретить mutation/delete/rename уже существующих immutable reports.
+
+    Addition допустим. До commit проверяем staged + unstaged состояние против
+    HEAD. В CI сравниваем итоговый commit с первым родителем: PR merge commit
+    тем самым проверяется относительно base, обычный push — относительно parent.
+    """
     errors: list[str] = []
+    directories = [
+        review_directory(root).relative_to(root).as_posix(),
+        planning_review_directory(root).relative_to(root).as_posix(),
+        init_review_directory(root).relative_to(root).as_posix(),
+    ]
+
+    probes: list[tuple[str, tuple[str, ...]]] = [
+        (
+            "worktree",
+            ("diff", "--name-only", "--diff-filter=MDRT", "HEAD", "--", *directories),
+        ),
+        (
+            "index",
+            ("diff", "--cached", "--name-only", "--diff-filter=MDRT", "HEAD", "--", *directories),
+        ),
+    ]
+    if ci_mode:
+        parent_code, _ = _git(root, "rev-parse", "--verify", "HEAD^1")
+        if parent_code == 0:
+            probes.append(
+                (
+                    "commit",
+                    ("diff", "--name-only", "--diff-filter=MDRT", "HEAD^1", "HEAD", "--", *directories),
+                )
+            )
+        else:
+            # Root commit не имеет baseline и потому не может переписать
+            # существующий report. Shallow non-root checkout, напротив, не
+            # должен тихо обходить immutability proof.
+            count_code, count = _git(root, "rev-list", "--count", "HEAD")
+            if count_code != 0 or count.decode("utf-8", errors="replace").strip() != "1":
+                errors.append("review immutability: cannot resolve CI baseline HEAD^1")
+
+    seen: set[str] = set()
+    for label, args in probes:
+        paths, blocker = _git_changed_review_paths(root, *args)
+        if blocker is not None:
+            errors.append(f"review immutability ({label}): {blocker}")
+            continue
+        for rel in paths:
+            token = f"{label}:{rel}"
+            if token in seen:
+                continue
+            seen.add(token)
+            errors.append(f"review immutability: existing report changed ({label}): {rel}")
+    return errors
+
+
+def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[str]:
+    errors: list[str] = []
+    errors.extend(validate_review_immutability(root, ci_mode=ci_mode))
     directory = review_directory(root)
     if not directory.is_dir():
         return errors
