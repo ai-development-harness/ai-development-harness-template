@@ -19,12 +19,15 @@ python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
+python3 .harness/tools/harness-update-self-test.py
 python3 .harness/tools/update-migration-self-test.py
 ```
 
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
 
-Update migration self-test создаёт synthetic legacy state и проверяет deterministic update-contract: legacy route/reload boundaries, target relocation layout, ownership project templates и marker blocks, tracked-vs-ignored Git scope, deferred REQ migration и согласованность release metadata. Он не запускает LLM/agent и не заменяет периодический real-project dogfood.
+Deterministic updater self-test создаёт локальные synthetic source/project Git repositories и прогоняет реальный update engine: explicit legacy adoption, immutable tag pinning, CHECK/APPLY, shared 3-way merge, marker preservation, core-vs-project skill ownership и collision при попытке нового core slug захватить project skill.
+
+Update migration self-test отдельно сохраняет historical compatibility coverage: legacy route/reload boundaries, control-plane relocation, project-owned schema migration/idempotency и release metadata. Оба теста dependency-free и не запускают LLM/agent; real-project dogfood остаётся дополнительным уровнем проверки.
 
 Baseline validator детерминированно проверяет schema-v1 planning contracts: configured task/REQ/ADR/OQ paths, strict refs/enums, dependency cycles, type-specific completion proofs, mutation-policy grammar, explicit architecture refs, Ready `context_basis` + отдельный `content_hash` и наличие matching immutable planning-review PASS. Stale context может быть warning на глобальной проверке, но resolver всё равно запрещает конкретный IMPLEMENT до fresh PLAN. `context_basis` fingerprint-ит STEP contract, linked REQ/ADR, direct dependency completion proofs, referenced architecture sections и relevant OQ; `content_hash` отдельно fingerprint-ит Implementation plan. Семантическую непротиворечивость static gate не угадывает — её доказывает обязательный independent planning-review.
 

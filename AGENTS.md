@@ -290,28 +290,22 @@ Self-update protocol layer не является STEP.
 ### `HARNESS UPDATE CHECK`
 
 - используй `.agents/skills/update-harness/SKILL.md`;
-- не меняй working tree, Git refs, lock, STEP/REQ/ADR, commit/push/PR;
-- путь BASE lock берётся из configured update policy `state.lock_file`;
-- legacy `.project/**` control plane обновляется через обязательный bridge `v0.4.2`; после relocation не восстанавливай dual-layout, `.harness/**` становится единственным bootstrap namespace;
-- конечный target и обязательные промежуточные releases разрешай через configured `source.update_manifest`; moving `main` используется только для routing metadata, не как BASE/THEIRS content;
-- explicit `TO <tag>` допустим только если tag достижим из current release по update graph; отсутствие route — blocker до mutation;
-- если lock отсутствует, не угадывай baseline: переходи в legacy adoption mode;
-- неизвестные/project-owned paths не трогай даже при сходстве имён.
+- canonical mechanics выполняй только через `python3 .harness/tools/harness-update.py check [--to <tag>] --json`;
+- CHECK read-only: не меняй working tree, Git refs, lock, STEP/REQ/ADR, commit/push/PR;
+- не пересчитывай ownership/route/merge вручную после результата engine;
+- `BLOCKED` и `reloadBoundary` трактуй буквально.
 
 ### `HARNESS UPDATE APPLY`
 
-- разрешён только после успешного check без blockers для того же конечного target и route;
-- применяет update graph строго hop-by-hop и не перепрыгивает обязательные bridge releases;
-- lock продвигается только после postcondition очередного hop; `reloadRequired` завершает текущий запуск на bridge и требует нового updater run;
-- update policy path берётся из `manifest.repository.harnessUpdatePolicy`; mutation scope вычисляется только из этой policy;
-- `shared` → 3-way merge;
-- `README.md`/`AGENTS.md` → 3-way merge с сохранением local generated blocks;
-- local modification `harness_owned` файла → blocker, а не overwrite;
+- canonical mutation выполняй только через `python3 .harness/tools/harness-update.py apply [--to <tag>] --json`;
+- deterministic engine сам проверяет current Harness, immutable tags, policy transition, BASE/OURS/THEIRS, collisions, 3-way/marker merge, target validator и lock advancement;
+- `UPDATER_RELOAD_REQUIRED` завершает текущий запуск: после reload повтори APPLY к исходному target;
 - target migration/install/bootstrap scripts автоматически не запускаются;
+- project/third-party `.agents/skills/<slug>` не являются Harness-owned только из-за общей директории;
 - команда не делает STEP, commit, push или PR;
 - после mutation обязательно inspect diff → `GIT CHECK` → `GIT COMMIT`.
 
-Для старого проекта без lock adoption разрешён только с explicit известным release. Подробности: `.harness/docs/UPDATES.md`.
+Для старого проекта без lock baseline не угадывай: adoption разрешён только через explicit `harness-update.py adopt --from vX.Y.Z`. Подробности: `.harness/docs/UPDATES.md`.
 
 ## 16. Completion report
 

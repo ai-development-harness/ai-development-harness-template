@@ -131,6 +131,13 @@ jobs:
         # Пример: malformed release verdict и incomplete skill shortlist дают FAIL.
         run: python3 .harness/tools/report-contract-self-test.py
 
+      # Прогнать настоящий deterministic updater на synthetic Git source/project.
+      # Пример: 3-way merge, marker preservation, tag pinning и project-skill ownership.
+      - name: Validate deterministic Harness update engine
+        # Self-test не использует network: source releases создаются во временном локальном Git repository.
+        # Пример: существующий project skill не может быть захвачен новым core skill молча.
+        run: python3 .harness/tools/harness-update-self-test.py
+
       # Проверить исторически критичные update/migration invariants на synthetic legacy state.
       # Пример: routing/reload, relocation layout, project templates, ignored artifacts и deferred REQ migration.
       - name: Validate update migration regression
