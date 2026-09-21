@@ -154,7 +154,7 @@ Canonical artifacts имеют приоритет над local operational state
 
 ### Requirement (`REQ-NNN`)
 
-Проверяемый продуктовый/системный контракт: **что должно быть обеспечено**. Canonical definition хранится в отдельном `docs/requirements/REQ-NNN-*.md`; `SPEC.md` и `STATUS.md` являются projections.
+Проверяемый продуктовый/системный контракт: **что должно быть обеспечено**. Canonical definition хранится как `REQ-NNN-*.md` в configured `.harness/manifest.yaml → sources.requirements`; `SPEC.md` и `STATUS.md` в этом каталоге являются projections.
 
 ### ADR (`ADR-NNN`)
 
@@ -256,7 +256,7 @@ Product code mutation запрещена; разрешено создание se
 5. Отбросить кандидатов с очевидно опасным поведением, непроверяемым source или конфликтом с harness contract.
 6. Ранжировать по relevance, format compatibility, workflow quality, provenance/maintenance, license и safety.
 7. Сформировать не более `skills.search.maxResults` кандидатов со ссылками и rationale.
-8. Создать `planning/skill-searches/SKILL-SEARCH-<timestamp>.md`; search report является durable basis для `SKILL INSTALL: #N`.
+8. Создать `SKILL-SEARCH-<UTC timestamp>.md` в configured `.harness/manifest.yaml → protocol.skillSearchDirectory`; search report является durable basis для `SKILL INSTALL: #N`.
 9. Ничего не устанавливать. Handoff → `SKILL INSTALL: #N` либо `SKILL CREATE: ...`.
 
 ## 7B. `SKILL INSTALL: <source | #N>`
@@ -453,12 +453,12 @@ Audit-only semantics:
 - при необходимости создаётся corrective STEP;
 - исторический STEP оценивается по своему историческому contract, а не по будущим требованиям.
 
-Report сохраняется в `planning/audits/`.
+Report сохраняется в configured `.harness/manifest.yaml → protocol.auditDirectory`.
 
 ## 14. `PROJECT STATUS`
 
 1. Сверить task canonical statuses с PLAN/STATUS projections.
-2. Сверить REQ status в `docs/requirements/STATUS.md` с evidence, review и STEP coverage.
+2. Сверить REQ status в `STATUS.md` внутри configured `.harness/manifest.yaml → sources.requirements` с evidence, review и STEP coverage.
 3. Показать blockers, in-progress, unblocked high-priority work, unresolved critical review findings.
 4. Исправить только projection drift, если canonical evidence однозначен.
 5. Не менять смысл REQ/ADR и не писать product code.
@@ -502,7 +502,7 @@ Precondition: `.harness/manifest.yaml → project.initialized: true`.
 5. Если checker не удалось выполнить, явно записать BLOCKED в Evidence; запрещено утверждать, что command-syntax drift отсутствует.
 6. Не исправлять production code.
 7. Однозначный projection drift и чисто документальный command-syntax drift можно синхронизировать.
-8. Если legacy-проект хранит canonical REQ внутри монолитного `docs/requirements/SPEC.md`, выполнить lossless migration: каждый `REQ-NNN-<slug>.md` создать по текущему `docs/requirements/TEMPLATE.md`, используя актуальную standalone-структуру и уровни заголовков, но сохраняя ID, название, metadata, Requirement, Rationale, Acceptance и Traceability без изменения смысла и без template placeholders. После split перестроить `SPEC.md` и `STATUS.md` в текущем projection-формате, сохранив lifecycle-state, STEP coverage и Evidence; lifecycle-state оставить только в `STATUS.md`. Если legacy-содержимое нельзя lossless отобразить в текущий template/projections или структура SPEC неоднозначна, не угадывать — зафиксировать blocker.
+8. Если legacy-проект хранит canonical REQ внутри монолитного `SPEC.md` в configured `.harness/manifest.yaml → sources.requirements`, выполнить lossless migration: каждый `REQ-NNN-<slug>.md` создать по текущему `TEMPLATE.md` из этого же configured каталога, используя актуальную standalone-структуру и уровни заголовков, но сохраняя ID, название, metadata, Requirement, Rationale, Acceptance и Traceability без изменения смысла и без template placeholders. После split перестроить `SPEC.md` и `STATUS.md` в текущем projection-формате, сохранив lifecycle-state, STEP coverage и Evidence; lifecycle-state оставить только в `STATUS.md`. Если legacy-содержимое нельзя lossless отобразить в текущий template/projections или структура SPEC неоднозначна, не угадывать — зафиксировать blocker.
 9. Для substantive defect/gap создать corrective STEP через `STEP ADD` semantics.
 10. Новые устойчивые решения не записывать как Accepted ADR без decision process.
 11. Сохранить audit report.
@@ -518,7 +518,7 @@ Release gate определяется фактическим проектом. �
 - security-sensitive areas;
 - docs/changelog/release notes, если применимо.
 
-Создать report в `planning/releases/`. Не объявлять READY при blocker.
+Создать report в configured `.harness/manifest.yaml → protocol.releaseDirectory`. Не объявлять READY при blocker.
 
 ## 18. `GIT CHECK`
 
