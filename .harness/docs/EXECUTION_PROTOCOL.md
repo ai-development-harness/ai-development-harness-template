@@ -522,57 +522,67 @@ Release gate определяется фактическим проектом. �
 
 ## 18. `GIT CHECK`
 
-Read-only Git preflight:
+Read-only machine preflight:
 
-1. Прочитать `.harness/git-policy.toml`.
-2. Показать current branch, protected status, upstream, ahead/behind/diverged.
-3. Показать staged/unstaged/untracked и логические группы изменений.
-4. Запустить `python3 .harness/tools/validate.py --mode commit`.
-5. Проверить suspicious/unrelated files и вероятную traceability.
-6. Ничего не stage/commit/push.
+```bash
+python3 .harness/tools/git-preflight.py check --json
+```
+
+Tool разрешает configured `.harness/manifest.yaml → repository.gitPolicy`, показывает branch/protection/upstream, staged/unstaged/untracked и Harness validation result. Agent отдельно анализирует semantic grouping, suspicious/unrelated files и traceability. Ничего не stage/commit/push.
 
 ## 19. `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
 1. Источник истины — фактический diff; текст после `GIT COMMIT:` только hint.
-2. Выполнить GIT CHECK semantics и Harness validation.
-3. Определить один coherent logical change. Если изменений несколько и они независимы — не создавать общий commit; предложить split.
-4. Определить Conventional Commit type/scope и branch kind.
-5. Если текущая ветка protected, применить `branch.when_on_protected`; при `auto-create` создать branch **до** commit. Initial commit может использовать configured exception.
-6. Stage по `commit.stage_mode`; при `all-safe` добавлять только явный проверенный набор, не использовать бездумный `git add .`.
-7. Повторно проверить staged diff.
-8. Сформировать подробный message по `.gitmessage` на языке `language.commitMessages`: subject, context, actual changes, verification, traceability. Для подтверждённого micro-change traceability может быть `PROJECT QUICK FIX / N/A`; отсутствие STEP в таком случае допустимо.
-9. Создать локальный commit. GIT PUSH не выполнять.
-10. Вернуть commit hash, branch, files, subject, verification и следующую canonical-команду `GIT PUSH`.
+2. Определить один coherent logical change. Если изменений несколько и они независимы — не создавать общий commit; предложить split.
+3. Определить Conventional Commit type/scope.
+4. Stage по `commit.stage_mode`; при `all-safe` добавлять только явный проверенный набор, не использовать бездумный `git add .`.
+5. После staging выполнить final machine gate:
+   ```bash
+   python3 .harness/tools/git-preflight.py commit --json --commit-type '<type>' --slug '<slug>'
+   ```
+6. При `PROTECTED_BRANCH_REQUIRES_NEW_BRANCH` использовать exact `details.requiredBranch`, создать эту branch и повторить gate. Другой `BLOCKED` не обходить.
+7. Только PASS разрешает commit.
+8. Сформировать message по `.gitmessage` на языке `language.commitMessages`: subject, context, actual changes, verification, traceability. Для подтверждённого micro-change traceability может быть `PROJECT QUICK FIX / N/A`; отсутствие STEP в таком случае допустимо.
+9. При `sign=true` использовать Git signing; не отключать его молча.
+10. Создать локальный commit. `GIT PUSH` не выполнять.
+11. Вернуть commit hash, branch, files, subject, verification и следующую canonical-команду `GIT PUSH`.
 
 ## 20. `GIT PUSH`
 
-1. Выполнить Harness validation.
-2. Если policy требует — `git fetch` configured remote.
-3. Проверить upstream и divergence. Remote-ahead при `block` останавливает GIT PUSH.
-4. Protected branch push допускается только policy; initial push может иметь отдельное исключение.
-5. Push выполнять без force, с upstream при необходимости.
-6. После успешного push применить `pull_request.after_push`:
+1. Непосредственно перед publication выполнить:
+   ```bash
+   python3 .harness/tools/git-preflight.py push --json
+   ```
+2. Tool использует только configured `push.remote`, выполняет required fetch/validation, проверяет clean-worktree policy, protected branch, initial bootstrap exception и exact ahead/behind.
+3. Только PASS разрешает mutation; выполнять exact `mutationPlan.argv`.
+4. Force/force-with-lease не добавлять. Upstream/tags берутся только из plan/policy.
+5. После успешного push применить `pull_request.after_push`:
    - `never` → завершить;
    - `ask` → предложить `GIT PR`;
    - `create-if-missing` → найти существующий PR и создать только при отсутствии.
-7. Неспособность создать PR не должна маскироваться: отдельно указать, что push успешен, а PR blocked/skipped.
+6. Неспособность создать PR не маскировать: push остаётся успешным, PR получает отдельный blocked/skipped result.
 
 ## 21. `GIT PR`
 
-1. Прочитать PR policy и убедиться, что branch опубликована.
-2. При `reuse_existing=true` не создавать duplicate.
-3. Base определяется config, head — текущая ветка.
-4. Title должен отражать actual change; body заполняется по `.github/pull_request_template.md` из STEP/REQ/ADR/evidence/review.
-5. Draft/non-draft — по policy.
-6. Для GitHub предпочитать `gh` или доступный authenticated GitHub connector; при отсутствии capability вернуть конкретный blocker.
+1. Выполнить:
+   ```bash
+   python3 .harness/tools/git-preflight.py pr --json
+   ```
+2. PASS доказывает exact published HEAD, существующий configured base, доступный preferred tool и repository-contained body template.
+3. Head/base/provider/tool/draft брать из machine plan/policy, не подменять вручную.
+4. При `reuse_existing=true` не создавать duplicate.
+5. Title должен отражать actual change; body заполняется по configured template из STEP/REQ/ADR/evidence/review.
 
 ## 22. `GIT SYNC`
 
-1. Fetch configured remote.
-2. Показать ahead/behind/diverged.
-3. `mode=report` → никаких дальнейших mutations.
-4. `mode=ff-only` → fast-forward только если worktree clean и история не diverged.
-5. Automatic merge/rebase запрещены; конфликт требует отдельного осознанного действия пользователя.
+1. Выполнить:
+   ```bash
+   python3 .harness/tools/git-preflight.py sync --json
+   ```
+2. Tool fetch-ит только configured `sync.fetch_remote` и считает exact ahead/behind.
+3. `mode=report` → никаких branch mutations.
+4. `mode=ff-only` → выполнять exact `mutationPlan.argv` только для clean behind-only state.
+5. Local-ahead/diverged/dirty state блокирует automatic sync. Automatic merge/rebase запрещены.
 
 ## 23. Dependency corrections
 

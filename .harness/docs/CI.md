@@ -19,11 +19,17 @@ python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
+python3 .harness/tools/git-policy-self-test.py
+python3 .harness/tools/git-preflight-self-test.py
 python3 .harness/tools/harness-update-self-test.py
 python3 .harness/tools/update-migration-self-test.py
 ```
 
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
+
+Git policy self-test проверяет fail-closed schema boundary через публичный validator: неизвестный/опечаточный safety key не может быть молча проигнорирован.
+
+Git preflight self-test создаёт synthetic repository + bare remote и прогоняет machine gates для protected branch, bootstrap push, feature publish, exact PR head, remote-ahead blocker и clean ff-only sync. Он не использует GitHub/network и не создаёт реальные PR.
 
 Deterministic updater self-test создаёт локальные synthetic source/project Git repositories и прогоняет реальный update engine: explicit legacy adoption, immutable tag pinning, CHECK/APPLY, shared 3-way merge, marker preservation, core-vs-project skill ownership и collision при попытке нового core slug захватить project skill.
 
