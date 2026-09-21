@@ -200,9 +200,9 @@ Updater **не переписывает project-owned active documents**.
 - legacy Ready plan без durable semantic review → draft;
 - project-owned templates → current protocol definitions;
 - projections → regenerate;
-- historical immutable reports → не переписываются.
+- historical immutable reports → не переписываются; legacy implementation review reports hash-pin-ятся в migration report как immutable compatibility proof.
 
-Migration идемпотентна: повторный запуск без фактических изменений не создаёт новый migration report.
+Migration идемпотентна: повторный запуск без фактических изменений не создаёт новый migration report. Уже pinned historical review нельзя тихо удалить/изменить/re-pin: hash mismatch является corruption blocker.
 
 Manual validation может разрешить строго распознанное migration-pending состояние как warning после control-plane hop. `--mode commit` и `--mode ci` остаются строгими до RECONCILE.
 
