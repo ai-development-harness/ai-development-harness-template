@@ -38,13 +38,13 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
 
 ## Phase C — обязательный independent planning-review
 
-Для **каждого** STEP PLAN выполни независимый semantic review планировщиком, даже для простого STEP. Создай immutable schema-v1 report в configured `protocol.planningReviewDirectory/STEP-NNN/` по template:
+Для **каждого** STEP PLAN передай готовый draft отдельному `reviewer` agent/session, отличному от planner, который составлял план. Создай immutable schema-v1 report в configured `protocol.planningReviewDirectory/STEP-NNN/` по template:
 
 - `kind: planning_review`;
 - `step_id`;
 - `verdict: pass|blocked`;
 - точные `context_basis` и `plan_content_hash`;
-- reviewer role/timestamp.
+- `reviewer_role: reviewer` и timestamp.
 
 После любых правок plan/contract fingerprints пересчитай и старый report не переиспользуй.
 
