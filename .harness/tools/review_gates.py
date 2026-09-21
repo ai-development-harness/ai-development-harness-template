@@ -9,6 +9,7 @@ import re
 import subprocess
 from typing import Any
 
+from document_contract import stable_hash
 from harness_config import review_policy
 from planning_contract import read_task
 
@@ -73,8 +74,10 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
 
     required: set[str] = set()
     reasons: dict[str, list[str]] = {"security": [], "tests": []}
+    security_policy = review_policy(root, "security")
+    tests_policy = review_policy(root, "tests")
 
-    if review_policy(root, "security") == "always":
+    if security_policy == "always":
         required.add("security")
         reasons["security"].append("manifest review.security=always")
     else:
@@ -87,7 +90,7 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
             required.add("security")
             reasons["security"].append("security-relevant changed paths")
 
-    if review_policy(root, "tests") == "always":
+    if tests_policy == "always":
         required.add("tests")
         reasons["tests"].append("manifest review.tests=always")
     else:
@@ -98,11 +101,21 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
             required.add("tests")
             reasons["tests"].append("code/test surface changed")
 
+    basis_payload = {
+        "schema": 1,
+        "stepId": step_id,
+        "stepType": step_type,
+        "riskFlags": sorted(flags),
+        "securityPolicy": security_policy,
+        "testsPolicy": tests_policy,
+        "changedPaths": paths,
+    }
     return {
         "stepId": step_id,
         "required": sorted(required),
         "reasons": reasons,
         "changedPaths": paths,
+        "basis": stable_hash(basis_payload),
     }
 
 
