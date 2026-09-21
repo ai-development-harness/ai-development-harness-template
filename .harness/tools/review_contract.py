@@ -389,6 +389,23 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
                     f"{kind} review status {status} requires evidence summary/reference"
                 )
 
+        required_blocked = sorted(
+            kind for kind in required_set if specialized.get(kind) == "blocked"
+        )
+        required_failed = sorted(
+            kind for kind in required_set if specialized.get(kind) == "fail"
+        )
+        if required_blocked and verdict != "blocked":
+            errors.append(
+                "required specialized reviewer BLOCKED requires overall BLOCKED: "
+                + ", ".join(required_blocked)
+            )
+        if verdict == "pass" and required_failed:
+            errors.append(
+                "PASS review requires PASS for all required specialized reviewers: "
+                + ", ".join(required_failed)
+            )
+
         # Только current-review gate можно честно пересчитать по factual worktree.
         # Historical reports проверяются по сохранённому gate proof, иначе будущий
         # unrelated diff ретроактивно ломал бы immutable history.
