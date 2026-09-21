@@ -390,6 +390,14 @@ def test_project_owned_migration() -> None:
             encoding="utf-8",
         )
 
+        # Immutable-history checks опираются на Git facts, поэтому synthetic
+        # migration fixture тоже является настоящим repository.
+        run(root, "git", "init", "-q")
+        run(root, "git", "config", "user.email", "harness-test@example.invalid")
+        run(root, "git", "config", "user.name", "Harness Test")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "legacy fixture")
+
         require(legacy_schema_pending(root), "legacy schema not detected")
         require(
             not legacy_manual_bypass_allowed(root),
