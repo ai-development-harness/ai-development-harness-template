@@ -20,6 +20,7 @@ from execution_status import (
 )
 from planning_contract import plan_content_hash, planning_context_basis
 from review_contract import repository_revision
+from review_gates import required_reviewers
 
 
 def write(path: Path, content: str) -> None:
@@ -198,6 +199,12 @@ PASS.
 
 def review_report(root: Path, verdict: str, name: str) -> str:
     revision = repository_revision(root)
+    gate = required_reviewers(root, "STEP-001")
+    required_block = (
+        "\n".join(f"    - {item}" for item in gate["required"])
+        if gate["required"]
+        else "    []"
+    )
     if verdict == "FAIL":
         findings = """### F-001 — Fixture defect
 
@@ -224,6 +231,9 @@ reviewed_revision:
   git_head: {revision["git_head"] or "null"}
   worktree_hash: {revision["worktree_hash"] or "null"}
 specialized_reviews:
+  gate_basis: {gate["basis"]}
+  required:
+{required_block}
   security: not_required
   security_report: null
   security_reason: no_security_surface
