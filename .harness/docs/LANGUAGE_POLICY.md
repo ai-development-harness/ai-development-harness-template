@@ -6,7 +6,7 @@
 
 Поля:
 
-- `default` — fallback;
+- `default` — обязательный fallback для любого специализированного ключа, который отсутствует;
 - `agentResponses` — ответы агентов;
 - `documentation` — PROJECT/REQ/ADR/STEP/reports;
 - `commitMessages` — Git commits;
@@ -15,6 +15,19 @@
 - `fixtures` — sample/fixture content;
 - `githubTemplates` — Issue/PR templates;
 - `releaseNotes` — changelog/release notes.
+
+## Fallback semantics
+
+Runtime/tooling должен читать специализированный ключ через единый config layer:
+
+```text
+language.<domain>
+  └─ отсутствует → language.default
+```
+
+Отсутствующий `language.documentation`/`testNames`/другой специализированный ключ не является configuration error, пока валиден `language.default`.
+
+Machine-readable schema/CTS tokens (`schema`, `status`, `type`, `pass`, `blocked`, ID formats и т. п.) не локализуются и не зависят от language policy.
 
 ## Что не переводится автоматически
 
