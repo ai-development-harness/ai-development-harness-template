@@ -41,6 +41,7 @@ required_files = [
   ".harness/tools/document_contract.py",
   ".harness/tools/project_integrity.py",
   ".harness/tools/project_migration.py",
+  ".harness/tools/template_contract.py",
   ".harness/tools/migrate-project-schema.py",
   ".harness/tools/finalize-project-init.py",
   ".harness/tools/planning-state.py",
