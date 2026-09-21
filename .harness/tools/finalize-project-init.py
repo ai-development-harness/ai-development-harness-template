@@ -10,7 +10,13 @@ from pathlib import Path
 import re
 import tempfile
 
-from harness_config import get, load_manifest
+from harness_config import (
+    get,
+    load_manifest,
+    project_overview_path,
+    requirements_directory,
+    task_directory,
+)
 from planning_contract import latest_matching_init_review, open_questions
 from project_integrity import validate_project_integrity
 from project_migration import legacy_schema_pending
@@ -30,6 +36,21 @@ def preconditions(root: Path, name: str) -> list[str]:
         errors.append("project name must be non-empty")
     if legacy_schema_pending(root):
         errors.append("active legacy schema must be reconciled before INIT finalization")
+
+    overview = project_overview_path(root)
+    if not overview.is_file():
+        errors.append(f"project overview missing: {overview.relative_to(root)}")
+    real_requirements = [
+        path for path in requirements_directory(root).glob("REQ-*.md")
+        if path.name not in {"TEMPLATE.md", "REQ-001-template.md"}
+    ]
+    if not real_requirements:
+        errors.append("INIT requires at least one non-template canonical REQ")
+    if (requirements_directory(root) / "REQ-001-template.md").exists():
+        errors.append("template REQ must be removed before INIT finalization")
+    if not list(task_directory(root).glob("STEP-*.md")):
+        errors.append("INIT requires at least one canonical STEP")
+
     errors.extend(validate_project_integrity(root, allow_legacy=False))
     errors.extend(validate_projections(root))
 
