@@ -458,6 +458,23 @@ def test_project_owned_migration() -> None:
             raise AssertionError("invalid migration trust report was accepted")
         migration_report.write_text(migration_before, encoding="utf-8")
 
+        # Regex-shaped, но календарно невозможный filename не может стать
+        # trust anchor для legacy pins.
+        invalid_calendar_report = migration_report.with_name(
+            "MIGRATION-20261340T256199Z.md"
+        )
+        invalid_calendar_report.write_text(migration_before, encoding="utf-8")
+        try:
+            legacy_review_pins(root)
+        except ValueError as exc:
+            require(
+                "filename must be MIGRATION-<UTC timestamp>.md" in str(exc),
+                str(exc),
+            )
+        else:
+            raise AssertionError("invalid migration calendar filename was accepted")
+        invalid_calendar_report.unlink()
+
         require(not validate_all_review_reports(root), validate_all_review_reports(root))
         proof = step_completion_proof(root, "STEP-001")
         require(proof["complete"], f"legacy PASS review did not preserve completion proof: {proof}")
