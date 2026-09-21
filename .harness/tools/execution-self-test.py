@@ -776,8 +776,20 @@ def main() -> int:
         run(root, "git", "add", "src/auth/session.py")
         run(root, "git", "commit", "-qm", "committed auth change")
         committed_gate = required_reviewers(root, "STEP-001")
-        assert "security" in committed_gate["required"], committed_gate
+        assert committed_gate["surfaceMode"] == "clean-tree-fallback", committed_gate
+        assert {"security", "tests"}.issubset(set(committed_gate["required"])), committed_gate
         assert "src/auth/session.py" in committed_gate["changedPaths"], committed_gate
+
+        # Последний harmless commit не должен скрыть security change из более
+        # раннего unreviewed commit: clean-tree fallback остаётся fail-closed.
+        write(root / "notes.txt", "harmless follow-up\n")
+        run(root, "git", "add", "notes.txt")
+        run(root, "git", "commit", "-qm", "harmless follow-up commit")
+        multi_commit_gate = required_reviewers(root, "STEP-001")
+        assert multi_commit_gate["surfaceMode"] == "clean-tree-fallback", multi_commit_gate
+        assert {"security", "tests"}.issubset(set(multi_commit_gate["required"])), multi_commit_gate
+        assert "src/auth/session.py" not in multi_commit_gate["changedPaths"], multi_commit_gate
+        assert "clean tree has no exact implementation baseline" in multi_commit_gate["reasons"]["security"]
 
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
