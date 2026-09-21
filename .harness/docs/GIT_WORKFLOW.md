@@ -1,6 +1,6 @@
 # Git workflow Harness
 
-Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются `.harness/git-policy.toml`.
+Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются policy по `.harness/manifest.yaml → repository.gitPolicy`.
 
 ## Команды
 
