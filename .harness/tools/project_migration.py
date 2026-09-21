@@ -374,6 +374,89 @@ def _pending_legacy_review_pins(root: Path) -> dict[str, str]:
     }
 
 
+def _document_family_state(paths: list[Path]) -> str:
+    """Вернуть current|legacy|mixed_or_invalid для набора active documents."""
+    states: set[str] = set()
+    for path in paths:
+        try:
+            frontmatter, _ = split_frontmatter(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, DocumentError):
+            return "mixed_or_invalid"
+        states.add("legacy" if frontmatter is None else "current")
+    if len(states) > 1:
+        return "mixed_or_invalid"
+    return next(iter(states), "current")
+
+
+def legacy_manual_bypass_allowed(root: Path) -> bool:
+    """Разрешить post-update manual bypass только для цельного legacy layout.
+
+    PROJECT RECONCILE умеет чинить mixed state, но validator не должен считать
+    частично мигрированный repository безопасным Harness postcondition.
+    """
+    if not legacy_schema_pending(root):
+        return False
+
+    step_paths = sorted(task_directory(root).glob("STEP-*.md"))
+    req_paths = sorted(
+        path for path in requirements_directory(root).glob("REQ-*.md")
+        if path.name != "TEMPLATE.md"
+    )
+    adr_paths = sorted(
+        path for path in adr_directory(root).glob("ADR-*.md")
+        if path.name != "TEMPLATE.md"
+    )
+    family_states = [
+        _document_family_state(step_paths),
+        _document_family_state(req_paths),
+        _document_family_state(adr_paths),
+    ]
+    if "mixed_or_invalid" in family_states:
+        return False
+
+    # Legacy monolithic requirements безопасны для deferred migration только
+    # пока ни один REQ из того же SPEC не материализован отдельно.
+    spec = requirements_directory(root) / "SPEC.md"
+    if spec.is_file():
+        try:
+            spec_ids = set(
+                re.findall(
+                    r"(?m)^#{2,}\s+(REQ-\d{3,})\b",
+                    spec.read_text(encoding="utf-8"),
+                )
+            )
+        except (OSError, UnicodeDecodeError):
+            return False
+        existing_ids = {
+            match.group(1)
+            for path in req_paths
+            if (match := re.match(r"(REQ-\d{3,})-", path.name))
+        }
+        if spec_ids and existing_ids:
+            return False
+
+    # То же правило для старого монолитного OQ index: наличие уже созданных
+    # OQ-NNN файлов означает partial migration, а не exact legacy layout.
+    index = open_questions_index_path(root)
+    if index.is_file():
+        try:
+            has_legacy_oq = re.search(
+                r"(?m)^(?:#{1,6}\s+)?OQ-\d{3,}\s+—",
+                index.read_text(encoding="utf-8"),
+            ) is not None
+        except (OSError, UnicodeDecodeError):
+            return False
+        if has_legacy_oq and any(open_questions_directory(root).glob("OQ-*.md")):
+            return False
+
+    # Если одна family уже current, а другая всё ещё legacy, repository также
+    # частично мигрирован. Exact deferred state должен быть целостным.
+    active_states = {state for state in family_states if state in {"current", "legacy"}}
+    if "legacy" in active_states and "current" in active_states:
+        return False
+    return True
+
+
 def legacy_schema_pending(root: Path) -> bool:
     paths: list[Path] = []
     paths.extend(task_directory(root).glob("STEP-*.md"))
