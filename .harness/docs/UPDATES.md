@@ -37,6 +37,18 @@ HARNESS UPDATE CHECK [TO <tag>] > APPLY
 
 Они доступны до и после `PROJECT INIT`.
 
+## Deterministic engine
+
+Canonical update mechanics реализует dependency-free tool, а не свободная интерпретация инструкций агентом:
+
+```bash
+python3 .harness/tools/harness-update.py check [--to vX.Y.Z] --json
+python3 .harness/tools/harness-update.py apply [--to vX.Y.Z] --json
+python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
+```
+
+Agent/skill остаётся orchestration/UI layer: запускает tool, объясняет route/conflict и показывает diff. Он не должен вручную воспроизводить ownership calculation, 3-way merge, marker preservation, filesystem writes или lock advancement.
+
 Pre-INIT update:
 
 - меняет только Harness protocol layer/lock;
@@ -65,35 +77,27 @@ Moving default branch не является BASE/THEIRS content source. Файл
 
 `HARNESS UPDATE CHECK` строго read-only.
 
-Алгоритм:
+Выполнение:
 
-1. прочитать current update policy;
-2. прочитать lock по configured `state.lock_file`;
-3. прочитать remote graph по configured `source.update_manifest`;
-4. разрешить конечный target:
-   - exact `TO <tag>`, если задан;
-   - иначе graph `latest`;
-5. доказать единственный допустимый route current → target;
-6. проверить tags/semver/immutability;
-7. для каждого hop выполнить read-only ownership/policy transition analysis;
-8. показать blockers, introduced/retired/reclassified paths и reload boundaries;
-9. сохранить matching route metadata только в universal Execution Status details.
+```bash
+python3 .harness/tools/harness-update.py check [--to vX.Y.Z] --json
+```
 
-CHECK не меняет working tree, Git refs, lock, project documents, commit/push/PR.
+Tool читает current policy/lock, remote routing graph, разрешает exact target, доказывает route, проверяет **Git tags** и моделирует ownership/merge до ближайшей reload boundary. Результат содержит blockers, introduced/retired/reclassified paths, `checkedThrough` и `reloadBoundary`.
+
+CHECK не меняет working tree, Git refs, lock, project documents, commit/push/PR. `BLOCKED` нельзя обходить ручным копированием release files.
 
 ## APPLY
 
 `HARNESS UPDATE APPLY` — maintenance mutation.
 
-До mutation нужен matching successful CHECK для того же:
+Mutation выполняется deterministic engine:
 
-- resolved final target;
-- route;
-- current lock ref.
+```bash
+python3 .harness/tools/harness-update.py apply [--to vX.Y.Z] --json
+```
 
-Если durable Execution Status proof отсутствует/stale — выполняется fresh read-only CHECK.
-
-Route применяется hop-by-hop. Lock продвигается только после postcondition конкретного hop.
+Engine перед первой записью сам повторно проверяет current Harness и делает read-only preflight. Route применяется hop-by-hop; каждый hop имеет rollback boundary, а lock обновляется внутри транзакции и считается продвинутым только после PASS target validator. Предыдущий chat/CHECK не является заменой fresh machine preflight.
 
 `reloadRequired=true`:
 
@@ -142,9 +146,13 @@ Updater не меняет их.
 
 В частности active REQ/ADR/STEP/OQ, project architecture/code/tests и colocated project templates не становятся updater-owned только из-за schema release.
 
+`.agents/skills/` — общий runtime-neutral каталог, **не blanket Harness-owned namespace**. Update policy перечисляет core skills конкретными paths. Project-native/third-party `.agents/skills/<slug>/` остаются project-owned. Если новый release впервые объявляет core path, уже занятый project skill, update блокируется как `NEW_MANAGED_PATH_COLLISION`.
+
 ## Evolution ownership policy
 
-Target release может менять policy. Поэтому scope нельзя вычислять только по BASE allowlist и нельзя слепо доверять THEIRS.
+Target release может менять ownership policy. Поэтому scope нельзя вычислять только по BASE allowlist и нельзя слепо доверять THEIRS.
+
+Bootstrap update topology (`source.repository`, `source.default_branch`, `source.tag_pattern`, `source.update_manifest`, `state.lock_file`, `state.report_directory`) текущий engine **не мигрирует неявно**. Изменение этих полей требует отдельного bridge support; иначе hop блокируется как `UPDATE_POLICY_TOPOLOGY_CHANGE`. Это исключает смешивание старого и нового lock/source boundary внутри одной транзакции.
 
 Для каждого hop:
 
@@ -235,6 +243,12 @@ Report фиксирует:
 
 Автоматическая adoption допустима только при доказуемом explicit baseline tag. «Наиболее похожий release» не считается доказательством.
 
+```bash
+python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
+```
+
+Baseline должен совпадать с current manifest release. Новый lock pin-ит не только tag ref, но и exact commit OID.
+
 ## Historical v0.4.x bridge
 
 Для старого namespace `.project/**` использовался обязательный bridge v0.4.2 с `reloadRequired=true`.
@@ -250,9 +264,10 @@ Compatibility endpoint `.project/harness-update-graph.json` существует
 - `manifest.harness.release`;
 - configured lock `release`;
 - lock `source.ref = v<release>`;
+- optional legacy-compatible `source.commit`, если он уже записан;
 - graph `latest`
 
-должны быть согласованы для опубликованного release.
+должны быть согласованы для опубликованного release. Deterministic updater при каждой операции разрешает release именно через `refs/tags/<tag>`; если lock уже содержит `source.commit`, изменение tag target даёт `SOURCE_TAG_MOVED`.
 
 `harness.version` — поколение protocol/schema family, а не номер каждой поставки.
 
@@ -272,10 +287,11 @@ Remote routing/policy/content рассматриваются как **данны
 
 ## Regression check
 
-Dependency-free smoke test:
+Dependency-free regressions:
 
 ```bash
+python3 .harness/tools/harness-update-self-test.py
 python3 .harness/tools/update-migration-self-test.py
 ```
 
-Он покрывает policy-driven update paths, legacy routing/reload invariants, ownership boundary, project-owned schema migration/idempotency и release metadata.
+Первый прогоняет настоящий deterministic engine на synthetic Git source/project: legacy adoption, tag pinning, CHECK/APPLY, shared 3-way merge, marker preservation, core-vs-project skill ownership и collisions. Второй покрывает historical routing/reload invariants, migration/idempotency и release metadata.

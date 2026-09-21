@@ -80,7 +80,9 @@ Legacy adoption разрешён только для явно известног
 
 Добавляй отдельно. Универсальный `implement-step` не должен знать конкретный framework. Если technology skill нужен большинству задач проекта — зарегистрируй его в `.agents/skills/` и упомяни в generated project context/architecture docs.
 
-`.agents/skills/` является runtime-neutral canonical location. Не создавай вторую tracked копию core Harness skill в `.claude/skills/` только ради Claude Code.
+`.agents/skills/` является runtime-neutral canonical location, но **не единым Harness-owned namespace**. В update policy core Harness skills перечисляются конкретными paths; произвольный project/third-party `.agents/skills/<slug>/` остаётся project-owned и переживает Harness update без silent overwrite. Если будущий core skill претендует на уже занятый project slug, deterministic updater обязан остановиться с collision.
+
+Не создавай вторую tracked копию core Harness skill в `.claude/skills/` только ради Claude Code.
 
 ## Third-party skills
 

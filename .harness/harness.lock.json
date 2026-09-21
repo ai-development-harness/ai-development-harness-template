@@ -4,7 +4,8 @@
   "release": "0.5.3",
   "source": {
     "repository": "ai-development-harness/ai-development-harness-template",
-    "ref": "v0.5.3"
+    "ref": "v0.5.3",
+    "commit": "e366c48777150a9e9d2f6d670d8976b8a8df2d5c"
   },
   "updatedAt": null
 }

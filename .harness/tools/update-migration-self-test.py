@@ -110,6 +110,19 @@ def test_ownership_contract(root: Path) -> None:
     for path in project_templates:
         require(not matches_any(path, managed), f"PROJECT RECONCILE-owned template became updater-managed: {path}")
 
+    harness_owned = list(ownership.get("harness_owned", []))
+    require(".agents/skills/**" not in harness_owned, "broad skill ownership must not return")
+    require(matches_any(".agents/skills/README.md", harness_owned), "core skill index must remain Harness-owned")
+    with (root / ".harness/harness-policy.toml").open("rb") as fh:
+        harness_policy = tomllib.load(fh)
+    for skill in harness_policy.get("required_skills", []):
+        path = f".agents/skills/{skill}/SKILL.md"
+        require(matches_any(path, harness_owned), f"required core skill is not updater-managed: {path}")
+    require(
+        not matches_any(".agents/skills/project-native/SKILL.md", harness_owned),
+        "project/third-party skill must stay outside Harness update ownership",
+    )
+
     require(matches_any(".harness/manifest.yaml", ownership.get("shared", [])), "manifest must remain shared")
     require(matches_any(".harness/git-policy.toml", ownership.get("shared", [])), "git policy must remain shared")
 

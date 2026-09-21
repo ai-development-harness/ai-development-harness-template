@@ -30,11 +30,36 @@ report_directory = "planning/harness-updates"
 [ownership]
 # Полностью Harness-owned paths. Updater заменяет их только если local content не расходится с BASE;
 # при local modification update блокируется вместо silent overwrite.
-# Пример: .harness/docs/**, core workflow skills и runtime adapter README.
+# Core workflow skills перечислены поимённо: project/third-party skills рядом в `.agents/skills/<slug>/` не входят в update scope.\n# Пример: .harness/docs/**, `.agents/skills/run-step/**` и runtime adapter README.
 harness_owned = [
   ".harness/harness-update-graph.json",
   ".harness/command-transitions.json",
-  ".agents/skills/**",
+  ".agents/skills/README.md",
+  ".agents/skills/init-project/**",
+  ".agents/skills/add-plan-step/**",
+  ".agents/skills/find-skill/**",
+  ".agents/skills/install-skill/**",
+  ".agents/skills/create-skill/**",
+  ".agents/skills/plan-step/**",
+  ".agents/skills/implement-step/**",
+  ".agents/skills/review-step/**",
+  ".agents/skills/fix-step/**",
+  ".agents/skills/run-step/**",
+  ".agents/skills/audit-step/**",
+  ".agents/skills/project-status/**",
+  ".agents/skills/next-step/**",
+  ".agents/skills/reconcile-project/**",
+  ".agents/skills/release-check/**",
+  ".agents/skills/requirements-review/**",
+  ".agents/skills/architecture-change/**",
+  ".agents/skills/documentation-sync/**",
+  ".agents/skills/code-review/**",
+  ".agents/skills/security-review/**",
+  ".agents/skills/write-tests/**",
+  ".agents/skills/git-workflow/**",
+  ".agents/skills/quick-fix/**",
+  ".agents/skills/generate-github-templates/**",
+  ".agents/skills/update-harness/**",
   ".codex/README.md",
   ".claude/README.md",
   ".harness/README.md",

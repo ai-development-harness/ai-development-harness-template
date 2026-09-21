@@ -387,6 +387,12 @@ def validate_update_lock(root: Path) -> list[str]:
             errors.append("update-lock: source.ref does not match tag_pattern")
         if release and ref != f"v{release}":
             errors.append("update-lock: source.ref must equal v<manifest release>")
+    pinned_commit = source.get("commit")
+    if pinned_commit is not None and (
+        not isinstance(pinned_commit, str)
+        or re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", pinned_commit) is None
+    ):
+        errors.append("update-lock: source.commit must be a 40/64-hex Git OID when present")
     return errors
 
 
