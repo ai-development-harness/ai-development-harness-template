@@ -461,6 +461,29 @@ def main() -> int:
             for item in validate_review_report(root, invalid_role)
         )
         invalid_role.unlink()
+
+        # Schema-v1 PASS report без какого-либо revision identity не может быть
+        # durable completion proof даже если остальные поля синтаксически валидны.
+        revisionless = root / "planning/reviews/STEP-001/REVIEW-20260921T005500Z.md"
+        revision_now = repository_revision(root)
+        assert revision_now["git_head"] is not None, revision_now
+        revisionless_text = valid_text.replace(
+            f"  git_head: {revision_now['git_head']}",
+            "  git_head: null",
+        )
+        if revision_now["worktree_hash"] is not None:
+            revisionless_text = revisionless_text.replace(
+                f"  worktree_hash: {revision_now['worktree_hash']}",
+                "  worktree_hash: null",
+            )
+        write(revisionless, revisionless_text)
+        revisionless_errors = validate_review_report(root, revisionless)
+        assert any(
+            "reviewed_revision must contain git_head or worktree_hash" in item
+            for item in revisionless_errors
+        ), revisionless_errors
+        revisionless.unlink()
+
         recovered = resolve_root(root, run_root)
         assert_resolved(recovered, "NEXT", "STEP FIX STEP-001", "ORCHESTRATION_CTS_TRANSITION")
 
@@ -608,12 +631,39 @@ def main() -> int:
         immutable_report = root / "planning/reviews/STEP-001/REVIEW-20260921T010000Z.md"
         original_report = immutable_report.read_text(encoding="utf-8")
         write(immutable_report, original_report + "\n<!-- rewritten -->\n")
+        # Existing immutable report mutation is not a self-created report
+        # addition and therefore must stay visible in exact revision fingerprint.
+        rewritten_revision = repository_revision(root)
+        assert rewritten_revision["worktree_hash"] is not None, rewritten_revision
         immutability_errors = validate_review_immutability(root)
         assert any("existing report changed" in item for item in immutability_errors), immutability_errors
         run(root, "git", "add", immutable_report.relative_to(root).as_posix())
         run(root, "git", "commit", "-qm", "rewrite immutable review")
         ci_immutability_errors = validate_review_immutability(root, ci_mode=True)
         assert any("existing report changed (commit)" in item for item in ci_immutability_errors), ci_immutability_errors
+
+        # Shallow checkout с единственным видимым commit не является настоящим
+        # root commit: отсутствие HEAD^1 должно fail closed, а не обходить gate.
+        shallow_parent = Path(tempfile.mkdtemp(prefix="harness-shallow-review-"))
+        try:
+            shallow = shallow_parent / "repo"
+            run(
+                root,
+                "git",
+                "clone",
+                "-q",
+                "--depth",
+                "1",
+                f"file://{root.resolve()}",
+                str(shallow),
+            )
+            shallow_errors = validate_review_immutability(shallow, ci_mode=True)
+            assert any(
+                "cannot resolve CI baseline HEAD^1" in item
+                for item in shallow_errors
+            ), shallow_errors
+        finally:
+            shutil.rmtree(shallow_parent, ignore_errors=True)
 
         # Durable directories могут перекрываться. Более широкий
         # reviewDirectory не должен маскировать nested planningReviewDirectory
@@ -663,6 +713,25 @@ def main() -> int:
         # implementation surface.
         run(root, "git", "add", "src/index-proof.txt")
         run(root, "git", "commit", "-qm", "finish index proof fixture")
+
+        # Rename/copy source path входит в exact revision identity. Иначе два
+        # staged rename из разных одинаковых source files в один destination
+        # давали бы одинаковый fingerprint.
+        write(root / "src/rename-a.txt", "same bytes\n")
+        write(root / "src/rename-b.txt", "same bytes\n")
+        run(root, "git", "add", "src/rename-a.txt", "src/rename-b.txt")
+        run(root, "git", "commit", "-qm", "add rename identity fixtures")
+        run(root, "git", "mv", "src/rename-a.txt", "src/rename-target.txt")
+        rename_revision_a = repository_revision(root)
+        run(root, "git", "reset", "--hard", "HEAD")
+        run(root, "git", "mv", "src/rename-b.txt", "src/rename-target.txt")
+        rename_revision_b = repository_revision(root)
+        assert rename_revision_a["worktree_hash"] != rename_revision_b["worktree_hash"], (
+            rename_revision_a,
+            rename_revision_b,
+        )
+        run(root, "git", "reset", "--hard", "HEAD")
+
         write(root / "src/auth/session.py", "def changed_auth():\n    return True\n")
         run(root, "git", "add", "src/auth/session.py")
         run(root, "git", "commit", "-qm", "committed auth change")
