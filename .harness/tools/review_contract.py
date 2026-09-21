@@ -6,6 +6,7 @@ validation и относится к точной текущей repository revis
 """
 from __future__ import annotations
 
+from datetime import datetime
 import hashlib
 from pathlib import Path
 import re
@@ -46,6 +47,65 @@ def _valid_sha256(value: Any) -> bool:
     )
 
 
+def validate_migration_report(root: Path, path: Path) -> list[str]:
+    """Проверить durable migration report до использования его hash-pins."""
+    errors: list[str] = []
+    try:
+        document = parse_document(path)
+    except DocumentError as exc:
+        return [str(exc)]
+
+    meta = document["frontmatter"]
+    if meta.get("schema") != 1:
+        errors.append("schema must be 1")
+    if meta.get("kind") != "migration":
+        errors.append("kind must be migration")
+    if meta.get("result") != "complete":
+        errors.append("result must be complete")
+
+    created_at = meta.get("created_at")
+    if not isinstance(created_at, str) or not created_at.strip():
+        errors.append("created_at must be non-empty ISO-8601 string")
+    else:
+        try:
+            datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        except ValueError:
+            errors.append("created_at must be valid ISO-8601")
+
+    changed_count = meta.get("changed_count")
+    if (
+        isinstance(changed_count, bool)
+        or not isinstance(changed_count, int)
+        or changed_count < 0
+    ):
+        errors.append("changed_count must be a non-negative integer")
+
+    if re.fullmatch(r"MIGRATION-\d{8}T\d{6}Z\.md", path.name) is None:
+        errors.append("filename must be MIGRATION-<UTC timestamp>.md")
+    if document.get("h1") != "# Project Schema Migration":
+        errors.append("H1 must be '# Project Schema Migration'")
+    for section in ("Changed artifacts", "Legacy immutable reviews", "Notes"):
+        value = document["sections"].get(section)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"missing or empty section '## {section}'")
+
+    values = meta.get("legacy_review_reports", [])
+    if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+        errors.append("legacy_review_reports must be a string list")
+        return errors
+    for token in values:
+        digest, sep, rel = token.partition(" ")
+        if not sep or not _valid_sha256(digest) or not rel:
+            errors.append(f"invalid legacy review pin {token!r}")
+            continue
+        candidate = (root / rel).resolve()
+        try:
+            candidate.relative_to(review_directory(root).resolve())
+        except ValueError:
+            errors.append(f"legacy review pin escapes configured review directory: {rel}")
+    return errors
+
+
 def legacy_review_pins(root: Path) -> dict[str, str]:
     """Прочитать hash-pinned legacy review allowlist из migration reports."""
     pins: dict[str, str] = {}
@@ -53,18 +113,14 @@ def legacy_review_pins(root: Path) -> dict[str, str]:
     if not directory.is_dir():
         return pins
     for report in sorted(directory.glob("MIGRATION-*.md")):
-        try:
-            document = parse_document(report)
-        except DocumentError:
-            continue
+        issues = validate_migration_report(root, report)
+        if issues:
+            raise ValueError(
+                f"{report.relative_to(root)}: " + "; ".join(issues)
+            )
+        document = parse_document(report)
         meta = document["frontmatter"]
-        if meta.get("schema") != 1 or meta.get("kind") != "migration":
-            continue
         values = meta.get("legacy_review_reports", [])
-        if values is None:
-            continue
-        if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
-            raise ValueError(f"{report.relative_to(root)}: legacy_review_reports must be a string list")
         for token in values:
             digest, sep, rel = token.partition(" ")
             if not sep or not _valid_sha256(digest) or not rel:
