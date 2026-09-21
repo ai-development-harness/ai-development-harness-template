@@ -174,7 +174,7 @@ Reviewed revision:
 - clean tree — `git_head`;
 - dirty tree — `git_head + worktree_hash`.
 
-Сам configured review directory и `.harness/local/**` исключены из worktree fingerprint: создание отчёта не должно изменять объект собственного review. Product/config changes после review fingerprint изменяют и делают crash-recovery proof неприменимым.
+Из worktree fingerprint исключаются `.harness/local/**` и только **новый report-shaped implementation review**, который STEP REVIEW создаёт после snapshot. Весь configured review directory не является trust/ignore boundary: изменение, удаление или rename уже существующего immutable report остаётся частью exact revision и отдельно блокируется immutability gate. Git path классифицируется лексически, без разыменования symlink target; durable review/report artifacts сами не могут быть symlink. Product/config changes после review fingerprint изменяют и делают crash-recovery proof неприменимым.
 
 Finding categories:
 
