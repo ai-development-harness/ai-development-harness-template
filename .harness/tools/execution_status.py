@@ -19,7 +19,6 @@ CTS остаётся единственным источником разреш�
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,6 +33,18 @@ from command_transitions import (
     parse_canonical_command,
     validate_command_text,
 )
+from document_contract import render_document
+from harness_config import ConfigError, get, load_git_policy, update_lock_path
+from planning_contract import (
+    latest_matching_planning_review,
+    max_fix_review_cycles,
+    plan_content_hash,
+    planning_context_basis,
+    read_task as read_planning_task,
+    task_contract_snapshot,
+    task_path as configured_task_path,
+)
+from review_contract import latest_review as latest_valid_review
 
 # Фиксированный project-level operational state. Один файл намеренно покрывает
 # STEP, Git, Harness update и остальные namespaces.
@@ -147,6 +158,14 @@ def validate_status(value: dict[str, Any]) -> list[str]:
         attempt = current.get("attempt")
         if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
             errors.append(f"{prefix}: current.attempt must be >= 1")
+
+        fix_review_cycles = execution.get("fixReviewCycles", 0)
+        if (
+            not isinstance(fix_review_cycles, int)
+            or isinstance(fix_review_cycles, bool)
+            or fix_review_cycles < 0
+        ):
+            errors.append(f"{prefix}: fixReviewCycles must be a non-negative integer")
     return errors
 
 
@@ -336,6 +355,7 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
             ),
         },
         "notExecuted": [],
+        "fixReviewCycles": 0,
         "startedAt": now,
         "completedAt": None,
         "updatedAt": now,
@@ -364,6 +384,142 @@ def _edge_for(
         if edge.get("from") == left.get("operation") and edge.get("to") == right.get("operation"):
             return edge
     return None
+
+
+
+# Выполнить read-only Git probe для runtime preconditions. Сетевые операции здесь
+# намеренно не выполняются: command skill позже делает полный fetch/preflight.
+def _git_probe(root: Path, *args: str) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+    return proc.returncode, proc.stdout.strip()
+
+
+# Разрешить remote-tracking ref текущей ветки строго через configured
+# git-policy.push.remote. Upstream другой remote не подменяет repository policy.
+def _published_ref(root: Path) -> tuple[str | None, str | None]:
+    code, branch = _git_probe(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    if code != 0 or not branch:
+        return None, "detached-or-missing-branch"
+
+    try:
+        policy = load_git_policy(root)
+    except ConfigError as exc:
+        return None, f"git-policy-unreadable:{exc}"
+    remote = get(policy, "push.remote")
+    if not isinstance(remote, str) or not remote.strip():
+        return None, "git-policy-push-remote-missing"
+
+    code, _ = _git_probe(root, "remote", "get-url", remote)
+    if code != 0:
+        return None, f"configured-remote-missing:{remote}"
+    return f"{remote}/{branch}", None
+
+
+# Проверить narrow deterministic Git readiness. Это не заменяет полный GIT PUSH /
+# GIT PR preflight: здесь только fail-closed proof для CTS shortcut edge.
+def _git_runtime_precondition(root: Path, name: str) -> str | None:
+    remote_ref, error = _published_ref(root)
+    if error is not None:
+        return error
+    assert remote_ref is not None
+
+    code, _ = _git_probe(root, "rev-parse", "--verify", remote_ref)
+    remote_exists = code == 0
+
+    if name == "git-push-ready":
+        # Новый remote branch допустим: сам GIT PUSH ещё проверит policy и
+        # установит upstream. Existing branch обязан быть ancestor локального HEAD,
+        # иначе direct CHECK -> PUSH мог бы скрыть remote-ahead/divergence.
+        if not remote_exists:
+            return None
+        code, _ = _git_probe(root, "merge-base", "--is-ancestor", remote_ref, "HEAD")
+        return None if code == 0 else "remote-branch-is-not-ancestor-of-head"
+
+    if name == "git-pr-ready":
+        if not remote_exists:
+            return "remote-branch-is-not-published"
+        code, local_head = _git_probe(root, "rev-parse", "HEAD")
+        remote_code, remote_head = _git_probe(root, "rev-parse", remote_ref)
+        if code != 0 or remote_code != 0 or not local_head or local_head != remote_head:
+            return "published-branch-does-not-match-head"
+        return None
+
+    return f"unsupported-git-precondition:{name}"
+
+
+# CHECK -> APPLY доверяет только durable details exact предыдущего CHECK и
+# текущему lock. Любая отсутствующая/несовпадающая metadata заставляет сделать
+# fresh CHECK отдельной командой вместо молчаливого APPLY.
+def _update_runtime_precondition(
+    root: Path,
+    current: dict[str, Any],
+    next_command: str,
+) -> str | None:
+    details = current.get("details")
+    if not isinstance(details, dict):
+        return "update-check-details-missing"
+    target = details.get("resolvedTarget")
+    route = details.get("route")
+    lock_ref = details.get("lockRef")
+    if (
+        not isinstance(target, str)
+        or not target
+        or not isinstance(lock_ref, str)
+        or not lock_ref
+        or not isinstance(route, list)
+        or not route
+        or any(not isinstance(item, str) or not item for item in route)
+    ):
+        return "update-check-details-invalid"
+    if route[0] != lock_ref or route[-1] != target:
+        return "update-check-route-does-not-match-details"
+
+    try:
+        lock = json.loads(update_lock_path(root).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return "update-lock-unreadable"
+    source = lock.get("source")
+    if not isinstance(source, dict) or source.get("ref") != lock_ref:
+        return "update-lock-ref-changed"
+
+    parsed = normalize_single_command(root, next_command)
+    explicit_target = parsed.get("target")
+    if explicit_target is not None and explicit_target != target:
+        return "update-target-changed"
+    return None
+
+
+# Выполнить runtimePreconditions CTS edge непосредственно перед dispatch. Возврат
+# списка причин делает неизвестный/недоказанный precondition fail-closed.
+def _runtime_precondition_failures(
+    root: Path,
+    execution: dict[str, Any],
+    next_command: str,
+    preconditions: list[str],
+) -> list[str]:
+    failures: list[str] = []
+    current = execution["current"]
+    for name in preconditions:
+        if name in {"git-push-ready", "git-pr-ready"}:
+            issue = _git_runtime_precondition(root, name)
+        elif name == "matching-update-target-and-route":
+            issue = _update_runtime_precondition(root, current, next_command)
+        else:
+            issue = f"unknown-runtime-precondition:{name}"
+        if issue is not None:
+            failures.append(f"{name}: {issue}")
+    return failures
 
 
 
@@ -544,12 +700,51 @@ def begin_command(
             f"resolver expects {expected!r}, cannot begin {normalized_command!r}"
         )
 
+    preconditions = [] if allow_first_orchestration_child else list(
+        resolved.get("runtimePreconditions") or []
+    )
+    failures = _runtime_precondition_failures(
+        root,
+        execution,
+        normalized_command,
+        preconditions,
+    )
+    if failures:
+        # Предыдущая child command уже завершилась фактическим result. Не
+        # перезаписываем её: blocker относится к переходу/корневой execution.
+        execution["blockedBy"] = {
+            "reasonCode": "RUNTIME_PRECONDITION_FAILED",
+            "command": normalized_command,
+            "failures": failures,
+        }
+        if execution["mode"] == "chain":
+            index = int(execution.get("currentIndex", 0))
+            execution["notExecuted"] = execution["sequence"][index + 1 :]
+        _mark_root_complete(execution, blocked=True)
+        save_status(root, status)
+        raise ValueError("runtime precondition failed: " + "; ".join(failures))
+
     if execution["mode"] == "chain":
         # Chain продолжает только sequence, которую пользователь ввёл изначально.
         # CTS не имеет права добавить в неё «логичный» лишний segment.
         sequence = execution["sequence"]
         index = sequence.index(normalized_command)
         execution["currentIndex"] = index
+
+    # FIX -> REVIEW завершает один repair cycle. Счётчик хранится в root
+    # execution и переживает session restart, поэтому budget нельзя обойти
+    # перезапуском reasoning-модели.
+    previous_parsed = normalize_single_command(root, current["command"])
+    next_parsed = normalize_single_command(root, normalized_command)
+    if (
+        execution["mode"] == "orchestration"
+        and previous_parsed.get("domain") == "STEP"
+        and previous_parsed.get("operation") == "FIX"
+        and current.get("status") == "complete"
+        and current.get("result") == "SUCCESS"
+        and next_parsed.get("operation") == "REVIEW"
+    ):
+        execution["fixReviewCycles"] = int(execution.get("fixReviewCycles", 0)) + 1
 
     execution["current"] = {
         "command": normalized_command,
@@ -587,144 +782,111 @@ def block_execution(
         normalized_command = normalize_single_command(root, command)["normalized"]
         if current.get("command") != normalized_command:
             raise ValueError("block command does not match current command")
-    current["status"] = "blocked"
-    current["result"] = "BLOCKED"
-    current["completedAt"] = utc_now()
+    # Если blocker возник после уже завершённой child command (например,
+    # REVIEW=FAIL после исчерпания FIX budget), не уничтожаем factual verdict.
+    # Для running command BLOCKED остаётся result самой команды.
+    if current.get("status") == "running":
+        current["status"] = "blocked"
+        current["result"] = "BLOCKED"
+        current["completedAt"] = utc_now()
+    elif current.get("status") != "complete":
+        raise ValueError("current command must be running or complete to block root execution")
     _mark_root_complete(execution, blocked=True)
     save_status(root, status)
     return execution
 
 
 
-# Нормализовать Markdown-текст для stable hashing: убрать CRLF/trailing blank lines, не меняя смысл содержимого.
-def _normalize_text(value: str) -> str:
-    lines = [line.rstrip() for line in value.replace("\r\n", "\n").split("\n")]
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
-    return "\n".join(lines)
-
-
-
-# Разобрать простой Harness Markdown на metadata и секции без полноценного Markdown parser. Поддерживается только используемый repository subset.
-def parse_markdown(text: str) -> tuple[dict[str, str], dict[str, str]]:
-    metadata: dict[str, str] = {}
-    sections: dict[str, list[str]] = {}
-    current: str | None = None
-    for line in text.replace("\r\n", "\n").split("\n"):
-        heading = re.match(r"^##\s+(.+?)\s*$", line)
-        if heading:
-            current = heading.group(1).strip()
-            sections.setdefault(current, [])
-            continue
-        meta = re.match(r"^\*\*([^*]+?):\*\*\s*(.*)$", line)
-        if meta:
-            metadata[meta.group(1).strip()] = meta.group(2).strip()
-        if current is not None:
-            sections[current].append(line)
-    return metadata, {
-        name: _normalize_text("\n".join(lines))
-        for name, lines in sections.items()
-    }
-
-
-
-# Разрешить STEP id в canonical planning/tasks path и отклонить некорректный identifier до чтения файла.
+# Разрешить STEP id через manifest-driven config layer.
 def task_path(root: Path, step_id: str) -> Path:
-    if not re.fullmatch(r"STEP-\d{3,}", step_id):
-        raise ValueError(f"invalid STEP id: {step_id}")
-    path = root / "planning/tasks" / f"{step_id}.md"
-    if not path.is_file():
-        raise FileNotFoundError(f"task file not found: {path.relative_to(root)}")
-    return path
+    return configured_task_path(root, step_id)
 
 
-
-# Прочитать STEP и вернуть исходный текст плюс разобранные metadata/sections для deterministic recovery helpers.
+# Использовать единый versioned STEP parser; отдельной Markdown-семантики в
+# execution layer больше нет.
 def read_task(root: Path, step_id: str) -> dict[str, Any]:
-    path = task_path(root, step_id)
-    text = path.read_text(encoding="utf-8")
-    metadata, sections = parse_markdown(text)
-    return {
-        "path": path,
-        "text": text,
-        "metadata": metadata,
-        "sections": sections,
-    }
+    return read_planning_task(root, step_id)
 
 
-
-# Выбрать только поля STEP contract, изменение которых действительно должно инвалидировать Implementation plan.
 def contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
-    task = read_task(root, step_id)
-    return {
-        "metadata": {
-            key: task["metadata"].get(key, "")
-            for key in CONTRACT_METADATA
-        },
-        "sections": {
-            key: task["sections"].get(key, "")
-            for key in CONTRACT_SECTIONS
-        },
-    }
+    return task_contract_snapshot(root, step_id)
 
 
-
-# Посчитать SHA-256 нормализованного task contract. Hash не включает Evidence/Review status/сам план.
 def contract_basis(root: Path, step_id: str) -> str:
-    encoded = json.dumps(
-        contract_snapshot(root, step_id),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+    return planning_context_basis(root, step_id)
 
 
-
-# Сопоставить stored Plan basis с текущим contract hash и определить, можно ли считать plan актуальным.
 def plan_info(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
-    section = task["sections"].get("Implementation plan", "")
-    fields, _ = parse_markdown(section)
+    plan = task["frontmatter"].get("plan")
+    if not isinstance(plan, dict):
+        return {
+            "status": None,
+            "storedBasis": None,
+            "currentBasis": None,
+            "storedContentHash": None,
+            "currentContentHash": None,
+            "ready": False,
+        }
     current_basis = contract_basis(root, step_id)
-    stored_basis = fields.get("Plan basis", "")
-    plan_status = fields.get("Plan status", "")
+    current_content = plan_content_hash(root, step_id)
+    matched = latest_matching_planning_review(root, step_id)
+    report_path = (
+        matched["path"].relative_to(root).as_posix()
+        if matched is not None
+        else None
+    )
     return {
-        "status": plan_status,
-        "storedBasis": stored_basis,
+        "status": plan.get("status"),
+        "storedBasis": plan.get("context_basis"),
         "currentBasis": current_basis,
-        "ready": plan_status == "Ready" and stored_basis == current_basis,
+        "storedContentHash": plan.get("content_hash"),
+        "currentContentHash": current_content,
+        "reviewedReport": plan.get("reviewed_report"),
+        "ready": (
+            plan.get("status") == "ready"
+            and plan.get("context_basis") == current_basis
+            and plan.get("content_hash") == current_content
+            and report_path is not None
+            and plan.get("reviewed_report") == report_path
+        ),
     }
 
 
-
-# Точечно заменить обязательное поле Implementation plan. Отсутствующее поле — ошибка template/protocol, а не повод молча добавить новое место.
-def _replace_plan_field(text: str, field: str, value: str) -> str:
-    pattern = re.compile(rf"(?m)^\*\*{re.escape(field)}:\*\*\s*.*$")
-    replacement = f"**{field}:** {value}"
-    if not pattern.search(text):
-        raise ValueError(f"task Implementation plan missing field: {field}")
-    return pattern.sub(replacement, text, count=1)
-
-
-
-# После сохранения содержательного plan детерминированно проставить Ready/revision/basis/timestamp атомарной записью STEP-файла.
+# Ready разрешён только после durable PASS planning-review для точных context
+# basis + plan content hash. Так direct stamp-plan нельзя использовать для
+# обхода semantic consistency gate.
 def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
-    section = task["sections"].get("Implementation plan", "")
-    fields, _ = parse_markdown(section)
-    try:
-        revision = int(fields.get("Plan revision", "—")) + 1
-    except (TypeError, ValueError):
-        revision = 1
-    basis = contract_basis(root, step_id)
-    updated = task["text"]
-    updated = _replace_plan_field(updated, "Plan status", "Ready")
-    updated = _replace_plan_field(updated, "Plan revision", str(revision))
-    updated = _replace_plan_field(updated, "Plan basis", basis)
-    updated = _replace_plan_field(updated, "Planned at", utc_now())
+    plan_body = task["sections"].get("Implementation plan", "").strip()
+    if not plan_body:
+        raise ValueError("Implementation plan must be non-empty before stamp-plan")
+    review = latest_matching_planning_review(root, step_id)
+    if review is None:
+        raise ValueError(
+            "no PASS planning-review matches current context basis and plan content"
+        )
+
+    meta = task["frontmatter"]
+    current_plan = meta.get("plan")
+    if not isinstance(current_plan, dict):
+        raise ValueError("task frontmatter.plan must be a mapping")
+    revision = current_plan.get("revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        raise ValueError("task plan.revision must be a non-negative integer")
+
+    basis = planning_context_basis(root, step_id)
+    content = plan_content_hash(root, step_id)
+    report_path = review["path"].relative_to(root).as_posix()
+    meta["plan"] = {
+        "status": "ready",
+        "revision": revision + 1,
+        "context_basis": basis,
+        "content_hash": content,
+        "reviewed_report": report_path,
+        "planned_at": utc_now(),
+    }
+    updated = render_document(meta, task["body"])
     fd, tmp_name = tempfile.mkstemp(
         prefix=task["path"].name + ".",
         suffix=".tmp",
@@ -742,47 +904,40 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
             tmp.unlink(missing_ok=True)
     return {
         "stepId": step_id,
-        "planStatus": "Ready",
-        "planRevision": revision,
+        "planStatus": "ready",
+        "planRevision": revision + 1,
         "planBasis": basis,
+        "planContentHash": content,
+        "planningReview": report_path,
     }
 
 
-
-# Извлечь только поддерживаемый verdict из immutable review report. Неизвестное значение не угадывается.
-def _review_verdict(path: Path) -> str | None:
-    if not path.is_file():
-        return None
-    metadata, _ = parse_markdown(path.read_text(encoding="utf-8"))
-    verdict = metadata.get("Verdict")
-    return verdict if verdict in REVIEW_VERDICTS else None
-
-
-
-# Собрать immutable review reports STEP в сортируемом по filename порядке; timestamp в имени — durable ordering.
+# Execution recovery принимает только schema-valid review report. Для REVIEW
+# дополнительно требуется совпадение точной git/worktree revision.
 def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
-    directory = root / "planning/reviews" / step_id
-    if not directory.is_dir():
-        return []
-    result: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("REVIEW-*.md")):
-        verdict = _review_verdict(path)
-        if verdict is not None:
-            result.append(
-                {
-                    "path": path.relative_to(root).as_posix(),
-                    "verdict": verdict,
-                }
-            )
-    return result
+    from review_contract import review_reports as valid_reports
+
+    values: list[dict[str, Any]] = []
+    for item in valid_reports(root, step_id):
+        values.append({
+            "path": item["path"].relative_to(root).as_posix(),
+            "verdict": item["verdict"],
+        })
+    return values
 
 
-
-# Вернуть последний review report STEP либо None, если review ещё не существует.
-def latest_review(root: Path, step_id: str) -> dict[str, Any] | None:
-    reports = review_reports(root, step_id)
-    return reports[-1] if reports else None
-
+def latest_review(root: Path, step_id: str, *, require_current_revision: bool = False) -> dict[str, Any] | None:
+    item = latest_valid_review(
+        root,
+        step_id,
+        require_current_revision=require_current_revision,
+    )
+    if item is None:
+        return None
+    return {
+        "path": item["path"].relative_to(root).as_posix(),
+        "verdict": item["verdict"],
+    }
 
 
 # Попробовать доказать completion running command по durable artifacts и тем самым закрыть crash-window между фактом и local checkpoint.
@@ -812,7 +967,7 @@ def _durable_recovery_result(
         target = parsed.get("target")
         baseline = current.get("context", {}).get("reviewReportBefore")
         if target:
-            review = latest_review(root, target)
+            review = latest_review(root, target, require_current_revision=True)
             if review is not None and review.get("path") != baseline:
                 verdict = review.get("verdict")
                 if verdict in {"PASS", "FAIL", "BLOCKED"}:
@@ -983,6 +1138,28 @@ def resolve_execution(
             and result in edge.get("onPreviousResult", [])
         ]
         if len(candidates) == 1:
+            # execution.maxFixReviewCycles — deterministic orchestration budget,
+            # а не рекомендация агенту. После исчерпания лимита REVIEW FAIL не
+            # может открыть ещё один FIX даже при повторной session.
+            if (
+                parsed.get("domain") == "STEP"
+                and parsed.get("operation") == "REVIEW"
+                and result == "FAIL"
+                and candidates[0].get("to") == "FIX"
+            ):
+                cycles = int(execution.get("fixReviewCycles", 0))
+                limit = max_fix_review_cycles(root)
+                if cycles >= limit:
+                    return {
+                        "status": "BLOCKED",
+                        "executionId": execution["executionId"],
+                        "rootCommand": execution["rootCommand"],
+                        "command": None,
+                        "reasonCode": "FIX_REVIEW_LIMIT_REACHED",
+                        "fixReviewCycles": cycles,
+                        "maxFixReviewCycles": limit,
+                    }
+
             next_command = _build_next_from_edge(root, current["command"], candidates[0])
             return {
                 "status": "NEXT",

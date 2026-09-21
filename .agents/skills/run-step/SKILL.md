@@ -22,17 +22,18 @@ rootCommand = STEP RUN STEP-NNN
      --root 'STEP RUN STEP-NNN'
    ```
 5. Если resolver возвращает interrupted child command — resume её.
-6. Если RUN запускает canonical child command, отметь её:
+6. Если resolver возвращает `BLOCKED`, не интерпретируй это как просьбу попробовать следующий FIX. Зафиксируй root blocker через `execution-state.py block`, если он ещё не записан, и остановись. Для `FIX_REVIEW_LIMIT_REACHED` покажи фактические `fixReviewCycles/maxFixReviewCycles`.
+7. Если RUN запускает canonical child command, отметь её:
    ```bash
    python3 .harness/tools/execution-state.py begin \
      --root 'STEP RUN STEP-NNN' \
      --command '<child command>'
    ```
-7. После child completion global wrapper записывает result и RUN снова вызывает resolver.
-8. Для PLAN → IMPLEMENT → REVIEW → FIX переходы определяет CTS.
-9. Если Type выполняется внутри RUN без отдельной canonical child command, current остаётся `STEP RUN STEP-NNN`; после interruption resume-ится сам RUN.
-10. После REVIEW PASS без следующего CTS edge resolver возвращает root RUN для remaining close/sync/finalization.
-11. BLOCKED останавливает root execution.
-12. Не запускай параллельные write-agents над одним scope.
+8. После child completion global wrapper записывает result и RUN снова вызывает resolver.
+9. Для PLAN → IMPLEMENT → REVIEW → FIX переходы определяет CTS; cycle budget дополнительно enforce-ится Execution Resolver, а не reasoning-моделью.
+10. Contract-level blocker из PLAN/REVIEW/FIX терминален для текущего RUN. Создание corrective STEP/ADR/RESEARCH не является скрытым продолжением текущего root execution.
+11. Если Type выполняется внутри RUN без отдельной canonical child command, current остаётся `STEP RUN STEP-NNN`; после interruption resume-ится сам RUN.
+12. После REVIEW PASS без следующего CTS edge resolver возвращает root RUN для remaining close/sync/finalization.
+13. Не запускай параллельные write-agents над одним scope.
 
 Повторный явный `STEP RUN STEP-NNN` при уже running root resume-ит существующий execution, а не создаёт второй.

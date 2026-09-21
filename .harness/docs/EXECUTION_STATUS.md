@@ -340,7 +340,20 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 хранит оба segment в одной root sequence и после interruption продолжает APPLY внутри той же execution.
 
-## Durable recovery optimizations
+## FIX → REVIEW budget
+
+Для `STEP RUN STEP-NNN` execution record хранит `fixReviewCycles`. Счётчик увеличивается после успешного `FIX → REVIEW` и сохраняется в `.harness/local/execution/execution-status.json`, поэтому restart session не сбрасывает budget.
+
+Когда REVIEW снова возвращает `FAIL` и `fixReviewCycles >= execution.maxFixReviewCycles`, resolver возвращает:
+
+```text
+status     = BLOCKED
+reasonCode = FIX_REVIEW_LIMIT_REACHED
+```
+
+Следующий FIX внутри этого root execution запрещён детерминированно. Это не инструкция reasoning-модели и не soft recommendation.
+
+## Durable recovery proofs
 
 Основное правило остаётся простым:
 
@@ -349,32 +362,51 @@ running
 → resume same command
 ```
 
-Но для некоторых существующих команд Harness может доказать completion без повторного expensive work.
+Resolver пропускает повтор дорогой стадии только когда completion можно доказать durable artifact-ом.
 
 ### STEP PLAN
 
-Task хранит `Plan basis` — SHA-256 нормализованного STEP contract.
-
-Если PLAN state = running, но:
+PLAN считается доказанно завершённым только когда одновременно истинно:
 
 ```text
-Plan status = Ready
-stored Plan basis = current Plan basis
+plan.status = ready
+stored context_basis = current context_basis
+stored content_hash = current Implementation plan hash
+plan.reviewed_report = matching immutable planning-review
+planning-review.verdict = pass
+planning-review.context_basis = current context_basis
+planning-review.plan_content_hash = current content_hash
 ```
 
-resolver может восстановить `SUCCESS`.
+`context_basis` включает STEP contract, linked REQ/ADR, explicit architecture refs, relevant OQ и type-specific completion proofs direct dependencies.
+
+Изменение текста Implementation plan инвалидирует `content_hash` даже при неизменном context.
 
 ### STEP REVIEW
 
-При старте REVIEW запоминается previous immutable review report.
+При старте REVIEW сохраняется baseline последнего report.
 
-Если после crash появился новый report с PASS/FAIL/BLOCKED, resolver может восстановить verdict.
+Crash recovery использует только **новый schema-valid immutable report**, который:
+
+- относится к тому же STEP;
+- содержит допустимый verdict/finding structure;
+- удовлетворяет deterministic specialized-review requirements;
+- ссылается на ту же exact repository revision.
+
+Exact revision:
+
+```text
+clean tree → git_head
+dirty tree → git_head + worktree_hash
+```
+
+Configured review directory и `.harness/local/**` не входят в worktree hash, потому что report/execution state создаются самим workflow. Product/config mutation после report меняет fingerprint и запрещает reuse старого verdict.
 
 ### GIT COMMIT
 
-При старте запоминается Git HEAD. Если после crash HEAD изменился, resolver может считать COMMIT завершённым и не создавать второй commit вслепую.
+При старте сохраняется Git HEAD. Если после crash HEAD изменился и остальные commit postconditions выполнены, resolver может не создавать второй commit вслепую.
 
-Эти optimizations не являются execution profiles и не меняют command surface.
+Эти proofs не являются execution profiles и не меняют command surface.
 
 ## Same root повторно
 

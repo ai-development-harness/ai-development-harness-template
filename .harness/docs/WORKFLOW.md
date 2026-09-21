@@ -17,8 +17,8 @@ CODE / TESTS / CONFIG
 
 Новая сессия должна восстановить контекст из репозитория. Поэтому каждая стадия сохраняет durable handoff:
 
-- PLAN → task `Implementation plan`;
-- REVIEW → immutable review report;
+- PLAN → draft `Implementation plan` + immutable semantic planning-review + Ready fingerprints;
+- REVIEW → immutable schema-valid exact-revision review report;
 - audit/reconcile → audit report;
 - completion → Evidence + status projections.
 
@@ -32,11 +32,11 @@ CODE / TESTS / CONFIG
 
 ## Почему PLAN сохраняется в task
 
-PLAN нужен не только текущему чату. Он является handoff от reasoning-heavy planner к более экономичному implementer и обеспечивает воспроизводимость между сессиями.
+PLAN нужен не только текущему чату. Он является handoff от reasoning-heavy planner к implementer, но Ready появляется только после независимого semantic planning-review. `context_basis` fingerprint-ит relevant contract/upstream context, а `content_hash` — сам Implementation plan.
 
 ## Почему REVIEW отдельным файлом
 
-Review report — исторический артефакт с verdict и findings. Он не должен исчезать после исправления и не должен переписывать исходный task contract.
+Review report — immutable historical artifact с exact repository revision, verdict, findings и specialized-review metadata. Crash recovery может переиспользовать его только после deterministic schema/revision validation.
 
 ## Почему RECONCILE обязателен
 

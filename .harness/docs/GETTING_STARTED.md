@@ -1,78 +1,103 @@
 # Начало работы
 
-## Требования к локальному окружению
+## Требования
 
-- Git — Harness использует repository state, diff/index и Git workflow как часть deterministic gates.
-- Python 3.11+ — нужен только для `.harness/tools/validate.py`; product runtime от Python не зависит.
-- Один поддерживаемый AI runtime: Codex или Claude Code. Для Claude-specific project configuration см. [`CLAUDE_CODE.md`](CLAUDE_CODE.md).
+- Git;
+- Python 3.11+ для dependency-free Harness tooling;
+- Codex или Claude Code.
 
-В CI версия Python задаётся явно. Переписывать validator на Bash только ради устранения Python dependency не рекомендуется: validator разбирает TOML стандартным `tomllib`, JSON стандартным `json` и выполняет структурные проверки, которые shell-скрипт без дополнительного парсера воспроизводил бы менее надёжно.
+Harness не зависит от product runtime будущего проекта.
 
-## 1. Создай новый репозиторий
+## 1. Создай repository из template
 
-Предпочтительный путь — GitHub **Use this template**. После этого клонируй уже созданный репозиторий проекта.
+Предпочтительно GitHub **Use this template**.
 
-Если template клонируется напрямую, перед первым `GIT PUSH` замени `origin` на репозиторий нового проекта.
+Template содержит update lock и protocol metadata. Не удаляй их при bootstrap: Harness self-update использует immutable releases как BASE.
 
-Template уже содержит `.harness/harness.lock.json`: это BASE для будущих `HARNESS UPDATE CHECK` / `HARNESS UPDATE APPLY`. Не удаляй lock при инициализации проекта. Источником обновлений являются только immutable release tags, а не moving `main`.
+## 2. Подготовь local brief
 
-## 2. Создай локальный project brief
+Configured path берётся из:
+
+```text
+.harness/manifest.yaml → sources.localBrief
+```
+
+Default template использует:
 
 ```bash
 cp PROJECT_BRIEF.example.md PROJECT_BRIEF.local.md
 ```
 
-`PROJECT_BRIEF.local.md` заранее добавлен в `.gitignore`. Он предназначен для сырого пользовательского контекста и может содержать приватные ссылки, временные заметки и незрелые идеи.
+Файл local-only и не должен попадать в Git.
 
-## 3. Опиши проект своими словами
+## 3. Настрой язык и paths при необходимости
 
-Структура `PROJECT_BRIEF.example.md` — подсказка, а не обязательная анкета. Полезно указать:
+До INIT можно изменить project-configurable значения manifest:
 
-- что нужно создать;
-- зачем существует проект;
-- кто им пользуется;
-- ключевые сценарии;
-- ограничения;
-- обязательные или желательные технологии;
-- что точно не входит в scope;
-- ссылки на референсы, API, дизайн и документацию;
-- любые дополнительные мысли.
+- `language.*`;
+- `sources.*`;
+- `protocol.*`;
+- `execution.maxFixReviewCycles`;
+- `review.security/tests`;
+- `skills.search.maxResults`.
 
-Не требуется заранее оформлять REQ, ADR или STEP — это задача initializer.
+Specialized language key может отсутствовать: тогда реально используется `language.default`.
 
-## 4. Открой репозиторий в выбранном runtime
+Если меняешь layout, core tooling обязан работать с новым configured path без дополнительного hidden default.
+
+## 4. Открой repository в runtime
 
 ### Codex
 
-Codex использует `AGENTS.md`, `.codex/config.toml` и `.codex/agents/*.toml`.
+Использует:
+
+- `AGENTS.md`;
+- `.codex/config.toml`;
+- `.codex/agents/*.toml`.
 
 ### Claude Code
 
-Claude Code использует `CLAUDE.md`, который импортирует `@AGENTS.md`, плюс `.claude/settings.json` и `.claude/agents/*.md`.
+Использует:
 
-Core `.agents/skills/` общие для обоих runtime adapters.
+- `CLAUDE.md` → `AGENTS.md`;
+- `.claude/settings.json`;
+- `.claude/agents/*.md`.
 
-## 5. Перед INIT проверь актуальность Harness
+Canonical skills общие:
 
-Если после создания репозитория из template вышел новый Harness release, обновиться можно **до** `PROJECT INIT`:
+```text
+.agents/skills/
+```
+
+Runtime adapter не является вторым source of truth protocol semantics.
+
+## 5. При необходимости обнови Harness до INIT
 
 ```text
 HARNESS UPDATE CHECK
 HARNESS UPDATE APPLY
 ```
 
-`project.initialized: false` не блокирует эти команды. Pre-init update меняет только Harness protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`. Локальный `PROJECT_BRIEF.local.md` не является managed Harness path и не перезаписывается updater-ом.
-
-После update проверь и отдельно зафиксируй maintenance diff, чтобы не смешивать его с будущим bootstrap проекта:
+Update-specific paths разрешаются так:
 
 ```text
-inspect diff
+manifest.repository.harnessUpdatePolicy
+        ↓
+harness-update.toml
+        ├── source.update_manifest
+        ├── state.lock_file
+        └── state.report_directory
+```
+
+Pre-INIT update меняет protocol layer, но не выполняет PROJECT INIT и не создаёт product knowledge.
+
+После update inspect diff и при необходимости:
+
+```text
 GIT CHECK > COMMIT
 ```
 
-Если доступного update нет, переходи сразу к `PROJECT INIT`.
-
-## 6. Запусти bootstrap
+## 6. Выполни PROJECT INIT
 
 ```text
 PROJECT INIT
@@ -80,30 +105,42 @@ PROJECT INIT
 
 Initializer должен:
 
-- прочитать brief и доступные референсы;
-- создать `docs/PROJECT.md`;
-- создать каждый продуктовый REQ отдельным `docs/requirements/REQ-NNN-*.md`, перестроить `docs/requirements/SPEC.md` как index projection и инициализировать lifecycle-state только в `docs/requirements/STATUS.md`;
-- сформировать минимальный архитектурный baseline;
-- создать ADR только там, где устойчивое решение действительно принято или обязательно до реализации;
-- вынести неизвестное в `docs/OPEN_QUESTIONS.md` или ранний `RESEARCH` / `ADR` STEP;
-- создать roadmap и полноценные `planning/tasks/STEP-NNN.md`;
-- связать REQ ↔ ADR ↔ STEP;
-- заполнить scope, out of scope, dependencies, acceptance criteria и verification;
-- заменить generated project blocks в `README.md` и `AGENTS.md`;
-- выставить `project.initialized: true` в `.harness/manifest.yaml` только после consistency check;
-- не создавать production code;
-- не изменять Harness release/lock как часть INIT.
+1. прочитать configured local brief и доступные references;
+2. создать project overview;
+3. создать canonical schema-v1 REQ;
+4. создать минимальный architecture baseline;
+5. создать ADR только для устойчивых решений;
+6. создать canonical OQ для существенных неизвестных;
+7. выполнить independent requirements semantic review и сохранить immutable INIT report с exact basis;
+8. создать canonical schema-v1 STEP roadmap;
+9. заполнить explicit dependencies, `architecture_refs`, `risk_flags`, mutation policy, acceptance и verification;
+10. выполнить independent roadmap semantic review и сохранить второй immutable INIT report;
+11. обеспечить REQ↔STEP и ADR↔STEP traceability;
+12. пересобрать tracked projections через `sync-projections.py`;
+13. запустить `validate.py --mode manual`;
+14. завершить bootstrap только через:
+    ```bash
+    python3 .harness/tools/finalize-project-init.py --name '<project-name>'
+    ```
+15. не создавать production code.
 
-## 7. Проверь результат
+Ручное `project.initialized=true` не является валидным INIT completion.
 
-Особое внимание удели:
+## 7. Что проверить после INIT
 
-- не выдуманы ли требования;
-- не создано ли слишком много ADR;
-- правильно ли разбит roadmap;
-- нет ли пропущенных dependencies;
-- реалистичны ли acceptance criteria;
-- достаточно ли ясны первые STEP.
+Проверь прежде всего:
+
+- нет ли выдуманных требований;
+- все ли material uncertainties представлены OQ/prerequisite work;
+- нет ли лишних ADR;
+- верны ли dependencies;
+- явно ли ограничен Mutation policy;
+- наблюдаемы ли Acceptance criteria;
+- реально ли Verification доказывает Acceptance;
+- есть ли два PASS INIT reports для текущих bases;
+- проходит ли Harness validator.
+
+Projection-файлы руками корректировать не нужно: drift должен ловиться deterministic tooling.
 
 Полезные команды:
 
@@ -112,99 +149,108 @@ PROJECT STATUS
 STEP NEXT
 ```
 
-## 8. Настрой профили агентов
+## 8. STEP workflow
 
-Изучи [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md).
-
-Для Codex при необходимости измени:
-
-```text
-.codex/config.toml
-.codex/agents/*.toml
-```
-
-Для Claude Code:
-
-```text
-.claude/settings.json
-.claude/agents/*.md
-```
-
-Если Claude model/effort нужно изменить только локально, используй `.claude/settings.local.json`, не создавая repository diff.
-
-У Codex сейчас нет нативного project-local файла с такой семантикой. Не создавай `.codex/config.local.toml`; варианты персонального override и причина различия между runtime описаны в [`AGENT_CONFIGURATION.md`](AGENT_CONFIGURATION.md#локальные-настройки-runtime).
-
-Базовый принцип:
-
-- reasoning-heavy роли — сильная модель и высокий effort;
-- основной implementer — balanced профиль;
-- механические роли — более экономичный профиль;
-- reviewer должен оставаться независимым от implementer.
-
-Tracked runtime configs сохраняются при Harness update через 3-way merge.
-
-## 9. Зафиксируй bootstrap
-
-```text
-GIT CHECK > COMMIT > PUSH
-```
-
-Политика веток/PR задаётся в `.harness/git-policy.toml`. Подробно: [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md).
-
-## 10. Начни разработку
-
-Ручной flow:
-
-```text
-STEP PLAN STEP-001
-STEP IMPLEMENT STEP-001
-STEP REVIEW STEP-001
-```
-
-Автоматизированный flow:
-
-```text
-STEP RUN STEP-001
-```
-
-Новая задача обычным языком:
+Новая задача:
 
 ```text
 STEP ADD: <описание>
 ```
 
-Нужны дополнительные знания/technology playbook:
+Planning:
 
 ```text
-SKILL FIND: <описание>
+STEP PLAN STEP-001
 ```
 
-## 11. Обновляй Harness отдельно от project work
+Каждый PLAN проходит independent planning-review. Только matching semantic PASS + exact `context_basis` + `plan_content_hash` позволяют сделать plan Ready.
 
-Проверка:
+Реализация:
 
 ```text
-HARNESS UPDATE CHECK
+STEP IMPLEMENT STEP-001
 ```
 
-Применение:
+Review:
 
 ```text
-HARNESS UPDATE APPLY
+STEP REVIEW STEP-001
 ```
 
-Это maintenance flow без STEP и без автоматического commit/push/PR. Подробно: [`UPDATES.md`](UPDATES.md).
+Полный orchestration:
 
-## Необязательные локальные инструкции
+```text
+STEP RUN STEP-001
+```
 
-Общие local overrides:
+Crash/session restart продолжает существующую execution через `.harness/local/execution/execution-status.json`.
+
+## 9. REVIEW semantics
+
+Перед review Harness детерминированно выбирает минимально обязательные specialized reviewers:
+
+```bash
+python3 .harness/tools/review_gates.py STEP-001 --json
+```
+
+`review.security/tests=auto` не означает «решает модель»: preselector использует risk flags, STEP type и factual changed surface.
+
+Review report относится к exact repository revision:
+
+- clean tree → `git_head`;
+- dirty tree → `git_head + worktree_hash`.
+
+Product/config mutation после report инвалидирует crash-recovery proof.
+
+## 10. Harness update существующего проекта
+
+`HARNESS UPDATE APPLY` не переписывает project-owned active documents/templates.
+
+Если после update validator сообщает migration pending:
+
+```text
+PROJECT RECONCILE
+```
+
+RECONCILE идемпотентно мигрирует active schema, Accepted ADR, OQ и project-owned templates, затем пересобирает projections. Historical immutable reports не переписываются.
+
+До завершения required migration strict commit/CI gate остаётся закрыт.
+
+## 11. Git workflow
+
+Bootstrap/project changes фиксируются обычными Harness Git-командами:
+
+```text
+GIT CHECK > COMMIT > PUSH
+```
+
+Git policy берётся из configured `repository.gitPolicy`.
+
+Harness Integrity CI проверяет protocol/repository hygiene; product CI появляется только после фактического выбора product tooling.
+
+## 12. Runtime profiles
+
+Tracked runtime configs можно настраивать:
+
+```text
+.codex/config.toml
+.codex/agents/*.toml
+.claude/settings.json
+.claude/agents/*.md
+```
+
+Они относятся к shared update surface и сохраняются через 3-way merge.
+
+Model/effort не заменяют deterministic/semantic gates.
+
+## Local overrides
+
+Общие local instructions:
 
 ```bash
 cp AGENTS.local.example.md AGENTS.local.md
 ```
 
-`AGENTS.local.md` заранее игнорируется Git и читается после `AGENTS.md` согласно Harness contract.
+`AGENTS.local.md` читается последним и исключён из Git.
 
-Claude-specific private instructions можно хранить в `CLAUDE.local.md`; Claude Code автоматически читает его рядом с `CLAUDE.md`. Файл также игнорируется Git.
-
-Перед INIT при необходимости настрой языки в `.harness/manifest.yaml` → `language`.
+Claude-specific private settings/instructions можно хранить в runtime-specific local files согласно Claude Code semantics.

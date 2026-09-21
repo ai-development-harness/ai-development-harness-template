@@ -1,10 +1,10 @@
 # Project Status
 
-> Projection текущего execution state. Обновляется из canonical task/evidence и requirements.
+> Tracked deterministic projection canonical STEP state.
 
 ## Summary
 
-Проект ещё не инициализирован.
+- total: 0
 
 ## In progress
 
@@ -16,12 +16,8 @@
 
 ## Next unblocked work
 
-После INIT.
-
-## Recent completed
-
 —
 
-## Known drift / risks
+## Recent completed
 
 —

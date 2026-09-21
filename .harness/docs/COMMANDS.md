@@ -22,7 +22,7 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 ## `PROJECT INIT`
 
-Однократный bootstrap из `PROJECT_BRIEF.local.md`. Создаёт project knowledge base и initial roadmap, но не production code. Повторный INIT после `initialized: true` не выполняется автоматически.
+Однократный bootstrap из configured `sources.localBrief`. Создаёт schema-v1 project knowledge base и initial roadmap, но не production code. INIT сохраняет два immutable semantic reports — requirements и roadmap — с exact deterministic basis, пересобирает projections и завершается только через `finalize-project-init.py`. Ручное `project.initialized: true` не является валидным completion.
 
 ## `STEP ADD: <описание>`
 
@@ -30,20 +30,20 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 - ищет дубликаты/пересечения;
 - выбирает следующий стабильный ID;
-- классифицирует Type/Priority/Phase/Risk flags;
+- классифицирует machine `type`/`priority`/`phase` и closed-set `risk_flags`;
 - связывает существующие REQ/ADR;
 - создаёт новый REQ только при появлении нового продуктового контракта;
 - не выдумывает ADR; при необходимости создаёт prerequisite ADR/RESEARCH STEP;
 - вычисляет dependencies;
 - формирует Goal/Context/Scope/Mutation policy/Out of scope/Acceptance/Verification/Deliverables;
-- обновляет PLAN/STATUS;
+- обновляет canonical traceability и пересобирает deterministic projections;
 - возвращает `STEP PLAN STEP-NNN`.
 
 Production code не меняется.
 
 ## `SKILL FIND: <описание>`
 
-Ищет подходящие Agent Skills/repository skills на GitHub и в доступном web, инспектирует содержимое и сохраняет shortlist в `planning/skill-searches/`. Максимальное число кандидатов задаёт `skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Для каждого кандидата возвращает exact source/path/link, fit, limitations, license/provenance и safety notes.
+Ищет подходящие Agent Skills/repository skills на GitHub и в доступном web, инспектирует содержимое и сохраняет schema-v1 shortlist в configured `protocol.skillSearchDirectory`. Максимальное число кандидатов задаёт `skills.search.maxResults` (1–10). Ничего не устанавливает. Для каждого кандидата возвращает exact source/path/link, fit, limitations, license/provenance и safety notes.
 
 Следующий шаг: `SKILL INSTALL: #N` либо `SKILL CREATE: <описание>`.
 
@@ -65,15 +65,15 @@ Production code не меняется.
 
 ## `STEP PLAN STEP-NNN`
 
-Проводит pre-implementation analysis и **сохраняет** результат в `## Implementation plan` task-файла. Production code не меняется. План должен быть достаточно конкретным, чтобы следующая сессия могла выполнить `STEP IMPLEMENT STEP-NNN` без истории чата.
+Сначала валидирует task contract, type-specific dependency proofs, linked REQ/ADR, explicit `architecture_refs` и relevant OQ. После draft Implementation plan обязательный independent planning-review сохраняет exact `context_basis` и отдельный `plan_content_hash`. Только matching PASS позволяет `stamp-plan` выставить `plan.status=ready`. Изменение plan body или relevant upstream input делает plan stale без повторного reasoning.
 
 ## `STEP IMPLEMENT STEP-NNN`
 
-Реализует сохранённый план в пределах task contract. Ставит STEP в `В работе`, добавляет/обновляет tests и запускает verification. Не закрывает STEP до независимого review.
+Реализует только current Ready plan в пределах task contract. При первой product mutation ставит canonical `status: in_progress`, добавляет/обновляет tests и запускает verification. `status: completed` недопустим до schema-valid independent review PASS и type-specific completion proof.
 
 ## `STEP REVIEW STEP-NNN`
 
-Независимая проверка. Reviewer read-only по product code. Security/test reviewer запускаются по `review.security` / `review.tests`: `auto` — по фактической необходимости, `always` — для каждого review-прохода. Создаётся immutable report в `planning/reviews/STEP-NNN/`. Verdict: `PASS`, `FAIL`, `BLOCKED`.
+Независимая проверка exact repository revision. Перед reasoning deterministic preselector вычисляет обязательные security/test reviewers по `review.security/tests`, risk flags, STEP type и factual changed surface. Immutable schema-v1 report содержит `git_head` и при dirty tree `worktree_hash`, structured findings и specialized review metadata. `FAIL` разрешён только для implementation/evidence defects; contract defect → `BLOCKED`. Crash recovery доверяет только schema-valid report для той же revision.
 
 ## `STEP FIX STEP-NNN`
 
@@ -93,7 +93,7 @@ PLAN (если актуального плана нет)
  → CLOSE
 ```
 
-При blocker или исчерпании циклов останавливается и не маскирует failure.
+При blocker или исчерпании циклов останавливается и не маскирует failure. Лимит `execution.maxFixReviewCycles` enforce-ится Execution Resolver детерминированно и сохраняется между sessions.
 
 ## `STEP AUDIT STEP-NNN`
 
@@ -113,17 +113,17 @@ Read-only рекомендация следующего **unblocked** шага �
 
 Если проект ещё не инициализирован, команда ничего не меняет, не создаёт audit report/REQ/ADR/STEP и возвращает `PROJECT RECONCILE: NOT_APPLICABLE` с handoff → `PROJECT INIT`.
 
-В инициализированном проекте сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, создаёт audit report и при необходимости corrective STEP. В обязательную evidence-проверку входит `python3 .harness/tools/check-command-references.py --json`: live project-owned документы сверяются с текущим namespaced command surface, а immutable/history-oriented reports не мигрируются задним числом. Не исправляет production code молча.
+В инициализированном проекте сначала выполняет idempotent active-schema migration, если она требуется: legacy STEP/REQ/ADR/OQ и project-owned templates переводятся на current schema, старые Ready plans без durable semantic proof становятся draft, immutable historical reports не переписываются. Затем пересобирает projections, сравнивает code/tests/config с REQ/ADR/architecture/STEP/evidence, запускает command-reference check и создаёт audit/corrective work. Не исправляет production code молча.
 
 ## `RELEASE CHECK`
 
-Финальный release-oriented review по фактическим проектным gates: unresolved critical/high findings, requirements, migrations, tests/build, security, docs, upgrade/deploy concerns. Создаёт report в `planning/releases/`.
+Финальный release-oriented review по фактическим проектным gates: unresolved critical/high findings, requirements, migrations, tests/build, security, docs, upgrade/deploy concerns. Создаёт schema-v1 report в configured `protocol.releaseDirectory`.
 
 ## `HARNESS UPDATE CHECK [TO <tag>]`
 
-Read-only проверка доступного маршрута Harness update. Использует `.harness/harness.lock.json` как BASE, `.harness/harness-update.toml` как source/ownership policy и canonical remote `.harness/harness-update-graph.json` как routing metadata.
+Read-only проверка маршрута Harness update. Manifest задаёт только `repository.harnessUpdatePolicy`; сама policy задаёт `source.update_manifest`, `state.lock_file` и `state.report_directory`. Именно эти configured paths используются как routing/lock/report topology.
 
-Без `TO` конечный target берётся из `.harness/harness-update-graph.json.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
+Без `TO` конечный target берётся из configured `source.update_manifest.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
 
 Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
@@ -143,7 +143,7 @@ Maintenance mutation protocol layer без STEP. Допускается толь
 HARNESS UPDATE APPLY TO vX.X.X
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из `.harness/harness-update-graph.json` или target release, не делает commit/push/PR. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
+Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Project-owned schema migration после protocol update выполняет `PROJECT RECONCILE`. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
 
 ## `GIT CHECK`
 

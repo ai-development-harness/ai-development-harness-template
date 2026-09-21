@@ -10,7 +10,7 @@
 - unresolved OPEN_QUESTIONS;
 - roadmap phases и critical dependencies;
 - рекомендуемый agent profile;
-- consistency-check result;
+- requirements/roadmap semantic review reports + deterministic consistency result;
 - следующая команда.
 
 ## ADD / PLAN / IMPLEMENT / FIX
@@ -23,10 +23,11 @@
 
 ## REVIEW
 
-- report path;
+- schema-valid report path;
+- exact reviewed revision;
 - verdict;
-- blocking findings по severity;
-- specialized reviewer results;
+- blocking findings по severity/category;
+- deterministic specialized-review requirements/results;
 - следующая команда (`FIX`, blocker action или next step).
 
 ## RECONCILE / RELEASE CHECK

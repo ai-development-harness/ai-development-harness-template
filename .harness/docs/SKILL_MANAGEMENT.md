@@ -8,7 +8,7 @@ Skill — это не просто Markdown-справка. `SKILL.md` зада�
 
 ### `SKILL FIND: <описание>`
 
-Ищет GitHub/доступный web, инспектирует подходящие repository skills и возвращает shortlist размером не более `.harness/manifest.yaml → skills.search.maxResults` (1–10, default 5). Ничего не устанавливает. Результат сохраняется в `planning/skill-searches/`, поэтому позже можно написать `SKILL INSTALL: #3`.
+Ищет GitHub/доступный web, инспектирует подходящие repository skills и возвращает shortlist размером не более `.harness/manifest.yaml → skills.search.maxResults` (1–10). Ничего не устанавливает. Schema-v1 report сохраняется в configured `protocol.skillSearchDirectory`, поэтому позже можно написать `SKILL INSTALL: #3`.
 
 Пример:
 
@@ -38,7 +38,7 @@ SKILL INSTALL: owner/repo:skills/docker
 4. блокирует явно опасный skill;
 5. копирует bundle в `.agents/skills/<slug>/`;
 6. создаёт `UPSTREAM.md`;
-7. обновляет `docs/skills/REGISTRY.md`;
+7. обновляет registry по `.harness/manifest.yaml → protocol.skillRegistry`;
 8. добавляет краткий routing rule в generated `SKILL-ROUTING` block `AGENTS.md`.
 
 ### `SKILL CREATE: <описание>`

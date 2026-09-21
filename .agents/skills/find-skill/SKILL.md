@@ -13,5 +13,5 @@ description: Search GitHub and the web for repository skills matching a natural-
 5. Отбрасывай кандидатов, которые невозможно нормально инспектировать, которые явно конфликтуют с repository protocol или содержат очевидно опасное/скрытое поведение.
 6. Оцени кандидатов по: релевантности задаче, совместимости с Agent Skills/SKILL.md, качеству workflow, поддерживаемости/provenance, license и safety.
 7. Верни не более `skills.search.maxResults` кандидатов. Для каждого укажи: номер, название, owner/repo, точный путь, ссылку, краткое назначение, сильные стороны, ограничения/риски, license (если удалось определить), activity/provenance signal и итоговую рекомендацию.
-8. Сохрани результат в `planning/skill-searches/SKILL-SEARCH-<timestamp>.md` по template. Это позволяет позже выполнить `SKILL INSTALL: #N` без зависимости от истории чата.
+8. Сохрани schema-v1 результат как `SKILL-SEARCH-YYYYMMDDTHHMMSSZ.md` в configured `protocol.skillSearchDirectory` по template; не используй hardcoded `planning/skill-searches`. До завершения проверь конкретный файл: `python3 .harness/tools/report_contract.py --file '<report-path>' --kind skill_search`. Невалидный shortlist нельзя использовать для `SKILL INSTALL: #N`.
 9. Ничего не устанавливай. В конце предложи либо `SKILL INSTALL: #N`, либо `SKILL CREATE: <описание>`, если достойного кандидата нет.

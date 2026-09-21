@@ -36,6 +36,23 @@ from command_transitions import (
     validate_transition_table,
 )
 from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
+from harness_config import (
+    ConfigError,
+    get,
+    language_value,
+    load_manifest,
+    load_update_policy,
+    local_brief_path,
+    max_fix_review_cycles,
+    protocol_path,
+    repository_path,
+    resolve_repo_path,
+    review_policy,
+    skill_search_max_results,
+    update_manifest_path,
+)
+from project_integrity import validate_project_integrity
+from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -203,29 +220,49 @@ def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
 
 # Проверить Harness update graph: schema, monotonic transitions, отсутствие cycles/ambiguity и достижимость latest.
 def validate_update_graph(root: Path, errors: list[str]) -> None:
-    path = root / ".harness" / "harness-update-graph.json"
-    if not path.is_file():
+    try:
+        policy = load_update_policy(root)
+        path = update_manifest_path(root)
+    except ConfigError as exc:
+        errors.append(f"update-graph: {exc}")
         return
+    if not path.is_file():
+        errors.append(f"update-graph: missing configured update manifest {path.relative_to(root)}")
+        return
+    tag_pattern = get(policy, "source.tag_pattern")
+    if not isinstance(tag_pattern, str):
+        errors.append("harness-update source.tag_pattern must be a string")
+        return
+    try:
+        tag_re = re.compile(tag_pattern)
+    except re.error as exc:
+        errors.append(f"harness-update source.tag_pattern is invalid: {exc}")
+        return
+
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        errors.append(f"invalid .harness/harness-update-graph.json: {exc}")
+        errors.append(f"invalid {path.relative_to(root)}: {exc}")
         return
 
+    label = path.relative_to(root).as_posix()
     if not isinstance(data, dict):
-        errors.append(".harness/harness-update-graph.json root must be an object")
+        errors.append(f"{label} root must be an object")
         return
     if data.get("schemaVersion") != 1:
-        errors.append(".harness/harness-update-graph.json schemaVersion must be 1")
+        errors.append(f"{label} schemaVersion must be 1")
 
     latest = data.get("latest")
-    if not isinstance(latest, str) or semver_tag_tuple(latest) is None:
-        errors.append(".harness/harness-update-graph.json latest must be vMAJOR.MINOR.PATCH")
+    if not isinstance(latest, str) or tag_re.fullmatch(latest) is None:
+        errors.append(f"{label} latest does not match configured source.tag_pattern")
+        latest = None
+    elif semver_tag_tuple(latest) is None:
+        errors.append(f"{label} latest must use protocol SemVer ordering vMAJOR.MINOR.PATCH")
         latest = None
 
     transitions = data.get("transitions")
     if not isinstance(transitions, list):
-        errors.append(".harness/harness-update-graph.json transitions must be an array")
+        errors.append(f"{label} transitions must be an array")
         return
 
     outgoing: dict[str, str] = {}
@@ -234,20 +271,26 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
         nodes.add(latest)
 
     for index, transition in enumerate(transitions):
-        prefix = f".harness/harness-update-graph.json transitions[{index}]"
+        prefix = f"{label} transitions[{index}]"
         if not isinstance(transition, dict):
             errors.append(f"{prefix} must be an object")
             continue
 
         source = transition.get("from")
         target = transition.get("to")
-        source_v = semver_tag_tuple(source) if isinstance(source, str) else None
-        target_v = semver_tag_tuple(target) if isinstance(target, str) else None
+        source_pattern_ok = isinstance(source, str) and tag_re.fullmatch(source) is not None
+        target_pattern_ok = isinstance(target, str) and tag_re.fullmatch(target) is not None
+        source_v = semver_tag_tuple(source) if source_pattern_ok else None
+        target_v = semver_tag_tuple(target) if target_pattern_ok else None
 
-        if source_v is None:
-            errors.append(f"{prefix}.from must be vMAJOR.MINOR.PATCH")
-        if target_v is None:
-            errors.append(f"{prefix}.to must be vMAJOR.MINOR.PATCH")
+        if not source_pattern_ok:
+            errors.append(f"{prefix}.from does not match configured source.tag_pattern")
+        elif source_v is None:
+            errors.append(f"{prefix}.from must use protocol SemVer ordering")
+        if not target_pattern_ok:
+            errors.append(f"{prefix}.to does not match configured source.tag_pattern")
+        elif target_v is None:
+            errors.append(f"{prefix}.to must use protocol SemVer ordering")
         if source_v is not None and target_v is not None and target_v <= source_v:
             errors.append(f"{prefix} must move strictly forward")
         if transition.get("kind") not in {"standard", "bridge"}:
@@ -261,303 +304,40 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
 
         if isinstance(source, str) and isinstance(target, str):
             if source in outgoing:
-                errors.append(f".harness/harness-update-graph.json ambiguous route: multiple transitions from {source}")
+                errors.append(f"{label} ambiguous route: multiple transitions from {source}")
             else:
                 outgoing[source] = target
             nodes.update({source, target})
 
     if latest and latest in outgoing:
-        errors.append(".harness/harness-update-graph.json latest must be terminal (no outgoing transition)")
+        errors.append(f"{label} latest must be terminal (no outgoing transition)")
 
     if latest:
-        for start in sorted(nodes):
-            current = start
+        for graph_start in sorted(nodes):
+            current = graph_start
             seen: set[str] = set()
             while current != latest:
                 if current in seen:
-                    errors.append(f".harness/harness-update-graph.json cycle detected from {start}")
+                    errors.append(f"{label} cycle detected from {graph_start}")
                     break
                 seen.add(current)
                 nxt = outgoing.get(current)
                 if nxt is None:
-                    errors.append(f".harness/harness-update-graph.json release {start} cannot reach latest {latest}")
+                    errors.append(f"{label} release {graph_start} cannot reach latest {latest}")
                     break
                 current = nxt
 
-        manifest_path = root / ".harness" / "manifest.yaml"
-        if manifest_path.is_file():
-            try:
-                manifest_text = manifest_path.read_text(encoding="utf-8")
-                manifest_release = None
-                for line in manifest_text.splitlines():
-                    if line.startswith("  release:"):
-                        manifest_release = line.split(":", 1)[1].split("#", 1)[0].strip().strip("\"'")
-                        break
-                if manifest_release and latest != f"v{manifest_release}":
-                    errors.append(
-                        f".harness/harness-update-graph.json latest {latest} does not match manifest harness.release v{manifest_release}"
-                    )
-            except UnicodeDecodeError:
-                pass
-
-
-
-REQ_FILE_RE = re.compile(r"^(REQ-\d{3})-(.+)\.md$")
-REQ_H1_RE = re.compile(r"^# (REQ-\d{3}) — (.+)$")
-REQ_REQUIRED_SECTIONS = ("Requirement", "Rationale", "Acceptance", "Traceability")
-
-
-# Классифицировать exact legacy requirements layout без filesystem-зависимостей.
-# Это маленький pure contract, чтобы сам validator мог regression-test migration gate.
-def is_legacy_requirements_layout(canonical_filenames: list[str], spec_text: str) -> bool:
-    if canonical_filenames:
-        return False
-    return bool(re.search(r"(?m)^#{2,}\s+REQ-\d{3}\b", spec_text))
-
-
-# Определить точный legacy-layout requirements, который допустим только как временное
-# post-update состояние до PROJECT RECONCILE. Смешанный/частично мигрированный layout
-# сюда намеренно не попадает: он должен оставаться deterministic validation failure.
-def legacy_requirements_migration_pending(root: Path) -> bool:
-    requirements_root = root / "docs" / "requirements"
-    spec_path = requirements_root / "SPEC.md"
-    status_path = requirements_root / "STATUS.md"
-    if not requirements_root.is_dir() or not spec_path.is_file() or not status_path.is_file():
-        return False
-
-    canonical_filenames = [
-        path.name
-        for path in requirements_root.glob("REQ-*.md")
-        if REQ_FILE_RE.fullmatch(path.name)
-    ]
-
-    try:
-        spec_text = spec_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return False
-
-    # Legacy v0.4.x хранит canonical definitions как Markdown headings внутри SPEC.md.
-    # Наличие хотя бы одного такого REQ при полном отсутствии standalone REQ-файлов —
-    # однозначный migration-pending state, который PROJECT RECONCILE умеет преобразовать.
-    return is_legacy_requirements_layout(canonical_filenames, spec_text)
-
-
-# Regression contract для migration detector: legacy должен распознаваться узко,
-# partial/new layout не должны получать manual bypass.
-def validate_legacy_requirements_detector(errors: list[str]) -> None:
-    cases = [
-        (
-            [],
-            "# Requirements Specification\n\n### REQ-001 — Legacy\n\n#### Requirement\nTBD\n",
-            True,
-            "legacy monolithic SPEC",
-        ),
-        (
-            ["REQ-001-legacy.md"],
-            "# Requirements Specification\n\n### REQ-001 — Legacy\n",
-            False,
-            "partial migration with canonical file",
-        ),
-        (
-            [],
-            "# Requirements Specification\n\n| REQ | Название |\n|---|---|\n",
-            False,
-            "new index projection without canonical definitions",
-        ),
-    ]
-    for filenames, spec_text, expected, label in cases:
-        actual = is_legacy_requirements_layout(filenames, spec_text)
-        if actual != expected:
-            errors.append(
-                f"legacy requirements detector mismatch for {label}: "
-                f"expected {expected}, got {actual}"
-            )
-
-
-# Разобрать projection-таблицу REQ. Первая колонка обязана быть прямой Markdown-ссылкой
-# на canonical REQ-файл; bare ID считается drift, потому что projection должен быть navigable.
-def parse_requirement_projection(
-    path: Path,
-    projection_name: str,
-    errors: list[str],
-) -> dict[str, dict[str, str | int]]:
-    rows: dict[str, dict[str, str | int]] = {}
-    if not path.is_file():
-        return rows
-
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except UnicodeDecodeError:
-        errors.append(f"{projection_name} is not UTF-8")
-        return rows
-
-    for line_number, raw_line in enumerate(lines, 1):
-        line = raw_line.strip()
-        if not (line.startswith("|") and line.endswith("|")):
-            continue
-
-        cells = [cell.strip() for cell in line.strip("|").split("|")]
-        if not cells:
-            continue
-
-        first = cells[0]
-        linked = re.fullmatch(r"\[(REQ-\d{3})\]\(([^)]+)\)", first)
-        bare = re.fullmatch(r"(REQ-\d{3})", first)
-        if linked is None and bare is None:
-            if re.search(r"\bREQ-\d{3}\b", first):
-                errors.append(
-                    f"{projection_name}:{line_number}: malformed REQ reference in first table column"
-                )
-            continue
-
-        req_id = linked.group(1) if linked else bare.group(1)
-        if req_id in rows:
-            previous_line = rows[req_id]["line"]
-            errors.append(
-                f"{projection_name}: duplicate {req_id} rows at lines {previous_line} and {line_number}"
-            )
-            continue
-
-        if len(cells) < 2 or not cells[1]:
-            errors.append(f"{projection_name}:{line_number}: {req_id} missing title")
-            title = ""
-        else:
-            title = cells[1]
-
-        target = linked.group(2).strip() if linked else ""
-        if bare:
-            errors.append(
-                f"{projection_name}:{line_number}: {req_id} must link directly to its canonical REQ file"
-            )
-
-        rows[req_id] = {
-            "target": target,
-            "title": title,
-            "line": line_number,
-        }
-
-    return rows
-
-
-# Проверить canonical REQ и обе projections как единый deterministic document-model contract.
-# Validator не оценивает смысл requirement: только ID, standalone structure, projection coverage и links.
-def validate_requirements_model(root: Path, errors: list[str]) -> None:
-    requirements_root = root / "docs" / "requirements"
-    spec_path = requirements_root / "SPEC.md"
-    status_path = requirements_root / "STATUS.md"
-
-    if not requirements_root.is_dir() or not spec_path.is_file() or not status_path.is_file():
-        # Required-files gate сообщит о конкретно отсутствующих обязательных artifacts.
-        return
-
-    canonical: dict[str, dict[str, str | None]] = {}
-    for req_path in sorted(requirements_root.glob("REQ-*.md")):
-        filename_match = REQ_FILE_RE.fullmatch(req_path.name)
-        if filename_match is None:
-            errors.append(
-                f"requirements: invalid canonical REQ filename: {req_path.relative_to(root)}"
-            )
-            continue
-
-        filename_id = filename_match.group(1)
-        if filename_id in canonical:
-            errors.append(
-                "requirements: duplicate canonical REQ ID "
-                f"{filename_id}: {canonical[filename_id]['filename']} and {req_path.name}"
-            )
-            continue
-
         try:
-            text = req_path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            errors.append(f"requirements: canonical REQ is not UTF-8: {req_path.relative_to(root)}")
-            continue
-
-        lines = text.splitlines()
-        first_nonempty = next((line.strip() for line in lines if line.strip()), "")
-        h1_match = REQ_H1_RE.fullmatch(first_nonempty)
-        title: str | None = None
-        if h1_match is None:
-            errors.append(
-                f"requirements: {req_path.name} must start with '# {filename_id} — <title>'"
-            )
-        else:
-            heading_id, parsed_title = h1_match.groups()
-            title = parsed_title.strip()
-            if heading_id != filename_id:
+            manifest = load_manifest(root)
+            manifest_release = get(manifest, "harness.release")
+            if isinstance(manifest_release, str) and latest != f"v{manifest_release}":
                 errors.append(
-                    f"requirements: filename/H1 ID mismatch in {req_path.name}: "
-                    f"filename={filename_id}, H1={heading_id}"
+                    f"{label} latest {latest} does not match manifest harness.release v{manifest_release}"
                 )
+        except ConfigError as exc:
+            errors.append(f"manifest: {exc}")
 
-        for section in REQ_REQUIRED_SECTIONS:
-            count = len(
-                re.findall(rf"(?m)^## {re.escape(section)}\s*$", text)
-            )
-            if count != 1:
-                errors.append(
-                    f"requirements: {req_path.name} must contain exactly one '## {section}' section"
-                )
 
-        canonical[filename_id] = {
-            "filename": req_path.name,
-            "title": title,
-        }
-
-    try:
-        spec_text = spec_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        spec_text = ""
-        errors.append("requirements: docs/requirements/SPEC.md is not UTF-8")
-
-    if re.search(r"(?m)^#{2,}\s+REQ-\d{3}\b", spec_text):
-        errors.append(
-            "requirements: SPEC.md must be an index projection and must not contain canonical REQ definitions"
-        )
-
-    spec_rows = parse_requirement_projection(spec_path, "requirements SPEC", errors)
-    status_rows = parse_requirement_projection(status_path, "requirements STATUS", errors)
-
-    canonical_ids = set(canonical)
-    spec_ids = set(spec_rows)
-    status_ids = set(status_rows)
-
-    for req_id in sorted(canonical_ids - spec_ids):
-        errors.append(f"requirements: canonical {req_id} missing from SPEC.md")
-    for req_id in sorted(spec_ids - canonical_ids):
-        errors.append(f"requirements: SPEC.md contains orphan {req_id} without canonical REQ file")
-    for req_id in sorted(canonical_ids - status_ids):
-        errors.append(f"requirements: canonical {req_id} missing from STATUS.md")
-    for req_id in sorted(status_ids - canonical_ids):
-        errors.append(f"requirements: STATUS.md contains orphan {req_id} without canonical REQ file")
-
-    for req_id in sorted(canonical_ids & spec_ids):
-        expected = canonical[req_id]
-        row = spec_rows[req_id]
-        if row["target"] and row["target"] != expected["filename"]:
-            errors.append(
-                f"requirements: SPEC.md {req_id} link must target {expected['filename']}, "
-                f"got {row['target']}"
-            )
-        if expected["title"] is not None and row["title"] != expected["title"]:
-            errors.append(
-                f"requirements: SPEC.md {req_id} title differs from canonical REQ: "
-                f"{row['title']!r} != {expected['title']!r}"
-            )
-
-    for req_id in sorted(canonical_ids & status_ids):
-        expected = canonical[req_id]
-        row = status_rows[req_id]
-        if row["target"] and row["target"] != expected["filename"]:
-            errors.append(
-                f"requirements: STATUS.md {req_id} link must target {expected['filename']}, "
-                f"got {row['target']}"
-            )
-        if expected["title"] is not None and row["title"] != expected["title"]:
-            errors.append(
-                f"requirements: STATUS.md {req_id} title differs from canonical REQ: "
-                f"{row['title']!r} != {expected['title']!r}"
-            )
 
 
 # Запустить полный набор integrity checks, вывести все найденные ошибки и вернуть стабильный exit code для CI.
@@ -567,16 +347,22 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
-    policy_path = root / ".harness" / "harness-policy.toml"
     # Ошибки намеренно накапливаются: CI/пользователь за один запуск получает
     # полный список drift/corruption. warnings не делают repository невалидным.
     errors: list[str] = []
     warnings: list[str] = []
 
-    # Без policy невозможно понять, какие paths/skills/commands обязаны
-    # существовать. Это bootstrap blocker, поэтому здесь допустим ранний exit.
+    # manifest — bootstrap config. Все остальные repository paths разрешаются
+    # через единый harness_config layer.
+    try:
+        load_manifest(root)
+        policy_path = repository_path(root, "harnessPolicy")
+    except ConfigError as exc:
+        print(f"ERROR: invalid Harness manifest/config: {exc}", file=sys.stderr)
+        return 2
+
     if not policy_path.exists():
-        print("ERROR: missing .harness/harness-policy.toml", file=sys.stderr)
+        print(f"ERROR: missing configured harness policy: {policy_path}", file=sys.stderr)
         return 2
 
     try:
@@ -586,7 +372,6 @@ def main() -> int:
         return 2
 
     validate_update_graph(root, errors)
-    validate_legacy_requirements_detector(errors)
 
     # Semantics harness-policy должны быть валидны до того, как значения policy
     # начнут использоваться в остальных проверках.
@@ -612,20 +397,33 @@ def main() -> int:
         if not (root / rel).is_file():
             errors.append(f"required file missing: {rel}")
 
-    # --- Requirements document model --------------------------------------
-    # Canonical REQ, SPEC index и STATUS lifecycle projection обязаны оставаться
-    # синхронизированы детерминированно, без LLM-интерпретации.
-    #
-    # Исключение только для manual-mode: legacy v0.4.x project может временно
-    # сохранить canonical REQ внутри SPEC.md сразу после Harness update. Это не
-    # разрешение коммитить drift: commit/ci остаются строгими и требуют сначала
-    # выполнить PROJECT RECONCILE. Mixed/partial migration также остаётся FAIL.
-    if args.mode == "manual" and legacy_requirements_migration_pending(root):
-        warnings.append(
-            "requirements legacy migration pending; run PROJECT RECONCILE before GIT COMMIT/CI"
+    # --- Active project document model ------------------------------------
+    # После update manual-mode умеет диагностировать legacy active schema, но
+    # mutation/commit/CI запрещены до идемпотентного PROJECT RECONCILE.
+    legacy_pending = legacy_schema_pending(root)
+    allow_legacy = (
+        args.mode == "manual"
+        and legacy_pending
+        and legacy_manual_bypass_allowed(root)
+    )
+    if legacy_pending:
+        if allow_legacy:
+            warnings.append(
+                "active project schema migration pending; run PROJECT RECONCILE before PLAN/IMPLEMENT/GIT COMMIT/CI"
+            )
+        else:
+            errors.append(
+                "active project schema migration required or partially migrated; "
+                "run PROJECT RECONCILE before continuing"
+            )
+    errors.extend(
+        validate_project_integrity(
+            root,
+            warnings=warnings,
+            allow_legacy=allow_legacy,
+            ci_mode=args.mode == "ci",
         )
-    else:
-        validate_requirements_model(root, errors)
+    )
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
@@ -821,8 +619,8 @@ def main() -> int:
                 resolved = (root / ".codex" / config_file).resolve()
                 if not resolved.is_file():
                     errors.append(f"Codex agent {agent} config missing: {config_file}")
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"git-policy: cannot parse/validate {git_policy_path.relative_to(root)}: {exc}")
 
     claude_settings_path = root / ".claude" / "settings.json"
     if claude_settings_path.exists():
@@ -929,12 +727,6 @@ def main() -> int:
                     f"deprecated command form '{spec.legacy}' found in {p.relative_to(root)}"
                 )
 
-    task_template = root / "planning/tasks/TEMPLATE.md"
-    if task_template.is_file():
-        task_template_text = task_template.read_text(encoding="utf-8")
-        if "**Plan basis:** —" not in task_template_text:
-            errors.append("planning/tasks/TEMPLATE.md missing deterministic Plan basis field")
-
     # --- Generated blocks и local ignore ----------------------------------
     # Проверяем markers, которые updater/initializer имеет право менять, и
     # обязательные local files, которые Git никогда не должен отслеживать.
@@ -947,8 +739,13 @@ def main() -> int:
             errors.append(f"AGENTS generated markers invalid: {start} / {end}")
 
     gitignore = (root / ".gitignore").read_text(encoding="utf-8") if (root / ".gitignore").exists() else ""
-    for ignored in [
-        "PROJECT_BRIEF.local.md",
+    try:
+        configured_local_brief = local_brief_path(root).relative_to(root).as_posix()
+    except (ConfigError, ValueError) as exc:
+        configured_local_brief = None
+        errors.append(f"local brief config: {exc}")
+
+    required_ignored = [
         "AGENTS.local.md",
         "CLAUDE.local.md",
         ".project/local/",
@@ -958,7 +755,10 @@ def main() -> int:
         ".claude/settings.local.json",
         "__pycache__/",
         "*.py[cod]",
-    ]:
+    ]
+    if configured_local_brief is not None:
+        required_ignored.insert(0, configured_local_brief)
+    for ignored in required_ignored:
         if ignored not in gitignore:
             errors.append(f".gitignore must ignore {ignored}")
 
@@ -972,6 +772,8 @@ def main() -> int:
 
     forbidden = policy.get("forbidden_tracked_globs", [])
     allowed = policy.get("allowed_tracked_globs", [])
+    if configured_local_brief is not None and configured_local_brief in files:
+        errors.append(f"configured local brief must not be tracked: {configured_local_brief}")
     max_size_mb = max_tracked_file_size_mb if isinstance(max_tracked_file_size_mb, int) and not isinstance(max_tracked_file_size_mb, bool) and max_tracked_file_size_mb > 0 else 10
     max_size = max_size_mb * 1024 * 1024
 
@@ -1051,74 +853,86 @@ def main() -> int:
                 ):
                     errors.append(f"config parameter comment lacks example/format: {rel}:{idx + 1} ({key})")
 
-    # --- Политики языка, execution и review -------------------------------
-    # Manifest хранит центральные knobs Harness. Здесь проверяем не только
-    # наличие ключей, но и допустимые диапазоны/enum значения.
-    manifest_path = root / ".harness" / "manifest.yaml"
-    if manifest_path.exists():
-        try:
-            manifest_text = manifest_path.read_text(encoding="utf-8")
-            required_language_keys = [
-                "default", "agentResponses", "documentation", "commitMessages",
-                "codeComments", "testNames", "fixtures", "githubTemplates", "releaseNotes",
-            ]
-            if not re.search(r"(?m)^language:\s*$", manifest_text):
-                errors.append("manifest language policy missing: language")
-            for key in required_language_keys:
-                if not re.search(rf"(?m)^  {re.escape(key)}:\s*[^#\s]+", manifest_text):
-                    errors.append(f"manifest language policy missing value: language.{key}")
+    # --- Manifest policies -------------------------------------------------
+    # language.default — реальный fallback: specialized language keys могут
+    # отсутствовать. Остальные knobs читаются тем же config layer, что runtime.
+    try:
+        for language_key in (
+            "agentResponses", "documentation", "commitMessages", "codeComments",
+            "testNames", "fixtures", "githubTemplates", "releaseNotes",
+        ):
+            language_value(root, language_key)
+        max_fix_review_cycles(root)
+        review_policy(root, "security")
+        review_policy(root, "tests")
+        skill_search_max_results(root)
+        for repository_key in (
+            "gitPolicy", "harnessPolicy", "harnessUpdatePolicy",
+            "harnessValidation", "harnessCI",
+        ):
+            configured = repository_path(root, repository_key)
+            if not configured.is_file():
+                errors.append(
+                    f"manifest repository.{repository_key} path missing: "
+                    f"{configured.relative_to(root)}"
+                )
 
-            if not re.search(r"(?m)^execution:\s*$", manifest_text):
-                errors.append("manifest execution policy missing: execution")
-            max_cycles_match = re.search(r"(?m)^  maxFixReviewCycles:\s*([^#\s]+)", manifest_text)
-            if not max_cycles_match:
-                errors.append("manifest execution policy missing value: execution.maxFixReviewCycles")
-            else:
-                max_cycles_raw = max_cycles_match.group(1)
-                if not re.fullmatch(r"[0-9]+", max_cycles_raw):
-                    errors.append("manifest execution.maxFixReviewCycles must be an integer from 1 to 5")
-                else:
-                    max_cycles = int(max_cycles_raw)
-                    if not 1 <= max_cycles <= 5:
-                        errors.append("manifest execution.maxFixReviewCycles must be between 1 and 5")
-
-            if not re.search(r"(?m)^review:\s*$", manifest_text):
-                errors.append("manifest review policy missing: review")
-            for key in ["security", "tests"]:
-                review_match = re.search(rf"(?m)^  {key}:\s*([^#\s]+)", manifest_text)
-                if not review_match:
-                    errors.append(f"manifest review policy missing value: review.{key}")
-                elif review_match.group(1) not in {"auto", "always"}:
-                    errors.append(f"manifest review.{key} must be auto or always")
-
-            if not re.search(r"(?m)^skills:\s*$", manifest_text):
-                errors.append("manifest skills policy missing: skills")
-            if not re.search(r"(?m)^  search:\s*$", manifest_text):
-                errors.append("manifest skills policy missing: skills.search")
-            max_results_match = re.search(r"(?m)^    maxResults:\s*([^#\s]+)", manifest_text)
-            if not max_results_match:
-                errors.append("manifest skills policy missing value: skills.search.maxResults")
-            else:
-                max_results_raw = max_results_match.group(1)
-                if not re.fullmatch(r"[0-9]+", max_results_raw):
-                    errors.append("manifest skills.search.maxResults must be an integer from 1 to 10")
-                else:
-                    max_results = int(max_results_raw)
-                    if not 1 <= max_results <= 10:
-                        errors.append("manifest skills.search.maxResults must be between 1 and 10")
-        except UnicodeDecodeError:
-            errors.append(".harness/manifest.yaml is not UTF-8")
+        # Эти три значения участвуют в bootstrap до того, как произвольная
+        # project configuration может быть безопасно применена. Manifest
+        # документирует canonical identity, но не предоставляет relocation API.
+        fixed_bootstrap_paths = {
+            "protocol.file": (
+                protocol_path(root),
+                ".harness/docs/EXECUTION_PROTOCOL.md",
+            ),
+            "repository.harnessPolicy": (
+                repository_path(root, "harnessPolicy"),
+                ".harness/harness-policy.toml",
+            ),
+            "repository.harnessUpdatePolicy": (
+                repository_path(root, "harnessUpdatePolicy"),
+                ".harness/harness-update.toml",
+            ),
+            "repository.harnessValidation": (
+                repository_path(root, "harnessValidation"),
+                ".harness/tools/validate.py",
+            ),
+            "repository.harnessCI": (
+                repository_path(root, "harnessCI"),
+                ".github/workflows/harness-integrity.yml",
+            ),
+        }
+        for key, (configured, expected) in fixed_bootstrap_paths.items():
+            actual = configured.relative_to(root).as_posix()
+            if actual != expected:
+                errors.append(
+                    f"manifest {key} is bootstrap-fixed and must equal {expected}, got {actual}"
+                )
+    except ConfigError as exc:
+        errors.append(f"manifest: {exc}")
 
     # --- Git policy: безопасные mutation rules ----------------------------
     # Проверяем semantics, от которых зависит безопасность COMMIT/PUSH/PR/SYNC:
     # force-push, protected branches, staging и PR automation.
-    git_policy_path = root / ".harness" / "git-policy.toml"
+    try:
+        git_policy_path = repository_path(root, "gitPolicy")
+    except ConfigError as exc:
+        errors.append(f"git-policy: {exc}")
+        git_policy_path = root / ".harness" / "__invalid_git_policy__"
     if git_policy_path.exists():
         try:
             gp = load_toml(git_policy_path)
 
             if gp.get("version") != 1:
                 errors.append("git-policy: version must be 1")
+            unexpected_top = sorted(
+                set(gp) - {"version", "commit", "branch", "push", "pull_request", "sync"}
+            )
+            if unexpected_top:
+                errors.append(
+                    "git-policy: unsupported top-level settings: "
+                    + ", ".join(unexpected_top)
+                )
 
             commit = gp.get("commit", {})
             if commit.get("style") != "conventional":
@@ -1139,6 +953,32 @@ def main() -> int:
             ]:
                 if not isinstance(commit.get(key), bool):
                     errors.append(f"git-policy: commit.{key} must be boolean")
+            allowed_commit_keys = {
+                "style",
+                "stage_mode",
+                "subject_max_length",
+                "require_body",
+                "require_harness_validation",
+                "require_single_logical_change",
+                "include_verification",
+                "include_traceability",
+                "allow_empty",
+                "sign",
+                "types",
+            }
+            unexpected_commit = sorted(set(commit) - allowed_commit_keys)
+            if unexpected_commit:
+                errors.append(
+                    "git-policy: unsupported commit settings: "
+                    + ", ".join(unexpected_commit)
+                )
+            commit_types = commit.get("types")
+            if not isinstance(commit_types, dict) or not commit_types or not all(
+                isinstance(key, str) and key.strip()
+                and isinstance(value, str) and value.strip()
+                for key, value in commit_types.items()
+            ):
+                errors.append("git-policy: commit.types must be a non-empty string map")
 
             branch = gp.get("branch", {})
             protected = branch.get("protected")
@@ -1165,6 +1005,26 @@ def main() -> int:
                 for key, value in prefixes.items()
             ):
                 errors.append("git-policy: branch.prefixes must be a non-empty string map")
+            elif isinstance(commit_types, dict) and set(prefixes) != set(commit_types):
+                errors.append(
+                    "git-policy: branch.prefixes keys must exactly match commit.types keys"
+                )
+            allowed_branch_keys = {
+                "protected",
+                "when_on_protected",
+                "allow_initial_commit_on_protected",
+                "default_base",
+                "reuse_current_non_protected",
+                "name_pattern",
+                "slug_max_length",
+                "prefixes",
+            }
+            unexpected_branch = sorted(set(branch) - allowed_branch_keys)
+            if unexpected_branch:
+                errors.append(
+                    "git-policy: unsupported branch settings: "
+                    + ", ".join(unexpected_branch)
+                )
 
             push = gp.get("push", {})
             remote = push.get("remote")
@@ -1185,6 +1045,24 @@ def main() -> int:
             ]:
                 if not isinstance(push.get(key), bool):
                     errors.append(f"git-policy: push.{key} must be boolean")
+            allowed_push_keys = {
+                "remote",
+                "set_upstream",
+                "fetch_before_push",
+                "if_remote_ahead",
+                "force",
+                "push_tags",
+                "allow_protected",
+                "allow_initial_push_to_protected",
+                "require_harness_validation",
+                "require_clean_worktree",
+            }
+            unexpected_push = sorted(set(push) - allowed_push_keys)
+            if unexpected_push:
+                errors.append(
+                    "git-policy: unsupported push settings: "
+                    + ", ".join(unexpected_push)
+                )
 
             pull_request = gp.get("pull_request", {})
             if pull_request.get("after_push") not in {"never", "ask", "create-if-missing"}:
@@ -1193,9 +1071,40 @@ def main() -> int:
                 value = pull_request.get(key)
                 if not isinstance(value, str) or not value.strip():
                     errors.append(f"git-policy: pull_request.{key} must be a non-empty string")
+            body_template = pull_request.get("body_template")
+            if isinstance(body_template, str) and body_template.strip():
+                try:
+                    template_path = resolve_repo_path(
+                        root,
+                        body_template,
+                        label="git-policy pull_request.body_template",
+                    )
+                    if not template_path.is_file():
+                        errors.append(
+                            "git-policy: pull_request.body_template does not exist: "
+                            + body_template
+                        )
+                except ConfigError as exc:
+                    errors.append(f"git-policy: {exc}")
             for key in ["draft", "reuse_existing", "title_from_commit"]:
                 if not isinstance(pull_request.get(key), bool):
                     errors.append(f"git-policy: pull_request.{key} must be boolean")
+            allowed_pr_keys = {
+                "after_push",
+                "provider",
+                "preferred_tool",
+                "base",
+                "body_template",
+                "draft",
+                "reuse_existing",
+                "title_from_commit",
+            }
+            unexpected_pr = sorted(set(pull_request) - allowed_pr_keys)
+            if unexpected_pr:
+                errors.append(
+                    "git-policy: unsupported pull_request settings: "
+                    + ", ".join(unexpected_pr)
+                )
 
             sync = gp.get("sync", {})
             fetch_remote = sync.get("fetch_remote")
@@ -1210,8 +1119,10 @@ def main() -> int:
                 )
             if "safety" in gp:
                 errors.append("git-policy: [safety] is no longer supported; use .harness/harness-policy.toml")
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(
+                f"git-policy: cannot parse/validate {git_policy_path.relative_to(root)}: {exc}"
+            )
 
     # В commit-mode staged state — информационная проверка: агент ещё может
     # безопасно сформировать stage согласно git-policy.

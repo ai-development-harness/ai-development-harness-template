@@ -72,11 +72,15 @@ Mode не является пользовательской командой и�
 
 Resolver не создаёт новые transitions: для chain/orchestration он использует CTS; для single execution после completion автоматически ничего не продолжает.
 
-### Plan basis
+### Plan context basis
 
-SHA-256 fingerprint нормализованного STEP contract, сохранённый рядом с Implementation plan.
+SHA-256 fingerprint relevant planning context, сохранённый в `plan.context_basis`.
 
-Если текущий contract hash отличается от stored Plan basis, plan считается stale и resolver возвращает `STEP PLAN STEP-NNN` без LLM reasoning.
+В него входят STEP contract, linked canonical REQ/ADR, type-specific completion proofs прямых dependencies, explicit `architecture_refs` и relevant canonical OQ. Нерелевантные части architecture baseline не должны инвалидировать plan.
+
+### Plan content hash
+
+Отдельный SHA-256 fingerprint нормализованного текста `Implementation plan`. Он нужен потому, что изменение самого плана должно делать Ready stale даже при неизменном product contract.
 
 ### Project Knowledge Base
 
@@ -120,22 +124,15 @@ SHA-256 fingerprint нормализованного STEP contract, сохран
 
 Текущее lifecycle-состояние артефакта.
 
-Для STEP Harness использует:
+For canonical STEP machine status Harness использует protocol-English enum: `planned | in_progress | blocked | completed | deferred | cancelled`. Человекочитаемый UI/projection может локализовать эти значения, но frontmatter не локализуется.
 
-- `Запланировано` — task существует, но implementation не начат;
-- `В работе` — STEP фактически выполняется;
-- `Выполнено` — acceptance criteria доказаны verification/evidence и необходимые review gates пройдены;
-- `Заблокировано` — работа не может продолжаться без внешнего prerequisite/решения;
-- `Отменено` — STEP сознательно больше не требуется;
-- `Заменено` — STEP исторически сохранён, но его роль выполняет другой STEP/решение.
-
-Для REQ Harness использует `Запланировано`, `Частично`, `Выполнено`, `Отложено`, `Отменено`. REQ lifecycle-state не является частью canonical definition: он хранится только в `docs/requirements/STATUS.md` и выводится из фактического STEP coverage, verification/evidence и review. Lifecycle-state не должен дублироваться ни в `REQ-NNN-*.md`, ни в `SPEC.md`.
+REQ lifecycle-state не является canonical field. Он детерминированно выводится из canonical REQ + STEP completion proofs и отражается только в requirements STATUS projection.
 
 ### Priority
 
 Относительная важность STEP для порядка работы. Priority не отменяет dependencies: критичный, но заблокированный STEP не становится executable только из-за высокого приоритета.
 
-Конкретная шкала может быть определена проектом, например `Критический / Высокий / Средний / Низкий`.
+Canonical machine priority использует closed enum `critical | high | medium | low`. Проекции/UI могут локализовать отображение.
 
 ### Phase
 
@@ -147,7 +144,7 @@ SHA-256 fingerprint нормализованного STEP contract, сохран
 
 ### Type
 
-Класс STEP, определяющий допустимую семантику выполнения (`IMPLEMENTATION`, `BUGFIX`, `ADR`, `RESEARCH`, `AUDIT`, `REVIEW`, `DOCUMENTATION`, `HARDENING`, `RELEASE`). `STEP RUN STEP-NNN` обязан учитывать Type.
+Canonical machine `type` определяет семантику выполнения: `implementation | bugfix | refactor | research | adr | audit | review | hardening | documentation | release`. `STEP RUN STEP-NNN` обязан учитывать type-specific flow/completion proof.
 
 ## Часто встречающиеся технические сокращения
 
@@ -213,12 +210,14 @@ REQ отвечает на вопрос:
 
 ```text
 REQ-014
-REQ-AUTH-003
+REQ-1000
 ```
+
+Protocol ID pattern — `REQ-NNN+`: минимум три цифры, без искусственного верхнего предела.
 
 REQ не должен описывать конкретный файл или implementation technique без необходимости. Один REQ может реализовываться несколькими STEP.
 
-Canonical source definition/rationale/acceptance/traceability: отдельный `docs/requirements/REQ-NNN-*.md`. `docs/requirements/SPEC.md` — только index projection; текущий lifecycle-статус REQ находится только в `docs/requirements/STATUS.md`.
+Canonical REQ находится в configured `sources.requirements`. `SPEC.md`/`STATUS.md` внутри configured requirements directory — deterministic projections, а не competing truth.
 
 ### ADR — Architecture Decision Record
 
@@ -238,7 +237,7 @@ Accepted ADR не переписывается задним числом при 
 
 ADR не создаётся для каждой мелкой реализации. Он нужен, когда решение формирует долгоживущий контракт, границу подсистем, security/data model, integration strategy или другой значимый trade-off.
 
-Canonical source: `docs/adr/`.
+Canonical ADR находится в configured `sources.adrDirectory`.
 
 ### ASR
 
@@ -258,44 +257,44 @@ STEP отвечает на вопрос:
 
 Task-файл определяет status, type, priority, dependencies, связанные REQ/ADR, goal, context, scope, mutation policy, out of scope, acceptance criteria, verification, deliverables, implementation plan и evidence.
 
-Canonical source: `planning/tasks/STEP-NNN.md`.
+Canonical STEP находится в configured `protocol.taskDirectory`.
 
 ### PLAN
 
 Термин используется в двух смыслах:
 
-1. **`planning/PLAN.md`** — roadmap projection всех STEP и их порядка/зависимостей.
+1. **configured `sources.roadmap`** — deterministic roadmap projection всех STEP и их порядка/зависимостей.
 2. **`STEP PLAN STEP-NNN`** — команда, которая проводит pre-implementation analysis и сохраняет `Implementation plan` в task-файл.
 
 `PLAN.md` не заменяет task-файлы и не является вторым каноническим описанием STEP.
 
 ### STATUS
 
-`planning/STATUS.md` — производная сводка текущего состояния STEP, blockers и progress.
+Configured `sources.status` — deterministic projection текущего состояния STEP.
 
-`docs/requirements/STATUS.md` — производная сводка состояния REQ.
+Requirements `STATUS.md` внутри configured `sources.requirements` — deterministic projection lifecycle REQ.
 
 STATUS-файлы — **projection**, а не самостоятельный источник контрактов.
 
 ### PROJECT_BRIEF
 
-`PROJECT_BRIEF.local.md` — локальный сырой ввод пользователя для bootstrap. Он может быть неполным, субъективным и содержать приватные ссылки.
+Configured `sources.localBrief` — локальный сырой ввод пользователя для bootstrap. Default template использует `PROJECT_BRIEF.local.md`.
 
 Brief не является permanent source of truth после `PROJECT INIT`. Нормализованный контекст переносится в project documentation.
 
 ### PROJECT.md
 
-`docs/PROJECT.md` — нормализованное описание продукта: назначение, пользователи, цели, границы, constraints и high-level scenarios.
+Configured `sources.projectOverview` — нормализованное описание продукта: назначение, пользователи, цели, границы, constraints и high-level scenarios.
 
 ### Architecture baseline
 
-`docs/architecture.md` — актуальная документальная проекция текущей архитектуры. В отличие от ADR, baseline может обновляться по мере эволюции системы, но должен оставаться согласованным с Accepted ADR и фактическим состоянием.
+Configured `sources.architecture` — актуальный architecture baseline. STEP включает в planning basis только explicit `architecture_refs` на relevant document/anchor, а не весь baseline автоматически.
 
 ### Open Question
 
 Нерешённый вопрос, на который нельзя безопасно ответить на основании имеющихся источников.
 
-Хранится в `docs/OPEN_QUESTIONS.md` либо превращается в `RESEARCH`/`ADR` STEP, если блокирует движение проекта.
+Canonical Open Question хранится отдельным schema-v1 `OQ-NNN-*.md` в configured `sources.openQuestions`; configured `sources.openQuestionsIndex` — deterministic projection. Blocking OQ может потребовать `RESEARCH`/`ADR` STEP.
 
 ## Содержимое STEP
 
@@ -353,7 +352,7 @@ Evidence обязано различать **буквально захвачен
 
 ### Risk Flag
 
-Классификация риска, влияющая на orchestration. Например security-sensitive, data migration, concurrency, breaking API, infrastructure. Risk flags могут запускать дополнительного reviewer или более сильную модель.
+Классификация риска, влияющая на orchestration. Canonical `risk_flags` используют closed enum: `none`, `security-sensitive`, `data-migration`, `destructive`, `public-api`, `architecture`, `concurrency`, `external-integration`, `performance-critical`, `release-critical`. `none` взаимоисключающий. Flags участвуют в deterministic specialized-review preselector.
 
 ### Implementation Plan
 
@@ -411,11 +410,13 @@ Review report хранится отдельно и не переписывает
 
 ### Verdict
 
-Итог review:
+Итог независимого review:
 
-- `PASS` — существенных проблем, блокирующих закрытие, не найдено;
-- `FAIL` — найдены подтверждённые проблемы, требующие исправления;
-- `BLOCKED` — reviewer не может достоверно завершить проверку из-за отсутствующего prerequisite/evidence/environment.
+- `PASS` — material closing problems не обнаружено, acceptance/evidence достаточны;
+- `FAIL` — подтверждены implementation/evidence defects, которые можно исправить внутри существующего STEP contract;
+- `BLOCKED` — review/planning не может безопасно продолжаться из-за contract contradiction, missing decision/prerequisite, stale planning context или другого препятствия, которое нельзя честно превратить в обычный FIX.
+
+`BLOCKED` терминален для текущей execution и не должен автоматически превращаться в `FAIL → FIX`.
 
 ### FIX
 

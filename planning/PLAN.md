@@ -1,9 +1,6 @@
 # Project Roadmap
 
-> Projection-файл. Полный контракт каждого шага находится в `planning/tasks/STEP-NNN.md`.
-
-`PROJECT INIT` заменит пример фактическим roadmap.
+> Tracked deterministic projection. Полный contract каждого STEP находится в configured protocol.taskDirectory.
 
 | STEP | Название | Type | Priority | Status | Depends on | REQ |
 |---|---|---|---|---|---|---|
-| STEP-001 | TEMPLATE | IMPLEMENTATION | Средний | Запланировано | — | REQ-001 |

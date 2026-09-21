@@ -387,7 +387,7 @@ GIT CHECK > COMMIT > PUSH > PR
 python3 .harness/tools/check-command-references.py --json
 ```
 
-Основные project paths (`projectOverview`, `requirements`, `architecture`, `roadmap`, `status`, `taskDirectory`) checker берёт из `.harness/manifest.yaml`, поэтому нестандартный layout не теряется. Дополнительно проверяются `README.md` и live project Markdown под `docs/**`, кроме immutable `docs/adr/**`. Harness documentation находится отдельно в `.harness/docs/**` и в project-doc scan не входит.
+Основные project paths, canonical Open Questions и taskDirectory checker берёт через единый manifest config layer, поэтому нестандартный layout не теряется. Дополнительно проверяются `README.md` и live subsystem Markdown под default `docs/**`; configured `sources.adrDirectory` исключается как decision history независимо от фактического пути. Harness documentation находится отдельно в `.harness/docs/**` и в project-doc scan не входит.
 
 Исторические артефакты намеренно не переписываются и не входят в deterministic scope: immutable review/audit/release/update/search reports и ADR history могут сохранять синтаксис, который был корректен в момент создания записи.
 

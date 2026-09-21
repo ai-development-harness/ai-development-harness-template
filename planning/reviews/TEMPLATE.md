@@ -1,21 +1,42 @@
-# STEP REVIEW STEP-NNN — YYYY-MM-DD HH:MM
+---
+schema: 1
+kind: step_review
+step_id: STEP-NNN
+verdict: pass
+reviewer_role: reviewer
+created_at: YYYY-MM-DDTHH:MM:SSZ
+reviewed_revision:
+  git_head: null
+  worktree_hash: null
+specialized_reviews:
+  gate_basis: sha256:...
+  required: []
+  security: not_required
+  security_evidence: null
+  security_reason: no_security_surface
+  tests: not_required
+  tests_evidence: null
+  tests_reason: no_test_surface
+---
 
-**Reviewer role:** reviewer
-**Verdict:** PASS | FAIL | BLOCKED
-**Reviewed revision:** git SHA / working tree description
+# STEP REVIEW STEP-NNN — YYYY-MM-DD HH:MM
 
 ## Scope checked
 
 - Task contract
-- REQ/ADR
+- REQ/ADR/OQ/architecture refs
 - Implementation plan
 - Diff/current code
 - Tests/verification
 
 ## Findings
 
-### F-001 — Severity — Title
+При PASS material findings отсутствуют.
 
+### F-001 — Title
+
+**Severity:** high
+**Category:** implementation
 **Location:** path:line / component
 **Scenario:** Given / When / Then
 **Impact:** ...
@@ -23,13 +44,8 @@
 
 ## Verification observations
 
-TBD
-
-## Specialized reviews
-
-- Security: not required / report reference
-- Tests: not required / report reference
+Зафиксировать реальные проверки и ограничения доказательств.
 
 ## Verdict rationale
 
-TBD
+Кратко объяснить, почему verdict следует из findings и evidence.

@@ -15,6 +15,18 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from harness_config import (
+    adr_directory,
+    architecture_path,
+    open_questions_directory,
+    open_questions_index_path,
+    project_overview_path,
+    requirements_directory,
+    roadmap_path,
+    status_path,
+    task_directory,
+)
+
 
 @dataclass(frozen=True)
 class DeprecatedCommandPattern:
@@ -100,75 +112,31 @@ def scan_files(root: Path, paths: Iterable[Path]) -> list[DeprecatedCommandFindi
 
 
 def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
-    """Прочитать live project paths из простого scalar subset manifest.yaml.
-
-    Полный YAML parser намеренно не нужен: Harness manifest использует top-level
-    sections и scalar path values. Неизвестные/сложные значения fail-closed.
-    """
-    manifest = root / ".harness" / "manifest.yaml"
+    """Вернуть configured live project paths через единый config layer."""
     try:
-        text = manifest.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise RuntimeError(f"cannot read Harness manifest {manifest}: {exc}") from exc
-
-    wanted = {
-        "sources": {"projectOverview", "requirements", "architecture", "roadmap", "status"},
-        "protocol": {"taskDirectory"},
-    }
-    values: dict[tuple[str, str], str] = {}
-    section: str | None = None
-
-    for raw_line in text.splitlines():
-        if not raw_line or raw_line.lstrip().startswith("#"):
-            continue
-        top = re.fullmatch(r"([A-Za-z0-9_.-]+):\s*(?:#.*)?", raw_line)
-        if top:
-            section = top.group(1)
-            continue
-        if section not in wanted:
-            continue
-        item = re.match(r"^  ([A-Za-z0-9_.-]+):\s*([^#\s][^#]*?)\s*(?:#.*)?$", raw_line)
-        if not item or item.group(1) not in wanted[section]:
-            continue
-        value = item.group(2).strip().strip('"').strip("'")
-        if value:
-            values[(section, item.group(1))] = value
-
-    missing = [
-        f"{section}.{key}"
-        for section, keys in wanted.items()
-        for key in sorted(keys)
-        if (section, key) not in values
-    ]
-    if missing:
-        raise RuntimeError(
-            "Harness manifest missing command-reference scan paths: " + ", ".join(missing)
-        )
-
-    def resolve_repo_path(value: str) -> Path:
-        rel = Path(value)
-        if rel.is_absolute() or ".." in rel.parts:
-            raise RuntimeError(f"Harness manifest path escapes repository: {value}")
-        return root / rel
-
-    project_paths = [
-        resolve_repo_path(values[("sources", key)])
-        for key in ("projectOverview", "requirements", "architecture", "roadmap", "status")
-    ]
-    task_directory = resolve_repo_path(values[("protocol", "taskDirectory")])
-    return project_paths, task_directory
+        project_paths = [
+            project_overview_path(root),
+            requirements_directory(root),
+            architecture_path(root),
+            open_questions_directory(root),
+            open_questions_index_path(root),
+            roadmap_path(root),
+            status_path(root),
+        ]
+        tasks = task_directory(root)
+    except Exception as exc:
+        raise RuntimeError(f"cannot resolve command-reference scan paths: {exc}") from exc
+    return project_paths, tasks
 
 
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
 
-    Primary project paths и taskDirectory берутся из .harness/manifest.yaml.
-    Source path может быть файлом или каталогом; каталоги рекурсивно раскрываются
-    в Markdown-файлы. Дополнительно сканируются README и live project docs под docs/**.
-    Harness docs находятся вне project-owned `docs/**` под `.harness/docs/**`
-    и поэтому сюда не попадают. Из `docs/**` исключается только `docs/adr/**`
-    как immutable decision history; также не сканируются history-oriented planning
-    records: reviews/audits/releases/updates/searches.
+    Primary project paths, Open Questions и taskDirectory берутся через единый
+    manifest config layer. Source path может быть файлом или каталогом. Дополнительно
+    сканируются README и default live subsystem docs под docs/**. Из configured
+    ADR directory исключаются только canonical ADR-файлы как decision history;
+    сам directory не становится blanket ignore-root.
     """
     manifest_paths, task_directory = _manifest_project_paths(root)
     paths = [root / "README.md"]
@@ -178,13 +146,24 @@ def project_live_document_paths(root: Path) -> list[Path]:
         else:
             paths.append(path)
 
+    # Default docs tree остаётся дополнительной scan surface для subsystem docs.
+    # Configurable adrDirectory может быть широким (вплоть до docs), поэтому
+    # исключаем только canonical ADR documents, а не весь subtree.
     docs_root = root / "docs"
+    try:
+        configured_adr = adr_directory(root)
+    except Exception as exc:
+        raise RuntimeError(f"cannot resolve configured ADR directory: {exc}") from exc
     if docs_root.exists():
         for path in sorted(docs_root.rglob("*.md")):
-            rel = path.relative_to(docs_root)
-            # docs/adr — исторические decision records; старый command syntax там может
-            # намеренно отражать состояние проекта на момент принятия решения.
-            if rel.parts and rel.parts[0] == "adr":
+            # Исторический ADR определяется lexical repository path. Symlink
+            # из другого subsystem path в ADR target остаётся live document и
+            # не должен исчезать из command-reference scan.
+            is_canonical_adr = (
+                path.parent == configured_adr
+                and re.fullmatch(r"ADR-\d{3,}(?:-.+)?\.md", path.name) is not None
+            )
+            if is_canonical_adr:
                 continue
             paths.append(path)
 

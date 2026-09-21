@@ -1,6 +1,6 @@
 # Git workflow Harness
 
-Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются `.harness/git-policy.toml`.
+Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются policy по `.harness/manifest.yaml → repository.gitPolicy`.
 
 ## Команды
 
@@ -95,7 +95,7 @@ after_push = "never"
 
 ### `GIT PR`
 
-`GIT PR` можно вызвать отдельно. Агент использует `.github/pull_request_template.md`, не создаёт duplicate PR и заполняет traceability/verification из repository evidence.
+`GIT PR` можно вызвать отдельно. Агент использует `pull_request.body_template` из configured `repository.gitPolicy`, не создаёт duplicate PR и заполняет traceability/verification из repository evidence. Default template — `.github/pull_request_template.md`.
 
 ### `GIT SYNC`
 
@@ -135,7 +135,7 @@ Harness никогда по умолчанию не выполняет:
 
 ## Что настраивать
 
-Главный файл: `.harness/git-policy.toml`.
+Главный файл разрешается через `.harness/manifest.yaml → repository.gitPolicy`; default template path — `.harness/git-policy.toml`.
 
 Чаще всего меняются:
 

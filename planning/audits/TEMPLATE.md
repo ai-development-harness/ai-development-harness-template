@@ -1,7 +1,13 @@
-# Audit — YYYY-MM-DD
+---
+schema: 1
+kind: audit
+scope: project
+mode: audit
+created_at: YYYY-MM-DDTHH:MM:SSZ
+result: complete
+---
 
-**Scope:** project / STEP-NNN / subsystem
-**Mode:** AUDIT | RECONCILE
+# Audit — YYYY-MM-DD
 
 ## Sources checked
 

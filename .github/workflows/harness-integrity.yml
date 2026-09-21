@@ -53,6 +53,10 @@ jobs:
           # Не оставлять GitHub token в локальном git config runner после checkout.
           # Пример: false снижает ненужные credentials в job, которому push не требуется.
           persist-credentials: false
+          # Полная история нужна CI-gate неизменяемых review reports: validator
+          # сравнивает итоговый commit/PR merge с его первым родителем.
+          # Пример: изменение уже существующего REVIEW-*.md должно быть видно как M/D/R.
+          fetch-depth: 0
 
       # Отображаемое имя шага настройки validator runtime.
       # Пример: "Setup Python".
@@ -80,6 +84,13 @@ jobs:
         # Запустить реальный CLI; DRIFT является audit-data, BLOCKED/ошибка дают non-zero.
         # Пример: JSON output не нужен в CI log при успешном smoke-test.
         run: python3 .harness/tools/check-command-references.py --json >/dev/null
+
+      # Synthetic regression configurable command-reference topology.
+      # Пример: custom ADR directory остаётся historical-only, custom OQ/REQ/tasks сканируются.
+      - name: Validate command reference paths
+        # Synthetic regression manifest-driven scan topology.
+        # Пример: custom ADR history исключается, а custom OQ/REQ/tasks остаются live scan surface.
+        run: python3 .harness/tools/command-references-self-test.py
       # Отображаемое имя smoke-test публичного command structural gate.
       # Пример: подтверждает, что CLI принимает edge из graph и отвергает отсутствующий edge.
       - name: Validate command transition gate
@@ -98,6 +109,27 @@ jobs:
         # Запуск dependency-free self-test на временном synthetic repository.
         # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
         run: python3 .harness/tools/execution-self-test.py
+
+      # Проверить manifest-driven planning paths, transitive Plan basis и static blockers.
+      # Пример: изменение linked REQ после PLAN обязано сделать Ready plan stale без LLM.
+      - name: Validate planning contracts
+        # Dependency-free synthetic regression suite для planning_contract.py.
+        # Пример: проверяет dependency cycles, OPEN questions и custom taskDirectory.
+        run: python3 .harness/tools/planning-contract-self-test.py
+
+      # Проверить manifest/config boundary: language fallback/tags и manifest-driven Git policy.
+      # Пример: произвольная строка вместо BCP 47 tag должна дать deterministic FAIL.
+      - name: Validate Harness config contracts
+        # Synthetic config regression не зависит от project stack.
+        # Пример: custom repository.gitPolicy path реально загружается config layer.
+        run: python3 .harness/tools/harness-config-self-test.py
+
+      # Проверить schema contracts durable audit/release/skill-search reports.
+      # Пример: candidate_count должен точно соответствовать shortlist #1..#N.
+      - name: Validate durable report contracts
+        # Synthetic reports не требуют внешней сети или product runtime.
+        # Пример: malformed release verdict и incomplete skill shortlist дают FAIL.
+        run: python3 .harness/tools/report-contract-self-test.py
 
       # Проверить исторически критичные update/migration invariants на synthetic legacy state.
       # Пример: routing/reload, relocation layout, project templates, ignored artifacts и deferred REQ migration.
