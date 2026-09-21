@@ -105,9 +105,6 @@ plan:
   content_hash: {val(phash)}
   reviewed_report: {val(report)}
   planned_at: {"2026-09-21T00:00:00+00:00" if plan_status == "ready" else "null"}
-review:
-  latest_verdict: not_reviewed
-  latest_report: null
 ---
 
 # STEP-001 — Execution state test

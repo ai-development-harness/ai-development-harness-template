@@ -177,9 +177,6 @@ phase: test
   content_hash: {scalar(plan_hash)}
   reviewed_report: {scalar(reviewed_report)}
   planned_at: {"2026-09-21T00:00:00+00:00" if plan_status == "ready" else "null"}
-review:
-  latest_verdict: not_reviewed
-  latest_report: null
 ---
 
 # {step_id} — Planning contract self-test

@@ -14,8 +14,7 @@ description: Convert a short user request into a versioned, traceable, dependenc
   - protocol-English `type` / `priority`;
   - `phase`;
   - strict lists `depends_on`, `requirements`, `adrs`, `architecture_refs`, `risk_flags`;
-  - `plan.status: not_planned`;
-  - `review.latest_verdict: not_reviewed`.
+  - `plan.status: not_planned`.
 - Новый REQ создавай только для нового product contract в configured `sources.requirements`; обновляй двустороннюю REQ↔STEP traceability.
 - Durable decision → ADR/RESEARCH prerequisite. Обновляй ADR↔STEP traceability.
 - Существенная неопределённость → отдельный canonical OQ schema v1 в configured `sources.openQuestions`; `affects` обязан ссылаться на существующие IDs либо `PROJECT`.
