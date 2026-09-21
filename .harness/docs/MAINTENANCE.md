@@ -88,6 +88,22 @@ Legacy adoption разрешён только для явно известног
 
 Не смешивай upstream skill upgrades с обычным Harness update. У каждого внешнего skill должен быть `UPSTREAM.md` и запись в `docs/skills/REGISTRY.md`. Обновление upstream требует повторного inspection; не делай silent auto-update.
 
+## Поддержка Python validators и validation gates
+
+Python validators являются частью executable protocol contract, поэтому code comments и human-readable reference обновляются **одновременно** с behavior.
+
+При добавлении нового validator/gate или изменении существующего:
+
+1. подробно прокомментируй module responsibility, fail-closed boundary и decision points непосредственно в `.py`;
+2. если есть CLI, опиши все actions/keys, exit codes и минимум по одному типичному примеру в [`VALIDATORS.md`](VALIDATORS.md);
+3. если CLI нет, опиши module как internal contract: кто его вызывает, какие invariants он доказывает и какой результат возвращает;
+4. явно отделяй read-only validation от mutation mode, если один tool поддерживает оба режима;
+5. добавь/обнови regression self-test для нового safety invariant;
+6. проверь, что новый public validator/gate включён в Harness Integrity CI, если он должен быть baseline gate;
+7. не дублируй parsing/config/path semantics — используй общие `harness_config.py` и `document_contract.py`.
+
+Структура разделов в `VALIDATORS.md` намеренно единообразна: **Файл/Файлы → Роль → Когда использовать → Что проверяет → CLI → Аргументы → Exit codes → Примеры → Внутренние зависимости/границы**. Для internal modules без CLI блоки CLI/Аргументы/Exit codes заменяются явным описанием caller contract.
+
 ## Самодокументируемые конфиги
 
 Tracked YAML/TOML в `.harness/`, `.codex/` и baseline GitHub Actions должны оставаться читаемыми без перехода в отдельную справку. Каждый параметр обязан иметь рядом комментарий с назначением и примером. Harness Integrity проверяет это правило для patterns из `.harness/harness-policy.toml`.

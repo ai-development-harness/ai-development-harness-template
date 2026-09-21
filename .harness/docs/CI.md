@@ -2,6 +2,8 @@
 
 `Harness Integrity` — baseline CI, который существует ещё до выбора технологического стека проекта.
 
+Полное описание каждого Python validator/gate, его CLI, ключей, exit codes и внутренних contract-модулей находится в [`VALIDATORS.md`](VALIDATORS.md).
+
 Workflow: `.github/workflows/harness-integrity.yml`.
 
 Validator написан на Python и использует только standard library. Минимальная версия — Python 3.11+, потому что структурная проверка TOML опирается на `tomllib`. Это осознанная небольшая tooling dependency Harness, а не зависимость будущего продукта.

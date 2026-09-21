@@ -16,7 +16,13 @@ from pathlib import Path
 import re
 from typing import Any
 
-# Единственный machine-readable source of truth для command surface и chain edges.
+# ---------------------------------------------------------------------------
+# Schema vocabulary.
+# TABLE_PATH — единственный machine-readable source of truth command surface.
+# ALLOWED_* и KNOWN_RUNTIME_PRECONDITIONS работают как closed sets: новое
+# значение обязано сначала появиться в parser/validator, иначе graph считается
+# несовместимым с текущим runtime.
+# ---------------------------------------------------------------------------
 TABLE_PATH = ".harness/command-transitions.json"
 # Эти множества одновременно документируют и ограничивают schema vocabulary.
 # Новое значение нельзя «просто начать использовать» в JSON — сначала нужно явно
@@ -32,16 +38,25 @@ KNOWN_RUNTIME_PRECONDITIONS = {
 
 
 
-# Загрузить machine-readable CTS table. Функция ничего не кэширует: caller всегда получает фактическое содержимое repository file.
 def load_transition_table(root: Path) -> dict[str, Any]:
+    """Прочитать CTS table текущего repository без cache.
+
+    Ошибки JSON/IO намеренно не маскируются: caller должен трактовать
+    unreadable transition table как invalid protocol state.
+    """
     path = root / TABLE_PATH
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 
-# Проверить внутреннюю целостность transition graph до использования. Ошибки схемы собираются списком, чтобы validator показал все проблемы за один запуск.
 def validate_transition_table(table: dict[str, Any]) -> list[str]:
+    """Проверить schema и непротиворечивость всего transition graph.
+
+    Проверка выполняется до parsing пользовательской команды. Это принципиально:
+    команда не может считаться VALID на основании повреждённого source of truth.
+    Ошибки агрегируются, чтобы CI показывал весь drift одним запуском.
+    """
     errors: list[str] = []
     if table.get("schemaVersion") != 1:
         errors.append("command-transitions: schemaVersion must be 1")
@@ -201,8 +216,8 @@ def validate_transition_table(table: dict[str, Any]) -> list[str]:
 
 
 
-# Вернуть полный canonical command surface из graph. Используется integrity validator-ом для сверки документации и policy.
 def canonical_commands(table: dict[str, Any]) -> list[str]:
+    """Вернуть canonical command surface для policy/docs integrity checks."""
     result: list[str] = []
     for domain in table.get("domains", {}).values():
         for spec in domain.get("commands", {}).values():
@@ -213,7 +228,8 @@ def canonical_commands(table: dict[str, Any]) -> list[str]:
 
 
 
-# Найти operation по longest-match. Это важно для пар вроде UPDATE CHECK / UPDATE APPLY: короткий prefix не должен перехватывать более длинную operation.
+# Longest-match parser operation name. Короткий prefix не может перехватить
+# более длинную operation вроде UPDATE CHECK / UPDATE APPLY.
 def _operation_match(text: str, operations: list[str]) -> tuple[str | None, str]:
     stripped = text.strip()
     # Longest-first обязателен. Например, если когда-либо сосуществуют
@@ -229,7 +245,12 @@ def _operation_match(text: str, operations: list[str]) -> tuple[str | None, str]
 
 
 
-# Разобрать один segment chain. Здесь выполняются только механические правила DOMAIN/target/input inheritance — никакого repository/runtime reasoning.
+# ---------------------------------------------------------------------------
+# Segment parser.
+# Разрешает только DOMAIN/operation/target/input grammar и inheritance. Здесь
+# запрещено repository/runtime reasoning: factual preconditions выполняются
+# после structural CTS gate отдельными tools.
+# ---------------------------------------------------------------------------
 def _parse_segment(
     raw_segment: str,
     table: dict[str, Any],
@@ -391,7 +412,8 @@ def _parse_segment(
 
 
 
-# Разобрать ровно одну canonical command. Эта функция нужна execution layer, когда root chain уже нормализован и требуется безопасно исследовать один segment.
+# Single-command parser для execution layer после normalization root command.
+# Перед parsing снова проверяет table, чтобы caller не смог обойти schema gate.
 def parse_canonical_command(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     """Parse one canonical command without reading repository/runtime state."""
     table_errors = validate_transition_table(table)
@@ -423,7 +445,11 @@ def parse_canonical_command(raw: str, table: dict[str, Any]) -> dict[str, Any]:
 
 
 
-# Главный structural gate: разобрать всю строку и проверить все соседние пары ДО выполнения первого segment.
+# ---------------------------------------------------------------------------
+# Главный structural gate.
+# Вся chain разбирается и все соседние transitions проверяются ДО dispatch
+# первого segment. Это предотвращает partial execution заведомо invalid chain.
+# ---------------------------------------------------------------------------
 def validate_command_text(raw: str, table: dict[str, Any]) -> dict[str, Any]:
     table_errors = validate_transition_table(table)
     if table_errors:

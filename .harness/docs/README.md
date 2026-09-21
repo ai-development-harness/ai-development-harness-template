@@ -30,6 +30,7 @@
 
 - [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md) — `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`.
 - [`CI.md`](CI.md) — Harness Integrity CI и граница между Harness CI и product CI.
+- [`VALIDATORS.md`](VALIDATORS.md) — единый справочник Python-валидаторов, validation gates, CLI-ключей, exit codes и примеров запуска.
 - [`MAINTENANCE.md`](MAINTENANCE.md) — как изменять Harness, не смешивая protocol layer с product knowledge.
 - [`UPDATES.md`](UPDATES.md) — release/lock/ownership/legacy-adoption lifecycle self-update.
 

@@ -22,6 +22,7 @@ required_files = [
   ".claude/settings.json",
   ".claude/agents/harness-updater.md",
   ".harness/docs/README.md",
+  ".harness/docs/VALIDATORS.md",
   ".harness/docs/COMMANDS.md",
   ".harness/docs/COMMAND_SYNTAX.md",
   ".harness/docs/COMMAND_TRANSITIONS.md",

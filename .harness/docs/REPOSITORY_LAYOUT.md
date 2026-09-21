@@ -40,6 +40,9 @@ planning/**      → default project planning/history layout
 │   ├── harness-policy.toml
 │   ├── git-policy.toml
 │   ├── docs/
+│   │   ├── README.md
+│   │   ├── VALIDATORS.md
+│   │   └── ...
 │   ├── tools/
 │   │   ├── harness_config.py
 │   │   ├── document_contract.py

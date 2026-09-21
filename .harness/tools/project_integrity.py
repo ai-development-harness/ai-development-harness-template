@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Cross-document deterministic integrity checks для active project state."""
+"""Cross-document deterministic integrity aggregator active project state.
+
+Этот модуль отвечает за связи **между** canonical artifacts. Низкоуровневую
+schema каждого STEP/report/template проверяют специализированные contract modules,
+а project_integrity собирает их и добавляет reverse traceability, lifecycle и
+configured-artifact invariants.
+
+Прямого CLI нет: основной caller — validate.py и PROJECT INIT finalization.
+"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -103,6 +111,11 @@ def _canonical_adrs(root: Path) -> dict[str, dict[str, Any]]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# REQ integrity.
+# Проверяет unique ID/file/H1/schema/sections и двусторонние REQ <-> STEP/ADR
+# links. Отсутствующая reverse link считается drift, даже если forward ref есть.
+# ---------------------------------------------------------------------------
 def validate_requirements(root: Path) -> list[str]:
     errors: list[str] = []
     req_paths: dict[str, list[Path]] = {}
@@ -184,6 +197,11 @@ def validate_requirements(root: Path) -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# ADR integrity.
+# Помимо schema/refs проверяет reciprocal supersession graph и запрещает cycles,
+# потому что cyclic decision history не имеет deterministic current meaning.
+# ---------------------------------------------------------------------------
 def validate_adrs(root: Path) -> list[str]:
     errors: list[str] = []
     adr_paths: dict[str, list[Path]] = {}
@@ -327,7 +345,11 @@ def validate_adrs(root: Path) -> list[str]:
 
 
 def validate_configured_artifacts(root: Path) -> list[str]:
-    """Проверить обязательные project/update artifacts через configured paths."""
+    """Проверить обязательные artifacts именно по manifest-configured paths.
+
+    Defaults не используются как второй source of truth: relocated/configured
+    path обязан существовать там, где его объявляет manifest.
+    """
     errors: list[str] = []
     checks = [
         (requirements_directory(root) / "TEMPLATE.md", "requirements template"),
@@ -344,6 +366,8 @@ def validate_configured_artifacts(root: Path) -> list[str]:
             errors.append(f"configured artifact missing ({label}): {path.relative_to(root)}")
     return errors
 
+# Update lock связывает current manifest release с source repository/ref/commit.
+# Это repository-level identity check, но не remote tag verification updater-а.
 def validate_update_lock(root: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -396,6 +420,8 @@ def validate_update_lock(root: Path) -> list[str]:
     return errors
 
 
+# Initialized-project invariants применяются только после commit point INIT:
+# имя/timestamp/project overview/canonical REQ+STEP и отсутствие PROJECT blockers.
 def validate_initialized_project(root: Path) -> list[str]:
     errors: list[str] = []
     try:
@@ -433,6 +459,10 @@ def validate_initialized_project(root: Path) -> list[str]:
     return errors
 
 
+# ---------------------------------------------------------------------------
+# Главный project aggregator. allow_legacy — строго migration-only compatibility
+# window; обычный commit/CI проходит полный набор current-schema validators.
+# ---------------------------------------------------------------------------
 def validate_project_integrity(
     root: Path,
     *,

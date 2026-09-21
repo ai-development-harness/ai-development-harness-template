@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Deterministic preselector минимально обязательных specialized reviewers."""
+"""Deterministic preselector обязательных specialized reviewers.
+
+Tool не выполняет semantic review. Он только вычисляет, нужны ли `security`
+и/или `tests` reviewers для конкретного STEP на основании machine-readable
+facts: manifest policy, STEP type/risk flags и factual Git changed surface.
+
+Результат содержит stable `basis`, чтобы persisted review metadata можно было
+сопоставить с теми же exact inputs.
+"""
 from __future__ import annotations
 
 import argparse
@@ -30,6 +38,12 @@ TEST_SURFACE_RE = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# Changed-surface collector.
+# При dirty tree объединяет staged + unstaged + untracked paths.
+# При clean tree использует последний commit только как diagnostic fallback и
+# помечает surfaceMode=clean-tree-fallback, потому что exact STEP diff потерян.
+# ---------------------------------------------------------------------------
 def _git_changed_paths(root: Path) -> tuple[list[str], str]:
     paths: set[str] = set()
     for args in (
@@ -122,6 +136,15 @@ def _git_changed_paths(root: Path) -> tuple[list[str], str]:
     return sorted(path for path in paths if included(path)), surface_mode
 
 
+# ---------------------------------------------------------------------------
+# Главный gate.
+# Порядок решения:
+# 1. прочитать canonical STEP;
+# 2. собрать factual changed surface;
+# 3. применить manifest policy;
+# 4. добавить requirements из risk flags/type/path heuristics;
+# 5. fingerprint-нуть входы в stable basis.
+# ---------------------------------------------------------------------------
 def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
     task = read_task(root, step_id)
     meta = task["frontmatter"]
@@ -187,6 +210,10 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# CLI только отображает deterministic decision; mutations отсутствуют.
+# Text mode удобен человеку, --json — review orchestration/persistence.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("step_id")

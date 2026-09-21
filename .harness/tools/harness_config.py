@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-"""Единый dependency-free config layer AI Development Harness.
+"""Единый dependency-free config/validation boundary AI Development Harness.
 
-Модуль читает ограниченный YAML subset manifest.yaml и update-policy TOML.
-Все core tools используют эти функции вместо собственных regex-парсеров и
-hard-coded project paths. Неизвестная/неподдерживаемая YAML-конструкция
-завершается ошибкой: config boundary должен быть fail-closed.
+Все core tools читают manifest/path/policy values через этот module, чтобы:
+- одинаково интерпретировать restricted YAML subset;
+- одинаково запрещать path escape;
+- не дублировать hard-coded repository topology;
+- не иметь разных fallback semantics у разных validators.
+
+YAML parser намеренно поддерживает только используемый Harness subset.
+Unsupported syntax не "угадывается": ConfigError делает boundary fail-closed.
+
+TOML parsing использует stdlib tomllib. Этот module проверяет синтаксис и
+базовые typed accessors; exact schema конкретных policies проверяют validators,
+которые владеют их semantics.
 """
 from __future__ import annotations
 
@@ -16,9 +24,18 @@ from typing import Any
 
 
 class ConfigError(ValueError):
-    """Невалидная конфигурация Harness."""
+    """Недоказуемая/невалидная Harness configuration boundary.
+
+    Caller не должен подменять ConfigError default-значением, если параметр
+    является safety/identity invariant.
+    """
 
 
+# ---------------------------------------------------------------------------
+# Restricted YAML lexer/parser.
+# Реализован здесь, а не через external dependency, чтобы baseline validator
+# работал сразу после checkout.
+# ---------------------------------------------------------------------------
 def _strip_comment(raw: str) -> str:
     """Удалить YAML comment вне одинарных/двойных кавычек."""
     quote: str | None = None
@@ -72,7 +89,12 @@ def _scalar(raw: str) -> Any:
 
 
 def parse_yaml_subset(text: str) -> dict[str, Any]:
-    """Разобрать mapping/list subset YAML, используемый Harness.
+    """Разобрать строго ограниченный mapping/list subset YAML.
+
+    Duplicate keys, tabs, odd indentation, anchors/tags, flow collections и
+    list-of-maps отвергаются. Такой fail-closed subset лучше частичной поддержки
+    YAML, которая могла бы интерпретироваться по-разному разными tools.
+
 
     Поддерживаются nested mappings, scalar values и block lists из scalar
     элементов. Tabs, multiline scalars, anchors/tags и list-of-maps запрещены.
@@ -147,6 +169,11 @@ def parse_yaml_subset(text: str) -> dict[str, Any]:
     return value
 
 
+# ---------------------------------------------------------------------------
+# Manifest access.
+# Чтение всегда идёт из fixed bootstrap path; последующие project paths уже
+# разрешаются из manifest через resolve_repo_path().
+# ---------------------------------------------------------------------------
 def load_manifest(root: Path) -> dict[str, Any]:
     path = root / ".harness" / "manifest.yaml"
     try:
@@ -172,6 +199,7 @@ def require(config: dict[str, Any], dotted: str) -> Any:
 
 
 def resolve_repo_path(root: Path, value: str, *, label: str) -> Path:
+    """Разрешить repository-relative path и запретить absolute/.. / symlink escape."""
     if not isinstance(value, str) or not value.strip():
         raise ConfigError(f"{label} must be a non-empty repository-relative path")
     rel = Path(value)
@@ -186,6 +214,8 @@ def resolve_repo_path(root: Path, value: str, *, label: str) -> Path:
     return candidate
 
 
+# Все path accessors ниже intentionally проходят через один containment check.
+# Ни один caller не должен вручную конкатенировать configured repository path.
 def manifest_path(root: Path, dotted: str) -> Path:
     manifest = load_manifest(root)
     value = require(manifest, dotted)
@@ -289,6 +319,11 @@ def _language_tag(value: Any, *, label: str) -> str:
     return value.strip()
 
 
+# ---------------------------------------------------------------------------
+# Typed semantic accessors manifest.
+# Они проверяют значения в момент использования и возвращают только допустимый
+# domain; invalid value превращается в ConfigError.
+# ---------------------------------------------------------------------------
 def language_value(root: Path, key: str) -> str:
     manifest = load_manifest(root)
     default = _language_tag(
@@ -326,7 +361,7 @@ def skill_search_max_results(root: Path) -> int:
 
 
 def load_git_policy(root: Path) -> dict[str, Any]:
-    """Прочитать configured Git policy через manifest repository.gitPolicy."""
+    """Прочитать configured Git policy; exact safety schema проверяет git preflight/validator."""
     path = repository_path(root, "gitPolicy")
     try:
         with path.open("rb") as fh:
@@ -336,6 +371,7 @@ def load_git_policy(root: Path) -> dict[str, Any]:
 
 
 def load_update_policy(root: Path) -> dict[str, Any]:
+    """Прочитать configured Harness update policy с единым TOML error contract."""
     path = repository_path(root, "harnessUpdatePolicy")
     try:
         with path.open("rb") as fh:
@@ -344,6 +380,8 @@ def load_update_policy(root: Path) -> dict[str, Any]:
         raise ConfigError(f"cannot read Harness update policy {path}: {exc}") from exc
 
 
+# Update policy paths получают ту же repository-containment защиту, что и
+# manifest paths: remote/config value не может вывести tool за checkout.
 def update_policy_path(root: Path, dotted: str) -> Path:
     policy = load_update_policy(root)
     value = require(policy, dotted)

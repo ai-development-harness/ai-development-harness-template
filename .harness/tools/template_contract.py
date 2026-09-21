@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Default schema-v1 project-owned templates.
+"""Canonical schema-v1 contract project-owned templates.
 
-Protocol-owned definitions задают bootstrap/default content, но после INIT
-существующий TEMPLATE.md принадлежит проекту и не перезаписывается RECONCILE.
+До PROJECT INIT templates являются bootstrap baseline и должны byte-for-byte
+совпадать с protocol definitions. После INIT template становится project-owned:
+validator требует совместимую structural shape, но не перезаписывает custom
+prose/values.
+
+Это разделение не позволяет protocol update молча уничтожить project-specific
+template customizations, одновременно сохраняя обязательные schema fields.
 """
 from __future__ import annotations
 
@@ -435,6 +440,8 @@ candidate_count: 0
 `SKILL INSTALL: #1` либо `SKILL CREATE: <description>`.
 """
 
+# Единственная карта configured template path -> protocol default content.
+# Bootstrap, validator и RECONCILE используют одну и ту же definition surface.
 def template_targets(root: Path) -> dict[Path, str]:
     architecture_ref = architecture_path(root).relative_to(root.resolve()).as_posix()
     step_template = STEP_TEMPLATE.replace(
@@ -456,7 +463,7 @@ def template_targets(root: Path) -> dict[Path, str]:
 
 
 def refresh_project_templates(root: Path) -> list[str]:
-    """Создать отсутствующие project-owned templates, не переписывая custom content."""
+    """Создать только отсутствующие templates, не переписывая project content."""
     changed: list[str] = []
     for path, expected in template_targets(root).items():
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -468,7 +475,7 @@ def refresh_project_templates(root: Path) -> list[str]:
 
 
 def _required_mapping_shape(expected: Any, actual: Any, *, prefix: str) -> list[str]:
-    """Проверить наличие structural keys, не сравнивая project-owned values."""
+    """Рекурсивно потребовать structural keys без equality project-owned values."""
     errors: list[str] = []
     if not isinstance(expected, dict):
         return errors
@@ -490,7 +497,11 @@ def _required_mapping_shape(expected: Any, actual: Any, *, prefix: str) -> list[
 
 
 def _validate_template_shape(path: Path, expected: str) -> list[str]:
-    """Проверить текущую schema shape, сохранив custom prose/values проекта."""
+    """Проверить current schema shape без требования byte-for-byte content.
+
+    Expected template разбирается in-memory тем же document parser-ом; validator
+    не создаёт temporary repository artifact ради comparison.
+    """
     errors: list[str] = []
     try:
         actual_doc = parse_document(path)
@@ -538,7 +549,11 @@ def _validate_template_shape(path: Path, expected: str) -> list[str]:
 
 
 def validate_project_templates(root: Path) -> list[str]:
-    """До INIT нужен exact baseline; после INIT — compatible shape без overwrite."""
+    """Проверить phase-dependent ownership contract templates.
+
+    До INIT: exact protocol baseline.
+    После INIT: compatible schema/sections, custom content разрешён.
+    """
     errors: list[str] = []
     initialized = bool(get(load_manifest(root), "project.initialized", False))
     for path, expected in template_targets(root).items():

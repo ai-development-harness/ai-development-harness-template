@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Универсальное crash-safe состояние выполнения Harness-команд.
 
+Validation note
+---------------
+Модуль в целом не является standalone validator, но `validate_status()` —
+обязательная schema boundary local execution state. И чтение, и запись проходят
+через неё, поэтому повреждённый JSON/state не трактуется как "истории нет".
+
+
+
 Модуль хранит operational history всех canonical invocations в одном локальном
 файле .harness/local/execution/execution-status.json. Он не является audit log
 и не заменяет canonical project artifacts.
@@ -106,8 +114,14 @@ def load_status(root: Path) -> dict[str, Any]:
 
 
 
-# Проверить минимальные инварианты operational state: уникальные IDs, допустимые modes/status/result и корректный current command.
+# ---------------------------------------------------------------------------
+# Execution Status schema validator.
+# Проверяет только форму operational state; допустимость command transitions
+# остаётся за CTS. Такое разделение не превращает local recovery state во второй
+# source of truth protocol semantics.
+# ---------------------------------------------------------------------------
 def validate_status(value: dict[str, Any]) -> list[str]:
+    """Проверить schemaVersion, records, IDs, modes/status/results и attempts."""
     errors: list[str] = []
     if value.get("schemaVersion") != 1:
         errors.append("execution-status: schemaVersion must be 1")
@@ -192,7 +206,9 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
 
 
 
-# Проверить state перед записью и сохранить его атомарно. Любая mutation local execution state проходит через эту точку.
+# Любая запись local execution state проходит через тот же validator, что и
+# load_status(). Нельзя сохранить структуру, которую следующий процесс не сможет
+# корректно восстановить.
 def save_status(root: Path, value: dict[str, Any]) -> None:
     errors = validate_status(value)
     if errors:

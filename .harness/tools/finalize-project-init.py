@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Атомарно завершить PROJECT INIT только после всех durable gates."""
+"""Финальный deterministic gate PROJECT INIT.
+
+--check выполняет только precondition validation.
+Без --check tool становится mutator-ом: project.initialized=true фиксируется
+только после PASS project/document/review/projection gates.
+
+Любая postcondition failure откатывает manifest в exact pre-finalize state.
+"""
 from __future__ import annotations
 
 import argparse
@@ -27,6 +34,10 @@ def utc_now() -> str:
 
 
 def preconditions(root: Path, name: str) -> list[str]:
+    """Собрать все блокирующие условия INIT без mutation.
+
+    Ошибки агрегируются, чтобы один запуск показал полный набор причин BLOCKED.
+    """
     errors: list[str] = []
     manifest = load_manifest(root)
     if get(manifest, "project.initialized") is not False:
@@ -69,6 +80,11 @@ def preconditions(root: Path, name: str) -> list[str]:
 
 
 def _replace_project_fields(text: str, name: str, timestamp: str) -> str:
+    """Подготовить candidate manifest без записи на диск.
+
+    Отсутствие bootstrap project field считается schema drift и блокирует INIT,
+    а не приводит к добавлению нового поля эвристически.
+    """
     replacements = {
         "initialized": "true",
         "name": json.dumps(name, ensure_ascii=False),
@@ -84,6 +100,7 @@ def _replace_project_fields(text: str, name: str, timestamp: str) -> str:
 
 
 def finalize(root: Path, name: str) -> dict[str, str]:
+    """Атомарно зафиксировать initialized=true после PASS preconditions."""
     errors = preconditions(root, name)
     if errors:
         raise ValueError("; ".join(errors))
@@ -113,6 +130,11 @@ def finalize(root: Path, name: str) -> dict[str, str]:
     return {"status": "INITIALIZED", "name": name.strip(), "initializedAt": timestamp}
 
 
+# ---------------------------------------------------------------------------
+# CLI имеет два режима с одинаковым набором preconditions:
+# --check -> read-only PASS/BLOCKED;
+# default -> finalize + postcondition + rollback при ошибке.
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", required=True)
