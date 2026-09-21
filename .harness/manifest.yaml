@@ -58,8 +58,8 @@ language:
   # Язык обычных ответов агентов пользователю.
   # Пример: ru; если ключ удалить, используется language.default.
   agentResponses: ru
-  # Язык project documentation и human-readable частей durable reports.
-  # Пример: ru; machine frontmatter keys/enums не локализуются.
+  # Язык agent-authored prose в project documentation и durable reports.
+  # Пример: ru; protocol headings, machine frontmatter keys/enums и deterministic boilerplate не локализуются.
   documentation: ru
   # Язык автоматически сформированных commit message subject/body.
   # Пример: ru; Conventional Commit identifiers остаются техническими.
