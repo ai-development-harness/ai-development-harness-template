@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from document_contract import DocumentError, parse_document, parse_sections, split_frontmatter
+from document_contract import atomic_write_text, DocumentError, parse_document, parse_sections, split_frontmatter
 from harness_config import (
     adr_directory,
     architecture_path,
@@ -462,7 +462,7 @@ def refresh_project_templates(root: Path) -> list[str]:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.is_file():
             continue
-        path.write_text(expected, encoding="utf-8", newline="\n")
+        atomic_write_text(path, expected)
         changed.append(path.relative_to(root).as_posix())
     return changed
 
