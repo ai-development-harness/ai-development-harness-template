@@ -121,6 +121,7 @@ def validate_requirements(root: Path) -> list[str]:
             errors.append(f"requirements: duplicate canonical id {req_id}: {rendered}")
 
     reqs = _canonical_requirements(root)
+    adrs = _canonical_adrs(root)
     tasks: dict[str, dict[str, Any]] = {}
     for path in task_directory(root).glob("STEP-*.md"):
         try:
@@ -151,6 +152,15 @@ def validate_requirements(root: Path) -> list[str]:
                 if pattern.fullmatch(value) is None:
                     errors.append(f"{prefix}: invalid {key} reference {value}")
         errors.extend(f"{prefix}: {issue}" for issue in require_nonempty_sections(doc, REQ_SECTIONS))
+
+        for adr_id in meta.get("adrs", []) if isinstance(meta.get("adrs"), list) else []:
+            adr = adrs.get(adr_id)
+            if adr is None:
+                errors.append(f"{prefix}: referenced ADR does not exist: {adr_id}")
+            else:
+                reverse = adr["frontmatter"].get("requirements", [])
+                if not isinstance(reverse, list) or req_id not in reverse:
+                    errors.append(f"{prefix}: reverse ADR traceability mismatch with {adr_id}")
 
         for step_id in meta.get("steps", []) if isinstance(meta.get("steps"), list) else []:
             task = tasks.get(step_id)
@@ -234,14 +244,71 @@ def validate_adrs(root: Path) -> list[str]:
         errors.extend(f"{prefix}: {issue}" for issue in require_nonempty_sections(doc, ADR_SECTIONS))
 
         for req_id in meta.get("requirements", []) if isinstance(meta.get("requirements"), list) else []:
-            if req_id not in reqs:
+            req = reqs.get(req_id)
+            if req is None:
                 errors.append(f"{prefix}: referenced REQ does not exist: {req_id}")
+            else:
+                reverse = req["frontmatter"].get("adrs", [])
+                if not isinstance(reverse, list) or adr_id not in reverse:
+                    errors.append(f"{prefix}: reverse REQ traceability mismatch with {req_id}")
+
+        supersedes = meta.get("supersedes", []) if isinstance(meta.get("supersedes"), list) else []
+        superseded_by = meta.get("superseded_by", []) if isinstance(meta.get("superseded_by"), list) else []
+        if adr_id in supersedes or adr_id in superseded_by:
+            errors.append(f"{prefix}: ADR cannot supersede/reference itself")
+        if meta.get("status") == "superseded" and not superseded_by:
+            errors.append(f"{prefix}: superseded ADR requires superseded_by")
+        if superseded_by and meta.get("status") != "superseded":
+            errors.append(f"{prefix}: ADR with superseded_by must have status=superseded")
+        for target_id in supersedes:
+            target = adrs.get(target_id)
+            if target is None:
+                errors.append(f"{prefix}: superseded ADR does not exist: {target_id}")
+                continue
+            reverse = target["frontmatter"].get("superseded_by", [])
+            if not isinstance(reverse, list) or adr_id not in reverse:
+                errors.append(f"{prefix}: supersedes relation is not reciprocal with {target_id}")
+        for target_id in superseded_by:
+            target = adrs.get(target_id)
+            if target is None:
+                errors.append(f"{prefix}: superseding ADR does not exist: {target_id}")
+                continue
+            reverse = target["frontmatter"].get("supersedes", [])
+            if not isinstance(reverse, list) or adr_id not in reverse:
+                errors.append(f"{prefix}: superseded_by relation is not reciprocal with {target_id}")
+
         for step_id in meta.get("steps", []) if isinstance(meta.get("steps"), list) else []:
             task = tasks.get(step_id)
             if task is None:
                 errors.append(f"{prefix}: referenced STEP does not exist: {step_id}")
             elif adr_id not in adr_ids(task):
                 errors.append(f"{prefix}: reverse traceability mismatch with {step_id}")
+
+    # Supersession graph должен быть ацикличным: cycle делает current decision
+    # неоднозначным и ломает deterministic resolution Accepted ADR.
+    graph: dict[str, list[str]] = {}
+    for node_id, node in adrs.items():
+        values = node["frontmatter"].get("supersedes", [])
+        graph[node_id] = [item for item in values if isinstance(item, str) and item in adrs] if isinstance(values, list) else []
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node_id: str, trail: list[str]) -> None:
+        if node_id in visiting:
+            cycle_start = trail.index(node_id) if node_id in trail else 0
+            cycle = trail[cycle_start:] + [node_id]
+            errors.append("adr: supersession cycle: " + " -> ".join(cycle))
+            return
+        if node_id in visited:
+            return
+        visiting.add(node_id)
+        for target_id in graph.get(node_id, []):
+            visit(target_id, trail + [node_id])
+        visiting.remove(node_id)
+        visited.add(node_id)
+
+    for node_id in sorted(graph):
+        visit(node_id, [])
 
     for step_id, task in tasks.items():
         for adr_id in adr_ids(task):
