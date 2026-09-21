@@ -577,48 +577,48 @@ Choose a mode.
         errors = validate_planning_contracts(root)
         assert any("dependency cycle" in item for item in errors), errors
 
-    # latest semantics опирается на sortable immutable report names.
-    # Schema-v1 report с произвольным/невалидным timestamp именем fail-closed.
-    invalid_plan_report = (
-        root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-not-a-timestamp.md"
-    )
-    write(
-        invalid_plan_report,
-        planning_review(
-            "STEP-1000",
-            planning_context_basis(root, "STEP-1000"),
-            plan_content_hash(root, "STEP-1000"),
-        ),
-    )
-    assert any(
-        "filename must be PLAN-REVIEW-<UTC timestamp>.md" in item
-        for item in validate_planning_review_report(
-            root,
+        # latest semantics опирается на sortable immutable report names.
+        # Schema-v1 report с произвольным/невалидным timestamp именем fail-closed.
+        invalid_plan_report = (
+            root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-not-a-timestamp.md"
+        )
+        write(
             invalid_plan_report,
-            expected_step_id="STEP-1000",
+            planning_review(
+                "STEP-1000",
+                planning_context_basis(root, "STEP-1000"),
+                plan_content_hash(root, "STEP-1000"),
+            ),
         )
-    )
-    invalid_plan_report.unlink()
+        assert any(
+            "filename must be PLAN-REVIEW-<UTC timestamp>.md" in item
+            for item in validate_planning_review_report(
+                root,
+                invalid_plan_report,
+                expected_step_id="STEP-1000",
+            )
+        )
+        invalid_plan_report.unlink()
 
-    invalid_init_report = root / "work/init-reviews/INIT-REVIEW-not-a-timestamp.md"
-    write(
-        invalid_init_report,
-        init_review(
-            "requirements",
-            init_review_basis(root, "requirements"),
-            "pass",
-            0,
-        ),
-    )
-    assert any(
-        "filename must be INIT-REVIEW-<UTC timestamp>.md" in item
-        for item in validate_init_review_report(
-            root,
+        invalid_init_report = root / "work/init-reviews/INIT-REVIEW-not-a-timestamp.md"
+        write(
             invalid_init_report,
-            expected_stage="requirements",
+            init_review(
+                "requirements",
+                init_review_basis(root, "requirements"),
+                "pass",
+                0,
+            ),
         )
-    )
-    invalid_init_report.unlink()
+        assert any(
+            "filename must be INIT-REVIEW-<UTC timestamp>.md" in item
+            for item in validate_init_review_report(
+                root,
+                invalid_init_report,
+                expected_stage="requirements",
+            )
+        )
+        invalid_init_report.unlink()
 
     print("PLANNING CONTRACT SELF-TEST: PASS")
     return 0
