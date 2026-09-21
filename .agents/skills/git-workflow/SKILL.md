@@ -51,7 +51,7 @@ Read-only. Покажи branch, upstream/ahead-behind, staged/unstaged/untracked
 
 1. Требует опубликованную non-protected branch (если provider policy не говорит иначе).
 2. Не создавать дубликат, если `reuse_existing=true`.
-3. Заголовок должен отражать основное изменение; body — `.github/pull_request_template.md`, заполненный фактическими STEP/REQ/ADR, verification, risks и review.
+3. Заголовок должен отражать основное изменение; body строится по `pull_request.body_template` из configured `.harness/git-policy.toml`, заполненному фактическими STEP/REQ/ADR, verification, risks и review. Не подменяй configured path hardcoded `.github/pull_request_template.md`.
 4. Создать draft/non-draft согласно config.
 5. Вернуть URL или конкретный blocker.
 
