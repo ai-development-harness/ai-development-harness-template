@@ -82,8 +82,14 @@ def validate_migration_report(root: Path, path: Path) -> list[str]:
     ):
         errors.append("changed_count must be a non-negative integer")
 
-    if re.fullmatch(r"MIGRATION-\d{8}T\d{6}Z\.md", path.name) is None:
+    migration_name = re.fullmatch(r"MIGRATION-(\d{8}T\d{6}Z)\.md", path.name)
+    if migration_name is None:
         errors.append("filename must be MIGRATION-<UTC timestamp>.md")
+    else:
+        try:
+            datetime.strptime(migration_name.group(1), "%Y%m%dT%H%M%SZ")
+        except ValueError:
+            errors.append("filename must be MIGRATION-<UTC timestamp>.md")
     if document.get("h1") != "# Project Schema Migration":
         errors.append("H1 must be '# Project Schema Migration'")
     for section in ("Changed artifacts", "Legacy immutable reviews", "Notes"):
@@ -294,33 +300,48 @@ def repository_revision(root: Path) -> dict[str, str | None]:
         return _is_step_review_report_path(root, path)
 
     entries = [entry for entry in status.split(b"\0") if entry]
-    changed: list[tuple[bytes, str]] = []
-    skip_next_rename_source = False
-    for raw in entries:
-        if skip_next_rename_source:
-            skip_next_rename_source = False
-            continue
+    changed: list[tuple[bytes, str, str | None]] = []
+    index = 0
+    while index < len(entries):
+        raw = entries[index]
+        index += 1
         decoded = raw.decode("utf-8", errors="surrogateescape")
         if len(decoded) < 4:
             continue
         xy = raw[:2]
         rel = decoded[3:]
-        if "R" in decoded[:2] or "C" in decoded[:2]:
-            skip_next_rename_source = True
+        source_rel: str | None = None
+        if b"R" in xy or b"C" in xy:
+            if index >= len(entries):
+                raise ValueError("malformed git status rename/copy entry")
+            source_rel = entries[index].decode("utf-8", errors="surrogateescape")
+            index += 1
+
         path = root / rel
-        if excluded(path):
+        # STEP REVIEW создаёт новый report уже после snapshot. Поэтому можно
+        # исключить только новое A/?? report-состояние. Mutation/rename уже
+        # существующей immutable history обязана остаться частью exact revision.
+        new_review_report = excluded(path) and (xy == b"??" or xy[:1] == b"A")
+        if new_review_report and source_rel is None:
             continue
-        changed.append((xy, rel))
+        changed.append((xy, rel, source_rel))
 
     if not changed:
         return {"git_head": git_head, "worktree_hash": None}
 
     digest = hashlib.sha256()
-    for xy, rel in sorted(changed, key=lambda item: item[1]):
+    for xy, rel, source_rel in sorted(changed, key=lambda item: (item[1], item[2] or "")):
         digest.update(xy)
         digest.update(b"\0")
         digest.update(rel.encode("utf-8", errors="surrogateescape"))
         digest.update(b"\0")
+        if source_rel is not None:
+            # git status -z для rename/copy выдаёт destination, затем source.
+            # Source path является частью index identity: два rename из разных
+            # одинаковых файлов не должны иметь одинаковый review fingerprint.
+            digest.update(b"SOURCE\0")
+            digest.update(source_rel.encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\0")
         path = root / rel
 
         # XY содержит отдельные index/worktree состояния. Хеш только working-tree
@@ -449,6 +470,8 @@ def validate_review_report(
             or len(worktree_hash) != 71
         ):
             errors.append("reviewed_revision.worktree_hash must be null or sha256")
+        if git_head is None and worktree_hash is None:
+            errors.append("reviewed_revision must contain git_head or worktree_hash")
         if require_current_revision:
             try:
                 current = repository_revision(root)
@@ -686,10 +709,21 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
             )
         else:
             # Root commit не имеет baseline и потому не может переписать
-            # существующий report. Shallow non-root checkout, напротив, не
-            # должен тихо обходить immutability proof.
+            # существующий report. В shallow checkout rev-list --count HEAD
+            # тоже может вернуть 1, поэтому shallow state проверяем отдельно.
+            shallow_code, shallow = _git(root, "rev-parse", "--is-shallow-repository")
+            is_shallow = (
+                shallow_code == 0
+                and shallow.decode("utf-8", errors="replace").strip() == "true"
+            )
             count_code, count = _git(root, "rev-list", "--count", "HEAD")
-            if count_code != 0 or count.decode("utf-8", errors="replace").strip() != "1":
+            is_real_root = (
+                shallow_code == 0
+                and not is_shallow
+                and count_code == 0
+                and count.decode("utf-8", errors="replace").strip() == "1"
+            )
+            if not is_real_root:
                 errors.append("review immutability: cannot resolve CI baseline HEAD^1")
 
     seen: set[str] = set()
