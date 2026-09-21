@@ -324,6 +324,19 @@ def main() -> int:
         assert "security" in broad_gate["required"], broad_gate
         (root / "docs/security-model.md").unlink()
 
+        # Git path classification не должна разыменовывать product symlink в
+        # operational/local subtree: сам symlink является factual product diff.
+        write(root / ".harness/local/hidden-auth.py", "secret fixture\n")
+        product_link = root / "src/security-link.py"
+        product_link.parent.mkdir(parents=True, exist_ok=True)
+        product_link.symlink_to("../.harness/local/hidden-auth.py")
+        symlink_revision = repository_revision(root)
+        assert symlink_revision["worktree_hash"] is not None, symlink_revision
+        symlink_gate = required_reviewers(root, "STEP-001")
+        assert "src/security-link.py" in symlink_gate["changedPaths"], symlink_gate
+        assert "security" in symlink_gate["required"], symlink_gate
+        product_link.unlink()
+
         run(root, "git", "checkout", "--", "docs/architecture.md")
         write(root / ".harness/manifest.yaml", original_manifest)
         run(root, "git", "add", ".harness/manifest.yaml")
@@ -484,6 +497,24 @@ def main() -> int:
         ), revisionless_errors
         revisionless.unlink()
 
+        # Hash/OID fields являются machine trust proof: длины строки недостаточно.
+        malformed_revision = root / "planning/reviews/STEP-001/REVIEW-20260921T005600Z.md"
+        malformed_text = valid_text.replace(
+            f"  git_head: {revision_now['git_head']}",
+            "  git_head: not-a-git-object-id",
+        )
+        if revision_now["worktree_hash"] is not None:
+            malformed_text = malformed_text.replace(
+                f"  worktree_hash: {revision_now['worktree_hash']}",
+                "  worktree_hash: sha256:" + ("g" * 64),
+            )
+        write(malformed_revision, malformed_text)
+        malformed_errors = validate_review_report(root, malformed_revision)
+        assert any("40/64-hex Git OID" in item for item in malformed_errors), malformed_errors
+        if revision_now["worktree_hash"] is not None:
+            assert any("worktree_hash must be null or sha256" in item for item in malformed_errors), malformed_errors
+        malformed_revision.unlink()
+
         recovered = resolve_root(root, run_root)
         assert_resolved(recovered, "NEXT", "STEP FIX STEP-001", "ORCHESTRATION_CTS_TRANSITION")
 
@@ -596,6 +627,15 @@ def main() -> int:
         assert any("step_id must match review directory STEP-999" in item for item in cross_errors), cross_errors
         assert not review_reports(root, "STEP-999"), review_reports(root, "STEP-999")
         cross_step.unlink()
+
+        # Immutable schema-v1 review обязан быть обычным file artifact, не
+        # symlink на mutable/чужое содержимое.
+        symlink_review = root / "planning/reviews/STEP-001/REVIEW-20260921T044500Z.md"
+        symlink_review.symlink_to(source_review.name)
+        symlink_errors = validate_review_report(root, symlink_review)
+        assert any("must not be a symlink" in item for item in symlink_errors), symlink_errors
+        assert all(item["path"] != symlink_review for item in review_reports(root, "STEP-001"))
+        symlink_review.unlink()
 
         # Legacy review filenames до schema-v1 не были канонизированы. Даже
         # лексикографически "поздний" pinned legacy report остаётся historical
