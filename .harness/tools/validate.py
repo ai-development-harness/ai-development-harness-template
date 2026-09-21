@@ -36,7 +36,17 @@ from command_transitions import (
     validate_transition_table,
 )
 from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
-from planning_contract import requirements_directory, validate_planning_contracts
+from harness_config import (
+    ConfigError,
+    language_value,
+    load_manifest,
+    max_fix_review_cycles,
+    repository_path,
+    review_policy,
+    skill_search_max_results,
+)
+from project_integrity import validate_project_integrity
+from project_migration import legacy_schema_pending
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -575,16 +585,22 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
-    policy_path = root / ".harness" / "harness-policy.toml"
     # Ошибки намеренно накапливаются: CI/пользователь за один запуск получает
     # полный список drift/corruption. warnings не делают repository невалидным.
     errors: list[str] = []
     warnings: list[str] = []
 
-    # Без policy невозможно понять, какие paths/skills/commands обязаны
-    # существовать. Это bootstrap blocker, поэтому здесь допустим ранний exit.
+    # manifest — bootstrap config. Все остальные repository paths разрешаются
+    # через единый harness_config layer.
+    try:
+        load_manifest(root)
+        policy_path = repository_path(root, "harnessPolicy")
+    except ConfigError as exc:
+        print(f"ERROR: invalid Harness manifest/config: {exc}", file=sys.stderr)
+        return 2
+
     if not policy_path.exists():
-        print("ERROR: missing .harness/harness-policy.toml", file=sys.stderr)
+        print(f"ERROR: missing configured harness policy: {policy_path}", file=sys.stderr)
         return 2
 
     try:
@@ -620,34 +636,27 @@ def main() -> int:
         if not (root / rel).is_file():
             errors.append(f"required file missing: {rel}")
 
-    # --- Requirements document model --------------------------------------
-    # Canonical REQ, SPEC index и STATUS lifecycle projection обязаны оставаться
-    # синхронизированы детерминированно, без LLM-интерпретации.
-    #
-    # Исключение только для manual-mode: legacy v0.4.x project может временно
-    # сохранить canonical REQ внутри SPEC.md сразу после Harness update. Это не
-    # разрешение коммитить drift: commit/ci остаются строгими и требуют сначала
-    # выполнить PROJECT RECONCILE. Mixed/partial migration также остаётся FAIL.
-    legacy_requirements_pending = (
-        args.mode == "manual" and legacy_requirements_migration_pending(root)
+    # --- Active project document model ------------------------------------
+    # После update manual-mode умеет диагностировать legacy active schema, но
+    # mutation/commit/CI запрещены до идемпотентного PROJECT RECONCILE.
+    legacy_pending = legacy_schema_pending(root)
+    allow_legacy = args.mode == "manual" and legacy_pending
+    if legacy_pending:
+        if allow_legacy:
+            warnings.append(
+                "active project schema migration pending; run PROJECT RECONCILE before PLAN/IMPLEMENT/GIT COMMIT/CI"
+            )
+        else:
+            errors.append(
+                "active project schema migration required; run PROJECT RECONCILE in manual mode"
+            )
+    errors.extend(
+        validate_project_integrity(
+            root,
+            warnings=warnings,
+            allow_legacy=allow_legacy,
+        )
     )
-    if legacy_requirements_pending:
-        warnings.append(
-            "requirements legacy migration pending; run PROJECT RECONCILE before GIT COMMIT/CI"
-        )
-        # До RECONCILE legacy layout ещё не содержит standalone canonical REQ.
-        # Planning validator сознательно откладывается: иначе новый static gate
-        # сломал бы безопасный update bridge, который manual-mode обязан пропустить.
-        warnings.append(
-            "planning contract validation deferred until legacy requirements migration is reconciled"
-        )
-    else:
-        validate_requirements_model(root, errors)
-
-        # Дешёвый static gate дополняет semantic review: он ловит отсутствующие
-        # REQ/ADR/dependencies, dependency cycles, stale Ready plans и OPEN question
-        # blockers без вызова reasoning-модели.
-        errors.extend(validate_planning_contracts(root, warnings=warnings))
 
     # --- Command Transition System: структура и полный command surface ----
     # Graph — structural source of truth. Пока он невалиден, нельзя доверять
@@ -1073,68 +1082,40 @@ def main() -> int:
                 ):
                     errors.append(f"config parameter comment lacks example/format: {rel}:{idx + 1} ({key})")
 
-    # --- Политики языка, execution и review -------------------------------
-    # Manifest хранит центральные knobs Harness. Здесь проверяем не только
-    # наличие ключей, но и допустимые диапазоны/enum значения.
-    manifest_path = root / ".harness" / "manifest.yaml"
-    if manifest_path.exists():
-        try:
-            manifest_text = manifest_path.read_text(encoding="utf-8")
-            required_language_keys = [
-                "default", "agentResponses", "documentation", "commitMessages",
-                "codeComments", "testNames", "fixtures", "githubTemplates", "releaseNotes",
-            ]
-            if not re.search(r"(?m)^language:\s*$", manifest_text):
-                errors.append("manifest language policy missing: language")
-            for key in required_language_keys:
-                if not re.search(rf"(?m)^  {re.escape(key)}:\s*[^#\s]+", manifest_text):
-                    errors.append(f"manifest language policy missing value: language.{key}")
-
-            if not re.search(r"(?m)^execution:\s*$", manifest_text):
-                errors.append("manifest execution policy missing: execution")
-            max_cycles_match = re.search(r"(?m)^  maxFixReviewCycles:\s*([^#\s]+)", manifest_text)
-            if not max_cycles_match:
-                errors.append("manifest execution policy missing value: execution.maxFixReviewCycles")
-            else:
-                max_cycles_raw = max_cycles_match.group(1)
-                if not re.fullmatch(r"[0-9]+", max_cycles_raw):
-                    errors.append("manifest execution.maxFixReviewCycles must be an integer from 1 to 5")
-                else:
-                    max_cycles = int(max_cycles_raw)
-                    if not 1 <= max_cycles <= 5:
-                        errors.append("manifest execution.maxFixReviewCycles must be between 1 and 5")
-
-            if not re.search(r"(?m)^review:\s*$", manifest_text):
-                errors.append("manifest review policy missing: review")
-            for key in ["security", "tests"]:
-                review_match = re.search(rf"(?m)^  {key}:\s*([^#\s]+)", manifest_text)
-                if not review_match:
-                    errors.append(f"manifest review policy missing value: review.{key}")
-                elif review_match.group(1) not in {"auto", "always"}:
-                    errors.append(f"manifest review.{key} must be auto or always")
-
-            if not re.search(r"(?m)^skills:\s*$", manifest_text):
-                errors.append("manifest skills policy missing: skills")
-            if not re.search(r"(?m)^  search:\s*$", manifest_text):
-                errors.append("manifest skills policy missing: skills.search")
-            max_results_match = re.search(r"(?m)^    maxResults:\s*([^#\s]+)", manifest_text)
-            if not max_results_match:
-                errors.append("manifest skills policy missing value: skills.search.maxResults")
-            else:
-                max_results_raw = max_results_match.group(1)
-                if not re.fullmatch(r"[0-9]+", max_results_raw):
-                    errors.append("manifest skills.search.maxResults must be an integer from 1 to 10")
-                else:
-                    max_results = int(max_results_raw)
-                    if not 1 <= max_results <= 10:
-                        errors.append("manifest skills.search.maxResults must be between 1 and 10")
-        except UnicodeDecodeError:
-            errors.append(".harness/manifest.yaml is not UTF-8")
+    # --- Manifest policies -------------------------------------------------
+    # language.default — реальный fallback: specialized language keys могут
+    # отсутствовать. Остальные knobs читаются тем же config layer, что runtime.
+    try:
+        for language_key in (
+            "agentResponses", "documentation", "commitMessages", "codeComments",
+            "testNames", "fixtures", "githubTemplates", "releaseNotes",
+        ):
+            language_value(root, language_key)
+        max_fix_review_cycles(root)
+        review_policy(root, "security")
+        review_policy(root, "tests")
+        skill_search_max_results(root)
+        for repository_key in (
+            "gitPolicy", "harnessPolicy", "harnessUpdatePolicy",
+            "harnessValidation", "harnessCI",
+        ):
+            configured = repository_path(root, repository_key)
+            if not configured.is_file():
+                errors.append(
+                    f"manifest repository.{repository_key} path missing: "
+                    f"{configured.relative_to(root)}"
+                )
+    except ConfigError as exc:
+        errors.append(f"manifest: {exc}")
 
     # --- Git policy: безопасные mutation rules ----------------------------
     # Проверяем semantics, от которых зависит безопасность COMMIT/PUSH/PR/SYNC:
     # force-push, protected branches, staging и PR automation.
-    git_policy_path = root / ".harness" / "git-policy.toml"
+    try:
+        git_policy_path = repository_path(root, "gitPolicy")
+    except ConfigError as exc:
+        errors.append(f"git-policy: {exc}")
+        git_policy_path = root / ".harness" / "__invalid_git_policy__"
     if git_policy_path.exists():
         try:
             gp = load_toml(git_policy_path)
