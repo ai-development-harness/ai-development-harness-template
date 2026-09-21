@@ -15,6 +15,7 @@ Workflow запускает baseline validator и dependency-free smoke/self-tes
 ```bash
 python3 .harness/tools/validate.py --mode ci
 python3 .harness/tools/check-command-references.py --json
+python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
@@ -25,7 +26,7 @@ python3 .harness/tools/update-migration-self-test.py
 
 Update migration self-test создаёт synthetic legacy state и проверяет deterministic update-contract: legacy route/reload boundaries, target relocation layout, ownership project templates и marker blocks, tracked-vs-ignored Git scope, deferred REQ migration и согласованность release metadata. Он не запускает LLM/agent и не заменяет периодический real-project dogfood.
 
-Baseline validator также детерминированно проверяет planning contracts: manifest-driven `taskDirectory`, существование linked REQ/ADR/dependencies, циклы зависимостей, `Plan basis` и `OPEN` questions, блокирующие Ready-план. Структурные ошибки дают FAIL; устаревший `Plan basis` даёт deterministic warning, потому что resolver всё равно запрещает IMPLEMENT и отправляет конкретный STEP на fresh PLAN. Это не заставляет после Harness update перепланировать все будущие STEP одновременно. `Plan basis` включает собственный STEP contract, linked REQ/ADR, hard dependency contracts и architecture baseline; изменение этих upstream artifacts инвалидирует сохранённый plan без вызова reasoning-модели. Семантическую непротиворечивость целей этот static gate намеренно не угадывает — её проверяет обязательный planning consistency review.
+Baseline validator детерминированно проверяет schema-v1 planning contracts: configured task/REQ/ADR/OQ paths, strict refs/enums, dependency cycles, type-specific completion proofs, mutation-policy grammar, explicit architecture refs, Ready `context_basis` + отдельный `content_hash` и наличие matching immutable planning-review PASS. Stale context может быть warning на глобальной проверке, но resolver всё равно запрещает конкретный IMPLEMENT до fresh PLAN. `context_basis` fingerprint-ит STEP contract, linked REQ/ADR, direct dependency completion proofs, referenced architecture sections и relevant OQ; `content_hash` отдельно fingerprint-ит Implementation plan. Семантическую непротиворечивость static gate не угадывает — её доказывает обязательный independent planning-review.
 
 Baseline validator также детерминированно проверяет requirements document model: уникальность `REQ-NNN`, соответствие filename/H1 и обязательных standalone-секций, одинаковый набор REQ в `SPEC.md`/`STATUS.md`, прямые ссылки projections на canonical `REQ-NNN-*.md` и совпадение названий. Смысл requirement validator не интерпретирует.
 
@@ -41,7 +42,7 @@ Baseline validator также детерминированно проверяе�
 python3 .harness/tools/validate.py --mode manual
 ```
 
-`manual` остаётся строгим для обычного состояния, но имеет одно узкое migration-исключение: точный legacy REQ-layout из `v0.4.x` сразу после Harness update возвращает PASS с warning `requirements legacy migration pending`. Это нужно только для атомарного завершения control-plane hop; `commit` и `ci` такое состояние не принимают. Перед commit необходимо выполнить `PROJECT RECONCILE`.
+`manual` остаётся строгим для обычного состояния, но может разрешить явно распознанное active project schema migration-pending состояние после Harness update как warning. Это нужно только для завершения control-plane hop; `commit` и `ci` такое состояние не принимают. Перед commit необходимо выполнить `PROJECT RECONCILE`.
 
 Для GIT COMMIT / GIT PUSH agent использует:
 
