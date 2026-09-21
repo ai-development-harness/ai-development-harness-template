@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+"""Общий parser machine-readable Markdown документов Harness.
+
+Новые active contracts и durable reports используют YAML frontmatter schema=1.
+Исторические legacy reports можно читать отдельно, но новые mutations обязаны
+работать только с versioned schema. Только stdlib.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+import re
+from typing import Any
+
+from harness_config import ConfigError, parse_yaml_subset
+
+
+STEP_ID_RE = re.compile(r"STEP-\d{3,}")
+REQ_ID_RE = re.compile(r"REQ-\d{3,}")
+ADR_ID_RE = re.compile(r"ADR-\d{3,}")
+OQ_ID_RE = re.compile(r"OQ-\d{3,}")
+
+STEP_STATUSES = {"planned", "in_progress", "blocked", "completed", "deferred", "cancelled"}
+STEP_TYPES = {
+    "implementation",
+    "bugfix",
+    "refactor",
+    "research",
+    "adr",
+    "audit",
+    "review",
+    "hardening",
+    "documentation",
+    "release",
+}
+PRIORITIES = {"critical", "high", "medium", "low"}
+ADR_STATUSES = {"proposed", "accepted", "superseded", "rejected"}
+OQ_STATUSES = {"open", "resolved", "deferred"}
+REVIEW_VERDICTS = {"pass", "fail", "blocked"}
+PLAN_STATUSES = {"not_planned", "draft", "ready"}
+
+UNRESOLVED_LINE_RE = re.compile(
+    r"(?mi)^\s*(?:[-*]\s*)?(?:TBD|TODO|\?\?\?)\s*$"
+)
+
+
+class DocumentError(ValueError):
+    """Невалидный machine-readable Harness document."""
+
+
+def normalize_text(value: str) -> str:
+    lines = [line.rstrip() for line in value.replace("\r\n", "\n").split("\n")]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return "\n".join(lines)
+
+
+def content_hash(value: str) -> str:
+    return "sha256:" + hashlib.sha256(normalize_text(value).encode("utf-8")).hexdigest()
+
+
+def stable_hash(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def split_frontmatter(text: str) -> tuple[dict[str, Any] | None, str]:
+    normalized = text.replace("\r\n", "\n")
+    if not normalized.startswith("---\n"):
+        return None, normalized
+    end = normalized.find("\n---\n", 4)
+    if end < 0:
+        raise DocumentError("unterminated YAML frontmatter")
+    raw = normalized[4:end]
+    try:
+        data = parse_yaml_subset(raw)
+    except ConfigError as exc:
+        raise DocumentError(f"invalid YAML frontmatter: {exc}") from exc
+    return data, normalized[end + 5 :]
+
+
+def parse_sections(body: str) -> tuple[dict[str, str], list[str]]:
+    """Разобрать ## sections и отдельно вернуть duplicate names."""
+    sections: dict[str, list[str]] = {}
+    duplicates: list[str] = []
+    current: str | None = None
+    for line in body.splitlines():
+        match = re.match(r"^##\s+(.+?)\s*$", line)
+        if match:
+            current = match.group(1).strip()
+            if current in sections:
+                duplicates.append(current)
+            else:
+                sections[current] = []
+            continue
+        if current is not None:
+            sections[current].append(line)
+    return (
+        {name: normalize_text("\n".join(lines)) for name, lines in sections.items()},
+        duplicates,
+    )
+
+
+def first_h1(body: str) -> str:
+    return next((line.strip() for line in body.splitlines() if line.strip()), "")
+
+
+def parse_document(path: Path, *, require_frontmatter: bool = True) -> dict[str, Any]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise DocumentError(f"cannot read {path}: {exc}") from exc
+    frontmatter, body = split_frontmatter(text)
+    if require_frontmatter and frontmatter is None:
+        raise DocumentError(f"{path}: legacy document has no YAML frontmatter")
+    sections, duplicates = parse_sections(body)
+    return {
+        "path": path,
+        "text": text,
+        "frontmatter": frontmatter or {},
+        "body": body,
+        "sections": sections,
+        "duplicate_sections": duplicates,
+        "h1": first_h1(body),
+        "legacy": frontmatter is None,
+    }
+
+
+def require_schema(document: dict[str, Any], *, kind: str | None = None) -> list[str]:
+    errors: list[str] = []
+    meta = document["frontmatter"]
+    if meta.get("schema") != 1:
+        errors.append("frontmatter schema must be 1")
+    if kind is not None and meta.get("kind") != kind:
+        errors.append(f"frontmatter kind must be {kind}")
+    for section in document["duplicate_sections"]:
+        errors.append(f"duplicate section '## {section}'")
+    return errors
+
+
+def require_nonempty_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[str]:
+    errors: list[str] = []
+    for name in names:
+        if name not in document["sections"]:
+            errors.append(f"missing section '## {name}'")
+        elif not document["sections"][name].strip():
+            errors.append(f"empty section '## {name}'")
+    return errors
+
+
+def has_unresolved_placeholder(value: str) -> bool:
+    return bool(UNRESOLVED_LINE_RE.search(value))
+
+
+def _yaml_scalar(value: Any) -> str:
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, int):
+        return str(value)
+    if not isinstance(value, str):
+        raise DocumentError(f"unsupported frontmatter scalar type: {type(value).__name__}")
+    if value == "":
+        return '""'
+    if re.fullmatch(r"[A-Za-z0-9_./:@+\-]+", value) and value.lower() not in {
+        "null", "true", "false"
+    }:
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def dump_yaml_subset(value: dict[str, Any], *, indent: int = 0) -> list[str]:
+    lines: list[str] = []
+    prefix = " " * indent
+    for key, item in value.items():
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", key):
+            raise DocumentError(f"unsupported YAML key: {key}")
+        if isinstance(item, dict):
+            lines.append(f"{prefix}{key}:")
+            lines.extend(dump_yaml_subset(item, indent=indent + 2))
+        elif isinstance(item, list):
+            if not item:
+                lines.append(f"{prefix}{key}: []")
+            else:
+                lines.append(f"{prefix}{key}:")
+                for child in item:
+                    if isinstance(child, (dict, list)):
+                        raise DocumentError("frontmatter block lists support scalar items only")
+                    lines.append(f"{prefix}  - {_yaml_scalar(child)}")
+        else:
+            lines.append(f"{prefix}{key}: {_yaml_scalar(item)}")
+    return lines
+
+
+def render_document(frontmatter: dict[str, Any], body: str) -> str:
+    yaml_lines = dump_yaml_subset(frontmatter)
+    normalized_body = normalize_text(body)
+    return "---\n" + "\n".join(yaml_lines) + "\n---\n\n" + normalized_body + "\n"
+
+
+def validate_id(value: Any, pattern: re.Pattern[str], label: str) -> str | None:
+    if not isinstance(value, str) or pattern.fullmatch(value) is None:
+        return f"{label} must match {pattern.pattern}"
+    return None
+
+
+def string_list(value: Any, label: str) -> tuple[list[str], list[str]]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        return [], [f"{label} must be a list of strings"]
+    if len(value) != len(set(value)):
+        return value, [f"{label} must not contain duplicates"]
+    return value, []
+
+
+def exact_h1(document: dict[str, Any], id_value: str) -> bool:
+    return bool(re.fullmatch(rf"# {re.escape(id_value)} — .+", document["h1"]))
