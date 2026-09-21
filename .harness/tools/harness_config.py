@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""Единый dependency-free config layer AI Development Harness.
+
+Модуль читает ограниченный YAML subset manifest.yaml и update-policy TOML.
+Все core tools используют эти функции вместо собственных regex-парсеров и
+hard-coded project paths. Неизвестная/неподдерживаемая YAML-конструкция
+завершается ошибкой: config boundary должен быть fail-closed.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import tomllib
+from typing import Any
+
+
+class ConfigError(ValueError):
+    """Невалидная конфигурация Harness."""
+
+
+def _strip_comment(raw: str) -> str:
+    """Удалить YAML comment вне одинарных/двойных кавычек."""
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(raw):
+        if escaped:
+            escaped = False
+            continue
+        if quote == '"' and char == "\\":
+            escaped = True
+            continue
+        if char in {"'", '"'}:
+            if quote is None:
+                quote = char
+            elif quote == char:
+                quote = None
+            continue
+        if char == "#" and quote is None:
+            return raw[:index].rstrip()
+    return raw.rstrip()
+
+
+def _scalar(raw: str) -> Any:
+    value = raw.strip()
+    if value in {"", "~", "null", "Null", "NULL"}:
+        return None
+    if value == "[]":
+        return []
+    if value == "{}":
+        return {}
+    if value.lower() in {"true", "false"}:
+        return value.lower() == "true"
+    if re.fullmatch(r"-?[0-9]+", value):
+        return int(value)
+    if (
+        len(value) >= 2
+        and value[0] == value[-1]
+        and value[0] in {"'", '"'}
+    ):
+        body = value[1:-1]
+        if value[0] == '"':
+            body = bytes(body, "utf-8").decode("unicode_escape")
+        return body
+    # Harness не использует YAML anchors/tags/flow collections: их лучше
+    # отвергнуть, чем интерпретировать иначе в разных tools.
+    if value.startswith(("[", "{", "&", "*", "!")):
+        raise ConfigError(f"unsupported YAML scalar syntax: {value}")
+    return value
+
+
+def parse_yaml_subset(text: str) -> dict[str, Any]:
+    """Разобрать mapping/list subset YAML, используемый Harness.
+
+    Поддерживаются nested mappings, scalar values и block lists из scalar
+    элементов. Tabs, multiline scalars, anchors/tags и list-of-maps запрещены.
+    """
+    tokens: list[tuple[int, str, int]] = []
+    for number, raw in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
+        if "\t" in raw[: len(raw) - len(raw.lstrip())]:
+            raise ConfigError(f"tabs are not allowed for YAML indentation: line {number}")
+        line = _strip_comment(raw)
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent % 2:
+            raise ConfigError(f"YAML indentation must use 2-space levels: line {number}")
+        tokens.append((indent, line.strip(), number))
+
+    def parse_block(index: int, indent: int) -> tuple[Any, int]:
+        if index >= len(tokens):
+            return {}, index
+        if tokens[index][0] != indent:
+            raise ConfigError(f"unexpected YAML indentation at line {tokens[index][2]}")
+        is_list = tokens[index][1].startswith("- ")
+        container: Any = [] if is_list else {}
+        while index < len(tokens):
+            current_indent, body, number = tokens[index]
+            if current_indent < indent:
+                break
+            if current_indent > indent:
+                raise ConfigError(f"unexpected nested YAML block at line {number}")
+            if is_list:
+                if not body.startswith("- "):
+                    raise ConfigError(f"mixed mapping/list YAML block at line {number}")
+                item = body[2:].strip()
+                if not item or re.match(r"^[A-Za-z0-9_.-]+:\s*", item):
+                    raise ConfigError(
+                        f"frontmatter/config lists support scalar items only: line {number}"
+                    )
+                container.append(_scalar(item))
+                index += 1
+                continue
+
+            if body.startswith("- "):
+                raise ConfigError(f"mixed mapping/list YAML block at line {number}")
+            match = re.fullmatch(r"([A-Za-z0-9_.-]+):(?:\s+(.*))?", body)
+            if not match:
+                raise ConfigError(f"invalid YAML mapping entry at line {number}: {body}")
+            key, raw_value = match.groups()
+            if key in container:
+                raise ConfigError(f"duplicate YAML key {key!r} at line {number}")
+            index += 1
+            if raw_value is not None:
+                container[key] = _scalar(raw_value)
+                continue
+            if index < len(tokens) and tokens[index][0] > indent:
+                if tokens[index][0] != indent + 2:
+                    raise ConfigError(
+                        f"YAML nesting must increase by 2 spaces at line {tokens[index][2]}"
+                    )
+                value, index = parse_block(index, indent + 2)
+                container[key] = value
+            else:
+                container[key] = {}
+        return container, index
+
+    if not tokens:
+        return {}
+    if tokens[0][0] != 0:
+        raise ConfigError("YAML root must start at indentation 0")
+    value, consumed = parse_block(0, 0)
+    if consumed != len(tokens) or not isinstance(value, dict):
+        raise ConfigError("YAML root must be a mapping")
+    return value
+
+
+def load_manifest(root: Path) -> dict[str, Any]:
+    path = root / ".harness" / "manifest.yaml"
+    try:
+        return parse_yaml_subset(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ConfigError) as exc:
+        raise ConfigError(f"cannot read Harness manifest {path}: {exc}") from exc
+
+
+def get(config: dict[str, Any], dotted: str, default: Any = None) -> Any:
+    current: Any = config
+    for part in dotted.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return default
+        current = current[part]
+    return current
+
+
+def require(config: dict[str, Any], dotted: str) -> Any:
+    value = get(config, dotted)
+    if value is None:
+        raise ConfigError(f"missing required config value: {dotted}")
+    return value
+
+
+def resolve_repo_path(root: Path, value: str, *, label: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"{label} must be a non-empty repository-relative path")
+    rel = Path(value)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ConfigError(f"{label} must stay inside repository: {value}")
+    base = root.resolve()
+    candidate = (base / rel).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:
+        raise ConfigError(f"{label} escapes repository: {value}") from exc
+    return candidate
+
+
+def manifest_path(root: Path, dotted: str) -> Path:
+    manifest = load_manifest(root)
+    value = require(manifest, dotted)
+    return resolve_repo_path(root, value, label=f"manifest {dotted}")
+
+
+def task_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.taskDirectory")
+
+
+def review_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.reviewDirectory")
+
+
+def planning_review_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.planningReviewDirectory")
+
+
+def init_review_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.initReviewDirectory")
+
+
+def audit_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.auditDirectory")
+
+
+def release_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.releaseDirectory")
+
+
+def skill_search_directory(root: Path) -> Path:
+    return manifest_path(root, "protocol.skillSearchDirectory")
+
+
+def skill_registry_path(root: Path) -> Path:
+    return manifest_path(root, "protocol.skillRegistry")
+
+
+def requirements_directory(root: Path) -> Path:
+    return manifest_path(root, "sources.requirements")
+
+
+def adr_directory(root: Path) -> Path:
+    return manifest_path(root, "sources.adrDirectory")
+
+
+def architecture_path(root: Path) -> Path:
+    return manifest_path(root, "sources.architecture")
+
+
+def open_questions_directory(root: Path) -> Path:
+    return manifest_path(root, "sources.openQuestions")
+
+
+def open_questions_index_path(root: Path) -> Path:
+    return manifest_path(root, "sources.openQuestionsIndex")
+
+
+def roadmap_path(root: Path) -> Path:
+    return manifest_path(root, "sources.roadmap")
+
+
+def status_path(root: Path) -> Path:
+    return manifest_path(root, "sources.status")
+
+
+def project_overview_path(root: Path) -> Path:
+    return manifest_path(root, "sources.projectOverview")
+
+
+def local_brief_path(root: Path) -> Path:
+    return manifest_path(root, "sources.localBrief")
+
+
+def protocol_path(root: Path) -> Path:
+    return manifest_path(root, "protocol.file")
+
+
+def repository_path(root: Path, key: str) -> Path:
+    return manifest_path(root, f"repository.{key}")
+
+
+def language_value(root: Path, key: str) -> str:
+    manifest = load_manifest(root)
+    default = get(manifest, "language.default")
+    if not isinstance(default, str) or not default.strip():
+        raise ConfigError("manifest language.default must be a non-empty BCP 47 tag")
+    value = get(manifest, f"language.{key}", default)
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"manifest language.{key} must be a non-empty BCP 47 tag")
+    return value
+
+
+def max_fix_review_cycles(root: Path) -> int:
+    manifest = load_manifest(root)
+    value = require(manifest, "execution.maxFixReviewCycles")
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 5:
+        raise ConfigError("manifest execution.maxFixReviewCycles must be an integer from 1 to 5")
+    return value
+
+
+def review_policy(root: Path, kind: str) -> str:
+    if kind not in {"security", "tests"}:
+        raise ConfigError(f"unknown review policy: {kind}")
+    manifest = load_manifest(root)
+    value = require(manifest, f"review.{kind}")
+    if value not in {"auto", "always"}:
+        raise ConfigError(f"manifest review.{kind} must be auto or always")
+    return value
+
+
+def skill_search_max_results(root: Path) -> int:
+    manifest = load_manifest(root)
+    value = require(manifest, "skills.search.maxResults")
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 10:
+        raise ConfigError("manifest skills.search.maxResults must be an integer from 1 to 10")
+    return value
+
+
+def load_update_policy(root: Path) -> dict[str, Any]:
+    path = repository_path(root, "harnessUpdatePolicy")
+    try:
+        with path.open("rb") as fh:
+            return tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigError(f"cannot read Harness update policy {path}: {exc}") from exc
+
+
+def update_policy_path(root: Path, dotted: str) -> Path:
+    policy = load_update_policy(root)
+    value = require(policy, dotted)
+    return resolve_repo_path(root, value, label=f"harness-update {dotted}")
+
+
+def update_manifest_path(root: Path) -> Path:
+    return update_policy_path(root, "source.update_manifest")
+
+
+def update_lock_path(root: Path) -> Path:
+    return update_policy_path(root, "state.lock_file")
+
+
+def update_report_directory(root: Path) -> Path:
+    return update_policy_path(root, "state.report_directory")
