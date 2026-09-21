@@ -55,6 +55,8 @@ def _require_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[
 
 def validate_audit_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable audit report must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
@@ -88,6 +90,8 @@ def validate_audit_report(root: Path, path: Path) -> list[str]:
 
 def validate_release_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable release report must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
@@ -166,6 +170,8 @@ def _validate_skill_candidates(section: str, count: int) -> list[str]:
 
 def validate_skill_search_report(root: Path, path: Path) -> list[str]:
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable skill search report must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
@@ -280,12 +286,11 @@ def main() -> int:
     if args.validate_all:
         errors = validate_all_operational_reports(root)
     elif args.file and args.kind:
-        path = (root / args.file).resolve()
-        try:
-            path.relative_to(root.resolve())
-        except ValueError:
+        raw_path = Path(args.file)
+        if raw_path.is_absolute() or ".." in raw_path.parts:
             errors = ["report path escapes repository"]
         else:
+            path = root / raw_path
             validators = {
                 "audit": validate_audit_report,
                 "release_check": validate_release_report,
