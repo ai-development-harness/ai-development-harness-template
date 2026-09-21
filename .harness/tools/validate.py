@@ -925,6 +925,14 @@ def main() -> int:
 
             if gp.get("version") != 1:
                 errors.append("git-policy: version must be 1")
+            unexpected_top = sorted(
+                set(gp) - {"version", "commit", "branch", "push", "pull_request", "sync"}
+            )
+            if unexpected_top:
+                errors.append(
+                    "git-policy: unsupported top-level settings: "
+                    + ", ".join(unexpected_top)
+                )
 
             commit = gp.get("commit", {})
             if commit.get("style") != "conventional":
@@ -945,6 +953,32 @@ def main() -> int:
             ]:
                 if not isinstance(commit.get(key), bool):
                     errors.append(f"git-policy: commit.{key} must be boolean")
+            allowed_commit_keys = {
+                "style",
+                "stage_mode",
+                "subject_max_length",
+                "require_body",
+                "require_harness_validation",
+                "require_single_logical_change",
+                "include_verification",
+                "include_traceability",
+                "allow_empty",
+                "sign",
+                "types",
+            }
+            unexpected_commit = sorted(set(commit) - allowed_commit_keys)
+            if unexpected_commit:
+                errors.append(
+                    "git-policy: unsupported commit settings: "
+                    + ", ".join(unexpected_commit)
+                )
+            commit_types = commit.get("types")
+            if not isinstance(commit_types, dict) or not commit_types or not all(
+                isinstance(key, str) and key.strip()
+                and isinstance(value, str) and value.strip()
+                for key, value in commit_types.items()
+            ):
+                errors.append("git-policy: commit.types must be a non-empty string map")
 
             branch = gp.get("branch", {})
             protected = branch.get("protected")
@@ -971,6 +1005,26 @@ def main() -> int:
                 for key, value in prefixes.items()
             ):
                 errors.append("git-policy: branch.prefixes must be a non-empty string map")
+            elif isinstance(commit_types, dict) and set(prefixes) != set(commit_types):
+                errors.append(
+                    "git-policy: branch.prefixes keys must exactly match commit.types keys"
+                )
+            allowed_branch_keys = {
+                "protected",
+                "when_on_protected",
+                "allow_initial_commit_on_protected",
+                "default_base",
+                "reuse_current_non_protected",
+                "name_pattern",
+                "slug_max_length",
+                "prefixes",
+            }
+            unexpected_branch = sorted(set(branch) - allowed_branch_keys)
+            if unexpected_branch:
+                errors.append(
+                    "git-policy: unsupported branch settings: "
+                    + ", ".join(unexpected_branch)
+                )
 
             push = gp.get("push", {})
             remote = push.get("remote")
@@ -991,6 +1045,24 @@ def main() -> int:
             ]:
                 if not isinstance(push.get(key), bool):
                     errors.append(f"git-policy: push.{key} must be boolean")
+            allowed_push_keys = {
+                "remote",
+                "set_upstream",
+                "fetch_before_push",
+                "if_remote_ahead",
+                "force",
+                "push_tags",
+                "allow_protected",
+                "allow_initial_push_to_protected",
+                "require_harness_validation",
+                "require_clean_worktree",
+            }
+            unexpected_push = sorted(set(push) - allowed_push_keys)
+            if unexpected_push:
+                errors.append(
+                    "git-policy: unsupported push settings: "
+                    + ", ".join(unexpected_push)
+                )
 
             pull_request = gp.get("pull_request", {})
             if pull_request.get("after_push") not in {"never", "ask", "create-if-missing"}:
@@ -1017,6 +1089,22 @@ def main() -> int:
             for key in ["draft", "reuse_existing", "title_from_commit"]:
                 if not isinstance(pull_request.get(key), bool):
                     errors.append(f"git-policy: pull_request.{key} must be boolean")
+            allowed_pr_keys = {
+                "after_push",
+                "provider",
+                "preferred_tool",
+                "base",
+                "body_template",
+                "draft",
+                "reuse_existing",
+                "title_from_commit",
+            }
+            unexpected_pr = sorted(set(pull_request) - allowed_pr_keys)
+            if unexpected_pr:
+                errors.append(
+                    "git-policy: unsupported pull_request settings: "
+                    + ", ".join(unexpected_pr)
+                )
 
             sync = gp.get("sync", {})
             fetch_remote = sync.get("fetch_remote")
