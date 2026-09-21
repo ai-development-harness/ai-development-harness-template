@@ -543,6 +543,7 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
         (review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
         (planning_review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
         (init_review_directory(root).resolve(), re.compile(r"^INIT-REVIEW-.+\.md$")),
+        (audit_directory(root).resolve(), re.compile(r"^MIGRATION-\d{8}T\d{6}Z\.md$")),
     )
     for base, pattern in patterns:
         try:
@@ -562,7 +563,7 @@ def _git_changed_review_paths(root: Path, *diff_args: str) -> tuple[list[str], s
 
 
 def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[str]:
-    """Запретить mutation/delete/rename уже существующих immutable reports.
+    """Запретить mutation/delete/rename immutable review/migration history.
 
     Addition допустим. До commit проверяем staged + unstaged состояние против
     HEAD. В CI сравниваем итоговый commit с первым родителем: PR merge commit
@@ -573,6 +574,7 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
         review_directory(root).relative_to(root).as_posix(),
         planning_review_directory(root).relative_to(root).as_posix(),
         init_review_directory(root).relative_to(root).as_posix(),
+        audit_directory(root).relative_to(root).as_posix(),
     ]
 
     probes: list[tuple[str, tuple[str, ...]]] = [
