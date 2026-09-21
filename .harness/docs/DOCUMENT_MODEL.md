@@ -66,8 +66,7 @@ Frontmatter:
 - `phase`;
 - strict refs `depends_on`, `requirements`, `adrs`, `architecture_refs`;
 - closed-set `risk_flags`;
-- `plan` metadata;
-- `review` metadata.
+- `plan` metadata.
 
 Body содержит Goal/Context/Scope/Mutation policy/Out of scope/Acceptance/Verification/Deliverables/Implementation plan/Evidence/Blocker.
 
