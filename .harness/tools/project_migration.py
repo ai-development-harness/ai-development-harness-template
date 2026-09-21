@@ -29,6 +29,7 @@ from harness_config import (
     task_directory,
 )
 from projection_contract import write_projections
+from review_contract import current_legacy_review_snapshots, legacy_review_pins
 from template_contract import refresh_project_templates
 
 
@@ -233,7 +234,7 @@ def migrate_monolithic_requirements(root: Path) -> list[str]:
             ["Requirement", "Rationale", "Acceptance"],
         )
         path.write_text(render_document(frontmatter, body), encoding="utf-8", newline="\n")
-        changed.append(path.as_posix())
+        changed.append(path.relative_to(root).as_posix())
     return changed
 
 
@@ -317,6 +318,32 @@ def migrate_monolithic_open_questions(root: Path) -> list[str]:
     return changed
 
 
+def _pending_legacy_review_pins(root: Path) -> dict[str, str]:
+    """Новые legacy reviews для pinning; corruption уже pinned history блокирует migration."""
+    try:
+        recorded = legacy_review_pins(root)
+    except ValueError as exc:
+        raise ValueError(f"invalid recorded legacy review pins: {exc}") from exc
+    current = current_legacy_review_snapshots(root)
+
+    for rel, expected in recorded.items():
+        path = root / rel
+        if not path.is_file():
+            raise ValueError(f"pinned legacy review is missing: {rel}")
+        try:
+            actual = content_hash(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(f"cannot read pinned legacy review {rel}: {exc}") from exc
+        if actual != expected:
+            raise ValueError(f"pinned legacy review changed after migration: {rel}")
+
+    return {
+        rel: digest
+        for rel, digest in current.items()
+        if rel not in recorded
+    }
+
+
 def legacy_schema_pending(root: Path) -> bool:
     paths: list[Path] = []
     paths.extend(task_directory(root).glob("STEP-*.md"))
@@ -343,10 +370,16 @@ def legacy_schema_pending(root: Path) -> bool:
         data = index.read_text(encoding="utf-8")
         if re.search(r"(?m)^(?:#{1,6}\s+)?OQ-\d{3,}\s+—", data):
             return True
+    try:
+        if _pending_legacy_review_pins(root):
+            return True
+    except ValueError:
+        return True
     return False
 
 
 def migrate_project(root: Path) -> dict[str, Any]:
+    pending_legacy_reviews = _pending_legacy_review_pins(root)
     changed: list[str] = []
     changed.extend(migrate_monolithic_requirements(root))
     for path in sorted(task_directory(root).glob("STEP-*.md")):
@@ -373,7 +406,7 @@ def migrate_project(root: Path) -> dict[str, Any]:
     changed.extend(write_projections(root))
 
     unique_changed = sorted(set(changed))
-    if not unique_changed:
+    if not unique_changed and not pending_legacy_reviews:
         return {
             "status": "NO_CHANGES",
             "changed": [],
@@ -385,7 +418,15 @@ def migrate_project(root: Path) -> dict[str, Any]:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     report = report_dir / f"MIGRATION-{timestamp}.md"
     body = "# Project Schema Migration\n\n## Changed artifacts\n\n"
-    body += "\n".join(f"- {item}" for item in unique_changed)
+    body += "\n".join(f"- {item}" for item in unique_changed) if unique_changed else "- none"
+    body += (
+        "\n\n## Legacy immutable reviews\n\n"
+        + (
+            "\n".join(f"- pinned {rel}" for rel in sorted(pending_legacy_reviews))
+            if pending_legacy_reviews
+            else "- no new legacy review pins"
+        )
+    )
     body += "\n\n## Notes\n\nHistorical immutable reports were not rewritten."
     report_meta = {
         "schema": 1,
@@ -393,6 +434,10 @@ def migrate_project(root: Path) -> dict[str, Any]:
         "created_at": _utc_now(),
         "result": "complete",
         "changed_count": len(unique_changed),
+        "legacy_review_reports": [
+            f"{digest} {rel}"
+            for rel, digest in sorted(pending_legacy_reviews.items())
+        ],
     }
     report.write_text(render_document(report_meta, body), encoding="utf-8", newline="\n")
     return {
