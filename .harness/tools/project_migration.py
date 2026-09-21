@@ -29,6 +29,7 @@ from harness_config import (
     task_directory,
 )
 from projection_contract import write_projections
+from template_contract import refresh_project_templates
 
 
 STATUS_MAP = {
@@ -366,7 +367,9 @@ def migrate_project(root: Path) -> dict[str, Any]:
         for item in migrate_monolithic_open_questions(root)
     )
 
-    # Projections всегда пересобираются из migrated canonical state.
+    # Project-owned templates не обновляются HARNESS UPDATE. RECONCILE
+    # синхронизирует их из protocol-owned definitions и затем projections.
+    changed.extend(refresh_project_templates(root))
     changed.extend(write_projections(root))
 
     report_dir = audit_directory(root)
