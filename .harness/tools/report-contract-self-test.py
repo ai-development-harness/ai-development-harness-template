@@ -171,6 +171,13 @@ def main() -> int:
         assert any("Evidence" in item for item in errors), errors
         write(audit, valid_audit())
 
+        # Durable operational report не может быть symlink trust anchor.
+        symlink_release = root / "work/releases/RELEASE-20260921T081500Z.md"
+        symlink_release.symlink_to(release.name)
+        symlink_errors = validate_release_report(root, symlink_release)
+        assert any("must not be a symlink" in item for item in symlink_errors), symlink_errors
+        symlink_release.unlink()
+
         # Regex-похожий, но календарно невозможный UTC timestamp не является
         # canonical durable filename и не должен участвовать в sortable history.
         invalid_date = root / "work/releases/RELEASE-20261340T256199Z.md"
