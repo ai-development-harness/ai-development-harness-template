@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Canonical schema-v1 project-owned templates used by PROJECT RECONCILE.
+"""Default schema-v1 project-owned templates.
 
-HARNESS UPDATE сохраняет ownership project files. RECONCILE refreshes templates
-из этих protocol-owned definitions, поэтому existing project получает новую
-schema без silent overwrite внутри updater.
+Protocol-owned definitions задают bootstrap/default content, но после INIT
+существующий TEMPLATE.md принадлежит проекту и не перезаписывается RECONCILE.
 """
 from __future__ import annotations
 
@@ -12,6 +11,7 @@ from pathlib import Path
 from harness_config import (
     adr_directory,
     architecture_path,
+    get,
     audit_directory,
     init_review_directory,
     open_questions_directory,
@@ -19,6 +19,7 @@ from harness_config import (
     release_directory,
     requirements_directory,
     review_directory,
+    load_manifest,
     skill_search_directory,
     task_directory,
 )
@@ -453,21 +454,24 @@ def template_targets(root: Path) -> dict[Path, str]:
 
 
 def refresh_project_templates(root: Path) -> list[str]:
+    """Создать отсутствующие project-owned templates, не переписывая custom content."""
     changed: list[str] = []
     for path, expected in template_targets(root).items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        actual = path.read_text(encoding="utf-8") if path.is_file() else None
-        if actual != expected:
-            path.write_text(expected, encoding="utf-8", newline="\n")
-            changed.append(path.relative_to(root).as_posix())
+        if path.is_file():
+            continue
+        path.write_text(expected, encoding="utf-8", newline="\n")
+        changed.append(path.relative_to(root).as_posix())
     return changed
 
 
 def validate_project_templates(root: Path) -> list[str]:
+    """До INIT template repository должен совпадать с defaults; после INIT важна только их доступность."""
     errors: list[str] = []
+    initialized = bool(get(load_manifest(root), "project.initialized", False))
     for path, expected in template_targets(root).items():
         if not path.is_file():
             errors.append(f"project template missing: {path.relative_to(root)}")
-        elif path.read_text(encoding="utf-8") != expected:
-            errors.append(f"project template drift: {path.relative_to(root)}")
+        elif not initialized and path.read_text(encoding="utf-8") != expected:
+            errors.append(f"template baseline drift before PROJECT INIT: {path.relative_to(root)}")
     return errors
