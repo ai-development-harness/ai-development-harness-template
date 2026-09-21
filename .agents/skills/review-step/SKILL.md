@@ -4,7 +4,7 @@ description: Run an independent read-only review of an exact repository revision
 ---
 # review-step
 
-Используй для `STEP REVIEW STEP-NNN`.
+Используй для `STEP REVIEW STEP-NNN`. Human-readable findings/evidence/verdict rationale пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys/enums не локализуй.
 
 1. До reasoning запусти deterministic integrity gate и убедись, что STEP имеет current Ready plan:
    ```bash
