@@ -327,14 +327,18 @@ def repository_revision(root: Path) -> dict[str, str | None]:
     if code != 0:
         raise ValueError("cannot read git worktree state")
 
-    def excluded(rel: str) -> bool:
+    def local_operational(rel: str) -> bool:
+        normalized = _normalize_git_rel(rel)
+        return normalized is not None and (
+            normalized == ".harness/local" or normalized.startswith(".harness/local/")
+        )
+
+    def review_report_path(rel: str) -> bool:
         normalized = _normalize_git_rel(rel)
         if normalized is None:
             return False
-        if normalized == ".harness/local" or normalized.startswith(".harness/local/"):
-            return True
         # Configurable reviewDirectory не является blanket trust boundary:
-        # исключаем только report-shaped Git paths, не symlink targets.
+        # распознаём только report-shaped Git paths, не symlink targets.
         return _is_step_review_report_rel(root, normalized)
 
     entries = [entry for entry in status.split(b"\0") if entry]
@@ -356,10 +360,20 @@ def repository_revision(root: Path) -> dict[str, str | None]:
             index += 1
 
         path = root / rel
+
+        # Operational local state не является reviewed product/config revision.
+        # Для rename/copy исключаем запись только если обе стороны остаются
+        # внутри .harness/local/**; перенос между local и product surface обязан
+        # остаться видимым в fingerprint.
+        if local_operational(rel) and (
+            source_rel is None or local_operational(source_rel)
+        ):
+            continue
+
         # STEP REVIEW создаёт новый report уже после snapshot. Поэтому можно
         # исключить только новое A/?? report-состояние. Mutation/rename уже
         # существующей immutable history обязана остаться частью exact revision.
-        new_review_report = excluded(rel) and (xy == b"??" or xy[:1] == b"A")
+        new_review_report = review_report_path(rel) and (xy == b"??" or xy[:1] == b"A")
         if new_review_report and source_rel is None:
             continue
         changed.append((xy, rel, source_rel))
