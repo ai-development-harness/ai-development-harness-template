@@ -16,7 +16,9 @@ from harness_config import (
     update_manifest_path,
     update_report_directory,
 )
+from planning_contract import step_completion_proof
 from project_migration import legacy_schema_pending, migrate_project
+from review_contract import legacy_review_pins, validate_all_review_reports
 
 
 def run(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -161,7 +163,7 @@ repository:
 def legacy_step() -> str:
     return """# STEP-001 — Legacy step
 
-**Статус:** Запланировано
+**Статус:** Выполнено
 **Type:** IMPLEMENTATION
 **Приоритет:** Средний
 **Фаза:** Core
@@ -232,7 +234,7 @@ Legacy context.
 
 ## Evidence
 
-—
+Legacy verification evidence.
 
 ## Review status
 
@@ -242,6 +244,36 @@ Legacy context.
 ## Blocker / Failure reason
 
 —
+"""
+
+
+def legacy_review() -> str:
+    return """# REVIEW STEP-001
+
+**Reviewer role:** reviewer
+**Verdict:** PASS
+**Reviewed revision:** legacy-revision
+
+## Scope checked
+
+Legacy fixture.
+
+## Findings
+
+none
+
+## Verification observations
+
+Legacy verification passed.
+
+## Specialized reviews
+
+- Security: not required
+- Tests: pass
+
+## Verdict rationale
+
+Acceptance was proven at the time of review.
 """
 
 
@@ -317,6 +349,10 @@ def test_project_owned_migration() -> None:
 
         (root / "planning/tasks").mkdir(parents=True)
         (root / "planning/tasks/STEP-001.md").write_text(legacy_step(), encoding="utf-8")
+        legacy_review_path = root / "planning/reviews/STEP-001/REVIEW-20260920T000000Z.md"
+        legacy_review_path.parent.mkdir(parents=True)
+        legacy_review_path.write_text(legacy_review(), encoding="utf-8")
+        legacy_review_before = legacy_review_path.read_text(encoding="utf-8")
         (root / "docs/adr").mkdir(parents=True)
         (root / "docs/adr/ADR-001-legacy.md").write_text(legacy_adr(), encoding="utf-8")
         (root / "docs/OPEN_QUESTIONS.md").write_text(
@@ -351,6 +387,19 @@ def test_project_owned_migration() -> None:
         require(len(oq_files) == 1, "OQ split failed")
         require(parse_document(oq_files[0])["frontmatter"]["status"] == "resolved", "OQ status lost")
 
+        # Legacy immutable review остаётся byte-for-byte прежним, но migration
+        # report фиксирует его hash как durable compatibility proof.
+        require(
+            legacy_review_path.read_text(encoding="utf-8") == legacy_review_before,
+            "legacy immutable review was rewritten",
+        )
+        pins = legacy_review_pins(root)
+        legacy_rel = legacy_review_path.relative_to(root).as_posix()
+        require(legacy_rel in pins, f"legacy review was not pinned: {pins}")
+        require(not validate_all_review_reports(root), validate_all_review_reports(root))
+        proof = step_completion_proof(root, "STEP-001")
+        require(proof["complete"], f"legacy PASS review did not preserve completion proof: {proof}")
+
         # RECONCILE owns template refresh, not updater.
         require((root / "planning/reviews/TEMPLATE.md").is_file(), "review template not refreshed")
         require((root / "planning/plan-reviews/TEMPLATE.md").is_file(), "planning-review template missing")
@@ -361,6 +410,18 @@ def test_project_owned_migration() -> None:
         reports_after = sorted((root / "planning/audits").glob("MIGRATION-*.md"))
         require(second["status"] == "NO_CHANGES", second)
         require(reports_before == reports_after, "idempotent reconcile created an extra migration report")
+
+        # После pinning historical report становится immutable contract:
+        # mutation должна обнаруживаться, а RECONCILE не имеет права re-pin её.
+        legacy_review_path.write_text(legacy_review_before + "\nTampered.\n", encoding="utf-8")
+        review_errors = validate_all_review_reports(root)
+        require(any("pinned legacy report changed" in item for item in review_errors), review_errors)
+        try:
+            migrate_project(root)
+        except ValueError as exc:
+            require("pinned legacy review changed" in str(exc), str(exc))
+        else:
+            raise AssertionError("tampered pinned legacy review was silently re-migrated")
 
 
 def test_release_metadata(root: Path) -> None:
