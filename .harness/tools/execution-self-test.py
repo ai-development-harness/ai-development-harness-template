@@ -487,6 +487,24 @@ def main() -> int:
         ci_immutability_errors = validate_review_immutability(root, ci_mode=True)
         assert any("existing report changed (commit)" in item for item in ci_immutability_errors), ci_immutability_errors
 
+        # Exact revision различает index и working tree. Одинаковые working bytes
+        # при разных staged blobs не могут давать одинаковый review proof.
+        write(root / "src/index-proof.txt", "base\n")
+        run(root, "git", "add", "src/index-proof.txt")
+        run(root, "git", "commit", "-qm", "add index proof fixture")
+        write(root / "src/index-proof.txt", "staged-a\n")
+        run(root, "git", "add", "src/index-proof.txt")
+        write(root / "src/index-proof.txt", "working-same\n")
+        index_revision_a = repository_revision(root)
+        write(root / "src/index-proof.txt", "staged-b\n")
+        run(root, "git", "add", "src/index-proof.txt")
+        write(root / "src/index-proof.txt", "working-same\n")
+        index_revision_b = repository_revision(root)
+        assert index_revision_a["worktree_hash"] != index_revision_b["worktree_hash"], (
+            index_revision_a,
+            index_revision_b,
+        )
+
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
 
