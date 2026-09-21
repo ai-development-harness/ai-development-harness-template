@@ -51,6 +51,7 @@ protocol:
   reviewDirectory: planning/reviews
   planningReviewDirectory: planning/plan-reviews
   initReviewDirectory: planning/init-reviews
+  auditDirectory: planning/audits
 """
 
 
