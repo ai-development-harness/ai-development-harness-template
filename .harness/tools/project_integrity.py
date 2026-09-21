@@ -30,6 +30,7 @@ from harness_config import (
     load_update_policy,
     project_overview_path,
     requirements_directory,
+    skill_registry_path,
     task_directory,
     update_lock_path,
     update_report_directory,
@@ -334,6 +335,7 @@ def validate_configured_artifacts(root: Path) -> list[str]:
         (adr_directory(root) / "TEMPLATE.md", "ADR template"),
         (task_directory(root) / "TEMPLATE.md", "STEP template"),
         (open_questions_directory(root) / "TEMPLATE.md", "Open Question template"),
+        (skill_registry_path(root), "skill registry"),
         (update_report_directory(root) / "README.md", "Harness update report README"),
     ]
     for path, label in checks:
