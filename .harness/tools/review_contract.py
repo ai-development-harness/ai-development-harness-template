@@ -198,7 +198,7 @@ def _is_step_review_report_path(root: Path, path: Path) -> bool:
         suffix = path.resolve().relative_to(review_directory(root).resolve()).as_posix()
     except ValueError:
         return False
-    return re.fullmatch(r"STEP-\\d{3,}/REVIEW-.+\\.md", suffix) is not None
+    return re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", suffix) is not None
 
 
 def repository_revision(root: Path) -> dict[str, str | None]:
