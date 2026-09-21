@@ -17,7 +17,7 @@ from harness_config import (
     update_report_directory,
 )
 from planning_contract import step_completion_proof
-from project_migration import legacy_schema_pending, migrate_project
+from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending, migrate_project
 from review_contract import legacy_review_pins, validate_all_review_reports
 
 
@@ -391,6 +391,10 @@ def test_project_owned_migration() -> None:
         )
 
         require(legacy_schema_pending(root), "legacy schema not detected")
+        require(
+            not legacy_manual_bypass_allowed(root),
+            "mixed/partially migrated project received manual legacy bypass",
+        )
         first = migrate_project(root)
         require(first["status"] == "MIGRATED", first)
         require(not legacy_schema_pending(root), "migration left active legacy schema")
