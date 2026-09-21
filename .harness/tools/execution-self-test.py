@@ -299,6 +299,18 @@ def main() -> int:
         run(root, "git", "add", ".")
         run(root, "git", "commit", "-qm", "fixture")
 
+        # Operational .harness/local/** не является частью reviewed revision
+        # даже если такой path уже оказался tracked. Нормализация Git path не
+        # должна удалять ведущую точку из скрытого directory name.
+        local_state = root / ".harness/local/execution/execution-status.json"
+        write(local_state, '{"schemaVersion": 1, "executions": []}\n')
+        run(root, "git", "add", "-f", local_state.relative_to(root).as_posix())
+        run(root, "git", "commit", "-qm", "fixture tracked local state")
+        write(local_state, '{"schemaVersion": 1, "executions": [{"changed": true}]}\n')
+        local_only_revision = repository_revision(root)
+        assert local_only_revision["worktree_hash"] is None, local_only_revision
+        run(root, "git", "checkout", "--", local_state.relative_to(root).as_posix())
+
         # Configurable reviewDirectory не может исключить произвольный subtree
         # из reviewed revision. Старое blanket-exclusion поведение для docs
         # скрывало бы изменение architecture.md.
