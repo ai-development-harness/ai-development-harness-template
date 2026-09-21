@@ -305,6 +305,16 @@ def skill_search_max_results(root: Path) -> int:
     return value
 
 
+def load_git_policy(root: Path) -> dict[str, Any]:
+    """Прочитать configured Git policy через manifest repository.gitPolicy."""
+    path = repository_path(root, "gitPolicy")
+    try:
+        with path.open("rb") as fh:
+            return tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigError(f"cannot read Git policy {path}: {exc}") from exc
+
+
 def load_update_policy(root: Path) -> dict[str, Any]:
     path = repository_path(root, "harnessUpdatePolicy")
     try:
