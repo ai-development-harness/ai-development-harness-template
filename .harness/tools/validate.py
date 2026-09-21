@@ -414,6 +414,7 @@ def main() -> int:
             root,
             warnings=warnings,
             allow_legacy=allow_legacy,
+            ci_mode=args.mode == "ci",
         )
     )
 
