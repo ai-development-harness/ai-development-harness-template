@@ -38,12 +38,15 @@ from command_transitions import (
 from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
 from harness_config import (
     ConfigError,
+    get,
     language_value,
     load_manifest,
+    load_update_policy,
     max_fix_review_cycles,
     repository_path,
     review_policy,
     skill_search_max_results,
+    update_manifest_path,
 )
 from project_integrity import validate_project_integrity
 from project_migration import legacy_schema_pending
@@ -214,29 +217,49 @@ def semver_tag_tuple(tag: str) -> tuple[int, int, int] | None:
 
 # Проверить Harness update graph: schema, monotonic transitions, отсутствие cycles/ambiguity и достижимость latest.
 def validate_update_graph(root: Path, errors: list[str]) -> None:
-    path = root / ".harness" / "harness-update-graph.json"
-    if not path.is_file():
+    try:
+        policy = load_update_policy(root)
+        path = update_manifest_path(root)
+    except ConfigError as exc:
+        errors.append(f"update-graph: {exc}")
         return
+    if not path.is_file():
+        errors.append(f"update-graph: missing configured update manifest {path.relative_to(root)}")
+        return
+    tag_pattern = get(policy, "source.tag_pattern")
+    if not isinstance(tag_pattern, str):
+        errors.append("harness-update source.tag_pattern must be a string")
+        return
+    try:
+        tag_re = re.compile(tag_pattern)
+    except re.error as exc:
+        errors.append(f"harness-update source.tag_pattern is invalid: {exc}")
+        return
+
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
-        errors.append(f"invalid .harness/harness-update-graph.json: {exc}")
+        errors.append(f"invalid {path.relative_to(root)}: {exc}")
         return
 
+    label = path.relative_to(root).as_posix()
     if not isinstance(data, dict):
-        errors.append(".harness/harness-update-graph.json root must be an object")
+        errors.append(f"{label} root must be an object")
         return
     if data.get("schemaVersion") != 1:
-        errors.append(".harness/harness-update-graph.json schemaVersion must be 1")
+        errors.append(f"{label} schemaVersion must be 1")
 
     latest = data.get("latest")
-    if not isinstance(latest, str) or semver_tag_tuple(latest) is None:
-        errors.append(".harness/harness-update-graph.json latest must be vMAJOR.MINOR.PATCH")
+    if not isinstance(latest, str) or tag_re.fullmatch(latest) is None:
+        errors.append(f"{label} latest does not match configured source.tag_pattern")
+        latest = None
+    elif semver_tag_tuple(latest) is None:
+        errors.append(f"{label} latest must use protocol SemVer ordering vMAJOR.MINOR.PATCH")
         latest = None
 
     transitions = data.get("transitions")
     if not isinstance(transitions, list):
-        errors.append(".harness/harness-update-graph.json transitions must be an array")
+        errors.append(f"{label} transitions must be an array")
         return
 
     outgoing: dict[str, str] = {}
@@ -245,20 +268,26 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
         nodes.add(latest)
 
     for index, transition in enumerate(transitions):
-        prefix = f".harness/harness-update-graph.json transitions[{index}]"
+        prefix = f"{label} transitions[{index}]"
         if not isinstance(transition, dict):
             errors.append(f"{prefix} must be an object")
             continue
 
         source = transition.get("from")
         target = transition.get("to")
-        source_v = semver_tag_tuple(source) if isinstance(source, str) else None
-        target_v = semver_tag_tuple(target) if isinstance(target, str) else None
+        source_pattern_ok = isinstance(source, str) and tag_re.fullmatch(source) is not None
+        target_pattern_ok = isinstance(target, str) and tag_re.fullmatch(target) is not None
+        source_v = semver_tag_tuple(source) if source_pattern_ok else None
+        target_v = semver_tag_tuple(target) if target_pattern_ok else None
 
-        if source_v is None:
-            errors.append(f"{prefix}.from must be vMAJOR.MINOR.PATCH")
-        if target_v is None:
-            errors.append(f"{prefix}.to must be vMAJOR.MINOR.PATCH")
+        if not source_pattern_ok:
+            errors.append(f"{prefix}.from does not match configured source.tag_pattern")
+        elif source_v is None:
+            errors.append(f"{prefix}.from must use protocol SemVer ordering")
+        if not target_pattern_ok:
+            errors.append(f"{prefix}.to does not match configured source.tag_pattern")
+        elif target_v is None:
+            errors.append(f"{prefix}.to must use protocol SemVer ordering")
         if source_v is not None and target_v is not None and target_v <= source_v:
             errors.append(f"{prefix} must move strictly forward")
         if transition.get("kind") not in {"standard", "bridge"}:
@@ -272,44 +301,38 @@ def validate_update_graph(root: Path, errors: list[str]) -> None:
 
         if isinstance(source, str) and isinstance(target, str):
             if source in outgoing:
-                errors.append(f".harness/harness-update-graph.json ambiguous route: multiple transitions from {source}")
+                errors.append(f"{label} ambiguous route: multiple transitions from {source}")
             else:
                 outgoing[source] = target
             nodes.update({source, target})
 
     if latest and latest in outgoing:
-        errors.append(".harness/harness-update-graph.json latest must be terminal (no outgoing transition)")
+        errors.append(f"{label} latest must be terminal (no outgoing transition)")
 
     if latest:
-        for start in sorted(nodes):
-            current = start
+        for graph_start in sorted(nodes):
+            current = graph_start
             seen: set[str] = set()
             while current != latest:
                 if current in seen:
-                    errors.append(f".harness/harness-update-graph.json cycle detected from {start}")
+                    errors.append(f"{label} cycle detected from {graph_start}")
                     break
                 seen.add(current)
                 nxt = outgoing.get(current)
                 if nxt is None:
-                    errors.append(f".harness/harness-update-graph.json release {start} cannot reach latest {latest}")
+                    errors.append(f"{label} release {graph_start} cannot reach latest {latest}")
                     break
                 current = nxt
 
-        manifest_path = root / ".harness" / "manifest.yaml"
-        if manifest_path.is_file():
-            try:
-                manifest_text = manifest_path.read_text(encoding="utf-8")
-                manifest_release = None
-                for line in manifest_text.splitlines():
-                    if line.startswith("  release:"):
-                        manifest_release = line.split(":", 1)[1].split("#", 1)[0].strip().strip("\"'")
-                        break
-                if manifest_release and latest != f"v{manifest_release}":
-                    errors.append(
-                        f".harness/harness-update-graph.json latest {latest} does not match manifest harness.release v{manifest_release}"
-                    )
-            except UnicodeDecodeError:
-                pass
+        try:
+            manifest = load_manifest(root)
+            manifest_release = get(manifest, "harness.release")
+            if isinstance(manifest_release, str) and latest != f"v{manifest_release}":
+                errors.append(
+                    f"{label} latest {latest} does not match manifest harness.release v{manifest_release}"
+                )
+        except ConfigError as exc:
+            errors.append(f"manifest: {exc}")
 
 
 
