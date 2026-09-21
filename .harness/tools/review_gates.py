@@ -30,7 +30,7 @@ TEST_SURFACE_RE = re.compile(
 )
 
 
-def _git_changed_paths(root: Path) -> list[str]:
+def _git_changed_paths(root: Path) -> tuple[list[str], str]:
     paths: set[str] = set()
     for args in (
         ("diff", "--name-only", "HEAD"),
@@ -63,10 +63,12 @@ def _git_changed_paths(root: Path) -> list[str]:
     except OSError:
         pass
 
-    # STEP REVIEW обычно идёт до Git publication, но recovery/manual workflow
-    # может прийти к review уже после commit. На полностью clean tree не теряем
-    # factual surface последнего commit; dirty state всегда имеет приоритет.
+    # STEP REVIEW обычно идёт до Git publication. Если worktree clean, exact
+    # implementation baseline уже не доказуем из одного HEAD: последний commit
+    # — только diagnostic fallback, а не полный STEP surface.
+    surface_mode = "worktree"
     if not paths:
+        surface_mode = "clean-tree-fallback"
         try:
             proc = subprocess.run(
                 ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
@@ -117,7 +119,7 @@ def _git_changed_paths(root: Path) -> list[str]:
             return True
         return re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", review_rel) is None
 
-    return sorted(path for path in paths if included(path))
+    return sorted(path for path in paths if included(path)), surface_mode
 
 
 def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
@@ -125,12 +127,21 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
     meta = task["frontmatter"]
     flags = set(meta.get("risk_flags", [])) if isinstance(meta.get("risk_flags"), list) else set()
     step_type = meta.get("type")
-    paths = _git_changed_paths(root)
+    paths, surface_mode = _git_changed_paths(root)
 
     required: set[str] = set()
     reasons: dict[str, list[str]] = {"security": [], "tests": []}
     security_policy = review_policy(root, "security")
     tests_policy = review_policy(root, "tests")
+
+    # Чистый post-commit review — исключительный путь вне canonical
+    # REVIEW-before-GIT workflow. Без durable implementation baseline нельзя
+    # доказать, что последний commit содержит весь STEP diff, поэтому auto
+    # policy fail-closed требует обе specialized проверки.
+    if surface_mode == "clean-tree-fallback":
+        required.update({"security", "tests"})
+        reasons["security"].append("clean tree has no exact implementation baseline")
+        reasons["tests"].append("clean tree has no exact implementation baseline")
 
     if security_policy == "always":
         required.add("security")
@@ -164,12 +175,14 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
         "securityPolicy": security_policy,
         "testsPolicy": tests_policy,
         "changedPaths": paths,
+        "surfaceMode": surface_mode,
     }
     return {
         "stepId": step_id,
         "required": sorted(required),
         "reasons": reasons,
         "changedPaths": paths,
+        "surfaceMode": surface_mode,
         "basis": stable_hash(basis_payload),
     }
 
