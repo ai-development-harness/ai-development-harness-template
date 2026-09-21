@@ -414,6 +414,20 @@ def main() -> int:
         )
         evidence_probe.unlink()
 
+        # Overall PASS не может скрыть FAIL обязательного specialized reviewer.
+        specialized_fail = root / "planning/reviews/STEP-001/REVIEW-20260921T041000Z.md"
+        review_report(root, "PASS", specialized_fail.name)
+        fail_text = specialized_fail.read_text(encoding="utf-8").replace(
+            "  tests: pass",
+            "  tests: fail",
+        )
+        write(specialized_fail, fail_text)
+        assert any(
+            "PASS review requires PASS for all required specialized reviewers" in item
+            for item in validate_review_report(root, specialized_fail)
+        )
+        specialized_fail.unlink()
+
         blocked = block_execution(root, run_root, command="STEP REVIEW STEP-001")
         assert blocked["current"]["result"] == "FAIL"
 
