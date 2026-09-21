@@ -10,7 +10,7 @@ requirements:
   - REQ-NNN
 adrs: []
 architecture_refs:
-  - docs/architecture.md#relevant-section
+  - "docs/architecture.md#relevant-section"
 risk_flags:
   - none
 plan:
