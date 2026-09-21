@@ -51,7 +51,7 @@ from harness_config import (
     update_manifest_path,
 )
 from project_integrity import validate_project_integrity
-from project_migration import legacy_schema_pending
+from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending
 
 
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
@@ -400,7 +400,11 @@ def main() -> int:
     # После update manual-mode умеет диагностировать legacy active schema, но
     # mutation/commit/CI запрещены до идемпотентного PROJECT RECONCILE.
     legacy_pending = legacy_schema_pending(root)
-    allow_legacy = args.mode == "manual" and legacy_pending
+    allow_legacy = (
+        args.mode == "manual"
+        and legacy_pending
+        and legacy_manual_bypass_allowed(root)
+    )
     if legacy_pending:
         if allow_legacy:
             warnings.append(
@@ -408,7 +412,8 @@ def main() -> int:
             )
         else:
             errors.append(
-                "active project schema migration required; run PROJECT RECONCILE in manual mode"
+                "active project schema migration required or partially migrated; "
+                "run PROJECT RECONCILE before continuing"
             )
     errors.extend(
         validate_project_integrity(
