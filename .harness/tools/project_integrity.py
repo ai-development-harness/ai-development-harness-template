@@ -362,13 +362,14 @@ def validate_project_integrity(
     *,
     warnings: list[str] | None = None,
     allow_legacy: bool = False,
+    ci_mode: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     errors.extend(validate_planning_contracts(root, warnings=warnings, allow_legacy=allow_legacy))
     if not allow_legacy:
         errors.extend(validate_requirements(root))
         errors.extend(validate_adrs(root))
-        errors.extend(validate_all_review_reports(root))
+        errors.extend(validate_all_review_reports(root, ci_mode=ci_mode))
         errors.extend(validate_projections(root))
         errors.extend(validate_project_templates(root))
         errors.extend(validate_initialized_project(root))
