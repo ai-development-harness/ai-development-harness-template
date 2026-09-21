@@ -148,11 +148,11 @@ repository:
   # Настройки GIT COMMIT / PUSH / PR / SYNC.
   # Пример: .harness/git-policy.toml.
   gitPolicy: .harness/git-policy.toml
-  # Политика обязательных Harness artifacts/repository hygiene.
-  # Пример: .harness/harness-policy.toml.
+  # Canonical bootstrap path политики Harness integrity/repository hygiene; relocation не поддерживается.
+  # Формат: фиксированное значение .harness/harness-policy.toml.
   harnessPolicy: .harness/harness-policy.toml
-  # Ownership/source policy self-update; update-specific paths живут только внутри неё.
-  # Пример: .harness/harness-update.toml.
+  # Canonical bootstrap path ownership/source policy self-update; relocation не поддерживается.
+  # Формат: фиксированное значение .harness/harness-update.toml.
   harnessUpdatePolicy: .harness/harness-update.toml
   # Canonical bootstrap path локального deterministic validator; relocation не поддерживается.
   # Формат: фиксированное значение .harness/tools/validate.py.
