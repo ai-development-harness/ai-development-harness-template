@@ -4,6 +4,7 @@ kind: planning_review
 step_id: STEP-NNN
 verdict: pass
 reviewer_role: planner
+finding_count: 0
 context_basis: sha256:...
 plan_content_hash: sha256:...
 created_at: YYYY-MM-DDTHH:MM:SSZ

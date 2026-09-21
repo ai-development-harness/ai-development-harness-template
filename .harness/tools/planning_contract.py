@@ -397,39 +397,13 @@ def plan_content_hash(root: Path, step_id: str) -> str:
     return content_hash(task["sections"].get("Implementation plan", ""))
 
 
-def planning_review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
-    directory = planning_review_directory(root) / step_id
-    if not directory.is_dir():
-        return []
-    result: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("PLAN-REVIEW-*.md")):
-        try:
-            document = parse_document(path)
-        except DocumentError:
-            continue
-        meta = document["frontmatter"]
-        if (
-            meta.get("schema") == 1
-            and meta.get("kind") == "planning_review"
-            and meta.get("step_id") == step_id
-            and meta.get("verdict") in {"pass", "blocked"}
-        ):
-            result.append({"path": path, "document": document})
-    return result
-
-
-def latest_matching_planning_review(root: Path, step_id: str) -> dict[str, Any] | None:
-    basis = planning_context_basis(root, step_id)
-    plan_hash = plan_content_hash(root, step_id)
-    for item in reversed(planning_review_reports(root, step_id)):
-        meta = item["document"]["frontmatter"]
-        if (
-            meta.get("verdict") == "pass"
-            and meta.get("context_basis") == basis
-            and meta.get("plan_content_hash") == plan_hash
-        ):
-            return item
-    return None
+def _valid_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(char in "0123456789abcdef" for char in value[7:].lower())
+    )
 
 
 def _validate_iso_timestamp(value: Any) -> bool:
@@ -440,6 +414,156 @@ def _validate_iso_timestamp(value: Any) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _validate_semantic_review_sections(
+    document: dict[str, Any],
+    *,
+    verdict: Any,
+) -> list[str]:
+    errors: list[str] = []
+    for section in ("Scope checked", "Findings", "Verdict rationale"):
+        value = document["sections"].get(section)
+        if value is None:
+            errors.append(f"missing section '## {section}'")
+        elif not value.strip():
+            errors.append(f"empty section '## {section}'")
+
+    count = document["frontmatter"].get("finding_count")
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        errors.append("finding_count must be a non-negative integer")
+    elif verdict == "pass" and count != 0:
+        errors.append("PASS semantic review requires finding_count=0")
+    elif verdict == "blocked" and count < 1:
+        errors.append("BLOCKED semantic review requires finding_count>=1")
+    return errors
+
+
+def validate_planning_review_report(
+    root: Path,
+    path: Path,
+    *,
+    expected_step_id: str | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    try:
+        document = parse_document(path)
+    except DocumentError as exc:
+        return [str(exc)]
+    meta = document["frontmatter"]
+    errors.extend(require_schema(document, kind="planning_review"))
+
+    step_id = meta.get("step_id")
+    if not isinstance(step_id, str) or STEP_ID_RE.fullmatch(step_id) is None:
+        errors.append("step_id must be STEP-NNN")
+    elif expected_step_id is not None and step_id != expected_step_id:
+        errors.append(f"step_id must match review directory {expected_step_id}")
+
+    verdict = meta.get("verdict")
+    if verdict not in {"pass", "blocked"}:
+        errors.append("verdict must be pass|blocked")
+    if meta.get("reviewer_role") != "planner":
+        errors.append("reviewer_role must be planner")
+    if not _valid_sha256(meta.get("context_basis")):
+        errors.append("context_basis must be sha256")
+    if not _valid_sha256(meta.get("plan_content_hash")):
+        errors.append("plan_content_hash must be sha256")
+    if not _validate_iso_timestamp(meta.get("created_at")):
+        errors.append("created_at must be ISO-8601")
+    errors.extend(_validate_semantic_review_sections(document, verdict=verdict))
+    return errors
+
+
+def planning_review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
+    directory = planning_review_directory(root) / step_id
+    if not directory.is_dir():
+        return []
+    result: list[dict[str, Any]] = []
+    for path in sorted(directory.glob("PLAN-REVIEW-*.md")):
+        if validate_planning_review_report(root, path, expected_step_id=step_id):
+            continue
+        document = parse_document(path)
+        result.append({"path": path, "document": document})
+    return result
+
+
+def _latest_planning_review_for(
+    root: Path,
+    step_id: str,
+    basis: str,
+    plan_hash: str,
+) -> dict[str, Any] | None:
+    for item in reversed(planning_review_reports(root, step_id)):
+        meta = item["document"]["frontmatter"]
+        if (
+            meta.get("context_basis") == basis
+            and meta.get("plan_content_hash") == plan_hash
+        ):
+            return item if meta.get("verdict") == "pass" else None
+    return None
+
+
+def latest_matching_planning_review(root: Path, step_id: str) -> dict[str, Any] | None:
+    return _latest_planning_review_for(
+        root,
+        step_id,
+        planning_context_basis(root, step_id),
+        plan_content_hash(root, step_id),
+    )
+
+
+def validate_init_review_report(
+    root: Path,
+    path: Path,
+    *,
+    expected_stage: str | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    try:
+        document = parse_document(path)
+    except DocumentError as exc:
+        return [str(exc)]
+    meta = document["frontmatter"]
+    errors.extend(require_schema(document, kind="init_review"))
+
+    stage = meta.get("stage")
+    if stage not in {"requirements", "roadmap"}:
+        errors.append("stage must be requirements|roadmap")
+    elif expected_stage is not None and stage != expected_stage:
+        errors.append(f"stage must be {expected_stage}")
+
+    verdict = meta.get("verdict")
+    if verdict not in {"pass", "blocked"}:
+        errors.append("verdict must be pass|blocked")
+    if meta.get("reviewer_role") != "initializer":
+        errors.append("reviewer_role must be initializer")
+    if not _valid_sha256(meta.get("basis")):
+        errors.append("basis must be sha256")
+    if not _validate_iso_timestamp(meta.get("created_at")):
+        errors.append("created_at must be ISO-8601")
+    errors.extend(_validate_semantic_review_sections(document, verdict=verdict))
+    return errors
+
+
+def _validate_semantic_review_reports(root: Path, errors: list[str]) -> None:
+    planning_root = planning_review_directory(root)
+    if planning_root.is_dir():
+        for path in sorted(planning_root.glob("STEP-*/PLAN-REVIEW-*.md")):
+            expected = path.parent.name
+            for issue in validate_planning_review_report(
+                root,
+                path,
+                expected_step_id=expected,
+            ):
+                errors.append(
+                    f"planning-review: {path.relative_to(root)}: {issue}"
+                )
+
+    init_root = init_review_directory(root)
+    if init_root.is_dir():
+        for path in sorted(init_root.glob("INIT-REVIEW-*.md")):
+            for issue in validate_init_review_report(root, path):
+                errors.append(f"init-review: {path.relative_to(root)}: {issue}")
 
 
 def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[str], warnings: list[str] | None) -> None:
@@ -571,17 +695,32 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
             errors.append(f"{prefix}: ready plan missing reviewed_report")
         if not _validate_iso_timestamp(plan.get("planned_at")):
             errors.append(f"{prefix}: ready plan planned_at must be ISO-8601")
-        if expected_basis is not None:
+        proof_basis = stored_basis if _valid_sha256(stored_basis) else None
+        proof_content = stored_content if _valid_sha256(stored_content) else None
+        if proof_basis is None:
+            errors.append(f"{prefix}: ready plan context_basis must be sha256")
+        if proof_content is None:
+            errors.append(f"{prefix}: ready plan content_hash must be sha256")
+        if proof_basis is not None and proof_content is not None:
             try:
-                matched = latest_matching_planning_review(root, step_id)
+                matched = _latest_planning_review_for(
+                    root,
+                    step_id,
+                    proof_basis,
+                    proof_content,
+                )
             except (DocumentError, ConfigError, OSError, ValueError):
                 matched = None
             if matched is None:
-                errors.append(f"{prefix}: ready plan has no PASS planning-review for current basis/content")
+                errors.append(
+                    f"{prefix}: ready plan has no PASS planning-review for stored basis/content"
+                )
             else:
                 actual = matched["path"].relative_to(root).as_posix()
                 if plan.get("reviewed_report") != actual:
-                    errors.append(f"{prefix}: plan.reviewed_report does not point to matching PASS report")
+                    errors.append(
+                        f"{prefix}: plan.reviewed_report does not point to matching PASS report"
+                    )
 
 
 def _validate_open_questions(root: Path, errors: list[str]) -> None:
@@ -699,6 +838,10 @@ def validate_planning_contracts(
         _validate_open_questions(root, errors)
     except (DocumentError, ConfigError, OSError, ValueError) as exc:
         errors.append(f"planning: open questions validation failed: {exc}")
+    try:
+        _validate_semantic_review_reports(root, errors)
+    except (DocumentError, ConfigError, OSError, ValueError) as exc:
+        errors.append(f"planning: semantic review validation failed: {exc}")
     return errors
 
 
@@ -753,22 +896,14 @@ def latest_matching_init_review(root: Path, stage: str) -> Path | None:
     if not directory.is_dir():
         return None
     basis = init_review_basis(root, stage)
-    matches: list[Path] = []
-    for path in sorted(directory.glob("INIT-REVIEW-*.md")):
-        try:
-            document = parse_document(path)
-        except DocumentError:
+    for path in reversed(sorted(directory.glob("INIT-REVIEW-*.md"))):
+        if validate_init_review_report(root, path):
             continue
+        document = parse_document(path)
         meta = document["frontmatter"]
-        if (
-            meta.get("schema") == 1
-            and meta.get("kind") == "init_review"
-            and meta.get("stage") == stage
-            and meta.get("verdict") == "pass"
-            and meta.get("basis") == basis
-        ):
-            matches.append(path)
-    return matches[-1] if matches else None
+        if meta.get("stage") == stage and meta.get("basis") == basis:
+            return path if meta.get("verdict") == "pass" else None
+    return None
 
 
 __all__ = [
@@ -789,5 +924,7 @@ __all__ = [
     "task_contract_snapshot",
     "task_directory",
     "task_path",
+    "validate_init_review_report",
     "validate_planning_contracts",
+    "validate_planning_review_report",
 ]

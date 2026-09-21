@@ -4,6 +4,7 @@ kind: init_review
 stage: requirements
 verdict: pass
 reviewer_role: initializer
+finding_count: 0
 basis: sha256:...
 created_at: YYYY-MM-DDTHH:MM:SSZ
 ---

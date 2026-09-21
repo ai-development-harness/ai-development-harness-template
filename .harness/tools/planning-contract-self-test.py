@@ -13,6 +13,8 @@ import tempfile
 from document_contract import content_hash
 from planning_contract import (
     init_review_basis,
+    latest_matching_init_review,
+    latest_matching_planning_review,
     plan_content_hash,
     planning_context_basis,
     task_path,
@@ -243,6 +245,7 @@ kind: planning_review
 step_id: {step_id}
 verdict: pass
 reviewer_role: planner
+finding_count: 0
 context_basis: {basis}
 plan_content_hash: {plan_hash}
 created_at: 2026-09-21T00:00:00+00:00
@@ -261,6 +264,35 @@ No material findings.
 ## Verdict rationale
 
 Plan is consistent.
+"""
+
+
+def init_review(stage: str, basis: str, verdict: str, finding_count: int) -> str:
+    findings = "No material findings." if verdict == "pass" else "Blocking contradiction."
+    return f"""---
+schema: 1
+kind: init_review
+stage: {stage}
+verdict: {verdict}
+reviewer_role: initializer
+finding_count: {finding_count}
+basis: {basis}
+created_at: 2026-09-21T00:00:00+00:00
+---
+
+# PROJECT INIT Review — {stage}
+
+## Scope checked
+
+Current candidate contracts.
+
+## Findings
+
+{findings}
+
+## Verdict rationale
+
+{verdict}.
 """
 
 
@@ -325,6 +357,20 @@ def main() -> int:
         assert init_c != init_d, (init_c, init_d)
         write(root / "spec/adr/ADR-1000-test.md", adr_text)
 
+        # Для одного basis более новый BLOCKED обязан отменять старый PASS.
+        init_basis = init_review_basis(root, "requirements")
+        write(
+            root / "work/init-reviews/INIT-REVIEW-20260921T010000Z.md",
+            init_review("requirements", init_basis, "pass", 0),
+        )
+        assert latest_matching_init_review(root, "requirements") is not None
+        write(
+            root / "work/init-reviews/INIT-REVIEW-20260921T020000Z.md",
+            init_review("requirements", init_basis, "blocked", 1),
+        )
+        assert latest_matching_init_review(root, "requirements") is None
+        (root / "work/init-reviews/INIT-REVIEW-20260921T020000Z.md").unlink()
+
         # Configurable layout + 1000+ IDs.
         assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
         assert not validate_planning_contracts(root), validate_planning_contracts(root)
@@ -367,6 +413,35 @@ def main() -> int:
         make_ready(root, "STEP-1000", depends=["STEP-1001"])
         errors = validate_planning_contracts(root)
         assert not errors, errors
+
+        # Новый BLOCKED для того же basis/content отменяет более старый PASS.
+        current_basis = planning_context_basis(root, "STEP-1000")
+        current_hash = plan_content_hash(root, "STEP-1000")
+        blocked = planning_review("STEP-1000", current_basis, current_hash).replace(
+            "verdict: pass\nreviewer_role: planner\nfinding_count: 0",
+            "verdict: blocked\nreviewer_role: planner\nfinding_count: 1",
+        ).replace("No material findings.", "Blocking contradiction.")
+        write(
+            root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T010000Z.md",
+            blocked,
+        )
+        assert latest_matching_planning_review(root, "STEP-1000") is None
+        (root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T010000Z.md").unlink()
+        assert latest_matching_planning_review(root, "STEP-1000") is not None
+
+        # Upstream REQ change делает Ready context stale, но global-style
+        # validation остаётся PASS с warning; execution resolver перепланирует
+        # отдельно перед IMPLEMENT.
+        req_before = (root / "spec/requirements/REQ-1000-contract.md").read_text(encoding="utf-8")
+        write(
+            root / "spec/requirements/REQ-1000-contract.md",
+            req_before.replace("Plan учитывает upstream contract.", "Plan учитывает changed upstream contract."),
+        )
+        warnings: list[str] = []
+        errors = validate_planning_contracts(root, warnings=warnings)
+        assert not errors, errors
+        assert any("context_basis is stale" in item for item in warnings), warnings
+        write(root / "spec/requirements/REQ-1000-contract.md", req_before)
 
         # Editing plan content makes Ready invalid even when context is unchanged.
         ready = (root / "work/tasks/STEP-1000.md").read_text(encoding="utf-8")
@@ -426,6 +501,19 @@ Choose a mode.
         write(root / "work/tasks/STEP-1000.md", duplicate)
         errors = validate_planning_contracts(root)
         assert any("duplicate section" in item for item in errors), errors
+
+        # Semantic review schema is enforced, not only matching hashes.
+        malformed_review = planning_review("STEP-1000", "sha256:" + "0" * 64, "sha256:" + "1" * 64).replace(
+            "reviewer_role: planner",
+            "reviewer_role: implementer",
+        )
+        write(
+            root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T030000Z.md",
+            malformed_review,
+        )
+        errors = validate_planning_contracts(root)
+        assert any("reviewer_role must be planner" in item for item in errors), errors
+        (root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T030000Z.md").unlink()
 
         # Dependency cycle is graph-detectable.
         write(root / "work/tasks/STEP-1000.md", task("STEP-1000", depends=["STEP-1001"]))
