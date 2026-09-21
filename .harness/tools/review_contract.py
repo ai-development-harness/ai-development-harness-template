@@ -108,13 +108,29 @@ def _legacy_review_verdict(path: Path, step_id: str) -> str | None:
     return match.group(1).upper() if match else None
 
 
-def trusted_review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
-    """Schema-v1 reports + exact hash-pinned legacy history для completion proof."""
+def trusted_review_reports(
+    root: Path,
+    step_id: str,
+    *,
+    extra_legacy_pins: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Schema-v1 reports + exact hash-pinned legacy history для completion proof.
+
+    extra_legacy_pins используется только внутри одной schema-migration
+    транзакции: projections могут вычислить final state до публикации migration
+    report, который затем делает те же pins durable.
+    """
     result = review_reports(root, step_id)
     try:
         pins = legacy_review_pins(root)
     except ValueError:
         pins = {}
+    if extra_legacy_pins:
+        for rel, digest in extra_legacy_pins.items():
+            previous = pins.get(rel)
+            if previous is not None and previous != digest:
+                raise ValueError(f"conflicting legacy review pin for {rel}")
+            pins[rel] = digest
     directory = review_directory(root) / step_id
     if directory.is_dir():
         for path in sorted(directory.glob("REVIEW-*.md")):
@@ -142,8 +158,17 @@ def trusted_review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
     return result
 
 
-def latest_trusted_review(root: Path, step_id: str) -> dict[str, Any] | None:
-    reports = trusted_review_reports(root, step_id)
+def latest_trusted_review(
+    root: Path,
+    step_id: str,
+    *,
+    extra_legacy_pins: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    reports = trusted_review_reports(
+        root,
+        step_id,
+        extra_legacy_pins=extra_legacy_pins,
+    )
     return reports[-1] if reports else None
 
 
