@@ -45,6 +45,7 @@ from planning_contract import (
     validate_planning_contracts,
 )
 from projection_contract import validate_projections
+from report_contract import validate_all_operational_reports
 from review_contract import validate_all_review_reports
 from template_contract import validate_project_templates
 
@@ -439,6 +440,7 @@ def validate_project_integrity(
         errors.extend(validate_requirements(root))
         errors.extend(validate_adrs(root))
         errors.extend(validate_all_review_reports(root, ci_mode=ci_mode))
+        errors.extend(validate_all_operational_reports(root))
         errors.extend(validate_projections(root))
         errors.extend(validate_project_templates(root))
         errors.extend(validate_initialized_project(root))
