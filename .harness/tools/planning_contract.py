@@ -458,6 +458,8 @@ def validate_planning_review_report(
     expected_step_id: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable planning review must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
@@ -533,6 +535,8 @@ def validate_init_review_report(
     expected_stage: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
+    if path.is_symlink():
+        return ["durable INIT review must not be a symlink"]
     try:
         document = parse_document(path)
     except DocumentError as exc:
