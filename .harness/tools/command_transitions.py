@@ -24,6 +24,11 @@ TABLE_PATH = ".harness/command-transitions.json"
 ALLOWED_TARGETS = {"none", "step", "release-optional"}
 ALLOWED_INPUTS = {"none", "optional", "required"}
 ALLOWED_RESULTS = {"PASS", "SUCCESS", "FAIL", "BLOCKED"}
+KNOWN_RUNTIME_PRECONDITIONS = {
+    "matching-update-target-and-route",
+    "git-push-ready",
+    "git-pr-ready",
+}
 
 
 
@@ -179,6 +184,13 @@ def validate_transition_table(table: dict[str, Any]) -> list[str]:
                 errors.append(
                     f"command-transitions: {domain_name} transition {source} -> {target} runtimePreconditions must be strings"
                 )
+            else:
+                unknown = sorted(set(preconditions) - KNOWN_RUNTIME_PRECONDITIONS)
+                if unknown:
+                    errors.append(
+                        f"command-transitions: {domain_name} transition {source} -> {target} "
+                        "uses unknown runtimePreconditions: " + ", ".join(unknown)
+                    )
 
         if chain_enabled is False and transitions:
             errors.append(
