@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from document_contract import DocumentError, parse_document
+from document_contract import DocumentError, parse_document, parse_sections, split_frontmatter
 from harness_config import (
     adr_directory,
     architecture_path,
@@ -497,15 +497,24 @@ def _validate_template_shape(path: Path, expected: str) -> list[str]:
     except (DocumentError, OSError, UnicodeDecodeError) as exc:
         return [str(exc)]
 
-    # Expected definitions — protocol-owned constants этого release, поэтому
-    # их parse failure является programmer error и не маскируется.
-    expected_path = path.with_name(path.name + ".expected")
-    try:
-        expected_path.write_text(expected, encoding="utf-8", newline="\n")
-        expected_doc = parse_document(expected_path)
-    finally:
-        expected_path.unlink(missing_ok=True)
+    # Expected definitions — protocol-owned constants этого release. Разбираем
+    # их in-memory: validator не должен создавать даже временные repository files.
+    expected_frontmatter, expected_body = split_frontmatter(expected)
+    if expected_frontmatter is None:
+        raise ValueError("protocol template definition has no frontmatter")
+    expected_sections, expected_duplicates = parse_sections(expected_body)
+    if expected_duplicates:
+        raise ValueError(
+            "protocol template definition has duplicate sections: "
+            + ", ".join(expected_duplicates)
+        )
+    expected_doc = {
+        "frontmatter": expected_frontmatter,
+        "sections": expected_sections,
+    }
 
+    for duplicate in actual_doc["duplicate_sections"]:
+        errors.append(f"duplicate structural section '## {duplicate}'")
     errors.extend(
         _required_mapping_shape(
             expected_doc["frontmatter"],
