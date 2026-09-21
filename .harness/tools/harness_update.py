@@ -730,8 +730,10 @@ def check_update(root: Path, *, target: str | None = None, source_url: str | Non
         raise UpdateError("INVALID_UPDATE_POLICY", "source.repository missing")
     source = GitSource.open(repository, source_url=source_url)
     try:
-        _run_validator(root, phase="preflight")
+        # Сначала resolve lock: legacy project без lock должен получить
+        # LEGACY_ADOPTION_REQUIRED, а не общий CURRENT_HARNESS_INVALID.
         lock, route, _ = resolve_update(root, target, source)
+        _run_validator(root, phase="preflight")
         resolved_target = target or (route[-1].target if route else lock["source"]["ref"])
         plans = _preflight_route(root, route, source)
         result = _plan_json(lock, resolved_target, plans)
