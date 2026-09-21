@@ -38,7 +38,7 @@ SKILL INSTALL: owner/repo:skills/docker
 4. блокирует явно опасный skill;
 5. копирует bundle в `.agents/skills/<slug>/`;
 6. создаёт `UPSTREAM.md`;
-7. обновляет `docs/skills/REGISTRY.md`;
+7. обновляет registry по `.harness/manifest.yaml → protocol.skillRegistry`;
 8. добавляет краткий routing rule в generated `SKILL-ROUTING` block `AGENTS.md`.
 
 ### `SKILL CREATE: <описание>`
