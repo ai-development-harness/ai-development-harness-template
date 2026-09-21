@@ -77,7 +77,12 @@ def render_requirements_spec(root: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _requirement_status(root: Path, req: dict[str, Any]) -> tuple[str, str, str]:
+def _requirement_status(
+    root: Path,
+    req: dict[str, Any],
+    *,
+    extra_legacy_review_pins: dict[str, str] | None = None,
+) -> tuple[str, str, str]:
     meta = req["document"]["frontmatter"]
     steps = meta.get("steps", [])
     if not isinstance(steps, list) or not steps:
@@ -98,7 +103,11 @@ def _requirement_status(root: Path, req: dict[str, Any]) -> tuple[str, str, str]
                 deferred += 1
             elif status == "cancelled":
                 cancelled += 1
-            proof = step_completion_proof(root, step_id)
+            proof = step_completion_proof(
+                root,
+                step_id,
+                extra_legacy_review_pins=extra_legacy_review_pins,
+            )
             if proof["complete"]:
                 completed += 1
                 evidence.append(proof["proof_hash"])
@@ -118,7 +127,11 @@ def _requirement_status(root: Path, req: dict[str, Any]) -> tuple[str, str, str]
     return status, _fmt_refs(valid_steps), _fmt_refs(evidence)
 
 
-def render_requirements_status(root: Path) -> str:
+def render_requirements_status(
+    root: Path,
+    *,
+    extra_legacy_review_pins: dict[str, str] | None = None,
+) -> str:
     lines = [
         "# Requirements Status",
         "",
@@ -130,7 +143,11 @@ def render_requirements_status(root: Path) -> str:
     for item in canonical_requirements(root):
         doc = item["document"]
         req_id = doc["frontmatter"]["id"]
-        status, steps, evidence = _requirement_status(root, item)
+        status, steps, evidence = _requirement_status(
+            root,
+            item,
+            extra_legacy_review_pins=extra_legacy_review_pins,
+        )
         lines.append(
             f"| [{req_id}]({item['path'].name}) | {_title(doc)} | {status} | {steps} | {evidence} |"
         )
@@ -227,11 +244,18 @@ def render_open_questions_index(root: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
-def projection_targets(root: Path) -> dict[Path, str]:
+def projection_targets(
+    root: Path,
+    *,
+    extra_legacy_review_pins: dict[str, str] | None = None,
+) -> dict[Path, str]:
     requirements = requirements_directory(root)
     return {
         requirements / "SPEC.md": render_requirements_spec(root),
-        requirements / "STATUS.md": render_requirements_status(root),
+        requirements / "STATUS.md": render_requirements_status(
+            root,
+            extra_legacy_review_pins=extra_legacy_review_pins,
+        ),
         roadmap_path(root): render_roadmap(root),
         status_path(root): render_project_status(root),
         open_questions_index_path(root): render_open_questions_index(root),
@@ -254,9 +278,16 @@ def validate_projections(root: Path) -> list[str]:
     return errors
 
 
-def write_projections(root: Path) -> list[str]:
+def write_projections(
+    root: Path,
+    *,
+    extra_legacy_review_pins: dict[str, str] | None = None,
+) -> list[str]:
     changed: list[str] = []
-    for path, expected in projection_targets(root).items():
+    for path, expected in projection_targets(
+        root,
+        extra_legacy_review_pins=extra_legacy_review_pins,
+    ).items():
         path.parent.mkdir(parents=True, exist_ok=True)
         actual = path.read_text(encoding="utf-8") if path.is_file() else None
         if actual != expected:
