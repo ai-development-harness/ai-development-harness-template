@@ -83,20 +83,27 @@ def _git_changed_paths(root: Path) -> list[str]:
         except OSError:
             pass
 
-    excluded_roots = [
-        review_directory(root).resolve(),
-        (root / ".harness" / "local").resolve(),
-    ]
+    review_root = review_directory(root).resolve()
+    local_root = (root / ".harness" / "local").resolve()
 
     def included(rel: str) -> bool:
         candidate = (root / rel).resolve()
-        for excluded in excluded_roots:
-            try:
-                candidate.relative_to(excluded)
-                return False
-            except ValueError:
-                pass
-        return True
+
+        # Operational local state никогда не является factual product surface.
+        try:
+            candidate.relative_to(local_root)
+            return False
+        except ValueError:
+            pass
+
+        # Configurable reviewDirectory не является blanket ignore-root.
+        # Иначе значение вроде "docs" скрывало бы реальные product/security
+        # изменения от preselector. Исключаем только report-shaped artifacts.
+        try:
+            review_rel = candidate.relative_to(review_root).as_posix()
+        except ValueError:
+            return True
+        return re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", review_rel) is None
 
     return sorted(path for path in paths if included(path))
 

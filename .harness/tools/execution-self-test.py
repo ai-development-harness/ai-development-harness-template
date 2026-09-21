@@ -309,6 +309,15 @@ def main() -> int:
         write(root / "docs/architecture.md", "# Architecture\n\nChanged product architecture.\n")
         broad_review_revision = repository_revision(root)
         assert broad_review_revision["worktree_hash"] is not None, broad_review_revision
+
+        # Тот же trust boundary обязателен для specialized-review preselector:
+        # configured reviewDirectory=docs не должен скрывать security-like
+        # product path только потому, что он находится под docs/.
+        write(root / "docs/security-model.md", "# Security model\n\nChanged.\n")
+        broad_gate = required_reviewers(root, "STEP-001")
+        assert "security" in broad_gate["required"], broad_gate
+        (root / "docs/security-model.md").unlink()
+
         run(root, "git", "checkout", "--", "docs/architecture.md")
         write(root / ".harness/manifest.yaml", original_manifest)
         run(root, "git", "add", ".harness/manifest.yaml")
