@@ -376,7 +376,7 @@ Reviewer независим и read-only относительно product code.
 5. Запустить specialized reviewers согласно policy.
 6. Каждый finding классифицировать как `implementation`, `evidence` или `contract`; finding должен быть конкретным и воспроизводимым.
 7. `FAIL` — только implementation/evidence defects, исправимые в scope текущего STEP. `BLOCKED` — contract contradiction, impossible acceptance, stale planning context, missing decision/prerequisite, blocking evidence condition или иной дефект, который FIX не имеет права скрыто исправлять.
-8. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
+8. Создать новый immutable report `REVIEW-<UTC timestamp>.md` в configured `.harness/manifest.yaml → protocol.reviewDirectory/STEP-NNN/`.
 9. Global wrapper записывает тот же verdict как command result. STEP после review не мутируется ради cache-полей: latest verdict/report выводятся из immutable review history.
 
 При старте command Execution Status запоминает предыдущий immutable review report. Если session оборвалась после создания нового report, resolver может восстановить verdict без повторного expensive review.
