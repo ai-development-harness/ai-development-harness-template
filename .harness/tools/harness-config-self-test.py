@@ -41,7 +41,7 @@ def main() -> int:
         assert language_value(root, "documentation") == "en-US"
         assert language_value(root, "fixtures") == "pt-BR"
 
-        write(root / ".harness/manifest.yaml", manifest("banana"))
+        write(root / ".harness/manifest.yaml", manifest("toolongprimary"))
         try:
             language_value(root, "documentation")
         except ConfigError as exc:
