@@ -17,6 +17,7 @@ from document_contract import (
     OQ_ID_RE,
     REQ_ID_RE,
     STEP_ID_RE,
+    atomic_write_text,
     content_hash,
     render_document,
     split_frontmatter,
@@ -164,7 +165,7 @@ def migrate_legacy_step(path: Path) -> bool:
     if "Implementation plan" in sections:
         sections["Implementation plan"] = _clean_plan_section(sections["Implementation plan"])
     body = _body_from_sections(f"# {step_id} — {title}", sections, kept)
-    path.write_text(render_document(frontmatter, body), encoding="utf-8", newline="\n")
+    atomic_write_text(path, render_document(frontmatter, body))
     return True
 
 
@@ -189,7 +190,7 @@ def migrate_legacy_requirement(path: Path) -> bool:
         sections,
         ["Requirement", "Rationale", "Acceptance"],
     )
-    path.write_text(render_document(frontmatter, body), encoding="utf-8", newline="\n")
+    atomic_write_text(path, render_document(frontmatter, body))
     return True
 
 
@@ -238,7 +239,7 @@ def migrate_monolithic_requirements(root: Path) -> list[str]:
             sub,
             ["Requirement", "Rationale", "Acceptance"],
         )
-        path.write_text(render_document(frontmatter, body), encoding="utf-8", newline="\n")
+        atomic_write_text(path, render_document(frontmatter, body))
         changed.append(path.relative_to(root).as_posix())
     return changed
 
@@ -271,7 +272,7 @@ def migrate_legacy_adr(path: Path) -> bool:
             "Compatibility / operational implications",
         ],
     )
-    path.write_text(render_document(frontmatter, body), encoding="utf-8", newline="\n")
+    atomic_write_text(path, render_document(frontmatter, body))
     return True
 
 
@@ -343,7 +344,7 @@ def migrate_monolithic_open_questions(root: Path) -> list[str]:
         )
         slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "question"
         path = directory / f"{oq_id}-{slug}.md"
-        path.write_text(render_document(frontmatter, body), encoding="utf-8", newline="\n")
+        atomic_write_text(path, render_document(frontmatter, body))
         changed.append(path.as_posix())
     return changed
 
@@ -569,7 +570,7 @@ def migrate_project(root: Path) -> dict[str, Any]:
             for rel, digest in sorted(pending_legacy_reviews.items())
         ],
     }
-    report.write_text(render_document(report_meta, body), encoding="utf-8", newline="\n")
+    atomic_write_text(report, render_document(report_meta, body))
     return {
         "status": "MIGRATED",
         "changed": unique_changed,
