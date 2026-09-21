@@ -167,7 +167,7 @@ Report обязан содержать:
 - `step_id`;
 - `verdict: pass | fail | blocked`;
 - exact reviewed revision;
-- specialized review metadata: persisted `gate_basis`, exact список `required` и результаты security/tests;
+- specialized review metadata: persisted `gate_basis`, exact список `required`, результаты security/tests и concrete `*_evidence` summary/reference для реально выполненного specialized review;
 - structured findings.
 
 Reviewed revision:

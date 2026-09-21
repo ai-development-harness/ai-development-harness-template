@@ -29,7 +29,7 @@ description: Run an independent read-only review of an exact repository revision
    - `pass` — findings нет;
    - `fail` — есть implementation/evidence findings, исправимые внутри scope;
    - `blocked` — есть contract defect/missing prerequisite/stale planning context.
-7. Создай новый immutable schema-v1 report в configured `protocol.reviewDirectory/STEP-NNN/`. Каждый finding обязан иметь Severity, Category, Location, Scenario, Impact, Fix direction. В `specialized_reviews.gate_basis` и `specialized_reviews.required` запиши exact значения preselector; статусы security/tests обязаны им соответствовать.
+7. Создай новый immutable schema-v1 report в configured `protocol.reviewDirectory/STEP-NNN/`. Каждый finding обязан иметь Severity, Category, Location, Scenario, Impact, Fix direction. В `specialized_reviews.gate_basis` и `specialized_reviews.required` запиши exact значения preselector; статусы security/tests обязаны им соответствовать. Для выполненного specialized review заполни `security_evidence` / `tests_evidence` конкретной краткой сводкой или ссылкой на реально существующее durable evidence. Это evidence reference/summary, а не автоматически доверенный filesystem path.
 8. До completion проверь report:
    ```bash
    python3 .harness/tools/review_contract.py --file '<report-path>' --current-revision

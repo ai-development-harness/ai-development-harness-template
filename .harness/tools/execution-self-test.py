@@ -176,6 +176,7 @@ kind: planning_review
 step_id: STEP-001
 verdict: pass
 reviewer_role: planner
+finding_count: 0
 context_basis: {basis}
 plan_content_hash: {phash}
 created_at: 2026-09-21T00:00:00+00:00
@@ -235,10 +236,10 @@ specialized_reviews:
   required:
 {required_block}
   security: not_required
-  security_report: null
+  security_evidence: null
   security_reason: no_security_surface
   tests: pass
-  tests_report: tests/self-test
+  tests_evidence: inline verification in this review
   tests_reason: implementation_step
 ---
 
@@ -343,6 +344,15 @@ def main() -> int:
         complete_command(root, run_root, "STEP IMPLEMENT STEP-001", "SUCCESS")
         begin_command(root, run_root, "STEP REVIEW STEP-001")
         review_report(root, "FAIL", "REVIEW-20260921T010000Z.md")
+        invalid_role = root / "planning/reviews/STEP-001/REVIEW-20260921T005000Z.md"
+        valid_text = (root / "planning/reviews/STEP-001/REVIEW-20260921T010000Z.md").read_text(encoding="utf-8")
+        write(invalid_role, valid_text.replace("reviewer_role: reviewer", "reviewer_role: implementer"))
+        from review_contract import validate_review_report
+        assert any(
+            "reviewer_role must be reviewer" in item
+            for item in validate_review_report(root, invalid_role)
+        )
+        invalid_role.unlink()
         recovered = resolve_root(root, run_root)
         assert_resolved(recovered, "NEXT", "STEP FIX STEP-001", "ORCHESTRATION_CTS_TRANSITION")
 
@@ -391,6 +401,22 @@ def main() -> int:
         exhausted = resolve_root(root, run_root)
         assert_resolved(exhausted, "BLOCKED", None, "FIX_REVIEW_LIMIT_REACHED")
         assert exhausted["fixReviewCycles"] == 1
+
+        # Specialized result без конкретного evidence summary/reference невалиден.
+        evidence_probe = root / "planning/reviews/STEP-001/REVIEW-20260921T040000Z.md"
+        review_report(root, "PASS", evidence_probe.name)
+        probe_text = evidence_probe.read_text(encoding="utf-8").replace(
+            "tests_evidence: inline verification in this review",
+            "tests_evidence: null",
+        )
+        write(evidence_probe, probe_text)
+        from review_contract import validate_review_report
+        assert any(
+            "requires evidence summary/reference" in item
+            for item in validate_review_report(root, evidence_probe)
+        )
+        evidence_probe.unlink()
+
         blocked = block_execution(root, run_root, command="STEP REVIEW STEP-001")
         assert blocked["current"]["result"] == "FAIL"
 
