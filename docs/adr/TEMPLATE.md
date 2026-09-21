@@ -1,10 +1,18 @@
-# ADR-NNN — Название решения
+---
+schema: 1
+id: ADR-NNN
+status: proposed
+date: YYYY-MM-DD
+deciders: []
+supersedes: []
+superseded_by: []
+requirements:
+  - REQ-NNN
+steps:
+  - STEP-NNN
+---
 
-**Status:** Proposed
-**Date:** YYYY-MM-DD
-**Deciders:** TBD
-**Supersedes:** —
-**Superseded by:** —
+# ADR-NNN — Название решения
 
 ## Context
 
@@ -43,8 +51,3 @@
 ## Compatibility / operational implications
 
 Если не применимо — явно указать.
-
-## Traceability
-
-- REQ: REQ-NNN
-- STEP: STEP-NNN
