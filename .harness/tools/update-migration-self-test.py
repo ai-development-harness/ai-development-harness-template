@@ -342,9 +342,30 @@ def test_project_owned_migration() -> None:
             "#### Requirement\n\nLegacy contract.\n\n"
             "#### Rationale\n\nLegacy reason.\n\n"
             "#### Acceptance\n\n- Works.\n\n"
-            "#### Traceability\n\nSTEP-001 ADR-001\n",
+            "#### Traceability\n\nSTEP-001 ADR-001\n\n"
+            "### REQ-002 — Already materialized requirement\n\n"
+            "#### Requirement\n\nKeep existing canonical file.\n\n"
+            "#### Rationale\n\nMixed migration fixture.\n\n"
+            "#### Acceptance\n\n- Existing file survives.\n\n"
+            "#### Traceability\n\n",
             encoding="utf-8",
         )
+        (req / "REQ-002-existing.md").write_text(
+            "---\n"
+            "schema: 1\n"
+            "id: REQ-002\n"
+            "priority: medium\n"
+            "source: existing\n"
+            "steps: []\n"
+            "adrs: []\n"
+            "---\n\n"
+            "# REQ-002 — Already materialized requirement\n\n"
+            "## Requirement\n\nKeep existing canonical file.\n\n"
+            "## Rationale\n\nMixed migration fixture.\n\n"
+            "## Acceptance\n\n- Existing file survives.\n",
+            encoding="utf-8",
+        )
+        req2_before = (req / "REQ-002-existing.md").read_text(encoding="utf-8")
         (req / "STATUS.md").write_text("# Requirements Status\n", encoding="utf-8")
 
         (root / "planning/tasks").mkdir(parents=True)
@@ -360,9 +381,12 @@ def test_project_owned_migration() -> None:
             "OQ-001 — Legacy question\n"
             "Status: RESOLVED\n"
             "Affects: REQ-001\n"
-            "Context: legacy\n"
-            "Decision needed: choose\n"
-            "Resolution: chosen\n",
+            "Context: first context line\n"
+            "second context line\n"
+            "Decision needed: choose option\n"
+            "with second decision line\n"
+            "Resolution: chosen result\n"
+            "with second resolution line\n",
             encoding="utf-8",
         )
 
@@ -379,13 +403,21 @@ def test_project_owned_migration() -> None:
         require(len(req_files) == 1, f"REQ split failed: {req_files}")
         requirement = parse_document(req_files[0])
         require(requirement["frontmatter"]["id"] == "REQ-001", "REQ id lost")
+        require(
+            (req / "REQ-002-existing.md").read_text(encoding="utf-8") == req2_before,
+            "mixed migration overwrote existing canonical REQ",
+        )
 
         decision = parse_document(root / "docs/adr/ADR-001-legacy.md")
         require(decision["frontmatter"]["status"] == "accepted", "Accepted ADR status lost")
 
         oq_files = list((root / "docs/open-questions").glob("OQ-001-*.md"))
         require(len(oq_files) == 1, "OQ split failed")
-        require(parse_document(oq_files[0])["frontmatter"]["status"] == "resolved", "OQ status lost")
+        oq_document = parse_document(oq_files[0])
+        require(oq_document["frontmatter"]["status"] == "resolved", "OQ status lost")
+        require("second context line" in oq_document["sections"]["Context"], "multiline OQ context lost")
+        require("second decision line" in oq_document["sections"]["Decision needed"], "multiline OQ decision lost")
+        require("second resolution line" in oq_document["sections"]["Resolution"], "multiline OQ resolution lost")
 
         # Legacy immutable review остаётся byte-for-byte прежним, но migration
         # report фиксирует его hash как durable compatibility proof.
@@ -411,9 +443,14 @@ def test_project_owned_migration() -> None:
         require((root / "planning/reviews/TEMPLATE.md").is_file(), "review template not refreshed")
         require((root / "planning/plan-reviews/TEMPLATE.md").is_file(), "planning-review template missing")
 
-        # Second run is a true no-op: no extra migration report.
+        # Project-owned template можно кастомизировать: повторный RECONCILE
+        # не возвращает protocol default поверх project content.
+        task_template = root / "planning/tasks/TEMPLATE.md"
+        custom_template = task_template.read_text(encoding="utf-8") + "\n<!-- project customization -->\n"
+        task_template.write_text(custom_template, encoding="utf-8")
         reports_before = sorted((root / "planning/audits").glob("MIGRATION-*.md"))
         second = migrate_project(root)
+        require(task_template.read_text(encoding="utf-8") == custom_template, "RECONCILE overwrote project template")
         reports_after = sorted((root / "planning/audits").glob("MIGRATION-*.md"))
         require(second["status"] == "NO_CHANGES", second)
         require(reports_before == reports_after, "idempotent reconcile created an extra migration report")
