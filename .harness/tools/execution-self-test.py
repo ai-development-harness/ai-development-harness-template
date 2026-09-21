@@ -365,6 +365,39 @@ def main() -> int:
         failures = direct_record.get("blockedBy", {}).get("failures", [])
         assert any("configured-remote-missing:publish" in item for item in failures), failures
 
+        # Specialized reviewer может быть BLOCKED не только из-за product
+        # contract, но и потому что обязательное evidence невозможно получить.
+        # Такой blocker должен быть представим без ложного FAIL -> FIX.
+        blocked_evidence = root / "planning/reviews/STEP-001/REVIEW-20260921T043000Z.md"
+        review_report(root, "PASS", blocked_evidence.name)
+        blocked_text = blocked_evidence.read_text(encoding="utf-8")
+        blocked_text = blocked_text.replace("verdict: pass", "verdict: blocked")
+        blocked_text = blocked_text.replace(
+            "  security: not_required",
+            "  security: blocked",
+        ).replace(
+            "  security_evidence: null",
+            "  security_evidence: required security evidence is unavailable",
+        )
+        blocked_text = blocked_text.replace(
+            "No material findings.",
+            """### F-001 — Security evidence unavailable
+
+**Severity:** high
+**Category:** evidence
+**Location:** security verification
+**Scenario:** Given required security review / When evidence cannot be obtained / Then review cannot safely pass
+**Impact:** acceptance cannot be proven
+**Fix direction:** restore the missing verification prerequisite
+""",
+        )
+        write(blocked_evidence, blocked_text)
+        from review_contract import validate_review_report
+        assert not validate_review_report(root, blocked_evidence), validate_review_report(
+            root, blocked_evidence
+        )
+        blocked_evidence.unlink()
+
         # Schema-v1 implementation review names участвуют в deterministic
         # latest ordering и потому обязаны иметь canonical UTC timestamp.
         invalid_review_name = root / "planning/reviews/STEP-001/REVIEW-not-a-timestamp.md"

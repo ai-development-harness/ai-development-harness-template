@@ -375,7 +375,7 @@ Reviewer независим и read-only относительно product code.
 4. Проверить acceptance/evidence, correctness, regressions, error handling, compatibility, architecture drift и meaningful test gaps.
 5. Запустить specialized reviewers согласно policy.
 6. Каждый finding классифицировать как `implementation`, `evidence` или `contract`; finding должен быть конкретным и воспроизводимым.
-7. `FAIL` — только implementation/evidence defects, исправимые в scope текущего STEP. `BLOCKED` — contract contradiction, impossible acceptance, stale planning context, missing decision/prerequisite или иной дефект, который FIX не имеет права скрыто исправлять.
+7. `FAIL` — только implementation/evidence defects, исправимые в scope текущего STEP. `BLOCKED` — contract contradiction, impossible acceptance, stale planning context, missing decision/prerequisite, blocking evidence condition или иной дефект, который FIX не имеет права скрыто исправлять.
 8. Создать новый immutable report `planning/reviews/STEP-NNN/REVIEW-<timestamp>.md`.
 9. Global wrapper записывает тот же verdict как command result. STEP после review не мутируется ради cache-полей: latest verdict/report выводятся из immutable review history.
 

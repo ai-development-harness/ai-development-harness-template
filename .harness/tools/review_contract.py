@@ -448,8 +448,13 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
     if verdict == "blocked":
         if not findings:
             errors.append("BLOCKED review requires at least one finding")
-        if not any(item.get("Category") == "contract" for item in findings):
-            errors.append("BLOCKED review requires a contract finding")
+        if not any(
+            item.get("Category") in {"contract", "evidence"}
+            for item in findings
+        ):
+            errors.append(
+                "BLOCKED review requires a contract or blocking evidence finding"
+            )
 
     specialized = meta.get("specialized_reviews")
     if not isinstance(specialized, dict):
