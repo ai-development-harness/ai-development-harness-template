@@ -224,12 +224,14 @@ reviewed_revision:
   git_head: null
   worktree_hash: null
 specialized_reviews:
+  gate_basis: sha256:...
+  required: []
   security: not_required
   security_report: null
-  security_reason: null
+  security_reason: no_security_surface
   tests: not_required
   tests_report: null
-  tests_reason: null
+  tests_reason: no_test_surface
 ---
 
 # STEP REVIEW STEP-NNN — YYYY-MM-DD HH:MM
