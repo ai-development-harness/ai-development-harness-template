@@ -7,7 +7,9 @@ Protocol-owned definitions задают bootstrap/default content, но посл
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+from document_contract import DocumentError, parse_document
 from harness_config import (
     adr_directory,
     architecture_path,
@@ -465,13 +467,79 @@ def refresh_project_templates(root: Path) -> list[str]:
     return changed
 
 
+def _required_mapping_shape(expected: Any, actual: Any, *, prefix: str) -> list[str]:
+    """Проверить наличие structural keys, не сравнивая project-owned values."""
+    errors: list[str] = []
+    if not isinstance(expected, dict):
+        return errors
+    if not isinstance(actual, dict):
+        return [f"{prefix} must be a mapping"]
+    for key, expected_value in expected.items():
+        child = f"{prefix}.{key}" if prefix else key
+        if key not in actual:
+            errors.append(f"missing structural key {child}")
+            continue
+        errors.extend(
+            _required_mapping_shape(
+                expected_value,
+                actual[key],
+                prefix=child,
+            )
+        )
+    return errors
+
+
+def _validate_template_shape(path: Path, expected: str) -> list[str]:
+    """Проверить текущую schema shape, сохранив custom prose/values проекта."""
+    errors: list[str] = []
+    try:
+        actual_doc = parse_document(path)
+    except (DocumentError, OSError, UnicodeDecodeError) as exc:
+        return [str(exc)]
+
+    # Expected definitions — protocol-owned constants этого release, поэтому
+    # их parse failure является programmer error и не маскируется.
+    expected_path = path.with_name(path.name + ".expected")
+    try:
+        expected_path.write_text(expected, encoding="utf-8", newline="\n")
+        expected_doc = parse_document(expected_path)
+    finally:
+        expected_path.unlink(missing_ok=True)
+
+    errors.extend(
+        _required_mapping_shape(
+            expected_doc["frontmatter"],
+            actual_doc["frontmatter"],
+            prefix="frontmatter",
+        )
+    )
+    if actual_doc["frontmatter"].get("schema") != expected_doc["frontmatter"].get("schema"):
+        errors.append(
+            "frontmatter.schema differs from current template schema "
+            f"{expected_doc['frontmatter'].get('schema')}"
+        )
+    expected_kind = expected_doc["frontmatter"].get("kind")
+    if expected_kind is not None and actual_doc["frontmatter"].get("kind") != expected_kind:
+        errors.append(f"frontmatter.kind must be {expected_kind}")
+
+    for section in expected_doc["sections"]:
+        if section not in actual_doc["sections"]:
+            errors.append(f"missing structural section '## {section}'")
+    return errors
+
+
 def validate_project_templates(root: Path) -> list[str]:
-    """До INIT template repository должен совпадать с defaults; после INIT важна только их доступность."""
+    """До INIT нужен exact baseline; после INIT — compatible shape без overwrite."""
     errors: list[str] = []
     initialized = bool(get(load_manifest(root), "project.initialized", False))
     for path, expected in template_targets(root).items():
         if not path.is_file():
             errors.append(f"project template missing: {path.relative_to(root)}")
-        elif not initialized and path.read_text(encoding="utf-8") != expected:
-            errors.append(f"template baseline drift before PROJECT INIT: {path.relative_to(root)}")
+            continue
+        if not initialized:
+            if path.read_text(encoding="utf-8") != expected:
+                errors.append(f"template baseline drift before PROJECT INIT: {path.relative_to(root)}")
+            continue
+        for issue in _validate_template_shape(path, expected):
+            errors.append(f"project template incompatible: {path.relative_to(root)}: {issue}")
     return errors
