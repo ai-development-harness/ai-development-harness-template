@@ -1,22 +1,31 @@
+---
+schema: 1
+id: STEP-NNN
+status: planned
+type: implementation
+priority: medium
+phase: TBD
+depends_on: []
+requirements:
+  - REQ-NNN
+adrs: []
+architecture_refs:
+  - docs/architecture.md#relevant-section
+risk_flags:
+  - none
+plan:
+  status: not_planned
+  revision: 0
+  context_basis: null
+  content_hash: null
+  reviewed_report: null
+  planned_at: null
+review:
+  latest_verdict: not_reviewed
+  latest_report: null
+---
+
 # STEP-NNN — Название
-
-**Статус:** Запланировано
-**Type:** IMPLEMENTATION | BUGFIX | REFACTOR | RESEARCH | ADR | AUDIT | REVIEW | HARDENING | DOCUMENTATION | RELEASE
-**Приоритет:** Критический | Высокий | Средний | Низкий
-**Фаза:** TBD
-**Depends on:** —
-
-## Requirements
-
-- REQ-NNN / не требуется для purely technical corrective task
-
-## ADR
-
-- ADR-NNN / не требуется / требуется decision STEP
-
-## Risk flags
-
-- none / security-sensitive / data-migration / destructive / public-api / architecture / concurrency / external-integration / performance-critical / release-critical
 
 ## Goal
 
@@ -34,15 +43,15 @@
 
 ### Allowed
 
-- TBD
+- Явно перечислить допустимые области mutation.
 
 ### Conditional
 
-- TBD
+- Указать изменения, допустимые только при доказанной необходимости.
 
 ### Forbidden
 
-- unrelated scope
+- unrelated scope.
 
 ## Out of scope
 
@@ -63,23 +72,11 @@
 
 ## Implementation plan
 
-**Plan status:** Not planned
-**Plan revision:** —
-**Plan basis:** —
-**Planned at:** —
-
-Заполняется командой `STEP PLAN STEP-NNN`.
+Заполняется командой `STEP PLAN STEP-NNN`. Пока semantic planning-review не дал PASS для текущих context basis + content hash, `plan.status` не может быть `ready`.
 
 ## Evidence
 
-Заполняется по факту реализации и verification.
-
-Для каждой значимой проверки указывай `Command`, `Exit code` и `Observed`. Буквальный terminal output включай только если он реально захвачен; нормализованное резюме не оформляй как цитату/output.
-
-## Review status
-
-**Latest verdict:** NOT REVIEWED
-**Latest report:** —
+Заполняется по факту реализации и verification. Для каждой значимой проверки указывай Command, Exit code и Observed.
 
 ## Blocker / Failure reason
 
