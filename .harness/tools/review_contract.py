@@ -18,8 +18,9 @@ from document_contract import (
     parse_document,
     require_schema,
 )
-from harness_config import review_directory, review_policy
+from harness_config import review_directory
 from planning_contract import read_task
+from review_gates import required_reviewers
 
 
 SEVERITIES = {"critical", "high", "medium", "low"}
@@ -93,23 +94,6 @@ def _parse_findings(document: dict[str, Any]) -> list[dict[str, str]]:
     if current is not None:
         findings.append(current)
     return findings
-
-
-def _required_specialized(task: dict[str, Any], root: Path) -> set[str]:
-    meta = task["frontmatter"]
-    flags = set(meta.get("risk_flags", [])) if isinstance(meta.get("risk_flags"), list) else set()
-    step_type = meta.get("type")
-    required: set[str] = set()
-    if review_policy(root, "security") == "always" or flags.intersection({
-        "security-sensitive", "data-migration", "destructive",
-        "public-api", "external-integration",
-    }):
-        required.add("security")
-    if review_policy(root, "tests") == "always" or step_type in {
-        "implementation", "bugfix", "refactor", "hardening",
-    }:
-        required.add("tests")
-    return required
 
 
 def validate_review_report(root: Path, path: Path, *, require_current_revision: bool = False) -> list[str]:
@@ -188,7 +172,7 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
     if not isinstance(specialized, dict):
         errors.append("specialized_reviews must be a mapping")
     else:
-        required = _required_specialized(task, root)
+        required = set(required_reviewers(root, step_id)["required"])
         for kind in ("security", "tests"):
             status = specialized.get(kind)
             if status not in SPECIALIZED_STATUSES:
