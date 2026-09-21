@@ -12,6 +12,7 @@ import tempfile
 
 from document_contract import content_hash
 from planning_contract import (
+    init_review_basis,
     plan_content_hash,
     planning_context_basis,
     task_path,
@@ -31,6 +32,7 @@ review:
   security: auto
   tests: auto
 sources:
+  projectOverview: spec/PROJECT.md
   requirements: spec/requirements
   adrDirectory: spec/adr
   architecture: spec/architecture.md
@@ -285,6 +287,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-planning-v1-") as tmp:
         root = Path(tmp)
         write(root / ".harness/manifest.yaml", manifest())
+        write(root / "spec/PROJECT.md", "# Project\n\nConstraint A.\n")
         write(root / "spec/requirements/REQ-1000-contract.md", requirement())
         write(root / "spec/adr/ADR-1000-test.md", adr())
         write(
@@ -304,6 +307,23 @@ def main() -> int:
             ),
         )
         write(root / "work/tasks/STEP-1000.md", task("STEP-1000", depends=["STEP-1001"]))
+
+        # INIT semantic proof должен инвалидироваться при изменении
+        # project constraints или ADR, а не только REQ/roadmap.
+        init_a = init_review_basis(root, "requirements")
+        write(root / "spec/PROJECT.md", "# Project\n\nConstraint B.\n")
+        init_b = init_review_basis(root, "requirements")
+        assert init_a != init_b, (init_a, init_b)
+        write(root / "spec/PROJECT.md", "# Project\n\nConstraint A.\n")
+        init_c = init_review_basis(root, "requirements")
+        adr_text = (root / "spec/adr/ADR-1000-test.md").read_text(encoding="utf-8")
+        write(
+            root / "spec/adr/ADR-1000-test.md",
+            adr_text.replace("Использовать fixture.", "Использовать изменённый fixture."),
+        )
+        init_d = init_review_basis(root, "requirements")
+        assert init_c != init_d, (init_c, init_d)
+        write(root / "spec/adr/ADR-1000-test.md", adr_text)
 
         # Configurable layout + 1000+ IDs.
         assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
