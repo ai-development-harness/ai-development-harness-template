@@ -611,8 +611,8 @@ def main() -> int:
                 resolved = (root / ".codex" / config_file).resolve()
                 if not resolved.is_file():
                     errors.append(f"Codex agent {agent} config missing: {config_file}")
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(f"git-policy: cannot parse/validate {git_policy_path.relative_to(root)}: {exc}")
 
     claude_settings_path = root / ".claude" / "settings.json"
     if claude_settings_path.exists():
