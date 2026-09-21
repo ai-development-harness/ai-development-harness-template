@@ -45,6 +45,7 @@ from harness_config import (
     local_brief_path,
     max_fix_review_cycles,
     repository_path,
+    resolve_repo_path,
     review_policy,
     skill_search_max_results,
     update_manifest_path,
@@ -960,6 +961,21 @@ def main() -> int:
                 value = pull_request.get(key)
                 if not isinstance(value, str) or not value.strip():
                     errors.append(f"git-policy: pull_request.{key} must be a non-empty string")
+            body_template = pull_request.get("body_template")
+            if isinstance(body_template, str) and body_template.strip():
+                try:
+                    template_path = resolve_repo_path(
+                        root,
+                        body_template,
+                        label="git-policy pull_request.body_template",
+                    )
+                    if not template_path.is_file():
+                        errors.append(
+                            "git-policy: pull_request.body_template does not exist: "
+                            + body_template
+                        )
+                except ConfigError as exc:
+                    errors.append(f"git-policy: {exc}")
             for key in ["draft", "reuse_existing", "title_from_commit"]:
                 if not isinstance(pull_request.get(key), bool):
                     errors.append(f"git-policy: pull_request.{key} must be boolean")
@@ -977,8 +993,10 @@ def main() -> int:
                 )
             if "safety" in gp:
                 errors.append("git-policy: [safety] is no longer supported; use .harness/harness-policy.toml")
-        except Exception:
-            pass
+        except Exception as exc:
+            errors.append(
+                f"git-policy: cannot parse/validate {git_policy_path.relative_to(root)}: {exc}"
+            )
 
     # В commit-mode staged state — информационная проверка: агент ещё может
     # безопасно сформировать stage согласно git-policy.
