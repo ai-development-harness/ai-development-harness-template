@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import argparse
+import json
 import re
 from typing import Any
 
@@ -228,3 +230,46 @@ def validate_all_operational_reports(root: Path) -> list[str]:
                 errors.append(f"skill-search-report: {path.relative_to(root)}: {issue}")
 
     return errors
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file")
+    parser.add_argument("--kind", choices=["audit", "release_check", "skill_search"])
+    parser.add_argument("--all", action="store_true", dest="validate_all")
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parents[2]
+    if args.validate_all:
+        errors = validate_all_operational_reports(root)
+    elif args.file and args.kind:
+        path = (root / args.file).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError:
+            errors = ["report path escapes repository"]
+        else:
+            validators = {
+                "audit": validate_audit_report,
+                "release_check": validate_release_report,
+                "skill_search": validate_skill_search_report,
+            }
+            errors = validators[args.kind](root, path)
+    else:
+        parser.error("use --all or --file <path> --kind <kind>")
+
+    result = {"valid": not errors, "errors": errors}
+    if args.as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif errors:
+        print("REPORT CONTRACT: FAIL")
+        for item in errors:
+            print(f"  - {item}")
+    else:
+        print("REPORT CONTRACT: PASS")
+    return 0 if not errors else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
