@@ -311,6 +311,14 @@ def step_completion_proof(root: Path, step_id: str) -> dict[str, Any]:
         report = _latest_review_report_path(root, task)
         if report is None:
             reasons.append("latest review report is missing")
+        else:
+            # Lazy import avoids module cycle: review_contract uses read_task,
+            # а completion proof вызывается уже после загрузки modules.
+            from review_contract import validate_review_report
+
+            review_errors = validate_review_report(root, report)
+            if review_errors:
+                reasons.append("latest review report is invalid: " + "; ".join(review_errors))
         if not evidence:
             reasons.append("step has no durable Evidence")
 
