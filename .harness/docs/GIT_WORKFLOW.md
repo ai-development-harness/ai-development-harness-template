@@ -135,7 +135,7 @@ Harness никогда по умолчанию не выполняет:
 
 ## Что настраивать
 
-Главный файл: `.harness/git-policy.toml`.
+Главный файл разрешается через `.harness/manifest.yaml → repository.gitPolicy`; default template path — `.harness/git-policy.toml`.
 
 Чаще всего меняются:
 
