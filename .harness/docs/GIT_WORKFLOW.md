@@ -95,7 +95,7 @@ after_push = "never"
 
 ### `GIT PR`
 
-`GIT PR` можно вызвать отдельно. Агент использует `.github/pull_request_template.md`, не создаёт duplicate PR и заполняет traceability/verification из repository evidence.
+`GIT PR` можно вызвать отдельно. Агент использует `pull_request.body_template` из `.harness/git-policy.toml`, не создаёт duplicate PR и заполняет traceability/verification из repository evidence. Default template — `.github/pull_request_template.md`.
 
 ### `GIT SYNC`
 
