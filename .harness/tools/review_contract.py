@@ -15,10 +15,13 @@ from document_contract import (
     DocumentError,
     REVIEW_VERDICTS,
     STEP_ID_RE,
+    content_hash,
     parse_document,
     require_schema,
+    split_frontmatter,
+    string_list,
 )
-from harness_config import review_directory
+from harness_config import audit_directory, review_directory
 from planning_contract import read_task
 from review_gates import required_reviewers
 
@@ -26,6 +29,121 @@ from review_gates import required_reviewers
 SEVERITIES = {"critical", "high", "medium", "low"}
 CATEGORIES = {"implementation", "evidence", "contract"}
 SPECIALIZED_STATUSES = {"pass", "fail", "blocked", "not_required"}
+
+
+def _valid_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and value.startswith("sha256:")
+        and len(value) == 71
+        and all(char in "0123456789abcdef" for char in value[7:].lower())
+    )
+
+
+def legacy_review_pins(root: Path) -> dict[str, str]:
+    """Прочитать hash-pinned legacy review allowlist из migration reports."""
+    pins: dict[str, str] = {}
+    directory = audit_directory(root)
+    if not directory.is_dir():
+        return pins
+    for report in sorted(directory.glob("MIGRATION-*.md")):
+        try:
+            document = parse_document(report)
+        except DocumentError:
+            continue
+        meta = document["frontmatter"]
+        if meta.get("schema") != 1 or meta.get("kind") != "migration":
+            continue
+        values = meta.get("legacy_review_reports", [])
+        if values is None:
+            continue
+        if not isinstance(values, list) or any(not isinstance(item, str) for item in values):
+            raise ValueError(f"{report.relative_to(root)}: legacy_review_reports must be a string list")
+        for token in values:
+            digest, sep, rel = token.partition(" ")
+            if not sep or not _valid_sha256(digest) or not rel:
+                raise ValueError(f"{report.relative_to(root)}: invalid legacy review pin {token!r}")
+            candidate = (root / rel).resolve()
+            try:
+                candidate.relative_to(review_directory(root).resolve())
+            except ValueError as exc:
+                raise ValueError(
+                    f"{report.relative_to(root)}: legacy review pin escapes configured review directory: {rel}"
+                ) from exc
+            previous = pins.get(rel)
+            if previous is not None and previous != digest:
+                raise ValueError(f"conflicting legacy review pins for {rel}")
+            pins[rel] = digest
+    return pins
+
+
+def current_legacy_review_snapshots(root: Path) -> dict[str, str]:
+    """Вернуть no-frontmatter legacy reports с content hashes."""
+    snapshots: dict[str, str] = {}
+    directory = review_directory(root)
+    if not directory.is_dir():
+        return snapshots
+    for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
+        try:
+            text = path.read_text(encoding="utf-8")
+            frontmatter, _ = split_frontmatter(text)
+        except (OSError, UnicodeDecodeError, DocumentError):
+            continue
+        if frontmatter is None:
+            snapshots[path.relative_to(root).as_posix()] = content_hash(text)
+    return snapshots
+
+
+def _legacy_review_verdict(path: Path, step_id: str) -> str | None:
+    """Минимально прочитать verdict старого immutable report без его переписывания."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if step_id not in first:
+        return None
+    match = re.search(r"(?mi)^\*\*Verdict:\*\*\s*(PASS|FAIL|BLOCKED)\s*$", text)
+    return match.group(1).upper() if match else None
+
+
+def trusted_review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
+    """Schema-v1 reports + exact hash-pinned legacy history для completion proof."""
+    result = review_reports(root, step_id)
+    try:
+        pins = legacy_review_pins(root)
+    except ValueError:
+        pins = {}
+    directory = review_directory(root) / step_id
+    if directory.is_dir():
+        for path in sorted(directory.glob("REVIEW-*.md")):
+            rel = path.relative_to(root).as_posix()
+            expected = pins.get(rel)
+            if expected is None:
+                continue
+            try:
+                actual = content_hash(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                continue
+            if actual != expected:
+                continue
+            verdict = _legacy_review_verdict(path, step_id)
+            if verdict is None:
+                continue
+            result.append({
+                "path": path,
+                "verdict": verdict,
+                "document": None,
+                "legacy": True,
+                "content_hash": actual,
+            })
+    result.sort(key=lambda item: item["path"].name)
+    return result
+
+
+def latest_trusted_review(root: Path, step_id: str) -> dict[str, Any] | None:
+    reports = trusted_review_reports(root, step_id)
+    return reports[-1] if reports else None
 
 
 def _git(root: Path, *args: str) -> tuple[int, bytes]:
@@ -209,7 +327,21 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
     if not isinstance(specialized, dict):
         errors.append("specialized_reviews must be a mapping")
     else:
-        required = set(required_reviewers(root, step_id)["required"])
+        gate_basis = specialized.get("gate_basis")
+        if not _valid_sha256(gate_basis):
+            errors.append("specialized_reviews.gate_basis must be sha256")
+        reported_required, required_errors = string_list(
+            specialized.get("required"),
+            "specialized_reviews.required",
+        )
+        errors.extend(required_errors)
+        unknown_required = sorted(set(reported_required) - {"security", "tests"})
+        if unknown_required:
+            errors.append(
+                "specialized_reviews.required contains unknown reviewers: "
+                + ", ".join(unknown_required)
+            )
+        required_set = set(reported_required)
         for kind in ("security", "tests"):
             status = specialized.get(kind)
             if status not in SPECIALIZED_STATUSES:
@@ -217,12 +349,22 @@ def validate_review_report(root: Path, path: Path, *, require_current_revision: 
                 continue
             report = specialized.get(f"{kind}_report")
             reason = specialized.get(f"{kind}_reason")
-            if kind in required and status == "not_required":
-                errors.append(f"{kind} reviewer is deterministically required")
+            if kind in required_set and status == "not_required":
+                errors.append(f"{kind} reviewer is marked required but not_required")
             if status == "not_required" and (not isinstance(reason, str) or not reason.strip()):
                 errors.append(f"{kind} not_required requires reason")
             if status != "not_required" and (not isinstance(report, str) or not report.strip()):
                 errors.append(f"{kind} review status {status} requires report reference")
+
+        # Только current-review gate можно честно пересчитать по factual worktree.
+        # Historical reports проверяются по сохранённому gate proof, иначе будущий
+        # unrelated diff ретроактивно ломал бы immutable history.
+        if require_current_revision:
+            current_gate = required_reviewers(root, step_id)
+            if gate_basis != current_gate["basis"]:
+                errors.append("specialized_reviews.gate_basis does not match current review gate")
+            if required_set != set(current_gate["required"]):
+                errors.append("specialized_reviews.required does not match current review gate")
 
     for required_section in ("Scope checked", "Findings", "Verification observations", "Verdict rationale"):
         if required_section not in document["sections"]:
@@ -266,9 +408,43 @@ def validate_all_review_reports(root: Path) -> list[str]:
     directory = review_directory(root)
     if not directory.is_dir():
         return errors
+    try:
+        pins = legacy_review_pins(root)
+    except ValueError as exc:
+        pins = {}
+        errors.append(f"review: invalid legacy review pins: {exc}")
+
+    # Hash-pinned legacy history должна оставаться физически неизменной.
+    for rel, expected in sorted(pins.items()):
+        path = root / rel
+        if not path.is_file():
+            errors.append(f"review: pinned legacy report missing: {rel}")
+            continue
+        try:
+            actual = content_hash(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as exc:
+            errors.append(f"review: cannot read pinned legacy report {rel}: {exc}")
+            continue
+        if actual != expected:
+            errors.append(f"review: pinned legacy report changed: {rel}")
+
     for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
+        rel = path.relative_to(root).as_posix()
+        try:
+            text = path.read_text(encoding="utf-8")
+            frontmatter, _ = split_frontmatter(text)
+        except (OSError, UnicodeDecodeError, DocumentError) as exc:
+            errors.append(f"review: {rel}: {exc}")
+            continue
+        if frontmatter is None:
+            if pins.get(rel) == content_hash(text):
+                continue
+            errors.append(
+                f"review: {rel}: legacy immutable report is not hash-pinned by schema migration"
+            )
+            continue
         for issue in validate_review_report(root, path):
-            errors.append(f"review: {path.relative_to(root)}: {issue}")
+            errors.append(f"review: {rel}: {issue}")
     return errors
 
 
