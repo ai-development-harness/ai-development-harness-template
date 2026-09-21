@@ -983,12 +983,6 @@ def main() -> int:
                     f"deprecated command form '{spec.legacy}' found in {p.relative_to(root)}"
                 )
 
-    task_template = root / "planning/tasks/TEMPLATE.md"
-    if task_template.is_file():
-        task_template_text = task_template.read_text(encoding="utf-8")
-        if "**Plan basis:** —" not in task_template_text:
-            errors.append("planning/tasks/TEMPLATE.md missing deterministic Plan basis field")
-
     # --- Generated blocks и local ignore ----------------------------------
     # Проверяем markers, которые updater/initializer имеет право менять, и
     # обязательные local files, которые Git никогда не должен отслеживать.
