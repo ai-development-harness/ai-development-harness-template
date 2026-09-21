@@ -268,15 +268,35 @@ def repository_path(root: Path, key: str) -> Path:
     return manifest_path(root, f"repository.{key}")
 
 
+LANGUAGE_TAG_RE = re.compile(
+    r"^(?:"
+    r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*"
+    r"|x(?:-[A-Za-z0-9]{1,8})+"
+    r"|i(?:-[A-Za-z0-9]{1,8})+"
+    r")$"
+)
+
+
+def _language_tag(value: Any, *, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or LANGUAGE_TAG_RE.fullmatch(value.strip()) is None
+    ):
+        raise ConfigError(
+            f"{label} must be a structurally valid BCP 47 language tag"
+        )
+    return value.strip()
+
+
 def language_value(root: Path, key: str) -> str:
     manifest = load_manifest(root)
-    default = get(manifest, "language.default")
-    if not isinstance(default, str) or not default.strip():
-        raise ConfigError("manifest language.default must be a non-empty BCP 47 tag")
+    default = _language_tag(
+        get(manifest, "language.default"),
+        label="manifest language.default",
+    )
     value = get(manifest, f"language.{key}", default)
-    if not isinstance(value, str) or not value.strip():
-        raise ConfigError(f"manifest language.{key} must be a non-empty BCP 47 tag")
-    return value
+    return _language_tag(value, label=f"manifest language.{key}")
 
 
 def max_fix_review_cycles(root: Path) -> int:
