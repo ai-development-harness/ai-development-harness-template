@@ -33,6 +33,17 @@ def _valid_iso_timestamp(value: Any) -> bool:
     return True
 
 
+def _valid_timestamped_filename(name: str, prefix: str) -> bool:
+    match = re.fullmatch(rf"{re.escape(prefix)}(\d{{8}}T\d{{6}}Z)\.md", name)
+    if match is None:
+        return False
+    try:
+        datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ")
+    except ValueError:
+        return False
+    return True
+
+
 def _require_sections(document: dict[str, Any], names: tuple[str, ...]) -> list[str]:
     errors: list[str] = []
     for name in names:
@@ -62,7 +73,7 @@ def validate_audit_report(root: Path, path: Path) -> list[str]:
         errors.append("result must be complete")
     if not _valid_iso_timestamp(meta.get("created_at")):
         errors.append("created_at must be ISO-8601")
-    if re.fullmatch(r"AUDIT-\d{8}T\d{6}Z\.md", path.name) is None:
+    if not _valid_timestamped_filename(path.name, "AUDIT-"):
         errors.append("filename must be AUDIT-<UTC timestamp>.md")
     if not document.get("h1", "").startswith("# Audit — "):
         errors.append("H1 must start with '# Audit — '")
@@ -93,7 +104,7 @@ def validate_release_report(root: Path, path: Path) -> list[str]:
         errors.append("verdict must be ready|blocked")
     if not _valid_iso_timestamp(meta.get("created_at")):
         errors.append("created_at must be ISO-8601")
-    if re.fullmatch(r"RELEASE-\d{8}T\d{6}Z\.md", path.name) is None:
+    if not _valid_timestamped_filename(path.name, "RELEASE-"):
         errors.append("filename must be RELEASE-<UTC timestamp>.md")
     if not document.get("h1", "").startswith("# Release Check — "):
         errors.append("H1 must start with '# Release Check — '")
@@ -188,7 +199,7 @@ def validate_skill_search_report(root: Path, path: Path) -> list[str]:
                     f"candidate_count exceeds skills.search.maxResults ({maximum})"
                 )
 
-    if re.fullmatch(r"SKILL-SEARCH-\d{8}T\d{6}Z\.md", path.name) is None:
+    if not _valid_timestamped_filename(path.name, "SKILL-SEARCH-"):
         errors.append("filename must be SKILL-SEARCH-<UTC timestamp>.md")
     if not document.get("h1", "").startswith("# SKILL SEARCH — "):
         errors.append("H1 must start with '# SKILL SEARCH — '")

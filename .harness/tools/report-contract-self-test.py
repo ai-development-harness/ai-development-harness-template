@@ -171,6 +171,14 @@ def main() -> int:
         assert any("Evidence" in item for item in errors), errors
         write(audit, valid_audit())
 
+        # Regex-похожий, но календарно невозможный UTC timestamp не является
+        # canonical durable filename и не должен участвовать в sortable history.
+        invalid_date = root / "work/releases/RELEASE-20261340T256199Z.md"
+        write(invalid_date, valid_release())
+        errors = validate_release_report(root, invalid_date)
+        assert any("filename must be RELEASE-<UTC timestamp>.md" in item for item in errors), errors
+        invalid_date.unlink()
+
         # Report directories fail closed on typo/unknown durable Markdown.
         write(root / "work/releases/RELASE-typo.md", valid_release())
         errors = validate_all_operational_reports(root)
