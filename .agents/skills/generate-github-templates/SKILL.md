@@ -15,7 +15,7 @@ description: Regenerate GitHub Issue Forms and Pull Request template from the pr
 Перед генерацией изучи, что реально существует:
 
 1. `.harness/manifest.yaml`, особенно `language.githubTemplates`;
-2. `docs/PROJECT.md`, requirements, architecture, development docs;
+2. configured `sources.projectOverview`, requirements, architecture и development docs;
 3. package/build manifests и workspace configs;
 4. test/lint/typecheck/build scripts/targets;
 5. CI workflows;
