@@ -11,6 +11,7 @@ from pathlib import Path
 
 from harness_config import (
     adr_directory,
+    architecture_path,
     audit_directory,
     init_review_directory,
     open_questions_directory,
@@ -435,8 +436,13 @@ candidate_count: 0
 """
 
 def template_targets(root: Path) -> dict[Path, str]:
+    architecture_ref = architecture_path(root).relative_to(root.resolve()).as_posix()
+    step_template = STEP_TEMPLATE.replace(
+        "docs/architecture.md#relevant-section",
+        f"{architecture_ref}#relevant-section",
+    )
     return {
-        task_directory(root) / "TEMPLATE.md": STEP_TEMPLATE,
+        task_directory(root) / "TEMPLATE.md": step_template,
         requirements_directory(root) / "TEMPLATE.md": REQ_TEMPLATE,
         adr_directory(root) / "TEMPLATE.md": ADR_TEMPLATE,
         open_questions_directory(root) / "TEMPLATE.md": OQ_TEMPLATE,

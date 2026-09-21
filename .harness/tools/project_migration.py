@@ -13,6 +13,7 @@ from typing import Any
 
 from document_contract import (
     ADR_ID_RE,
+    DocumentError,
     OQ_ID_RE,
     REQ_ID_RE,
     STEP_ID_RE,
@@ -359,7 +360,7 @@ def legacy_schema_pending(root: Path) -> bool:
         try:
             if split_frontmatter(path.read_text(encoding="utf-8"))[0] is None:
                 return True
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError, DocumentError):
             return True
     spec = requirements_directory(root) / "SPEC.md"
     if spec.is_file() and not list(requirements_directory(root).glob("REQ-*.md")):

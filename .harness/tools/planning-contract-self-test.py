@@ -20,6 +20,9 @@ from planning_contract import (
     task_path,
     validate_planning_contracts,
 )
+from project_integrity import validate_adrs, validate_requirements
+from project_migration import legacy_schema_pending
+from template_contract import template_targets
 
 
 def write(path: Path, content: str) -> None:
@@ -45,6 +48,7 @@ protocol:
   reviewDirectory: work/reviews
   planningReviewDirectory: work/plan-reviews
   initReviewDirectory: work/init-reviews
+  auditDirectory: work/audits
 """
 
 
@@ -375,6 +379,11 @@ def main() -> int:
         assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
         assert not validate_planning_contracts(root), validate_planning_contracts(root)
 
+        # Project-owned STEP template follows configured architecture path.
+        task_template = template_targets(root)[root / "work/tasks/TEMPLATE.md"]
+        assert "spec/architecture.md#relevant-section" in task_template
+        assert "docs/architecture.md#relevant-section" not in task_template
+
         # Repository containment.
         valid_manifest = (root / ".harness/manifest.yaml").read_text(encoding="utf-8")
         write(
@@ -487,6 +496,41 @@ Choose a mode.
         errors = validate_planning_contracts(root)
         assert any("affects target does not exist" in item for item in errors), errors
         (root / "spec/open-questions/OQ-1000-choice.md").unlink()
+
+        # Duplicate/malformed canonical REQ/ADR are never silently dropped.
+        duplicate_req = root / "spec/requirements/REQ-1000-duplicate.md"
+        write(duplicate_req, requirement())
+        req_errors = validate_requirements(root)
+        assert any("duplicate canonical id REQ-1000" in item for item in req_errors), req_errors
+        duplicate_req.unlink()
+
+        malformed_req = root / "spec/requirements/REQ-2000-broken.md"
+        write(malformed_req, "---\nschema: [broken\n")
+        req_errors = validate_requirements(root)
+        assert any("REQ-2000-broken.md" in item for item in req_errors), req_errors
+        malformed_req.unlink()
+
+        duplicate_adr = root / "spec/adr/ADR-1000-duplicate.md"
+        write(duplicate_adr, adr())
+        adr_errors = validate_adrs(root)
+        assert any("duplicate canonical id ADR-1000" in item for item in adr_errors), adr_errors
+        duplicate_adr.unlink()
+
+        malformed_adr = root / "spec/adr/ADR-2000-broken.md"
+        write(malformed_adr, "---\nschema: [broken\n")
+        adr_errors = validate_adrs(root)
+        assert any("ADR-2000-broken.md" in item for item in adr_errors), adr_errors
+        malformed_adr.unlink()
+
+        # Malformed STEP stays a deterministic validation error and does not
+        # crash cross-document ADR validation or migration detection.
+        malformed_step = root / "work/tasks/STEP-2000.md"
+        write(malformed_step, "---\nschema: [broken\n")
+        planning_errors = validate_planning_contracts(root)
+        assert any("STEP-2000" in item for item in planning_errors), planning_errors
+        validate_adrs(root)
+        assert legacy_schema_pending(root)
+        malformed_step.unlink()
 
         # Unknown/mixed risk flags are deterministic errors.
         write(root / "work/tasks/STEP-1000.md", task("STEP-1000", risks=["none", "security-sensitive"]))

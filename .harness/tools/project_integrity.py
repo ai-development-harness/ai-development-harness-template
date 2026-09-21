@@ -103,7 +103,23 @@ def _canonical_adrs(root: Path) -> dict[str, dict[str, Any]]:
 
 def validate_requirements(root: Path) -> list[str]:
     errors: list[str] = []
-    seen: set[str] = set()
+    req_paths: dict[str, list[Path]] = {}
+    for path in sorted(requirements_directory(root).glob("REQ-*.md")):
+        if path.name == "TEMPLATE.md":
+            continue
+        try:
+            document = parse_document(path)
+        except DocumentError as exc:
+            errors.append(f"requirements: {path.relative_to(root)}: {exc}")
+            continue
+        req_id = document["frontmatter"].get("id")
+        if isinstance(req_id, str):
+            req_paths.setdefault(req_id, []).append(path)
+    for req_id, paths in sorted(req_paths.items()):
+        if len(paths) > 1:
+            rendered = ", ".join(path.relative_to(root).as_posix() for path in paths)
+            errors.append(f"requirements: duplicate canonical id {req_id}: {rendered}")
+
     reqs = _canonical_requirements(root)
     tasks: dict[str, dict[str, Any]] = {}
     for path in task_directory(root).glob("STEP-*.md"):
@@ -119,9 +135,6 @@ def validate_requirements(root: Path) -> list[str]:
         if REQ_ID_RE.fullmatch(req_id) is None:
             errors.append(f"{prefix}: invalid id")
             continue
-        if req_id in seen:
-            errors.append(f"requirements: duplicate canonical id {req_id}")
-        seen.add(req_id)
         if not doc["path"].name.startswith(req_id + "-"):
             errors.append(f"{prefix}: filename/id mismatch")
         if not exact_h1(doc, req_id):
@@ -161,13 +174,35 @@ def validate_requirements(root: Path) -> list[str]:
 
 def validate_adrs(root: Path) -> list[str]:
     errors: list[str] = []
+    adr_paths: dict[str, list[Path]] = {}
+    for path in sorted(adr_directory(root).glob("ADR-*.md")):
+        if path.name == "TEMPLATE.md":
+            continue
+        try:
+            document = parse_document(path)
+        except DocumentError as exc:
+            errors.append(f"adr: {path.relative_to(root)}: {exc}")
+            continue
+        adr_id = document["frontmatter"].get("id")
+        if isinstance(adr_id, str):
+            adr_paths.setdefault(adr_id, []).append(path)
+    for adr_id, paths in sorted(adr_paths.items()):
+        if len(paths) > 1:
+            rendered = ", ".join(path.relative_to(root).as_posix() for path in paths)
+            errors.append(f"adr: duplicate canonical id {adr_id}: {rendered}")
+
     adrs = _canonical_adrs(root)
     reqs = _canonical_requirements(root)
-    tasks = {
-        path.stem: read_task(root, path.stem)
-        for path in task_directory(root).glob("STEP-*.md")
-        if STEP_ID_RE.fullmatch(path.stem)
-    }
+    tasks: dict[str, dict[str, Any]] = {}
+    for path in task_directory(root).glob("STEP-*.md"):
+        if STEP_ID_RE.fullmatch(path.stem) is None:
+            continue
+        try:
+            tasks[path.stem] = read_task(root, path.stem)
+        except (DocumentError, ConfigError, OSError, ValueError):
+            # Planning validation already owns this parse error. Cross-document
+            # ADR checks must continue and report the rest of repository state.
+            continue
 
     for adr_id, doc in sorted(adrs.items()):
         prefix = f"adr: {doc['path'].relative_to(root)}"

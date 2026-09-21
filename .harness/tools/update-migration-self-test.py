@@ -400,6 +400,13 @@ def test_project_owned_migration() -> None:
         proof = step_completion_proof(root, "STEP-001")
         require(proof["complete"], f"legacy PASS review did not preserve completion proof: {proof}")
 
+        # Legacy report identity is exact: STEP-001 must not trust STEP-0010.
+        wrong_identity = legacy_review_before.replace("STEP-001", "STEP-0010")
+        legacy_review_path.write_text(wrong_identity, encoding="utf-8")
+        wrong = step_completion_proof(root, "STEP-001")
+        require(not wrong["complete"], f"STEP-001 trusted STEP-0010 legacy review: {wrong}")
+        legacy_review_path.write_text(legacy_review_before, encoding="utf-8")
+
         # RECONCILE owns template refresh, not updater.
         require((root / "planning/reviews/TEMPLATE.md").is_file(), "review template not refreshed")
         require((root / "planning/plan-reviews/TEMPLATE.md").is_file(), "planning-review template missing")

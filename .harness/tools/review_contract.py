@@ -102,7 +102,8 @@ def _legacy_review_verdict(path: Path, step_id: str) -> str | None:
     except (OSError, UnicodeDecodeError):
         return None
     first = next((line.strip() for line in text.splitlines() if line.strip()), "")
-    if step_id not in first:
+    identity = re.search(r"\b(STEP-\d{3,})\b", first)
+    if identity is None or identity.group(1) != step_id:
         return None
     match = re.search(r"(?mi)^\*\*Verdict:\*\*\s*(PASS|FAIL|BLOCKED)\s*$", text)
     return match.group(1).upper() if match else None
