@@ -167,7 +167,7 @@ Report обязан содержать:
 - `step_id`;
 - `verdict: pass | fail | blocked`;
 - exact reviewed revision;
-- specialized review metadata;
+- specialized review metadata: persisted `gate_basis`, exact список `required` и результаты security/tests;
 - structured findings.
 
 Reviewed revision:
@@ -224,7 +224,7 @@ PROJECT RECONCILE
 - старый Ready plan без durable semantic proof становится draft;
 - project-owned templates обновляются из protocol-owned definitions;
 - projections пересобираются;
-- historical immutable review/audit/update reports не переписываются.
+- historical immutable review/audit/update reports не переписываются; legacy implementation reviews получают `path + content hash` pin в migration report, поэтому могут участвовать в completion proof без retroactive rewrite и любое последующее изменение обнаруживается.
 
 Повтор migration без изменений — настоящий no-op.
 
