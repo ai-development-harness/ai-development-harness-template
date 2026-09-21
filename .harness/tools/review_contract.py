@@ -43,34 +43,71 @@ def _git(root: Path, *args: str) -> tuple[int, bytes]:
 
 
 def repository_revision(root: Path) -> dict[str, str | None]:
+    """Fingerprint exact review target, excluding report/state written by review itself.
+
+    STEP REVIEW сначала фиксирует product/config worktree, затем создаёт immutable
+    report. Сам report и .harness/local/** не должны менять reviewed revision.
+    """
     code, head = _git(root, "rev-parse", "HEAD")
     git_head = head.decode("utf-8", errors="replace").strip() if code == 0 else None
 
     code, status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
     if code != 0:
         raise ValueError("cannot read git worktree state")
-    if not status:
+
+    review_root = review_directory(root).resolve()
+    ignored_local = (root / ".harness" / "local").resolve()
+
+    def excluded(path: Path) -> bool:
+        resolved = path.resolve()
+        for base in (review_root, ignored_local):
+            try:
+                resolved.relative_to(base)
+                return True
+            except ValueError:
+                pass
+        return False
+
+    entries = [entry for entry in status.split(b"\0") if entry]
+    changed: list[tuple[bytes, str]] = []
+    skip_next_rename_source = False
+    for raw in entries:
+        if skip_next_rename_source:
+            skip_next_rename_source = False
+            continue
+        decoded = raw.decode("utf-8", errors="surrogateescape")
+        if len(decoded) < 4:
+            continue
+        xy = raw[:2]
+        rel = decoded[3:]
+        if "R" in decoded[:2] or "C" in decoded[:2]:
+            skip_next_rename_source = True
+        path = root / rel
+        if excluded(path):
+            continue
+        changed.append((xy, rel))
+
+    if not changed:
         return {"git_head": git_head, "worktree_hash": None}
 
     digest = hashlib.sha256()
-    digest.update(status)
-    code, diff = _git(root, "diff", "--binary", "HEAD")
-    if code != 0:
-        raise ValueError("cannot hash git worktree diff")
-    digest.update(diff)
-
-    # Git diff не включает untracked content. Добавляем path+bytes, чтобы PASS
-    # нельзя было применить к изменившемуся незакоммиченному файлу.
-    entries = [entry for entry in status.split(b"\0") if entry]
-    for entry in entries:
-        decoded = entry.decode("utf-8", errors="surrogateescape")
-        if not decoded.startswith("?? "):
-            continue
-        rel = decoded[3:]
-        path = root / rel
+    for xy, rel in sorted(changed, key=lambda item: item[1]):
+        digest.update(xy)
+        digest.update(b"\0")
         digest.update(rel.encode("utf-8", errors="surrogateescape"))
-        if path.is_file():
+        digest.update(b"\0")
+        path = root / rel
+        if path.is_symlink():
+            digest.update(b"SYMLINK\0")
+            digest.update(str(path.readlink()).encode("utf-8", errors="surrogateescape"))
+        elif path.is_file():
+            digest.update(b"FILE\0")
             digest.update(path.read_bytes())
+        elif path.exists():
+            digest.update(b"OTHER\0")
+        else:
+            digest.update(b"DELETED\0")
+        digest.update(b"\0")
     return {"git_head": git_head, "worktree_hash": "sha256:" + digest.hexdigest()}
 
 
