@@ -471,9 +471,9 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
     """Распознать только реальные immutable reports, не TEMPLATE.md."""
     candidate = (root / rel).resolve()
     patterns = (
-        (review_directory(root).resolve(), re.compile(r"^STEP-\\d{3,}/REVIEW-.+\\.md$")),
-        (planning_review_directory(root).resolve(), re.compile(r"^STEP-\\d{3,}/PLAN-REVIEW-.+\\.md$")),
-        (init_review_directory(root).resolve(), re.compile(r"^INIT-REVIEW-.+\\.md$")),
+        (review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
+        (planning_review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
+        (init_review_directory(root).resolve(), re.compile(r"^INIT-REVIEW-.+\.md$")),
     )
     for base, pattern in patterns:
         try:
