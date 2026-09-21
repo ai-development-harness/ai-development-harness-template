@@ -402,6 +402,22 @@ def validate_review_report(
     if not isinstance(step_id, str) or STEP_ID_RE.fullmatch(step_id) is None:
         errors.append("step_id must be STEP-NNN")
         return errors
+
+    # Direct --file validation должен быть таким же строгим, как history scan:
+    # если report лежит внутри configured review root, STEP identity выводится
+    # из его canonical parent directory автоматически.
+    if expected_step_id is None:
+        try:
+            suffix = path.resolve().relative_to(review_directory(root).resolve())
+        except ValueError:
+            suffix = None
+        if (
+            suffix is not None
+            and len(suffix.parts) >= 2
+            and STEP_ID_RE.fullmatch(suffix.parts[0]) is not None
+        ):
+            expected_step_id = suffix.parts[0]
+
     if expected_step_id is not None and step_id != expected_step_id:
         errors.append(f"step_id must match review directory {expected_step_id}")
         return errors

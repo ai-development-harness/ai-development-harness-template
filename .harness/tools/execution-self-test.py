@@ -568,6 +568,9 @@ def main() -> int:
         cross_step = root / "planning/reviews/STEP-999/REVIEW-20260921T044000Z.md"
         source_review = root / "planning/reviews/STEP-001/REVIEW-20260921T020000Z.md"
         write(cross_step, source_review.read_text(encoding="utf-8"))
+        from review_contract import validate_review_report
+        cross_errors = validate_review_report(root, cross_step)
+        assert any("step_id must match review directory STEP-999" in item for item in cross_errors), cross_errors
         assert not review_reports(root, "STEP-999"), review_reports(root, "STEP-999")
         cross_step.unlink()
 
