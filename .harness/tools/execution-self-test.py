@@ -173,7 +173,7 @@ schema: 1
 kind: planning_review
 step_id: STEP-001
 verdict: pass
-reviewer_role: planner
+reviewer_role: reviewer
 finding_count: 0
 context_basis: {basis}
 plan_content_hash: {phash}
