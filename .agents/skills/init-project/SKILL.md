@@ -18,13 +18,13 @@ description: Bootstrap a new repository from the configured local brief into a d
    - STEP в `protocol.taskDirectory`.
    Machine keys/enums frontmatter всегда protocol-English и не локализуются.
 5. Удали pre-init `REQ-001-template.md`, когда появились реальные требования. Не редактируй projection-файлы вручную.
-6. До roadmap выполни отдельный semantic requirements review по `requirements-review`. Получи точный basis:
+6. До roadmap передай candidate requirements отдельному `reviewer` agent/session, отличному от initializer, и выполни semantic requirements review по `requirements-review`. Получи точный basis:
    ```bash
    python3 .harness/tools/planning-state.py init-basis requirements
    ```
-   Сохрани immutable schema-v1 report в configured `protocol.initReviewDirectory` по template. PASS обязан ссылаться на текущий basis. Если остаётся существенное contradiction/missing decision — создай canonical OQ с `affects: PROJECT` либо prerequisite work и верни BLOCKED.
+   Сохрани immutable schema-v1 report в configured `protocol.initReviewDirectory` по template с `reviewer_role: reviewer`. PASS обязан ссылаться на текущий basis. Если остаётся существенное contradiction/missing decision — создай canonical OQ с `affects: PROJECT` либо prerequisite work и верни BLOCKED.
 7. Построй canonical STEP roadmap по dependencies. Для каждого STEP заполни strict frontmatter refs, `architecture_refs`, `risk_flags`, contract sections и mutation policy. `plan.status=not_planned`.
-8. Выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, contract↔Acceptance, ownership, dependencies/completion prerequisites, architecture refs, OQ и Verification. Получи basis:
+8. Передай candidate roadmap отдельному `reviewer` agent/session и выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, contract↔Acceptance, ownership, dependencies/completion prerequisites, architecture refs, OQ и Verification. Получи basis:
    ```bash
    python3 .harness/tools/planning-state.py init-basis roadmap
    ```
