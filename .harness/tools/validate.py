@@ -44,6 +44,7 @@ from harness_config import (
     load_update_policy,
     local_brief_path,
     max_fix_review_cycles,
+    protocol_path,
     repository_path,
     resolve_repo_path,
     review_policy,
@@ -874,6 +875,30 @@ def main() -> int:
                 errors.append(
                     f"manifest repository.{repository_key} path missing: "
                     f"{configured.relative_to(root)}"
+                )
+
+        # Эти три значения участвуют в bootstrap до того, как произвольная
+        # project configuration может быть безопасно применена. Manifest
+        # документирует canonical identity, но не предоставляет relocation API.
+        fixed_bootstrap_paths = {
+            "protocol.file": (
+                protocol_path(root),
+                ".harness/docs/EXECUTION_PROTOCOL.md",
+            ),
+            "repository.harnessValidation": (
+                repository_path(root, "harnessValidation"),
+                ".harness/tools/validate.py",
+            ),
+            "repository.harnessCI": (
+                repository_path(root, "harnessCI"),
+                ".github/workflows/harness-integrity.yml",
+            ),
+        }
+        for key, (configured, expected) in fixed_bootstrap_paths.items():
+            actual = configured.relative_to(root).as_posix()
+            if actual != expected:
+                errors.append(
+                    f"manifest {key} is bootstrap-fixed and must equal {expected}, got {actual}"
                 )
     except ConfigError as exc:
         errors.append(f"manifest: {exc}")
