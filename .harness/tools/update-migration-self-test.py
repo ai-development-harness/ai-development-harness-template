@@ -105,22 +105,32 @@ def test_routing(root: Path) -> None:
     relocation = next(edge for edge in edges if edge["from"] == "v0.4.2")
     require(relocation["reloadRequired"] is True, "bootstrap relocation must require reload")
 
-    # Canonical graph пока может завершаться на v0.5.3, но gate уже
-    # исполняется на synthetic будущей публикации и ловит неверный bridge.
+    # До первого post-v0.5.3 release synthetic graph доказывает будущую
+    # publication boundary. После публикации canonical уже содержит этот edge,
+    # поэтому нельзя добавлять второй v0.5.3 transition: negative case должен
+    # портить именно bootstrap edge, который реально проверяет gate.
     require_post_v053_bridge(canonical)
     synthetic = json.loads(json.dumps(canonical))
-    synthetic["latest"] = "v0.6.0"
-    synthetic["transitions"].append(
-        {
-            "from": "v0.5.3",
-            "to": "v0.6.0",
-            "kind": "bridge",
-            "reloadRequired": True,
-            "reason": "install deterministic updater and reload runtime",
-        }
+    latest_tuple = tuple(
+        int(part) for part in synthetic["latest"].removeprefix("v").split(".")
     )
+    if latest_tuple <= (0, 5, 3):
+        synthetic["latest"] = "v0.6.0"
+        synthetic["transitions"].append(
+            {
+                "from": "v0.5.3",
+                "to": "v0.6.0",
+                "kind": "bridge",
+                "reloadRequired": True,
+                "reason": "install deterministic updater and reload runtime",
+            }
+        )
     require_post_v053_bridge(synthetic)
-    synthetic["transitions"][-1]["reloadRequired"] = False
+
+    bootstrap = next(
+        edge for edge in synthetic["transitions"] if edge["from"] == "v0.5.3"
+    )
+    bootstrap["reloadRequired"] = False
     try:
         require_post_v053_bridge(synthetic)
     except AssertionError:
