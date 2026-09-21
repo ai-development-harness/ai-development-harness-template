@@ -19,7 +19,7 @@ from execution_status import (
     unresolved_executions,
 )
 from planning_contract import plan_content_hash, planning_context_basis
-from review_contract import repository_revision
+from review_contract import repository_revision, validate_review_immutability
 from review_gates import required_reviewers
 
 
@@ -451,6 +451,20 @@ def main() -> int:
         fixed = root / ".harness/local/execution/execution-status.json"
         assert fixed.is_file()
         assert not list((root / ".harness/local/execution").glob("STEP-*.json"))
+
+        # Immutable review history: addition разрешена, но после попадания report
+        # в Git его rewrite блокируется и в pre-commit state, и в CI diff.
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "checkpoint immutable review")
+        immutable_report = root / "planning/reviews/STEP-001/REVIEW-20260921T010000Z.md"
+        original_report = immutable_report.read_text(encoding="utf-8")
+        write(immutable_report, original_report + "\n<!-- rewritten -->\n")
+        immutability_errors = validate_review_immutability(root)
+        assert any("existing report changed" in item for item in immutability_errors), immutability_errors
+        run(root, "git", "add", immutable_report.relative_to(root).as_posix())
+        run(root, "git", "commit", "-qm", "rewrite immutable review")
+        ci_immutability_errors = validate_review_immutability(root, ci_mode=True)
+        assert any("existing report changed (commit)" in item for item in ci_immutability_errors), ci_immutability_errors
 
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
