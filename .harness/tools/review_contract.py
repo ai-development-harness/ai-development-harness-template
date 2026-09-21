@@ -27,7 +27,9 @@ from harness_config import (
     audit_directory,
     init_review_directory,
     planning_review_directory,
+    release_directory,
     review_directory,
+    skill_search_directory,
 )
 from planning_contract import read_task
 from review_gates import required_reviewers
@@ -543,7 +545,9 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
         (review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
         (planning_review_directory(root).resolve(), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
         (init_review_directory(root).resolve(), re.compile(r"^INIT-REVIEW-.+\.md$")),
-        (audit_directory(root).resolve(), re.compile(r"^MIGRATION-\d{8}T\d{6}Z\.md$")),
+        (audit_directory(root).resolve(), re.compile(r"^(?:MIGRATION|AUDIT)-.+\.md$")),
+        (release_directory(root).resolve(), re.compile(r"^RELEASE-.+\.md$")),
+        (skill_search_directory(root).resolve(), re.compile(r"^SKILL-SEARCH-.+\.md$")),
     )
     for base, pattern in patterns:
         try:
@@ -575,6 +579,8 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
         planning_review_directory(root).relative_to(root).as_posix(),
         init_review_directory(root).relative_to(root).as_posix(),
         audit_directory(root).relative_to(root).as_posix(),
+        release_directory(root).relative_to(root).as_posix(),
+        skill_search_directory(root).relative_to(root).as_posix(),
     ]
 
     probes: list[tuple[str, tuple[str, ...]]] = [
