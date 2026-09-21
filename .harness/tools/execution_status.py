@@ -34,6 +34,7 @@ from command_transitions import (
     validate_command_text,
 )
 from document_contract import render_document
+from harness_config import update_lock_path
 from planning_contract import (
     latest_matching_planning_review,
     max_fix_review_cycles,
@@ -386,6 +387,141 @@ def _edge_for(
 
 
 
+# Выполнить read-only Git probe для runtime preconditions. Сетевые операции здесь
+# намеренно не выполняются: command skill позже делает полный fetch/preflight.
+def _git_probe(root: Path, *args: str) -> tuple[int, str]:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+    return proc.returncode, proc.stdout.strip()
+
+
+# Разрешить remote-tracking ref текущей ветки без догадок. Если upstream не
+# настроен, допускается ровно один configured remote; неоднозначность = blocker.
+def _published_ref(root: Path) -> tuple[str | None, str | None]:
+    code, branch = _git_probe(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    if code != 0 or not branch:
+        return None, "detached-or-missing-branch"
+
+    code, upstream = _git_probe(
+        root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
+    )
+    if code == 0 and upstream:
+        return upstream, None
+
+    code, remotes_text = _git_probe(root, "remote")
+    remotes = [item.strip() for item in remotes_text.splitlines() if item.strip()] if code == 0 else []
+    if len(remotes) != 1:
+        return None, "missing-or-ambiguous-remote"
+    return f"{remotes[0]}/{branch}", None
+
+
+# Проверить narrow deterministic Git readiness. Это не заменяет полный GIT PUSH /
+# GIT PR preflight: здесь только fail-closed proof для CTS shortcut edge.
+def _git_runtime_precondition(root: Path, name: str) -> str | None:
+    remote_ref, error = _published_ref(root)
+    if error is not None:
+        return error
+    assert remote_ref is not None
+
+    code, _ = _git_probe(root, "rev-parse", "--verify", remote_ref)
+    remote_exists = code == 0
+
+    if name == "git-push-ready":
+        # Новый remote branch допустим: сам GIT PUSH ещё проверит policy и
+        # установит upstream. Existing branch обязан быть ancestor локального HEAD,
+        # иначе direct CHECK -> PUSH мог бы скрыть remote-ahead/divergence.
+        if not remote_exists:
+            return None
+        code, _ = _git_probe(root, "merge-base", "--is-ancestor", remote_ref, "HEAD")
+        return None if code == 0 else "remote-branch-is-not-ancestor-of-head"
+
+    if name == "git-pr-ready":
+        if not remote_exists:
+            return "remote-branch-is-not-published"
+        code, local_head = _git_probe(root, "rev-parse", "HEAD")
+        remote_code, remote_head = _git_probe(root, "rev-parse", remote_ref)
+        if code != 0 or remote_code != 0 or not local_head or local_head != remote_head:
+            return "published-branch-does-not-match-head"
+        return None
+
+    return f"unsupported-git-precondition:{name}"
+
+
+# CHECK -> APPLY доверяет только durable details exact предыдущего CHECK и
+# текущему lock. Любая отсутствующая/несовпадающая metadata заставляет сделать
+# fresh CHECK отдельной командой вместо молчаливого APPLY.
+def _update_runtime_precondition(
+    root: Path,
+    current: dict[str, Any],
+    next_command: str,
+) -> str | None:
+    details = current.get("details")
+    if not isinstance(details, dict):
+        return "update-check-details-missing"
+    target = details.get("resolvedTarget")
+    route = details.get("route")
+    lock_ref = details.get("lockRef")
+    if (
+        not isinstance(target, str)
+        or not target
+        or not isinstance(lock_ref, str)
+        or not lock_ref
+        or not isinstance(route, list)
+        or not route
+        or any(not isinstance(item, str) or not item for item in route)
+    ):
+        return "update-check-details-invalid"
+    if route[0] != lock_ref or route[-1] != target:
+        return "update-check-route-does-not-match-details"
+
+    try:
+        lock = json.loads(update_lock_path(root).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return "update-lock-unreadable"
+    source = lock.get("source")
+    if not isinstance(source, dict) or source.get("ref") != lock_ref:
+        return "update-lock-ref-changed"
+
+    parsed = normalize_single_command(root, next_command)
+    explicit_target = parsed.get("target")
+    if explicit_target is not None and explicit_target != target:
+        return "update-target-changed"
+    return None
+
+
+# Выполнить runtimePreconditions CTS edge непосредственно перед dispatch. Возврат
+# списка причин делает неизвестный/недоказанный precondition fail-closed.
+def _runtime_precondition_failures(
+    root: Path,
+    execution: dict[str, Any],
+    next_command: str,
+    preconditions: list[str],
+) -> list[str]:
+    failures: list[str] = []
+    current = execution["current"]
+    for name in preconditions:
+        if name in {"git-push-ready", "git-pr-ready"}:
+            issue = _git_runtime_precondition(root, name)
+        elif name == "matching-update-target-and-route":
+            issue = _update_runtime_precondition(root, current, next_command)
+        else:
+            issue = f"unknown-runtime-precondition:{name}"
+        if issue is not None:
+            failures.append(f"{name}: {issue}")
+    return failures
+
+
+
 # Построить canonical next command по CTS edge, сохранив STEP/release target текущей execution.
 def _build_next_from_edge(
     root: Path,
@@ -562,6 +698,30 @@ def begin_command(
         raise ValueError(
             f"resolver expects {expected!r}, cannot begin {normalized_command!r}"
         )
+
+    preconditions = [] if allow_first_orchestration_child else list(
+        resolved.get("runtimePreconditions") or []
+    )
+    failures = _runtime_precondition_failures(
+        root,
+        execution,
+        normalized_command,
+        preconditions,
+    )
+    if failures:
+        # Предыдущая child command уже завершилась фактическим result. Не
+        # перезаписываем её: blocker относится к переходу/корневой execution.
+        execution["blockedBy"] = {
+            "reasonCode": "RUNTIME_PRECONDITION_FAILED",
+            "command": normalized_command,
+            "failures": failures,
+        }
+        if execution["mode"] == "chain":
+            index = int(execution.get("currentIndex", 0))
+            execution["notExecuted"] = execution["sequence"][index + 1 :]
+        _mark_root_complete(execution, blocked=True)
+        save_status(root, status)
+        raise ValueError("runtime precondition failed: " + "; ".join(failures))
 
     if execution["mode"] == "chain":
         # Chain продолжает только sequence, которую пользователь ввёл изначально.
