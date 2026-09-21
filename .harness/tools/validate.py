@@ -885,6 +885,14 @@ def main() -> int:
                 protocol_path(root),
                 ".harness/docs/EXECUTION_PROTOCOL.md",
             ),
+            "repository.harnessPolicy": (
+                repository_path(root, "harnessPolicy"),
+                ".harness/harness-policy.toml",
+            ),
+            "repository.harnessUpdatePolicy": (
+                repository_path(root, "harnessUpdatePolicy"),
+                ".harness/harness-update.toml",
+            ),
             "repository.harnessValidation": (
                 repository_path(root, "harnessValidation"),
                 ".harness/tools/validate.py",
