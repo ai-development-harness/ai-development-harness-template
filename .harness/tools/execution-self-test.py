@@ -313,6 +313,22 @@ def main() -> int:
         complete_command(root, chain, "GIT COMMIT", "SUCCESS")
         assert resolve_root(root, chain)["command"] == "GIT PUSH"
 
+        # Runtime preconditions — не декоративная metadata. Direct CHECK -> PUSH
+        # без доказуемого remote context блокируется до dispatch.
+        direct_push = "GIT CHECK > PUSH"
+        start_execution(root, direct_push)
+        complete_command(root, direct_push, "GIT CHECK", "PASS")
+        direct_next = resolve_root(root, direct_push)
+        assert direct_next.get("runtimePreconditions") == ["git-push-ready"], direct_next
+        try:
+            begin_command(root, direct_push, "GIT PUSH")
+        except ValueError as exc:
+            assert "runtime precondition failed" in str(exc), exc
+        else:
+            raise AssertionError("git-push-ready was not enforced before dispatch")
+        direct_blocked = resolve_root(root, direct_push)
+        assert direct_blocked["status"] == "BLOCKED", direct_blocked
+
         # STEP RUN recovers completed PLAN from matching basis+content+planning-review.
         run_root = "STEP RUN STEP-001"
         run_exec = start_execution(root, run_root)
