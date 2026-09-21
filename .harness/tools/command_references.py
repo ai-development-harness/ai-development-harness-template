@@ -16,7 +16,10 @@ import re
 from typing import Iterable
 
 from harness_config import (
+    adr_directory,
     architecture_path,
+    open_questions_directory,
+    open_questions_index_path,
     project_overview_path,
     requirements_directory,
     roadmap_path,
@@ -115,6 +118,8 @@ def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
             project_overview_path(root),
             requirements_directory(root),
             architecture_path(root),
+            open_questions_directory(root),
+            open_questions_index_path(root),
             roadmap_path(root),
             status_path(root),
         ]
@@ -127,13 +132,10 @@ def _manifest_project_paths(root: Path) -> tuple[list[Path], Path]:
 def project_live_document_paths(root: Path) -> list[Path]:
     """Вернуть active project-owned docs, где command syntax должен быть текущим.
 
-    Primary project paths и taskDirectory берутся из .harness/manifest.yaml.
-    Source path может быть файлом или каталогом; каталоги рекурсивно раскрываются
-    в Markdown-файлы. Дополнительно сканируются README и live project docs под docs/**.
-    Harness docs находятся вне project-owned `docs/**` под `.harness/docs/**`
-    и поэтому сюда не попадают. Из `docs/**` исключается только `docs/adr/**`
-    как immutable decision history; также не сканируются history-oriented planning
-    records: reviews/audits/releases/updates/searches.
+    Primary project paths, Open Questions и taskDirectory берутся через единый
+    manifest config layer. Source path может быть файлом или каталогом. Дополнительно
+    сканируются README и default live subsystem docs под docs/**; configured ADR
+    directory исключается как decision history независимо от его фактического пути.
     """
     manifest_paths, task_directory = _manifest_project_paths(root)
     paths = [root / "README.md"]
@@ -143,14 +145,20 @@ def project_live_document_paths(root: Path) -> list[Path]:
         else:
             paths.append(path)
 
+    # Default docs tree остаётся дополнительной scan surface для subsystem docs,
+    # но исключение ADR берётся из manifest, а не из жёсткого docs/adr.
     docs_root = root / "docs"
+    try:
+        configured_adr = adr_directory(root).resolve()
+    except Exception as exc:
+        raise RuntimeError(f"cannot resolve configured ADR directory: {exc}") from exc
     if docs_root.exists():
         for path in sorted(docs_root.rglob("*.md")):
-            rel = path.relative_to(docs_root)
-            # docs/adr — исторические decision records; старый command syntax там может
-            # намеренно отражать состояние проекта на момент принятия решения.
-            if rel.parts and rel.parts[0] == "adr":
+            try:
+                path.resolve().relative_to(configured_adr)
                 continue
+            except ValueError:
+                pass
             paths.append(path)
 
     paths.extend(sorted(task_directory.glob("STEP-*.md")))
