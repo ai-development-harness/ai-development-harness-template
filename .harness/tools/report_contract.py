@@ -62,6 +62,8 @@ def validate_audit_report(root: Path, path: Path) -> list[str]:
         errors.append("result must be complete")
     if not _valid_iso_timestamp(meta.get("created_at")):
         errors.append("created_at must be ISO-8601")
+    if re.fullmatch(r"AUDIT-\d{8}T\d{6}Z\.md", path.name) is None:
+        errors.append("filename must be AUDIT-<UTC timestamp>.md")
     if not document.get("h1", "").startswith("# Audit — "):
         errors.append("H1 must start with '# Audit — '")
     errors.extend(
@@ -91,6 +93,8 @@ def validate_release_report(root: Path, path: Path) -> list[str]:
         errors.append("verdict must be ready|blocked")
     if not _valid_iso_timestamp(meta.get("created_at")):
         errors.append("created_at must be ISO-8601")
+    if re.fullmatch(r"RELEASE-\d{8}T\d{6}Z\.md", path.name) is None:
+        errors.append("filename must be RELEASE-<UTC timestamp>.md")
     if not document.get("h1", "").startswith("# Release Check — "):
         errors.append("H1 must start with '# Release Check — '")
     errors.extend(
@@ -213,19 +217,40 @@ def validate_all_operational_reports(root: Path) -> list[str]:
 
     audit_root = audit_directory(root)
     if audit_root.is_dir():
-        for path in sorted(audit_root.glob("AUDIT-*.md")):
+        for path in sorted(audit_root.glob("*.md")):
+            if path.name in {"README.md", "TEMPLATE.md"} or path.name.startswith("MIGRATION-"):
+                continue
+            if not path.name.startswith("AUDIT-"):
+                errors.append(
+                    f"audit-report: unexpected durable artifact name: {path.relative_to(root)}"
+                )
+                continue
             for issue in validate_audit_report(root, path):
                 errors.append(f"audit-report: {path.relative_to(root)}: {issue}")
 
     release_root = release_directory(root)
     if release_root.is_dir():
-        for path in sorted(release_root.glob("RELEASE-*.md")):
+        for path in sorted(release_root.glob("*.md")):
+            if path.name in {"README.md", "TEMPLATE.md"}:
+                continue
+            if not path.name.startswith("RELEASE-"):
+                errors.append(
+                    f"release-report: unexpected durable artifact name: {path.relative_to(root)}"
+                )
+                continue
             for issue in validate_release_report(root, path):
                 errors.append(f"release-report: {path.relative_to(root)}: {issue}")
 
     search_root = skill_search_directory(root)
     if search_root.is_dir():
-        for path in sorted(search_root.glob("SKILL-SEARCH-*.md")):
+        for path in sorted(search_root.glob("*.md")):
+            if path.name in {"README.md", "TEMPLATE.md"}:
+                continue
+            if not path.name.startswith("SKILL-SEARCH-"):
+                errors.append(
+                    f"skill-search-report: unexpected durable artifact name: {path.relative_to(root)}"
+                )
+                continue
             for issue in validate_skill_search_report(root, path):
                 errors.append(f"skill-search-report: {path.relative_to(root)}: {issue}")
 
