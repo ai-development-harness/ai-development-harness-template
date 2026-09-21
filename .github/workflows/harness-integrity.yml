@@ -80,6 +80,11 @@ jobs:
         # Запустить реальный CLI; DRIFT является audit-data, BLOCKED/ошибка дают non-zero.
         # Пример: JSON output не нужен в CI log при успешном smoke-test.
         run: python3 .harness/tools/check-command-references.py --json >/dev/null
+
+      # Synthetic regression configurable command-reference topology.
+      # Пример: custom ADR directory остаётся historical-only, custom OQ/REQ/tasks сканируются.
+      - name: Validate command reference paths
+        run: python3 .harness/tools/command-references-self-test.py
       # Отображаемое имя smoke-test публичного command structural gate.
       # Пример: подтверждает, что CLI принимает edge из graph и отвергает отсутствующий edge.
       - name: Validate command transition gate
