@@ -4,7 +4,7 @@ description: Review requirements for clarity, testability, duplication, conflict
 ---
 # requirements-review
 
-Проверяй canonical `docs/requirements/REQ-NNN-*.md` как единый набор product/system contracts, а не по одному файлу в изоляции. `SPEC.md` и `STATUS.md` — projections, не competing source requirement definition.
+Проверяй canonical REQ из configured `sources.requirements` как единый набор product/system contracts, а не по одному файлу в изоляции. `SPEC.md` и `STATUS.md` внутри configured requirements directory — deterministic projections, не competing source requirement definition. Canonical Open Questions бери из `sources.openQuestions`; `sources.openQuestionsIndex` — projection.
 
 Обязательная semantic review должна искать:
 
