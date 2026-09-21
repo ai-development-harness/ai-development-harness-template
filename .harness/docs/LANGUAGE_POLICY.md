@@ -29,6 +29,8 @@ language.<domain>
 
 Machine-readable schema/CTS tokens (`schema`, `status`, `type`, `pass`, `blocked`, ID formats и т. п.) не локализуются и не зависят от language policy.
 
+`language.documentation` применяется к **agent-authored human-readable prose** в PROJECT/REQ/ADR/STEP и durable reports. Он не означает runtime-перевод protocol schema: названия обязательных structural sections, machine frontmatter keys/enums и deterministic boilerplate/templates Harness остаются protocol-stable. Агент заполняет содержимое этих секций на configured языке, сохраняя технические identifiers без перевода.
+
 ## Что не переводится автоматически
 
 Language policy не требует переводить:
