@@ -247,7 +247,7 @@ schema: 1
 kind: planning_review
 step_id: {step_id}
 verdict: pass
-reviewer_role: planner
+reviewer_role: reviewer
 finding_count: 0
 context_basis: {basis}
 plan_content_hash: {plan_hash}
@@ -277,7 +277,7 @@ schema: 1
 kind: init_review
 stage: {stage}
 verdict: {verdict}
-reviewer_role: initializer
+reviewer_role: reviewer
 finding_count: {finding_count}
 basis: {basis}
 created_at: 2026-09-21T00:00:00+00:00
@@ -426,8 +426,8 @@ def main() -> int:
         current_basis = planning_context_basis(root, "STEP-1000")
         current_hash = plan_content_hash(root, "STEP-1000")
         blocked = planning_review("STEP-1000", current_basis, current_hash).replace(
-            "verdict: pass\nreviewer_role: planner\nfinding_count: 0",
-            "verdict: blocked\nreviewer_role: planner\nfinding_count: 1",
+            "verdict: pass\nreviewer_role: reviewer\nfinding_count: 0",
+            "verdict: blocked\nreviewer_role: reviewer\nfinding_count: 1",
         ).replace("No material findings.", "Blocking contradiction.")
         write(
             root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T010000Z.md",
@@ -547,7 +547,7 @@ Choose a mode.
 
         # Semantic review schema is enforced, not only matching hashes.
         malformed_review = planning_review("STEP-1000", "sha256:" + "0" * 64, "sha256:" + "1" * 64).replace(
-            "reviewer_role: planner",
+            "reviewer_role: reviewer",
             "reviewer_role: implementer",
         )
         write(
@@ -555,7 +555,7 @@ Choose a mode.
             malformed_review,
         )
         errors = validate_planning_contracts(root)
-        assert any("reviewer_role must be planner" in item for item in errors), errors
+        assert any("reviewer_role must be reviewer" in item for item in errors), errors
         (root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T030000Z.md").unlink()
 
         # Dependency cycle is graph-detectable.
