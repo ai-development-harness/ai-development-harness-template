@@ -169,6 +169,12 @@ def main() -> int:
         write(audit, valid_audit().replace("## Evidence\n\nChecked.\n", ""))
         errors = validate_audit_report(root, audit)
         assert any("Evidence" in item for item in errors), errors
+        write(audit, valid_audit())
+
+        # Report directories fail closed on typo/unknown durable Markdown.
+        write(root / "work/releases/RELASE-typo.md", valid_release())
+        errors = validate_all_operational_reports(root)
+        assert any("unexpected durable artifact name" in item for item in errors), errors
 
     print("REPORT CONTRACT SELF-TEST: PASS")
     return 0
