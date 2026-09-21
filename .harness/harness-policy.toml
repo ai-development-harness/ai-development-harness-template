@@ -51,6 +51,7 @@ required_files = [
   ".harness/tools/review_gates.py",
   ".harness/tools/command_transitions.py",
   ".harness/tools/command_references.py",
+  ".harness/tools/command-references-self-test.py",
   ".harness/tools/check-command-references.py",
   ".harness/tools/validate-command.py",
   ".harness/tools/execution-state.py",
