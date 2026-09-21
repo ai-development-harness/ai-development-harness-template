@@ -83,25 +83,28 @@ def _git_changed_paths(root: Path) -> list[str]:
         except OSError:
             pass
 
-    review_root = review_directory(root).resolve()
-    local_root = (root / ".harness" / "local").resolve()
+    try:
+        review_root = review_directory(root).relative_to(root.resolve()).as_posix().rstrip("/")
+    except ValueError:
+        # Config layer уже должен запрещать escape. Если invariant нарушен,
+        # ничего не скрываем из factual changed surface.
+        review_root = "__invalid_review_root__"
 
     def included(rel: str) -> bool:
-        candidate = (root / rel).resolve()
+        normalized = rel.replace("\\", "/").lstrip("./")
 
-        # Operational local state никогда не является factual product surface.
-        try:
-            candidate.relative_to(local_root)
+        # Git path identity лексическая. Symlink из product path в .harness/local
+        # остаётся product change и не должен исчезать из review surface.
+        if normalized == ".harness/local" or normalized.startswith(".harness/local/"):
             return False
-        except ValueError:
-            pass
 
         # Configurable reviewDirectory не является blanket ignore-root.
-        # Иначе значение вроде "docs" скрывало бы реальные product/security
-        # изменения от preselector. Исключаем только report-shaped artifacts.
-        try:
-            review_rel = candidate.relative_to(review_root).as_posix()
-        except ValueError:
+        # Исключаем только lexical report-shaped artifacts, не symlink targets.
+        if normalized == review_root:
+            review_rel = ""
+        elif normalized.startswith(review_root + "/"):
+            review_rel = normalized[len(review_root) + 1 :]
+        else:
             return True
         return re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", review_rel) is None
 
