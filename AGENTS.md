@@ -7,7 +7,7 @@
 <!-- PROJECT-CONTEXT:START -->
 ## Project context
 
-Проект ещё не инициализирован. До успешного `PROJECT INIT` не создавай production-код и не придумывай product-specific архитектуру. Сырой вход находится в `PROJECT_BRIEF.local.md`.
+Проект ещё не инициализирован. До успешного `PROJECT INIT` не создавай production-код и не придумывай product-specific архитектуру. Сырой вход находится по configured `.harness/manifest.yaml → sources.localBrief`.
 <!-- PROJECT-CONTEXT:END -->
 
 ## 2. Приоритет источников истины
@@ -15,11 +15,11 @@
 При конфликте:
 
 1. фактический code/config/migrations/tests — определяет текущее реализованное состояние;
-2. Accepted ADR (`docs/adr/`) — устойчивые архитектурные контракты;
-3. `docs/architecture.md` и subsystem docs — актуальная архитектурная документация;
-4. `docs/requirements/REQ-NNN-*.md` — канонические продуктовые требования;
-5. `planning/tasks/STEP-NNN.md` — scope конкретной работы;
-6. `planning/PLAN.md` и `planning/STATUS.md` — projection-файлы;
+2. Accepted ADR из configured `sources.adrDirectory` — устойчивые архитектурные контракты;
+3. configured `sources.architecture` и subsystem docs — актуальная архитектурная документация;
+4. canonical REQ из configured `sources.requirements` — продуктовые требования;
+5. canonical STEP из configured `protocol.taskDirectory` — scope конкретной работы;
+6. configured roadmap/status/requirements/OQ projections — производные представления canonical state;
 7. brief, chat history и неформальные заметки — только вход/контекст.
 
 Если code расходится с Accepted ADR, зафиксируй architecture drift. Accepted ADR не переписывается задним числом: изменение устойчивого решения оформляется новым ADR с `Supersedes`.
@@ -139,6 +139,8 @@ python3 .harness/tools/resolve-next-command.py --json
 
 Canonical repository artifacts имеют приоритет над local operational state. Для PLAN/REVIEW/GIT COMMIT resolver может использовать durable evidence, чтобы закрыть маленькое crash-window между фактическим завершением и записью `complete`.
 
+Для PLAN durable proof = current `plan.status=ready` + exact `context_basis` + `content_hash` + matching immutable planning-review PASS. Для REVIEW durable proof = schema-valid immutable report для той же exact `git_head/worktree_hash` revision.
+
 Подробно: `.harness/docs/EXECUTION_STATUS.md`.
 
 ### Цепочки команд
@@ -175,12 +177,12 @@ Pre-init Harness update не выполняет `PROJECT INIT`, не созда�
 Перед работой с STEP:
 
 1. прочитай `.harness/docs/EXECUTION_PROTOCOL.md`;
-2. прочитай `planning/PLAN.md`;
-3. открой `planning/tasks/STEP-NNN.md`;
+2. разреши configured paths через `.harness/manifest.yaml`;
+3. открой STEP из `protocol.taskDirectory` и соответствующий roadmap projection;
 4. проверь status/type/priority/dependencies/risk flags;
 5. прочитай связанные REQ;
 6. прочитай Accepted ADR;
-7. прочитай relevant architecture/subsystem docs;
+7. прочитай только explicit `architecture_refs` STEP и действительно нужные subsystem docs;
 8. изучи существующий code/tests/config;
 9. выбери минимальный достаточный набор skills;
 10. соблюдай Scope, Mutation policy и Out of scope.
@@ -215,11 +217,11 @@ Role semantics задаются Harness protocol, а model/effort/permissions �
 
 Reviewer не должен быть автором проверяемой реализации. `STEP REVIEW` по умолчанию не исправляет production code. Он выдаёт findings и verdict; исправления выполняются отдельным `STEP FIX`/implementer проходом.
 
-Security/test reviewers запускаются условно на основании `Risk flags`, фактического diff и характера задачи.
+Минимально обязательные security/test reviewers выбираются deterministic preselector-ом `.harness/tools/review_gates.py` по `review.security/tests`, canonical `risk_flags`, STEP type и factual changed surface. Модель может добавить reviewer, но не убрать обязательного.
 
 ## 8. Deterministic gates
 
-AI-вердикт не заменяет проверки проекта. Перед статусом `Выполнено` должны пройти реальные команды из task `Verification` и acceptance criteria.
+AI-вердикт не заменяет проверки проекта. Перед canonical `status: completed` должны пройти реальные Verification/Acceptance gates и type-specific completion proof; для implementation-like STEP требуется schema-valid independent PASS review.
 
 Не выдумывай scripts/targets. Сначала исследуй фактическую систему сборки/тестирования проекта.
 
@@ -246,20 +248,11 @@ ADR → affected REQ/STEP
 STEP → REQ + ADR + evidence + review
 ```
 
-Projection-файлы (`planning/PLAN.md`, `planning/STATUS.md`, `docs/requirements/SPEC.md`, `docs/requirements/STATUS.md`) не должны расходиться с canonical files и фактическим evidence. Definition/rationale/acceptance/traceability каждого REQ хранятся только в `docs/requirements/REQ-NNN-*.md`; `SPEC.md` — индекс, а lifecycle-state фиксируется только в `docs/requirements/STATUS.md`.
+Projection-файлы из configured manifest paths не редактируй как independent state. Canonical REQ/ADR/STEP/OQ меняются сначала, затем projections пересобираются `python3 .harness/tools/sync-projections.py` и проверяются byte-for-byte validator-ом. Requirement lifecycle вычисляется из canonical REQ + STEP completion proofs.
 
-## 11. Статусы STEP
+## 11. Machine schema STEP
 
-Допустимы:
-
-- `Запланировано`;
-- `В работе`;
-- `Выполнено`;
-- `Заблокировано`;
-- `Отменено`;
-- `Заменено`.
-
-`Выполнено` разрешён только при доказанных acceptance criteria и verification evidence.
+Active STEP использует YAML frontmatter `schema: 1`. Допустимые machine statuses: `planned | in_progress | blocked | completed | deferred | cancelled`; допустимые types: `implementation | bugfix | refactor | research | adr | audit | review | hardening | documentation | release`. Machine enums не локализуются. `completed` разрешён только при доказанных acceptance/verification и type-specific completion proof.
 
 ## 12. Skills и routing
 
@@ -280,7 +273,7 @@ Self-update самого Harness выполняется только через 
 
 ## 13. Языковая политика
 
-Перед генерацией текста прочитай `.harness/manifest.yaml` → `language`. Используй специализированное значение для соответствующего артефакта (`documentation`, `commitMessages`, `codeComments`, `testNames`, `fixtures`, `githubTemplates`, `releaseNotes`), а `default` — только как fallback.
+Перед генерацией текста прочитай `.harness/manifest.yaml` → `language`. Для специализированного артефакта используй соответствующий ключ, а если ключ отсутствует — реально применяй `language.default`. Machine keys/enums schema/CTS не локализуются.
 
 Не переводи технические identifiers, API keys, package/tool names и protocol terms только ради language policy. Доменные/i18n-сценарии могут осознанно использовать другие языки.
 
@@ -298,9 +291,9 @@ Self-update protocol layer не является STEP.
 
 - используй `.agents/skills/update-harness/SKILL.md`;
 - не меняй working tree, Git refs, lock, STEP/REQ/ADR, commit/push/PR;
-- BASE берётся только из `.harness/harness.lock.json`;
+- путь BASE lock берётся из configured update policy `state.lock_file`;
 - legacy `.project/**` control plane обновляется через обязательный bridge `v0.4.2`; после relocation не восстанавливай dual-layout, `.harness/**` становится единственным bootstrap namespace;
-- конечный target и обязательные промежуточные releases разрешай через canonical remote `.harness/harness-update-graph.json`; moving `main` используется только для routing metadata, не как BASE/THEIRS content;
+- конечный target и обязательные промежуточные releases разрешай через configured `source.update_manifest`; moving `main` используется только для routing metadata, не как BASE/THEIRS content;
 - explicit `TO <tag>` допустим только если tag достижим из current release по update graph; отсутствие route — blocker до mutation;
 - если lock отсутствует, не угадывай baseline: переходи в legacy adoption mode;
 - неизвестные/project-owned paths не трогай даже при сходстве имён.
@@ -310,7 +303,7 @@ Self-update protocol layer не является STEP.
 - разрешён только после успешного check без blockers для того же конечного target и route;
 - применяет update graph строго hop-by-hop и не перепрыгивает обязательные bridge releases;
 - lock продвигается только после postcondition очередного hop; `reloadRequired` завершает текущий запуск на bridge и требует нового updater run;
-- меняет только allowlist из `.harness/harness-update.toml`;
+- update policy path берётся из `manifest.repository.harnessUpdatePolicy`; mutation scope вычисляется только из этой policy;
 - `shared` → 3-way merge;
 - `README.md`/`AGENTS.md` → 3-way merge с сохранением local generated blocks;
 - local modification `harness_owned` файла → blocker, а не overwrite;
@@ -335,7 +328,7 @@ Self-update protocol layer не является STEP.
 
 ## 17. Git workflow
 
-Git mutation выполняется только явными командами `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и по `.harness/git-policy.toml`.
+Git mutation выполняется только явными командами `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и по configured `repository.gitPolicy`.
 
 Перед `GIT COMMIT`/`GIT PUSH` обязательно:
 
