@@ -145,6 +145,7 @@ jobs:
       # Пример: кириллица/newline/trailing-space path не должны искажаться Git quoting/line splitting.
       - name: Validate specialized review gate paths
         # Synthetic Git repository покрывает worktree/staged/untracked/clean fallback.
+        # Пример: `src/кириллица.ts` и path с newline остаются одним exact changed path.
         run: python3 .harness/tools/review-gates-self-test.py
 
       # Проверить low-level Markdown/YAML document contracts.
