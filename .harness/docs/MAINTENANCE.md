@@ -88,6 +88,14 @@ Legacy adoption разрешён только для явно известног
 
 Не смешивай upstream skill upgrades с обычным Harness update. У каждого внешнего skill должен быть `UPSTREAM.md` и запись в `docs/skills/REGISTRY.md`. Обновление upstream требует повторного inspection; не делай silent auto-update.
 
+## Token economy
+
+Core Harness следует правилу **model consumes decisions/results, not implementation/config internals**. Если проверку, вычисление или безопасную механическую операцию можно выполнить deterministic tool, обычный protocol не должен заставлять LLM сначала читать implementation/config и воспроизводить ту же логику reasoning-ом.
+
+Подробные комментарии в `.harness/tools/*.py` сохраняются: при обычной эксплуатации Python source исполняется, а не загружается в model context. Чтение source оправдано при разработке/аудите Harness, диагностике tool failure или явном запросе пользователя.
+
+Always-on bootstrap ограничен deterministic budget gate; детали и справка должны оставаться pull-based в skills/docs. Правила и baseline описаны в [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md).
+
 ## Поддержка Python validators и validation gates
 
 Python validators являются частью executable protocol contract, поэтому code comments и human-readable reference обновляются **одновременно** с behavior.
