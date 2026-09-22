@@ -21,6 +21,8 @@ python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
+python3 .harness/tools/context-budget.py --json
+python3 .harness/tools/context-budget-self-test.py
 python3 .harness/tools/repository-hardening-self-test.py
 python3 .harness/tools/git-policy-self-test.py
 python3 .harness/tools/git-preflight-self-test.py
@@ -29,6 +31,8 @@ python3 .harness/tools/update-migration-self-test.py
 ```
 
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
+
+Context budget gate фиксирует размер Harness-controlled always-on instructions до выбора skill. Generated project blocks в `AGENTS.md` учитываются отдельно и не входят в core limit. Текущий baseline: 19 275 chars для Codex и 20 080 chars для Claude Code. Подробности — в [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md).
 
 Repository hardening self-test проверяет validator boundaries на synthetic tracked checkout: фактическую Git ignore semantics через `git check-ignore`, отсутствие ignored/untracked TOML в config surface и containment Codex role configs внутри `.codex/agents`.
 
@@ -54,6 +58,12 @@ Baseline validator также детерминированно проверяе�
 
 ```bash
 python3 .harness/tools/validate.py --mode manual
+```
+
+Отдельно посмотреть context budget:
+
+```bash
+python3 .harness/tools/context-budget.py
 ```
 
 `manual` остаётся строгим для обычного состояния, но может разрешить явно распознанное active project schema migration-pending состояние после Harness update как warning. Это нужно только для завершения control-plane hop; `commit` и `ci` такое состояние не принимают. Перед commit необходимо выполнить `PROJECT RECONCILE`.

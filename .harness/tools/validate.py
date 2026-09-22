@@ -54,6 +54,7 @@ from command_transitions import (
     validate_transition_table,
 )
 from command_references import DEPRECATED_COMMAND_PATTERNS, find_deprecated_commands
+from context_budget import evaluate_context_budget
 from harness_config import (
     ConfigError,
     get,
@@ -496,6 +497,15 @@ def main() -> int:
             print(f"  - {item}")
         return 1
     max_tracked_file_size_mb = policy["max_tracked_file_size_mb"]
+
+    # Always-on context — такой же deterministic repository invariant, как protocol files.
+    # Generated project marker blocks исключаются самим gate, поэтому PROJECT INIT
+    # не расходует core Harness budget и не создаёт ложный FAIL.
+    context_budget = evaluate_context_budget(root)
+    if context_budget["status"] != "PASS":
+        errors.extend(
+            f"context-budget: {item}" for item in context_budget["errors"]
+        )
 
     # --- Обязательные protocol artifacts ---------------------------------
     # Удаление любого required file означает, что repository больше не является

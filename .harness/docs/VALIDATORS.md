@@ -908,7 +908,68 @@ Validator-ы должны использовать этот layer, а не по�
 
 ---
 
-# 17. Self-tests валидаторов
+# 17. Always-on context budget
+
+## Файлы
+
+- `.harness/tools/context_budget.py` — implementation;
+- `.harness/tools/context-budget.py` — CLI wrapper;
+- `.harness/tools/context-budget-self-test.py` — synthetic regression suite.
+
+## Роль
+
+Dependency-free gate фиксирует верхнюю границу Harness-controlled текста, который runtime получает до выбора command-specific skill. Он не оценивает semantic качество инструкций и не использует tokenizer конкретной модели.
+
+## Когда использовать
+
+- после изменения `AGENTS.md` или `CLAUDE.md`;
+- при рефакторинге bootstrap/routing instructions;
+- в Harness Integrity CI;
+- при анализе token economy перед release.
+
+## Что проверяет
+
+- Codex controlled budget: `AGENTS.md` без generated `PROJECT-CONTEXT`/`SKILL-ROUTING`;
+- Claude controlled budget: тот же controlled `AGENTS.md` + `CLAUDE.md`;
+- корректность marker boundaries: malformed/duplicate START/END дают FAIL;
+- наличие и UTF-8 читаемость always-on files;
+- отсутствие роста controlled context выше baseline v0.7.0: 19 275 chars для Codex и 20 080 chars для Claude.
+
+`projectChars` и `observedChars` возвращаются для диагностики, но project-owned generated blocks не расходуют core Harness budget.
+
+## CLI
+
+```bash
+python3 .harness/tools/context-budget.py [--json] [--root <path>]
+```
+
+### Аргументы
+
+- `--json` — machine-readable результат;
+- `--root <path>` — явно задать repository root; по умолчанию используется repository, содержащий tool.
+
+## Exit codes
+
+- `0` — PASS;
+- `1` — budget/missing-file/marker contract FAIL;
+- `2` — ошибка CLI arguments (`argparse`).
+
+## Примеры
+
+```bash
+python3 .harness/tools/context-budget.py
+python3 .harness/tools/context-budget.py --json
+```
+
+## Внутренние зависимости / Граница ответственности
+
+Tool использует только Python stdlib и считает Unicode characters, а не model-specific tokens. Он измеряет bootstrap overhead Harness, но не запрещает project-owned context. `validate.py` вызывает тот же `evaluate_context_budget()` как часть baseline integrity gate.
+
+Подробные правила token economy описаны в [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md).
+
+---
+
+# 18. Self-tests валидаторов
 
 Self-tests проверяют implementation самих gates на synthetic repositories/fixtures:
 
@@ -921,6 +982,7 @@ python3 .harness/tools/repository-hardening-self-test.py
 python3 .harness/tools/git-policy-self-test.py
 python3 .harness/tools/git-preflight-self-test.py
 python3 .harness/tools/harness-config-self-test.py
+python3 .harness/tools/context-budget-self-test.py
 python3 .harness/tools/harness-update-self-test.py
 python3 .harness/tools/update-migration-self-test.py
 ```
@@ -929,7 +991,7 @@ Self-test PASS означает, что validator/gate выдержал изве
 
 ---
 
-# 18. Рекомендуемые последовательности
+# 19. Рекомендуемые последовательности
 
 ## Перед commit
 
