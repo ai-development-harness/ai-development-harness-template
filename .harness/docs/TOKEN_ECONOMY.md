@@ -73,6 +73,8 @@ Machine-readable config должен читать deterministic tool, когда
 
 Для STEP workflow навигация тоже выполняется pull-based: `step-context.py STEP-NNN --phase plan|implement|review --json` разрешает exact canonical `readPaths` и deterministic phase facts. Tool намеренно не генерирует semantic summary — модель получает исходное evidence, но не сканирует unrelated project docs/manifest directories.
 
+Git workflow следует той же границе: после semantic staging/message decisions `git-action.py` повторяет preflight, выполняет COMMIT/PUSH/SYNC/PR FINISH и проверяет postconditions. Модели не нужно читать/копировать `mutationPlan.argv` и вручную исполнять mechanical steps.
+
 ## Gate
 
 Проверка:
