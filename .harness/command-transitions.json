@@ -180,7 +180,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "required",
-          "summary": "Найти подходящие Agent Skills и сформировать короткий список кандидатов.",
+          "summary": "Найти подходящие навыки и сформировать короткий список кандидатов.",
           "documentation": ".harness/docs/COMMANDS.md#command-skill-find"
         },
         "INSTALL": {
@@ -188,7 +188,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "required",
-          "summary": "Установить выбранный skill после проверки содержимого и происхождения.",
+          "summary": "Установить выбранный навык после проверки содержимого и происхождения.",
           "documentation": ".harness/docs/COMMANDS.md#command-skill-install"
         },
         "CREATE": {
@@ -196,7 +196,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "required",
-          "summary": "Создать skill проекта для отсутствующего сценария работы.",
+          "summary": "Создать навык проекта для отсутствующего сценария работы.",
           "documentation": ".harness/docs/COMMANDS.md#command-skill-create"
         }
       },
@@ -212,7 +212,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "none",
-          "summary": "Пересоздать шаблоны GitHub Issue Forms и Pull Request с учётом текущего проекта.",
+          "summary": "Пересоздать шаблоны GitHub для задач и запросов на слияние с учётом текущего проекта.",
           "documentation": ".harness/docs/COMMANDS.md#command-github-generate-templates"
         }
       },
@@ -278,7 +278,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "optional",
-          "summary": "Продолжить единственное прерванное выполнение или выполнение с указанным executionId.",
+          "summary": "Продолжить единственное прерванное выполнение или выполнение с указанным идентификатором.",
           "documentation": ".harness/docs/COMMANDS.md#command-harness-resume"
         },
         "DOCTOR": {
@@ -329,7 +329,7 @@
           "chainAllowed": true,
           "target": "none",
           "input": "optional",
-          "summary": "Безопасно подготовить и создать локальный commit в соответствии с Git policy.",
+          "summary": "Безопасно подготовить и создать локальный коммит в соответствии с политикой Git.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-commit"
         },
         "PUSH": {
@@ -337,7 +337,7 @@
           "chainAllowed": true,
           "target": "none",
           "input": "none",
-          "summary": "Опубликовать текущую ветку в настроенный remote без принудительной отправки.",
+          "summary": "Отправить текущую ветку в настроенный удалённый репозиторий без принудительной отправки.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-push"
         },
         "PR": {
@@ -345,7 +345,7 @@
           "chainAllowed": true,
           "target": "none",
           "input": "none",
-          "summary": "Создать или переиспользовать Pull Request для опубликованной ветки.",
+          "summary": "Создать или переиспользовать запрос на слияние для опубликованной ветки.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-pr"
         },
         "PR FINISH": {
@@ -353,7 +353,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "none",
-          "summary": "Завершить локальную работу с объединённым Pull Request: вернуться на исходную ветку и удалить локальную PR-ветку.",
+          "summary": "Завершить локальную работу после слияния запроса: вернуться на исходную ветку и удалить локальную ветку запроса.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-pr-finish"
         },
         "SYNC": {
@@ -361,7 +361,7 @@
           "chainAllowed": false,
           "target": "none",
           "input": "none",
-          "summary": "Показать расхождение с remote или выполнить разрешённую синхронизацию только fast-forward.",
+          "summary": "Показать расхождение с удалённой веткой или выполнить разрешённую синхронизацию в режиме fast-forward.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-sync"
         }
       },
