@@ -119,12 +119,14 @@ Requirement lifecycle status выводится из canonical REQ + STEP comple
 
 SHA-256 canonical planning context:
 
-- STEP contract;
-- linked REQ;
-- linked ADR;
-- type-specific completion proof прямых dependencies;
+- semantic STEP contract без scheduling metadata `priority`/`phase`;
+- semantic linked REQ без `priority`/`source` и reverse `steps`/`adrs`;
+- semantic linked ADR без provenance/reverse traceability metadata;
+- semantic contracts прямых dependencies без их lifecycle/completion state;
 - только explicit `architecture_refs` — document/anchor, относящиеся к STEP;
 - relevant canonical OQ.
+
+Текущая форма fingerprint payload — `planning_context_snapshot.schema: 4`. Reverse traceability, смена priority/phase и появление completion proof dependency не требуют нового PLAN/semantic review сами по себе.
 
 Изменение нерелевантного architecture section не должно делать plan stale.
 
@@ -157,7 +159,7 @@ SHA-256 нормализованного текста `Implementation plan`.
 - adr — completed + Evidence + linked ADR в `accepted`;
 - audit/review — completed + durable Evidence.
 
-Proof fingerprint входит в planning basis direct dependent STEP.
+Completion proof **не входит** в planning basis. Он проверяется deterministic непосредственно перед `STEP IMPLEMENT` через runtime precondition `step-implement-ready`. Поэтому dependent STEP можно спланировать заранее, но начать mutation до фактического завершения prerequisite нельзя.
 
 ## Implementation review
 
