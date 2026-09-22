@@ -631,6 +631,38 @@ Engine проверяет:
 
 ---
 
+## Deterministic Git mutation executor
+
+Файлы:
+
+- `.harness/tools/git_action.py` — engine;
+- `.harness/tools/git-action.py` — CLI wrapper.
+
+Preflight отвечает на вопрос «разрешена ли mutation», executor — «как выполнить уже одобренную mechanical mutation и доказать postcondition».
+
+```bash
+python3 .harness/tools/git-action.py commit --json \
+  --commit-type feat \
+  --slug user-search \
+  --message-file .harness/local/git/commit-message.txt
+python3 .harness/tools/git-action.py push --json
+python3 .harness/tools/git-action.py sync --json
+python3 .harness/tools/git-action.py pr-finish --json
+```
+
+Executor повторяет canonical preflight непосредственно перед mutation.
+
+- COMMIT создаёт только exact `requiredBranch`, если protected-branch preflight потребовал его; message file разрешён только под `.harness/local/git/`; postcondition — новый HEAD.
+- PUSH исполняет только returned non-force argv; postcondition — configured remote branch совпадает с local HEAD.
+- SYNC разрешает только report/noop или exact `git merge --ff-only`; postcondition — local HEAD совпадает с configured remote.
+- PR FINISH исполняет ordered exact steps, проверяет return branch и удаление verified local PR branch; local PR state удаляется только после полного успеха.
+
+`GIT PR` creation не входит в executor: provider action остаётся отдельной trust boundary с semantic title/body. См. `THREAT_MODEL.md`.
+
+Exit codes: `0` — SUCCESS; `2` — BLOCKED/preflight/mutation/postcondition failure.
+
+---
+
 # 9. Internal project integrity aggregator
 
 ## Файл
