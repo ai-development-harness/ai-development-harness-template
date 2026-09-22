@@ -31,7 +31,7 @@ python3 .harness/tools/git-preflight.py pr --json
 python3 .harness/tools/git-preflight.py sync --json
 ```
 
-`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Поддерживаемые mechanical mutations (`COMMIT`, `PUSH`, `SYNC`, `PR FINISH`) исполняет `.harness/tools/git-action.py`: он повторяет preflight, выполняет exact argv и проверяет postcondition. `GIT PR` пока остаётся provider boundary после deterministic preflight. Configured `git fetch` разрешён как operational refresh remote refs.
+`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Поддерживаемые mechanical mutations (`GIT COMMIT`, `GIT PUSH`, `GIT SYNC`, `GIT PR FINISH`) исполняет `.harness/tools/git-action.py`: он повторяет preflight, выполняет exact argv и проверяет postcondition. `GIT PR` пока остаётся provider boundary после deterministic preflight. Configured `git fetch` разрешён как operational refresh remote refs.
 
 LLM/agent по-прежнему отвечает за semantic decisions — например, является ли diff одним logical change и какой commit type соответствует фактическому изменению. Но protected branch, remote divergence, publish state, force prohibition, clean-worktree requirement, PR base/tool и ff-only safety больше не интерпретируются вручную.
 
