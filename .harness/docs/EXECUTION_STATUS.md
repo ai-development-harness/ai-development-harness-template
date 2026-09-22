@@ -380,7 +380,7 @@ planning-review.context_basis = current context_basis
 planning-review.plan_content_hash = current content_hash
 ```
 
-`context_basis` включает STEP contract, linked REQ/ADR, explicit architecture refs, relevant OQ и type-specific completion proofs direct dependencies.
+`context_basis` schema v4 включает semantic STEP/dependency contracts, semantic linked REQ/ADR, explicit architecture refs и relevant OQ. Dependency completion state, reverse traceability и scheduling metadata не входят в fingerprint; completion proof проверяется отдельным runtime precondition непосредственно перед IMPLEMENT.
 
 Изменение текста Implementation plan инвалидирует `content_hash` даже при неизменном context.
 

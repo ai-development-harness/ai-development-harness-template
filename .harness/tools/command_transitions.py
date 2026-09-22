@@ -32,6 +32,7 @@ ALLOWED_INPUTS = {"none", "optional", "required"}
 ALLOWED_RESULTS = {"PASS", "SUCCESS", "FAIL", "BLOCKED"}
 KNOWN_RUNTIME_PRECONDITIONS = {
     "matching-update-target-and-route",
+    "step-implement-ready",
     "git-push-ready",
     "git-pr-ready",
 }

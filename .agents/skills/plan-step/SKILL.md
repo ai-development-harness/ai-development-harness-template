@@ -14,7 +14,7 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-2. Восстанови STEP → type-specific dependency completion proofs → canonical REQ → Accepted ADR → explicit `architecture_refs` → relevant canonical OQ → code/tests/config.
+2. Восстанови STEP → semantic contracts прямых dependencies → canonical REQ → Accepted ADR → explicit `architecture_refs` → relevant canonical OQ → code/tests/config. Факт completion dependency для PLAN не требуется: он проверяется deterministic непосредственно перед IMPLEMENT.
 3. Проверь semantic consistency:
    - Goal/Scope/Out of scope/Mutation policy согласованы;
    - Acceptance следует из REQ/ADR и не требует forbidden mutation;
@@ -34,7 +34,7 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
    ```bash
    python3 .harness/tools/planning-state.py plan-context STEP-NNN
    ```
-   `contextBasis` включает STEP contract, linked REQ/ADR, explicit architecture refs, relevant OQ и type-specific completion proof прямых dependencies. `planContentHash` отдельно fingerprint-ит сам Implementation plan.
+   `contextBasis` schema v4 включает semantic STEP/dependency contracts, semantic linked REQ/ADR, explicit architecture refs и relevant OQ. Lifecycle/traceability metadata (`priority`, `phase`, reverse links, dependency completion state) не инвалидирует корректный plan. `planContentHash` отдельно fingerprint-ит сам Implementation plan.
 
 ## Phase C — обязательный independent planning-review
 

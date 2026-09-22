@@ -355,7 +355,7 @@ def main() -> int:
                 evidence="Research result recorded.",
             ),
         )
-        write(root / "work/tasks/STEP-1000.md", task("STEP-1000", depends=["STEP-1001"]))
+        write(root / "work/tasks/STEP-1000.md", task("STEP-1000", depends=["STEP-1001"], adrs=["ADR-1000"]))
 
         # INIT semantic proof должен инвалидироваться при изменении
         # project constraints или ADR, а не только REQ/roadmap.
@@ -465,15 +465,51 @@ def main() -> int:
         assert fenced_basis_b == fenced_basis_c, (fenced_basis_b, fenced_basis_c)
         basis_c = fenced_basis_c
 
-        # REQ and dependency completion proof are planning inputs.
+        # Semantic planning basis игнорирует scheduling/reverse traceability,
+        # но меняется при изменении implementation intent.
+        basis_before_metadata = planning_context_basis(root, "STEP-1000")
+        step_text = (root / "work/tasks/STEP-1000.md").read_text(encoding="utf-8")
+        write(
+            root / "work/tasks/STEP-1000.md",
+            step_text.replace("priority: medium", "priority: high").replace("phase: test", "phase: later"),
+        )
+        assert planning_context_basis(root, "STEP-1000") == basis_before_metadata
+        write(root / "work/tasks/STEP-1000.md", step_text)
+
+        req_before = (root / "spec/requirements/REQ-1000-contract.md").read_text(encoding="utf-8")
+        write(
+            root / "spec/requirements/REQ-1000-contract.md",
+            req_before.replace("  - STEP-1000\nadrs: []", "  - STEP-1000\n  - STEP-1001\nadrs:\n  - ADR-1000"),
+        )
+        assert planning_context_basis(root, "STEP-1000") == basis_before_metadata
+        write(root / "spec/requirements/REQ-1000-contract.md", req_before)
+
+        adr_before = (root / "spec/adr/ADR-1000-test.md").read_text(encoding="utf-8")
+        write(
+            root / "spec/adr/ADR-1000-test.md",
+            adr_before.replace("steps:\n  - STEP-1000", "steps:\n  - STEP-1000\n  - STEP-1001"),
+        )
+        assert planning_context_basis(root, "STEP-1000") == basis_before_metadata
+        write(root / "spec/adr/ADR-1000-test.md", adr_before)
+
         write(root / "spec/requirements/REQ-1000-contract.md", requirement(extra="Changed."))
-        basis_d = planning_context_basis(root, "STEP-1000")
-        assert basis_c != basis_d
+        basis_semantic_req = planning_context_basis(root, "STEP-1000")
+        assert basis_before_metadata != basis_semantic_req
+
+        # Completion state/evidence dependency не входят в PLAN fingerprint.
+        # Сам dependency contract (Goal/Scope/etc.) остаётся semantic input.
         dep = (root / "work/tasks/STEP-1001.md").read_text(encoding="utf-8")
         write(root / "work/tasks/STEP-1001.md", dep.replace("Research result recorded.", "Research result changed."))
-        basis_e = planning_context_basis(root, "STEP-1000")
-        assert basis_d != basis_e
-
+        basis_completion_changed = planning_context_basis(root, "STEP-1000")
+        assert basis_semantic_req == basis_completion_changed
+        dep_with_evidence_change = (root / "work/tasks/STEP-1001.md").read_text(encoding="utf-8")
+        write(
+            root / "work/tasks/STEP-1001.md",
+            dep_with_evidence_change.replace("Проверить planning contract.", "Изменить dependency contract."),
+        )
+        basis_dependency_contract_changed = planning_context_basis(root, "STEP-1000")
+        assert basis_completion_changed != basis_dependency_contract_changed
+        write(root / "work/tasks/STEP-1001.md", dep_with_evidence_change)
         # Fenced ``##`` внутри Implementation plan не обрезает content hash.
         step_before_fence = (root / "work/tasks/STEP-1000.md").read_text(encoding="utf-8")
         fenced_plan = step_before_fence.replace(
@@ -491,9 +527,25 @@ def main() -> int:
         write(root / "work/tasks/STEP-1000.md", step_before_fence)
 
         # Ready requires matching semantic planning-review and both hashes.
-        make_ready(root, "STEP-1000", depends=["STEP-1001"])
+        make_ready(root, "STEP-1000", depends=["STEP-1001"], adrs=["ADR-1000"])
         errors = validate_planning_contracts(root)
         assert not errors, errors
+
+        # PLAN может оставаться Ready, пока dependency ещё выполняется.
+        dependency_ready = (root / "work/tasks/STEP-1001.md").read_text(encoding="utf-8")
+        write(
+            root / "work/tasks/STEP-1001.md",
+            dependency_ready.replace("status: completed", "status: planned").replace(
+                "Research result changed.",
+                "—",
+            ),
+        )
+        ready_doc = task_path(root, "STEP-1000").read_text(encoding="utf-8")
+        stored_ready_basis = next(line.split(": ", 1)[1] for line in ready_doc.splitlines() if line.startswith("  context_basis: "))
+        assert planning_context_basis(root, "STEP-1000") == stored_ready_basis
+        errors = validate_planning_contracts(root)
+        assert not any("dependency STEP-1001 incomplete" in item for item in errors), errors
+        write(root / "work/tasks/STEP-1001.md", dependency_ready)
 
         plan_source = root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T000000Z.md"
         plan_link = root / "work/plan-reviews/STEP-1000/PLAN-REVIEW-20260921T003000Z.md"
