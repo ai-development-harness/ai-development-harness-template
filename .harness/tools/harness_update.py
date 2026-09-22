@@ -22,7 +22,7 @@ import tempfile
 import tomllib
 from typing import Any, Iterable
 
-from document_contract import durable_report_timestamp
+from document_contract import create_durable_report
 from harness_config import (
     ConfigError,
     get,
@@ -923,19 +923,15 @@ def _run_validator(root: Path, *, phase: str) -> None:
 
 def _write_report(root: Path, *, initial: str, target: str, applied: list[HopPlan], status: str) -> str:
     directory = update_report_directory(root)
-    directory.mkdir(parents=True, exist_ok=True)
-    report_name, created_at = durable_report_timestamp(
-        "UPDATE-",
-        directory=directory,
-    )
-    path = directory / report_name
     route = [initial] + [item.hop.target for item in applied]
     introduced = sorted({p for item in applied for p in item.introduced})
     retired = sorted({p for item in applied for p in item.retired})
     reclassified = sorted({p for item in applied for p in item.reclassified})
     reached = route[-1] if route else initial
     route_yaml = "\n".join(f"  - {item}" for item in route)
-    body = f"""---
+
+    def report_content(created_at: str) -> str:
+        return f"""---
 schema: 1
 kind: harness_update
 initial_release: {initial}
@@ -972,9 +968,13 @@ Reclassified:
 
 {'Reload runtime and repeat HARNESS UPDATE APPLY.' if status != 'UPDATED' else 'No update-specific follow-up.'}
 """
-    path.write_text(body, encoding="utf-8", newline="\n")
-    return path.relative_to(root).as_posix()
 
+    path, _created_at = create_durable_report(
+        "UPDATE-",
+        directory=directory,
+        content_factory=report_content,
+    )
+    return path.relative_to(root).as_posix()
 
 def _bullet_list(items: list[str]) -> str:
     return "\n".join(f"- `{item}`" for item in items) if items else "- none"
