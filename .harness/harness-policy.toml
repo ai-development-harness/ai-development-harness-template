@@ -59,6 +59,8 @@ required_files = [
   ".harness/tools/command-references-self-test.py",
   ".harness/tools/check-command-references.py",
   ".harness/tools/validate-command.py",
+  ".harness/tools/harness_help.py",
+  ".harness/tools/harness-help.py",
   ".harness/tools/execution-state.py",
   ".harness/tools/resolve-next-command.py",
   ".harness/tools/execution_status.py",
@@ -144,10 +146,12 @@ required_commands = [
   "STEP NEXT",
   "PROJECT RECONCILE",
   "RELEASE CHECK",
+  "HARNESS HELP",
   "GIT CHECK",
   "GIT COMMIT",
   "GIT PUSH",
   "GIT PR",
+  "GIT PR FINISH",
   "GIT SYNC",
 ]
 
