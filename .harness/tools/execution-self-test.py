@@ -873,6 +873,8 @@ def main() -> int:
             index_revision_a,
             index_revision_b,
         )
+        run(root, "git", "add", "src/index-proof.txt")
+        run(root, "git", "commit", "-qm", "finish index proof fixture")
 
         # Same staged/worktree bytes + same XY должны различаться только Git
         # mode. Старый content-only hash давал collision между 100644 и 100755.
@@ -946,10 +948,7 @@ def main() -> int:
             run(root / "vendor/demo", "git", "checkout", "-q", sha_a)
         finally:
             shutil.rmtree(submodule_source, ignore_errors=True)
-        # На clean tree specialized preselector не теряет уже committed
-        # implementation surface.
-        run(root, "git", "add", "src/index-proof.txt")
-        run(root, "git", "commit", "-qm", "finish index proof fixture")
+        # На clean tree specialized preselector не теряет уже committed implementation surface.
 
         # Rename/copy source path входит в exact revision identity. Иначе два
         # staged rename из разных одинаковых source files в один destination
