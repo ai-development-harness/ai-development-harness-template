@@ -71,6 +71,8 @@ Machine-readable config должен читать deterministic tool, когда
 
 Подробная документация хранится pull-based в `.harness/docs/**` и читается по необходимости. Always-on bootstrap должен оставаться картой/routing surface, а не полным manual.
 
+Для STEP workflow навигация тоже выполняется pull-based: `step-context.py STEP-NNN --phase plan|implement|review --json` разрешает exact canonical `readPaths` и deterministic phase facts. Tool намеренно не генерирует semantic summary — модель получает исходное evidence, но не сканирует unrelated project docs/manifest directories.
+
 ## Gate
 
 Проверка:
