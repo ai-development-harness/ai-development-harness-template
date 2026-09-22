@@ -30,6 +30,7 @@ from review_contract import (
     validate_review_immutability,
 )
 from review_gates import required_reviewers
+from step_context import build_step_context
 
 
 def write(path: Path, content: str) -> None:
@@ -388,6 +389,9 @@ def main() -> int:
         # product path только потому, что он находится под docs/.
         write(root / "docs/security-model.md", "# Security model\n\nChanged.\n")
         broad_gate = required_reviewers(root, "STEP-001")
+        review_context = build_step_context(root, "STEP-001", "review")
+        assert review_context["deterministic"]["specializedReviewGate"]["basis"] == broad_gate["basis"]
+        assert review_context["deterministic"]["repositoryRevision"]["worktree_hash"] is not None
         assert "security" in broad_gate["required"], broad_gate
         (root / "docs/security-model.md").unlink()
 
@@ -417,6 +421,25 @@ def main() -> int:
         stamped = stamp_plan(root, "STEP-001")
         assert stamped["planStatus"] == "ready", stamped
         ready_basis = planning_context_basis(root, "STEP-001")
+
+        # Phase-specific context manifest resolve-ит canonical inputs без обхода
+        # manifest/docs reasoning-моделью. PLAN не требует completion dependency.
+        plan_context = build_step_context(root, "STEP-001", "plan")
+        assert plan_context["status"] == "PASS", plan_context
+        assert plan_context["deterministic"]["dependencyCompletionRequired"] is False
+        assert "planning/tasks/STEP-002.md" in plan_context["readPaths"], plan_context
+        assert "docs/requirements/REQ-001-execution.md" in plan_context["readPaths"], plan_context
+        assert plan_context["semanticInputs"]["dependencies"][0]["status"] == "planned"
+
+        implement_context_blocked = build_step_context(root, "STEP-001", "implement")
+        assert (
+            implement_context_blocked["deterministic"]["implementPrerequisites"]["status"]
+            == "BLOCKED"
+        ), implement_context_blocked
+        assert any(
+            "dependency-incomplete:STEP-002" in item
+            for item in implement_context_blocked["deterministic"]["implementPrerequisites"]["failures"]
+        ), implement_context_blocked
 
         # PLAN Ready не требует завершённой dependency, но direct IMPLEMENT
         # обязан fail-closed до появления type-specific completion proof.
@@ -453,6 +476,11 @@ def main() -> int:
             ),
         )
         assert planning_context_basis(root, "STEP-001") == ready_basis
+        implement_context_pass = build_step_context(root, "STEP-001", "implement")
+        assert (
+            implement_context_pass["deterministic"]["implementPrerequisites"]["status"]
+            == "PASS"
+        ), implement_context_pass
         direct_implement = start_execution(root, "STEP IMPLEMENT STEP-001")
         complete_command(
             root,
