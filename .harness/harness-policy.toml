@@ -75,6 +75,8 @@ required_files = [
   ".harness/tools/execution_status.py",
   ".harness/tools/execution-self-test.py",
   ".harness/tools/planning_contract.py",
+  ".harness/tools/step_context.py",
+  ".harness/tools/step-context.py",
   ".harness/tools/planning-contract-self-test.py",
   ".harness/tools/document-contract-self-test.py",
   ".harness/tools/git_preflight.py",
