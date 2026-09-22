@@ -20,6 +20,7 @@ python3 .harness/tools/check-command-references.py --json
 python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
 python3 .harness/tools/execution-self-test.py
+python3 .harness/tools/review-gates-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
 python3 .harness/tools/document-contract-self-test.py
 python3 .harness/tools/context-budget.py --json

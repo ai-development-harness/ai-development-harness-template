@@ -498,6 +498,8 @@ Mutation mode имеет rollback: если postcondition после запис�
 
 `.harness/tools/review_gates.py`
 
+Regression suite: `.harness/tools/review-gates-self-test.py`.
+
 ## Роль
 
 Read-only preselector: определяет, нужны ли для STEP REVIEW специализированные `security` и/или `tests` reviewers.
@@ -526,12 +528,14 @@ python3 .harness/tools/review_gates.py STEP-NNN [--json]
 - `review.security` и `review.tests` policy;
 - STEP type;
 - `risk_flags`;
-- changed Git paths;
+- changed Git paths, полученные NUL-delimited (`-z`) без Git path quoting/line splitting; Unicode, пробелы, tab/newline и trailing whitespace сохраняются как часть exact path;
 - security-sensitive path patterns;
 - test/code surface patterns;
 - clean-tree fallback.
 
 Clean-tree fallback fail-closed требует security + tests, потому что один последний commit не доказывает полный implementation surface STEP.
+
+Path transport является отдельным safety invariant: collector читает `git diff`, `git diff --cached`, `git ls-files` и `git diff-tree` через NUL framing. Invalid UTF-8 path не подменяется escaped/замещённой строкой и считается caller-level blocker.
 
 ## Exit code
 
@@ -979,6 +983,7 @@ Self-tests проверяют implementation самих gates на synthetic rep
 ```bash
 python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/execution-self-test.py
+python3 .harness/tools/review-gates-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
 python3 .harness/tools/document-contract-self-test.py
 python3 .harness/tools/report-contract-self-test.py

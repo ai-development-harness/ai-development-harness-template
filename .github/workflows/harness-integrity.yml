@@ -141,6 +141,13 @@ jobs:
         # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
         run: python3 .harness/tools/execution-self-test.py
 
+      # Проверить exact Git path transport specialized review preselector.
+      # Пример: кириллица/newline/trailing-space path не должны искажаться Git quoting/line splitting.
+      - name: Validate specialized review gate paths
+        # Synthetic Git repository покрывает worktree/staged/untracked/clean fallback.
+        # Пример: `src/кириллица.ts` и path с newline остаются одним exact changed path.
+        run: python3 .harness/tools/review-gates-self-test.py
+
       # Проверить low-level Markdown/YAML document contracts.
       # Пример: fenced headings не меняют sections, string scalar сохраняет тип после dump/parse.
       - name: Validate document contracts
