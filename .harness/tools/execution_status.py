@@ -26,13 +26,16 @@ CTS остаётся единственным источником разреш�
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import wraps
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+import threading
 from typing import Any
 from uuid import uuid4
 
@@ -58,6 +61,10 @@ from review_contract import latest_review as latest_valid_review
 # Фиксированный project-level operational state. Один файл намеренно покрывает
 # STEP, Git, Harness update и остальные namespaces.
 STATUS_PATH = ".harness/local/execution/execution-status.json"
+LOCK_PATH = ".harness/local/execution/execution-status.lock"
+_PROCESS_LOCKS: dict[str, threading.RLock] = {}
+_PROCESS_LOCKS_GUARD = threading.Lock()
+_LOCK_LOCAL = threading.local()
 # mode описывает форму уже существующего пользовательского ввода и НЕ является
 # новой командой/профилем. Пользователь никогда не выбирает mode вручную.
 EXECUTION_MODES = {"single", "chain", "orchestration"}
@@ -98,6 +105,86 @@ def status_path(root: Path) -> Path:
 # Создать пустую schema v1 для проекта, где execution-status ещё ни разу не записывался.
 def empty_status() -> dict[str, Any]:
     return {"schemaVersion": 1, "executions": []}
+
+
+def _process_lock(key: str) -> threading.RLock:
+    """Вернуть process-local reentrant lock для одного project state path."""
+    with _PROCESS_LOCKS_GUARD:
+        lock = _PROCESS_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _PROCESS_LOCKS[key] = lock
+        return lock
+
+
+@contextmanager
+def execution_state_lock(root: Path):
+    """Сериализовать execution-state transaction между threads/processes.
+
+    OS advisory lock живёт на отдельном local-only файле и освобождается ядром
+    при завершении процесса. Reentrant слой нужен потому, что public mutation
+    helpers вызывают друг друга и resolver recovery может записать state внутри
+    уже открытой transaction.
+    """
+    lock_path = root / LOCK_PATH
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    key = str(lock_path.resolve())
+    process_lock = _process_lock(key)
+
+    with process_lock:
+        held = getattr(_LOCK_LOCAL, "held", None)
+        if held is None:
+            held = {}
+            _LOCK_LOCAL.held = held
+        depth = int(held.get(key, 0))
+        if depth > 0:
+            held[key] = depth + 1
+            try:
+                yield
+            finally:
+                held[key] -= 1
+            return
+
+        fh = lock_path.open("a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                if fh.seek(0, os.SEEK_END) == 0:
+                    fh.write(b"\0")
+                    fh.flush()
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            held[key] = 1
+            try:
+                yield
+            finally:
+                held.pop(key, None)
+                if os.name == "nt":
+                    import msvcrt
+
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
+
+
+def execution_state_mutation(func):
+    """Обернуть public read-modify-write operation общей transaction lock."""
+    @wraps(func)
+    def wrapped(root: Path, *args: Any, **kwargs: Any):
+        with execution_state_lock(root):
+            return func(root, *args, **kwargs)
+
+    return wrapped
 
 
 
@@ -208,8 +295,9 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
 
 
 # Любая запись local execution state проходит через тот же validator, что и
-# load_status(). Нельзя сохранить структуру, которую следующий процесс не сможет
-# корректно восстановить.
+# load_status(). Public read-modify-write операции дополнительно держат
+# execution_state_lock() на всю transaction; atomic replace один не защищает от
+# lost update между двумя параллельными sessions.
 def save_status(root: Path, value: dict[str, Any]) -> None:
     errors = validate_status(value)
     if errors:
@@ -329,6 +417,7 @@ def _command_context(root: Path, command: str) -> dict[str, Any]:
 
 
 # Зарегистрировать новый root invocation либо resume уже running invocation с тем же normalized rootCommand.
+@execution_state_mutation
 def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
     normalized = _normalize_root(root, raw_command)
 
@@ -615,6 +704,7 @@ def _mark_root_complete(execution: dict[str, Any], *, blocked: bool = False) -> 
 
 
 # Зафиксировать result текущей command и обновить состояние root execution согласно её mode.
+@execution_state_mutation
 def complete_command(
     root: Path,
     root_command: str,
@@ -706,6 +796,7 @@ def _orchestration_first_child_allowed(
 
 
 # Перевести chain/orchestration execution на следующую child command. Ожидаемая команда сверяется с resolver, чтобы не перескочить phase.
+@execution_state_mutation
 def begin_command(
     root: Path,
     root_command: str,
@@ -824,6 +915,7 @@ def begin_command(
 
 
 # Явно остановить root execution как blocked. Blocked state сохраняется между sessions и не продолжается автоматически.
+@execution_state_mutation
 def block_execution(
     root: Path,
     root_command: str,
@@ -1080,6 +1172,7 @@ def _apply_recovered_completion(
 
 
 # Главный deterministic resolver одной root execution: RESUME running command либо NEXT/DONE/BLOCKED по mode и CTS.
+@execution_state_mutation
 def resolve_execution(
     root: Path,
     execution: dict[str, Any],
@@ -1252,6 +1345,7 @@ def resolve_execution(
 
 
 # Найти последнюю relevant execution для конкретного root command и разрешить её текущее состояние.
+@execution_state_mutation
 def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     status = load_status(root)
@@ -1279,6 +1373,7 @@ def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
 
 
 # Вернуть все running/blocked executions проекта. Это позволяет новой session увидеть несколько независимых незавершённых работ.
+@execution_state_mutation
 def unresolved_executions(root: Path) -> list[dict[str, Any]]:
     status = load_status(root)
     values: list[dict[str, Any]] = []
