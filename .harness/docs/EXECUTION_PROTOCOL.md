@@ -350,12 +350,12 @@ PROJECT QUICK FIX — исключение из STEP workflow для micro-chang
 Production code mutation запрещена.
 
 1. Legacy active schema = blocker; сначала `PROJECT RECONCILE`.
-2. Static gate восстанавливает STEP, type-specific completion proofs прямых dependencies, linked REQ/ADR, explicit `architecture_refs` и relevant canonical OQ.
+2. Static gate восстанавливает STEP, semantic contracts прямых dependencies, linked REQ/ADR, explicit `architecture_refs` и relevant canonical OQ. Completion dependency на стадии PLAN не требуется.
 3. Semantic gate проверяет внутреннюю непротиворечивость contract, feasibility Acceptance/Verification, prerequisites и ownership.
 4. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
 5. После PASS запиши содержательный `Implementation plan` как draft.
 6. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
-   - `contextBasis` — contract + linked REQ/ADR + direct dependency completion proofs + referenced architecture sections + relevant OQ;
+   - `contextBasis` schema v4 — semantic STEP/dependency contracts + semantic linked REQ/ADR + referenced architecture sections + relevant OQ; priority/phase, reverse traceability и dependency completion state исключены;
    - `planContentHash` — нормализованный текст самого Implementation plan.
 7. **Каждый** PLAN обязан пройти independent semantic planning-review. Immutable schema-v1 report в configured `protocol.planningReviewDirectory` хранит verdict + оба fingerprints.
 8. Только matching PASS разрешает `execution-state.py stamp-plan STEP-NNN`. Stamp atomically пишет `plan.status=ready`, revision, context/content hashes, reviewed report и timestamp.
@@ -368,8 +368,8 @@ Single PLAN после SUCCESS останавливается; продолже�
 
 Execution tracking уже ведётся root execution wrapper.
 
-1. Требуется актуальный Implementation plan, если нет explicit user override.
-2. Проверить dependencies.
+1. До dispatch execution layer применяет deterministic `step-implement-ready`: требует актуальный Ready plan/matching review и completion proofs всех direct dependencies. Agent не повторяет эту проверку reasoning-ом.
+2. Explicit user override не обходит runtime prerequisite safety gate; изменение contract оформляется через PLAN/reconciliation.
 3. `status → in_progress` при первой фактической mutation.
 4. При `RESUME` сначала исследовать существующий diff/Evidence и продолжить недостающее, не переделывая готовую работу.
 5. Выполнить scope/mutation policy.
