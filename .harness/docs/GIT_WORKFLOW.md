@@ -10,6 +10,7 @@ GIT COMMIT
 GIT COMMIT: <необязательная подсказка>
 GIT PUSH
 GIT PR
+GIT PR FINISH
 GIT SYNC
 
 # shorthand-цепочка
@@ -113,6 +114,18 @@ after_push = "never"
 ### `GIT PR`
 
 `GIT PR` можно вызвать отдельно. Перед provider action обязательный `git-preflight.py pr` доказывает, что exact local HEAD опубликован, configured base существует, preferred tool доступен и body template остаётся внутри repository. После `PASS` агент не создаёт duplicate PR при `reuse_existing=true` и заполняет traceability/verification из repository evidence. Default template — `.github/pull_request_template.md`.
+
+### `GIT PR FINISH`
+
+После merge Pull Request команда завершает локальный lifecycle feature branch.
+
+```bash
+python3 .harness/tools/git-preflight.py pr-finish --json
+```
+
+PASS требует clean worktree, provider state `MERGED`, matching local PR state, существующую return branch без local-ahead/divergence и возможность удалить head обычным `git branch -d`.
+
+После PASS выполняй exact ordered `mutationPlan.steps`: switch → optional ff-only sync → `git branch -d`. Force-delete, remote deletion, reset/rebase запрещены. Local-only `.harness/local/git/pr-state.json` удаляется только после полностью успешного FINISH.
 
 ### `GIT SYNC`
 

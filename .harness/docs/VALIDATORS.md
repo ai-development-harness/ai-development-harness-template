@@ -559,13 +559,14 @@ Tool **не выполняет commit/push/PR/merge**. Разрешён толь
 - перед `GIT COMMIT`;
 - перед `GIT PUSH`;
 - перед `GIT PR`;
+- перед `GIT PR FINISH`;
 - перед `GIT SYNC`.
 
 ## CLI
 
 ```bash
 python3 .harness/tools/git-preflight.py \
-  check|commit|push|pr|sync \
+  check|commit|push|pr|pr-finish|sync \
   [--json] \
   [--commit-type <type>] \
   [--slug <slug>]
@@ -573,7 +574,7 @@ python3 .harness/tools/git-preflight.py \
 
 ### Аргументы
 
-- action — `check`, `commit`, `push`, `pr`, `sync`;
+- action — `check`, `commit`, `push`, `pr`, `pr-finish`, `sync`;
 - `--json` — machine-readable PASS/BLOCKED result;
 - `--commit-type` — Conventional Commit type для deterministic branch planning;
 - `--slug` — semantic branch slug; используется вместе с `commit`.
@@ -595,6 +596,7 @@ python3 .harness/tools/git-preflight.py \
 
 python3 .harness/tools/git-preflight.py push --json
 python3 .harness/tools/git-preflight.py pr --json
+python3 .harness/tools/git-preflight.py pr-finish --json
 python3 .harness/tools/git-preflight.py sync --json
 ```
 
@@ -612,6 +614,7 @@ Engine проверяет:
 - unconditional remote-ahead blocker при `force=never`;
 - published PR head equality;
 - PR base/template/tool availability;
+- merged-PR provider state, local PR state, safe return-branch ff-only и non-force branch deletion для `pr-finish`;
 - ff-only sync;
 - Harness validator перед mutation, если это требует policy.
 
