@@ -130,6 +130,11 @@ python3 .harness/tools/validate.py --mode ci
 
 Validator агрегирует `project_integrity.py`, `planning_contract.py`, `review_contract.py`, `report_contract.py`, `projection_contract.py`, `template_contract.py`, CTS и config layer.
 
+
+`HARNESS DOCTOR` не заменяет этот validator: он использует его как required health check и дополнительно показывает dependency/capability availability. Отсутствующий optional runtime или `gh` не превращает validator/Doctor в failure, если core Harness исправен.
+
+Harness UX regression отдельно выполняет `.harness/tools/harness-ux-self-test.py`, который проверяет STEP LIST/SHOW и RESUME semantics на synthetic repository.
+
 ---
 
 # 2. Command Transition System validator
