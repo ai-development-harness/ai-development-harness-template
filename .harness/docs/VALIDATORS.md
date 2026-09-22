@@ -751,7 +751,7 @@ Semantic качество плана static validator не оценивает �
 - migration reports;
 - legacy review hash pins;
 - implementation review schema;
-- reviewed repository revision;
+- reviewed repository revision: dirty fingerprint включает Git path/status, index mode+object id, worktree mode/content/symlink и submodule HEAD;
 - reviewer role/verdict/findings;
 - specialized security/tests evidence;
 - planning/init review references;
