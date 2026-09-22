@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from document_contract import parse_document
 from planning_contract import (
     adr_ids,
     architecture_refs,
@@ -97,7 +98,7 @@ def build_step_context(root: Path, step_id: str, phase: str) -> dict[str, Any]:
     adrs: list[dict[str, Any]] = []
     for adr_id in adr_ids(task):
         path = canonical_adr_path(root, adr_id)
-        document = __import__("document_contract").parse_document(path)
+        document = parse_document(path)
         adrs.append(
             {
                 "id": adr_id,
