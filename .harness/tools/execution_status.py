@@ -571,7 +571,8 @@ def _runtime_precondition_failures(
                 root,
                 next_command,
             )
-            issue = "; ".join(command_failures) if command_failures else None
+            failures.extend(command_failures)
+            continue
         else:
             issue = f"unknown-runtime-precondition:{name}"
         if issue is not None:
