@@ -404,7 +404,7 @@ clean tree → git_head
 dirty tree → git_head + worktree_hash
 ```
 
-Configured review directory и `.harness/local/**` не входят в worktree hash, потому что report/execution state создаются самим workflow. Product/config mutation после report меняет fingerprint и запрещает reuse старого verdict.
+Configured review directory и `.harness/local/**` не входят в worktree hash, потому что report/execution state создаются самим workflow. Для каждого changed path fingerprint учитывает Git status/path, stage-0 index `mode + object id`, normalized worktree mode, bytes/symlink target и current submodule HEAD для gitlink. Поэтому chmod executable bit и смена submodule commit инвалидируют старый review proof даже при одинаковых file bytes. Product/config mutation после report меняет fingerprint и запрещает reuse старого verdict.
 
 ### GIT COMMIT
 

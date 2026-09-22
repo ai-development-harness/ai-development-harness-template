@@ -873,11 +873,82 @@ def main() -> int:
             index_revision_a,
             index_revision_b,
         )
-
-        # На clean tree specialized preselector не теряет уже committed
-        # implementation surface.
         run(root, "git", "add", "src/index-proof.txt")
         run(root, "git", "commit", "-qm", "finish index proof fixture")
+
+        # Same staged/worktree bytes + same XY должны различаться только Git
+        # mode. Старый content-only hash давал collision между 100644 и 100755.
+        mode_path = root / "src/mode-proof.sh"
+        write(mode_path, "#!/bin/sh\necho base\n")
+        mode_path.chmod(0o644)
+        run(root, "git", "add", "src/mode-proof.sh")
+        run(root, "git", "commit", "-qm", "add mode proof fixture")
+        write(mode_path, "#!/bin/sh\necho changed\n")
+        mode_path.chmod(0o644)
+        run(root, "git", "add", "src/mode-proof.sh")
+        mode_revision_644 = repository_revision(root)
+        run(root, "git", "update-index", "--chmod=+x", "src/mode-proof.sh")
+        mode_path.chmod(0o755)
+        mode_revision_755 = repository_revision(root)
+        assert mode_revision_644["worktree_hash"] != mode_revision_755["worktree_hash"], (
+            mode_revision_644,
+            mode_revision_755,
+        )
+        run(root, "git", "reset", "--hard", "HEAD")
+
+        # Gitlink path обязан включать current nested HEAD. Два разных submodule
+        # commits при одинаковом parent XY/paths не могут иметь один proof.
+        submodule_source = Path(tempfile.mkdtemp(prefix="harness-submodule-source-"))
+        try:
+            run(submodule_source, "git", "init", "-q")
+            run(submodule_source, "git", "config", "user.email", "harness-test@example.invalid")
+            run(submodule_source, "git", "config", "user.name", "Harness Test")
+            write(submodule_source / "value.txt", "a\n")
+            run(submodule_source, "git", "add", ".")
+            run(submodule_source, "git", "commit", "-qm", "a")
+            sha_a = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=submodule_source, text=True
+            ).strip()
+            write(submodule_source / "value.txt", "b\n")
+            run(submodule_source, "git", "add", ".")
+            run(submodule_source, "git", "commit", "-qm", "b")
+            sha_b = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=submodule_source, text=True
+            ).strip()
+            write(submodule_source / "value.txt", "c\n")
+            run(submodule_source, "git", "add", ".")
+            run(submodule_source, "git", "commit", "-qm", "c")
+            sha_c = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=submodule_source, text=True
+            ).strip()
+
+            run(
+                root,
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                str(submodule_source),
+                "vendor/demo",
+            )
+            run(root / "vendor/demo", "git", "checkout", "-q", sha_a)
+            run(root, "git", "add", ".gitmodules", "vendor/demo")
+            run(root, "git", "commit", "-qm", "add submodule proof fixture")
+
+            run(root / "vendor/demo", "git", "checkout", "-q", sha_b)
+            submodule_revision_b = repository_revision(root)
+            run(root / "vendor/demo", "git", "checkout", "-q", sha_c)
+            submodule_revision_c = repository_revision(root)
+            assert submodule_revision_b["worktree_hash"] != submodule_revision_c["worktree_hash"], (
+                submodule_revision_b,
+                submodule_revision_c,
+            )
+            run(root / "vendor/demo", "git", "checkout", "-q", sha_a)
+        finally:
+            shutil.rmtree(submodule_source, ignore_errors=True)
+        # На clean tree specialized preselector не теряет уже committed implementation surface.
 
         # Rename/copy source path входит в exact revision identity. Иначе два
         # staged rename из разных одинаковых source files в один destination
