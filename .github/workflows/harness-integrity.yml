@@ -141,6 +141,13 @@ jobs:
         # Пример: проверяет один execution-status.json и отсутствие per-STEP state files.
         run: python3 .harness/tools/execution-self-test.py
 
+      # Проверить low-level Markdown/YAML document contracts.
+      # Пример: fenced headings не меняют sections, string scalar сохраняет тип после dump/parse.
+      - name: Validate document contracts
+        # Dependency-free regression для parser/serializer boundary.
+        # Пример: C# и architecture.md#anchor не должны обрезаться как YAML comments.
+        run: python3 .harness/tools/document-contract-self-test.py
+
       # Проверить manifest-driven planning paths, transitive Plan basis и static blockers.
       # Пример: изменение linked REQ после PLAN обязано сделать Ready plan stale без LLM.
       - name: Validate planning contracts

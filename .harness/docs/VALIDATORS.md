@@ -711,8 +711,9 @@ Semantic качество плана static validator не оценивает �
 
 ## Основные функции
 
-- ограниченный YAML frontmatter parsing;
-- `##` section parsing;
+- ограниченный YAML frontmatter parsing/serialization с round-trip type safety;
+- fenced-aware ATX heading scanner;
+- `##` section parsing без ложных boundaries внутри fenced code;
 - duplicate section detection;
 - H1 extraction;
 - schema/kind checks;
@@ -723,6 +724,8 @@ Semantic качество плана static validator не оценивает �
 - atomic UTF-8 writes.
 
 Все более высокоуровневые validators должны использовать этот module вместо собственных несовместимых Markdown/YAML parsers.
+
+`markdown_headings()` является общей structural primitive для machine-readable Markdown. Architecture refs используют тот же scanner, поэтому fenced examples не могут тихо обрезать planning fingerprint.
 
 ---
 
@@ -977,6 +980,7 @@ Self-tests проверяют implementation самих gates на synthetic rep
 python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/execution-self-test.py
 python3 .harness/tools/planning-contract-self-test.py
+python3 .harness/tools/document-contract-self-test.py
 python3 .harness/tools/report-contract-self-test.py
 python3 .harness/tools/repository-hardening-self-test.py
 python3 .harness/tools/git-policy-self-test.py

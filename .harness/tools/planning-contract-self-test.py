@@ -443,6 +443,28 @@ def main() -> int:
         basis_c = planning_context_basis(root, "STEP-1000")
         assert basis_b != basis_c, (basis_b, basis_c)
 
+        # Fenced heading внутри tracked architecture section не завершает section.
+        # Изменение текста после fake ``##`` обязано менять planning basis, а
+        # изменение реальной соседней section — нет.
+        write(
+            root / "spec/architecture.md",
+            "# Architecture\n\n## Storage\n\nStorage B.\n\n```bash\n## Auth\necho fake\n```\n\nStorage tail A.\n\n## Auth\n\nAuth A.\n",
+        )
+        fenced_basis_a = planning_context_basis(root, "STEP-1000")
+        write(
+            root / "spec/architecture.md",
+            "# Architecture\n\n## Storage\n\nStorage B.\n\n```bash\n## Auth\necho fake\n```\n\nStorage tail B.\n\n## Auth\n\nAuth A.\n",
+        )
+        fenced_basis_b = planning_context_basis(root, "STEP-1000")
+        assert fenced_basis_a != fenced_basis_b, (fenced_basis_a, fenced_basis_b)
+        write(
+            root / "spec/architecture.md",
+            "# Architecture\n\n## Storage\n\nStorage B.\n\n```bash\n## Auth\necho fake\n```\n\nStorage tail B.\n\n## Auth\n\nAuth B.\n",
+        )
+        fenced_basis_c = planning_context_basis(root, "STEP-1000")
+        assert fenced_basis_b == fenced_basis_c, (fenced_basis_b, fenced_basis_c)
+        basis_c = fenced_basis_c
+
         # REQ and dependency completion proof are planning inputs.
         write(root / "spec/requirements/REQ-1000-contract.md", requirement(extra="Changed."))
         basis_d = planning_context_basis(root, "STEP-1000")
@@ -451,6 +473,22 @@ def main() -> int:
         write(root / "work/tasks/STEP-1001.md", dep.replace("Research result recorded.", "Research result changed."))
         basis_e = planning_context_basis(root, "STEP-1000")
         assert basis_d != basis_e
+
+        # Fenced ``##`` внутри Implementation plan не обрезает content hash.
+        step_before_fence = (root / "work/tasks/STEP-1000.md").read_text(encoding="utf-8")
+        fenced_plan = step_before_fence.replace(
+            "1. Проверить fixture.\n2. Зафиксировать результат.",
+            "1. Проверить fixture.\n```bash\n## Evidence\necho demo\n```\n2. Зафиксировать результат.",
+        )
+        write(root / "work/tasks/STEP-1000.md", fenced_plan)
+        fenced_hash_a = plan_content_hash(root, "STEP-1000")
+        write(
+            root / "work/tasks/STEP-1000.md",
+            fenced_plan.replace("2. Зафиксировать результат.", "2. Изменить результат после fence."),
+        )
+        fenced_hash_b = plan_content_hash(root, "STEP-1000")
+        assert fenced_hash_a != fenced_hash_b, (fenced_hash_a, fenced_hash_b)
+        write(root / "work/tasks/STEP-1000.md", step_before_fence)
 
         # Ready requires matching semantic planning-review and both hashes.
         make_ready(root, "STEP-1000", depends=["STEP-1001"])

@@ -50,6 +50,7 @@ from document_contract import (
     content_hash,
     exact_h1,
     has_unresolved_placeholder,
+    markdown_headings,
     normalize_text,
     parse_document,
     require_nonempty_sections,
@@ -201,20 +202,19 @@ def _architecture_ref_snapshot(root: Path, ref: str) -> dict[str, str]:
         if not fragment:
             raise ValueError(f"architecture ref has empty anchor: {ref}")
         lines = text.replace("\r\n", "\n").split("\n")
+        headings = markdown_headings(text)
         start: int | None = None
         level = 0
-        for index, line in enumerate(lines):
-            heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
-            if heading and _heading_slug(heading.group(2)) == fragment:
+        for index, heading_level, title in headings:
+            if _heading_slug(title) == fragment:
                 start = index
-                level = len(heading.group(1))
+                level = heading_level
                 break
         if start is None:
             raise ValueError(f"architecture anchor not found: {ref}")
         end = len(lines)
-        for index in range(start + 1, len(lines)):
-            heading = re.match(r"^(#{1,6})\s+", lines[index])
-            if heading and len(heading.group(1)) <= level:
+        for index, heading_level, _title in headings:
+            if index > start and heading_level <= level:
                 end = index
                 break
         selected = normalize_text("\n".join(lines[start:end]))
