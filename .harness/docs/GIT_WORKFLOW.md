@@ -31,7 +31,7 @@ python3 .harness/tools/git-preflight.py pr --json
 python3 .harness/tools/git-preflight.py sync --json
 ```
 
-Tool не создаёт commit, не выполняет push, не открывает PR и не делает fast-forward. Он возвращает `PASS/BLOCKED` и exact mutation plan. Исключение — configured `git fetch`: fetch разрешён как operational refresh remote refs и не меняет working tree.
+`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Поддерживаемые mechanical mutations (`COMMIT`, `PUSH`, `SYNC`, `PR FINISH`) исполняет `.harness/tools/git-action.py`: он повторяет preflight, выполняет exact argv и проверяет postcondition. `GIT PR` пока остаётся provider boundary после deterministic preflight. Configured `git fetch` разрешён как operational refresh remote refs.
 
 LLM/agent по-прежнему отвечает за semantic decisions — например, является ли diff одним logical change и какой commit type соответствует фактическому изменению. Но protected branch, remote divergence, publish state, force prohibition, clean-worktree requirement, PR base/tool и ff-only safety больше не интерпретируются вручную.
 
@@ -46,10 +46,10 @@ Read-only preflight через `git-preflight.py check`: branch/protection/upstr
 - проверяет Harness и staged/worktree;
 - не включает секреты, local brief, build/cache мусор;
 - выявляет unrelated changes;
-- после staging запускает deterministic `commit` preflight;
-- при protected `auto-create` использует exact `details.requiredBranch`, затем повторяет gate;
-- формирует подробный Conventional Commit message;
-- только после `PASS` создаёт **локальный commit**.
+- после semantic staging формирует подробный Conventional Commit message в `.harness/local/git/commit-message.txt`;
+- вызывает `git-action.py commit --commit-type ... --slug ... --message-file ...`;
+- executor повторяет preflight, при protected `auto-create` создаёт только exact required branch;
+- только после PASS создаёт **локальный commit** и проверяет новый HEAD.
 
 Message строится по `.gitmessage`:
 
@@ -97,7 +97,7 @@ when_on_protected = "auto-create" # auto-create | stay | block
 
 ### `GIT PUSH`
 
-`GIT PUSH` сначала запускает `git-preflight.py push`. Tool использует только configured `push.remote`, при необходимости делает fetch, повторно запускает Harness validator, считает exact ahead/behind и формирует non-force `mutationPlan.argv`. Только `PASS` разрешает публикацию. По умолчанию:
+`GIT PUSH` выполняется через `git-action.py push`. Executor запускает `push` preflight, использует только configured `push.remote`, при необходимости делает fetch, повторно запускает Harness validator, исполняет только exact non-force `mutationPlan.argv` и проверяет published HEAD. По умолчанию:
 
 ```toml
 [pull_request]
@@ -127,11 +127,11 @@ python3 .harness/tools/git-preflight.py pr-finish --json
 
 PASS требует чистое рабочее дерево, состояние provider `MERGED`, совпадение текущего локального HEAD с GitHub `headRefOid`, согласованный local PR state и существующую return branch без local-ahead/divergence. Это позволяет безопасно завершать как обычный merge, так и squash/rebase merge.
 
-После PASS выполняй exact ordered `mutationPlan.steps`: switch → optional ff-only sync → удаление локальной PR-ветки. При сохранённом Git ancestry используется `git branch -d`; после squash/rebase merge — `git update-ref -d <ref> <verified-head-oid>`, где old OID обязан совпадать с подтверждённым GitHub `headRefOid`. `git branch -D`, удаление удалённой ветки, reset/rebase запрещены. Local-only `.harness/local/git/pr-state.json` удаляется только после полностью успешного FINISH.
+После PASS exact ordered plan исполняет `git-action.py pr-finish`: switch → optional ff-only sync → удаление локальной PR-ветки → postconditions → удаление local PR state. При обычном merge используется `git branch -d`, после squash/rebase — compare-and-swap `git update-ref -d <ref> <verified-head-oid>`. `git branch -D`, удаление remote branch, reset/rebase запрещены.
 
 ### `GIT SYNC`
 
-Default `GIT SYNC` через `git-preflight.py sync` делает fetch + ahead/behind report. Для автоматического безопасного fast-forward:
+Default `GIT SYNC` через `git-action.py sync` повторяет preflight и делает fetch + ahead/behind report; при `ff-only` executor сам выполняет разрешённый fast-forward и проверяет HEAD. Для автоматического безопасного fast-forward:
 
 ```toml
 [sync]
