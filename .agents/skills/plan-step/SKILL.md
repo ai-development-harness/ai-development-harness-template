@@ -14,7 +14,7 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-2. Восстанови STEP → semantic contracts прямых dependencies → canonical REQ → Accepted ADR → explicit `architecture_refs` → relevant canonical OQ → code/tests/config. Факт completion dependency для PLAN не требуется: он проверяется deterministic непосредственно перед IMPLEMENT.
+2. Получи exact inputs одним deterministic вызовом:\n   ```bash\n   python3 .harness/tools/step-context.py STEP-NNN --phase plan --json\n   ```\n   Прочитай только `readPaths` из результата, затем исследуй только действительно relevant code/tests/config. Не обходи manifest/REQ/ADR/OQ directories вручную. Completion dependency для PLAN не вычисляй.
 3. Проверь semantic consistency:
    - Goal/Scope/Out of scope/Mutation policy согласованы;
    - Acceptance следует из REQ/ADR и не требует forbidden mutation;
@@ -30,11 +30,7 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
 
 1. Запиши содержательный `## Implementation plan`.
 2. Пока semantic planning-review не завершён, выставь `plan.status: draft`; не записывай Ready hashes вручную.
-3. Получи deterministic fingerprints:
-   ```bash
-   python3 .harness/tools/planning-state.py plan-context STEP-NNN
-   ```
-   `contextBasis` schema v4 включает semantic STEP/dependency contracts, semantic linked REQ/ADR, explicit architecture refs и relevant OQ. Lifecycle/traceability metadata (`priority`, `phase`, reverse links, dependency completion state) не инвалидирует корректный plan. `planContentHash` отдельно fingerprint-ит сам Implementation plan.
+3. После записи draft повторно вызови `step-context.py STEP-NNN --phase plan --json` и возьми `deterministic.contextBasis` + `deterministic.planContentHash`. Не пересчитывай fingerprints вручную. Schema v4 включает semantic STEP/dependency contracts, semantic linked REQ/ADR, explicit architecture refs и relevant OQ; lifecycle/traceability metadata не входит в basis.
 
 ## Phase C — обязательный independent planning-review
 

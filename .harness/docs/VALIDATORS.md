@@ -699,6 +699,30 @@ Static validator и fingerprint engine для REQ/ADR/OQ/STEP planning model.
 
 Semantic качество плана static validator не оценивает — его подтверждает independent planning-review.
 
+### Phase-specific STEP context manifest
+
+Файлы:
+
+- `.harness/tools/step_context.py` — engine;
+- `.harness/tools/step-context.py` — CLI wrapper.
+
+Tool не суммаризирует документы. Он детерминированно разрешает exact canonical paths и phase-specific facts:
+
+```bash
+python3 .harness/tools/step-context.py STEP-NNN --phase plan --json
+python3 .harness/tools/step-context.py STEP-NNN --phase implement --json
+python3 .harness/tools/step-context.py STEP-NNN --phase review --json
+```
+
+Общий result содержит `step`, `semanticInputs` и уникальный `readPaths`. Модель читает только эти canonical artifacts плюс действительно relevant code/tests/config.
+
+- `plan` возвращает current schema-v4 `contextBasis`, `planContentHash` и явно сообщает, что dependency completion на этой фазе не требуется;
+- `implement` возвращает deterministic `implementPrerequisites PASS|BLOCKED` с точными failures;
+- `review` возвращает specialized-review gate и exact repository revision.
+
+`--root <path>` предназначен для tests/tooling; обычный runtime использует repository root, содержащий tool. `--json` выдаёт компактный machine-readable JSON без pretty-print overhead.
+
+
 ---
 
 # 11. Machine-readable Markdown document contract
