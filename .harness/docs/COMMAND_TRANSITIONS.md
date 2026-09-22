@@ -158,6 +158,8 @@ Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтом�
 | `PROJECT RECONCILE` | no | — | standalone-only |
 | `PROJECT QUICK FIX:` | no | — | standalone-only |
 | `STEP ADD:` | no | — | standalone-only |
+| `STEP LIST` | no | — | standalone-only |
+| `STEP SHOW STEP-NNN` | no | — | standalone-only |
 | `STEP NEXT` | no | — | standalone-only |
 | `STEP PLAN STEP-NNN` | yes | STEP IMPLEMENT | IMPLEMENT: result=SUCCESS; pre=— |
 | `STEP IMPLEMENT STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
@@ -173,6 +175,10 @@ Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтом�
 | `HARNESS HELP` | no | — | standalone-only |
 | `HARNESS UPDATE CHECK` | yes | HARNESS UPDATE APPLY | UPDATE APPLY: result=PASS; pre=matching-update-target-and-route |
 | `HARNESS UPDATE APPLY` | yes | — | terminal chain segment |
+| `HARNESS STATUS` | no | — | standalone-only |
+| `HARNESS RESUME` | no | — | standalone-only |
+| `HARNESS DOCTOR` | no | — | standalone-only |
+| `HARNESS CONFIG` | no | — | standalone-only |
 | `GIT CHECK` | yes | GIT COMMIT<br>GIT PUSH<br>GIT PR | COMMIT: result=PASS; pre=—<br>PUSH: result=PASS; pre=git-push-ready<br>PR: result=PASS; pre=git-pr-ready |
 | `GIT COMMIT` | yes | GIT PUSH | PUSH: result=SUCCESS; pre=— |
 | `GIT PUSH` | yes | GIT PR | PR: result=SUCCESS; pre=— |

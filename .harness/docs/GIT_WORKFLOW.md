@@ -2,6 +2,8 @@
 
 Harness отделяет разработку от публикации изменений. `STEP IMPLEMENT` / `STEP REVIEW` не создают commits автоматически. Git-операции выполняются явными командами области `GIT` и управляются policy по `.harness/manifest.yaml → repository.gitPolicy`.
 
+GitHub CLI `gh` не является dependency всего Git workflow: `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT SYNC` используют обычный Git. Установленный и авторизованный `gh` требуется только для текущей GitHub Pull Request capability — `GIT PR` и `GIT PR FINISH`. Подробнее: [`DEPENDENCIES.md`](DEPENDENCIES.md).
+
 ## Команды
 
 ```text

@@ -77,12 +77,14 @@ tokenize
 
 Если gate возвращает `INVALID_CHAIN`, `CHAIN_NOT_ALLOWED`, `DOMAIN_MISMATCH`, `TARGET_MISMATCH` или другую structural error — не исполняй ни один segment, не создавай execution record и не route-ь команду в skill.
 
-После structural PASS зарегистрируй root execution **до command-specific dispatch**:
+После structural PASS зарегистрируй root execution **до command-specific dispatch**, кроме control-команды `HARNESS RESUME`:
 
 ```bash
 python3 .harness/tools/execution-state.py start \
   --command '<raw canonical command>'
 ```
+
+Для `HARNESS RESUME` после CTS PASS выполни `python3 .harness/tools/harness-ux.py resume [--execution <id>] --json`. Не создавай отдельный root для RESUME; продолжай exact executionId/rootCommand/command из resolver output.
 
 Единый local state:
 
@@ -146,6 +148,22 @@ Canonical repository artifacts имеют приоритет над local operat
 Для PLAN durable proof = current `plan.status=ready` + exact `context_basis` + `content_hash` + matching immutable planning-review PASS. Для REVIEW durable proof = schema-valid immutable report для той же exact `git_head/worktree_hash` revision.
 
 Подробно: `.harness/docs/EXECUTION_STATUS.md`.
+
+
+### Deterministic UX queries
+
+Без отдельного skill выполняй:
+
+```text
+HARNESS STATUS  -> harness-ux.py status
+HARNESS DOCTOR  -> harness-ux.py doctor
+HARNESS CONFIG  -> harness-ux.py config
+STEP LIST       -> harness-ux.py step-list
+STEP SHOW NNN   -> harness-ux.py step-show --step STEP-NNN
+HARNESS RESUME  -> harness-ux.py resume
+```
+
+Для STATUS/DOCTOR/CONFIG/LIST/SHOW не добавляй state/diagnostics, которых нет в deterministic output. `gh`, Codex и Claude — capability-specific dependencies: отсутствие неактивного runtime или `gh` не превращай в global Harness failure.
 
 ### Цепочки команд
 
