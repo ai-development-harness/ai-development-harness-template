@@ -205,6 +205,8 @@ python3 .harness/tools/validate-command.py -- 'GIT PR > COMMIT'
 - duplicate/ambiguous edges;
 - parsing и normalization raw command text.
 
+Общий `validate.py` дополнительно проверяет cross-file contract поля `documentation`: формат `<path>#<anchor>`, repository-contained path, существование файла, уникальность ссылки и ровно один explicit `<a id="...">` в target Markdown.
+
 ---
 
 # 3. Deprecated command reference checker
