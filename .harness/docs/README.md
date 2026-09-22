@@ -15,6 +15,7 @@
 - [`EXECUTION_STATUS.md`](EXECUTION_STATUS.md) — единый local execution-status.json, resume semantics и independent single/chain/orchestration executions.
 - [`LANGUAGE_POLICY.md`](LANGUAGE_POLICY.md) — единая настройка языка для docs/commits/comments/tests/fixtures/templates.
 - [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md) — deterministic-first правила, always-on context budget и граница LLM/tooling.
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — границы защиты Harness, trust boundaries и defense-in-depth.
 - [`QUICK_CHANGES.md`](QUICK_CHANGES.md) — когда мелкая правка не требует STEP.
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
 - [`EXECUTION_PROTOCOL.md`](EXECUTION_PROTOCOL.md) — формальная семантика state transitions и выполнения STEP.

@@ -20,7 +20,7 @@ python3 .harness/tools/git-preflight.py sync --json
 
 Agent не должен вручную переопределять `PASS/BLOCKED`, protected-branch decision, remote ahead/behind, publish state, PR base/tool или ff-only safety.
 
-Preflight не создаёт commit, не делает push, не открывает PR и не fast-forward-ит branch. Единственная допустимая operational side effect — `git fetch` там, где policy требует актуального remote state.
+Preflight остаётся read-oriented proof. Для `GIT COMMIT`, `GIT PUSH`, `GIT SYNC` и `GIT PR FINISH` mutation выполняй через `git-action.py`, который повторяет preflight и проверяет postcondition. `GIT PR` пока остаётся provider boundary: его title/body — semantic inputs, создание/переиспользование выполняется provider tooling после deterministic preflight.
 
 ## Общие правила
 
@@ -49,32 +49,26 @@ python3 .harness/tools/git-preflight.py check --json
    - `staged-only` — не добавлять новые paths к index;
    - `tracked-only` — не stage новые files;
    - `all-safe` — stage только проверенный logical change, без `git add .` вслепую.
-4. После staging и непосредственно перед commit запусти:
+4. Сформируй semantic commit message по `.gitmessage`/policy и сохрани его в local-only `.harness/local/git/commit-message.txt`.
+5. Выполни mutation только через:
 
 ```bash
-python3 .harness/tools/git-preflight.py commit --json \
+python3 .harness/tools/git-action.py commit --json \
   --commit-type '<type>' \
-  --slug '<short semantic slug>'
+  --slug '<short semantic slug>' \
+  --message-file .harness/local/git/commit-message.txt
 ```
 
-5. Если `reasonCode=PROTECTED_BRANCH_REQUIRES_NEW_BRANCH`, используй **точный** `details.requiredBranch`, создай branch, затем повтори preflight. Не вычисляй имя повторно вручную.
-6. Только `PASS` разрешает `git commit`.
-7. Сформируй message по `.gitmessage` и policy:
-   - Conventional Commit;
-   - subject ≤ `subject_max_length`;
-   - body только согласно `require_body`;
-   - verification/traceability — согласно policy;
-   - при `sign=true` используй Git signing, не отключай его молча.
-8. Выполни commit. COMMIT никогда не делает push.
+Executor повторяет commit preflight, при exact `PROTECTED_BRANCH_REQUIRES_NEW_BRANCH` создаёт только returned branch, валидирует mechanical message constraints, создаёт commit и проверяет изменение HEAD. COMMIT никогда не делает push.
 
 Machine gate детерминированно проверяет Harness validation, empty commit, stage-mode ограничения, protected branch и initial-commit exception. Семантику logical change/message всё ещё обязан проверить агент.
 
 ## GIT PUSH
 
-Непосредственно перед push:
+После semantic проверки scope выполни push через:
 
 ```bash
-python3 .harness/tools/git-preflight.py push --json
+python3 .harness/tools/git-action.py push --json
 ```
 
 Tool:
@@ -89,7 +83,7 @@ Tool:
 - гарантирует `force=never`;
 - формирует `mutationPlan.argv` с `--set-upstream` / tag behavior согласно policy.
 
-Выполняй только план после `PASS`. Не добавляй `--force`, `--force-with-lease` или другой remote.
+Executor сам повторяет preflight, исполняет только returned non-force argv и проверяет, что configured remote branch совпал с local HEAD. Не выполняй `git push` вручную.
 
 После успешного push применяй `pull_request.after_push`: `never | ask | create-if-missing`.
 
@@ -115,29 +109,24 @@ PASS доказывает:
 
 ## GIT PR FINISH
 
-1. Запусти `python3 .harness/tools/git-preflight.py pr-finish --json`.
-2. При `BLOCKED` остановись и покажи `reasonCode`; не обходи его ручным switch/delete.
-3. При PASS выполни каждый `mutationPlan.steps[*].argv` строго по порядку.
-4. Не используй `git branch -D`. Для обычного merge deterministic plan использует `git branch -d`; для squash/rebase merge он может вернуть `git update-ref -d <ref> <verified-head-oid>` с обязательным old OID. Не меняй эту команду вручную, не удаляй удалённую ветку и не делай reset/rebase.
-5. Если любой step завершился ошибкой, остановись и сохрани local PR state.
-6. Только после успеха всех steps и `deleteStateFileAfterSuccess=true` удали указанный `stateFile`.
+Выполни `python3 .harness/tools/git-action.py pr-finish --json`. Executor повторяет provider/Git preflight, исполняет ordered steps, проверяет return branch и удаление exact PR-head ref, после чего удаляет local PR state только при полном успехе. При `BLOCKED` не обходи его ручным switch/delete.
 
 ## GIT SYNC
 
-Запусти:
+Выполни:
 
 ```bash
-python3 .harness/tools/git-preflight.py sync --json
+python3 .harness/tools/git-action.py sync --json
 ```
 
-Tool сначала fetch-ит только `sync.fetch_remote` и считает ahead/behind.
+Executor сначала запускает canonical sync preflight: fetch-ит только `sync.fetch_remote`, считает ahead/behind и выполняет mutation только для exact ff-only plan.
 
 - `mode=report` → mutation запрещена, только отчёт.
 - `mode=ff-only` → tool выдаёт `git merge --ff-only <remote>/<branch>` только для clean behind-only state.
 - local-ahead или diverged state блокирует автоматический sync.
 - automatic merge/rebase не разрешены.
 
-Выполняй mutation только если `status=PASS` и `mutationPlan.operation` содержит разрешённый ff-only plan.
+Не выполняй returned merge argv вручную: executor проверяет postcondition local HEAD == configured remote branch.
 
 ## Failure policy
 
