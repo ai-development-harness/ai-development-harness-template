@@ -142,7 +142,9 @@
           "onPreviousResult": [
             "SUCCESS"
           ],
-          "runtimePreconditions": []
+          "runtimePreconditions": [
+            "step-implement-ready"
+          ]
         },
         {
           "from": "IMPLEMENT",
