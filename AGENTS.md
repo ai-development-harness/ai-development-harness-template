@@ -159,7 +159,7 @@ HARNESS STATUS  -> harness-ux.py status
 HARNESS DOCTOR  -> harness-ux.py doctor
 HARNESS CONFIG  -> harness-ux.py config
 STEP LIST       -> harness-ux.py step-list
-STEP SHOW NNN   -> harness-ux.py step-show --step STEP-NNN
+STEP SHOW STEP-NNN -> harness-ux.py step-show --step STEP-NNN
 HARNESS RESUME  -> harness-ux.py resume
 ```
 

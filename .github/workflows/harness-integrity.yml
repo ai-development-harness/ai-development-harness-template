@@ -119,7 +119,10 @@ jobs:
 
 
       # Проверить deterministic operational UX поверх реального template checkout.
+      # Пример: STATUS/CONFIG/DOCTOR/LIST должны вернуть PASS, synthetic test покрывает SHOW/RESUME.
       - name: Validate Harness UX commands
+        # Запустить read-only UX smoke checks и отдельный synthetic regression.
+        # Пример: optional gh/Claude/Codex не должны делать общий HARNESS DOCTOR failed.
         run: |
           python3 .harness/tools/harness-ux.py status --json | grep -q '"status": "PASS"'
           python3 .harness/tools/harness-ux.py config --json | grep -q '"status": "PASS"'
