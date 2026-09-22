@@ -315,8 +315,8 @@ def _evidence_present(task: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 # Completion proof.
 # Статус STEP сам по себе недостаточен. Proof зависит от type и может включать
-# Evidence, immutable PASS review или accepted ADR. Результат fingerprint-ится,
-# чтобы dependent planning basis менялся при изменении доказательства.
+# Evidence, immutable PASS review или accepted ADR. Proof используется lifecycle/
+# projection/IMPLEMENT gates, но schema-v4 planning basis его не fingerprint-ит.
 # ---------------------------------------------------------------------------
 def step_completion_proof(
     root: Path,
