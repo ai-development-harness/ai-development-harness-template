@@ -71,14 +71,15 @@ real evidence
 
     # ``#`` начинает YAML comment только после separation whitespace.
     values = parse_yaml_subset(
-        "language: C#\\n"
-        "architecture: docs/architecture.md#auth\\n"
-        "description: C# language\\n"
-        "commented: value # trailing comment\\n"
-        "quoted: \\\"C# language\\\" # trailing comment\\n"
-        "list:\\n"
-        "  - C#\\n"
-        "  - docs/architecture.md#auth\\n"
+        """language: C#
+architecture: docs/architecture.md#auth
+description: C# language
+commented: value # trailing comment
+quoted: "C# language" # trailing comment
+list:
+  - C#
+  - docs/architecture.md#auth
+"""
     )
     assert values["language"] == "C#", values
     assert values["architecture"] == "docs/architecture.md#auth", values
