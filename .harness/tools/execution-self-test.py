@@ -95,9 +95,21 @@ Self-test.
 """
 
 
-def task(plan_status: str = "draft", basis: str | None = None, phash: str | None = None, report: str | None = None) -> str:
+def task(
+    plan_status: str = "draft",
+    basis: str | None = None,
+    phash: str | None = None,
+    report: str | None = None,
+    depends: list[str] | None = None,
+) -> str:
     def val(value: str | None) -> str:
         return "null" if value is None else value
+    depends = depends or []
+    depends_block = (
+        "depends_on: []\n"
+        if not depends
+        else "depends_on:\n" + "".join(f"  - {item}\n" for item in depends)
+    )
     return f"""---
 schema: 1
 id: STEP-001
@@ -105,8 +117,7 @@ status: planned
 type: implementation
 priority: medium
 phase: test
-depends_on: []
-requirements:
+{depends_block}requirements:
   - REQ-001
 adrs: []
 architecture_refs: []
@@ -307,7 +318,15 @@ def main() -> int:
         shutil.copy2(source / ".harness/command-transitions.json", root / ".harness/command-transitions.json")
         write(root / "docs/requirements/REQ-001-execution.md", requirement())
         write(root / "docs/architecture.md", "# Architecture\n")
-        write(root / "planning/tasks/STEP-001.md", task())
+        dependency = task().replace("id: STEP-001", "id: STEP-002").replace(
+            "# STEP-001 — Execution state test",
+            "# STEP-002 — Execution dependency test",
+        ).replace("type: implementation", "type: research").replace(
+            "requirements:\n  - REQ-001",
+            "requirements: []",
+        )
+        write(root / "planning/tasks/STEP-002.md", dependency)
+        write(root / "planning/tasks/STEP-001.md", task(depends=["STEP-002"]))
 
         run(root, "git", "init", "-q")
         run(root, "git", "config", "user.email", "harness-test@example.invalid")
@@ -392,6 +411,50 @@ def main() -> int:
         write(root / plan_report, planning_review(basis, phash))
         stamped = stamp_plan(root, "STEP-001")
         assert stamped["planStatus"] == "ready", stamped
+        ready_basis = planning_context_basis(root, "STEP-001")
+
+        # PLAN Ready не требует завершённой dependency, но direct IMPLEMENT
+        # обязан fail-closed до появления type-specific completion proof.
+        try:
+            start_execution(root, "STEP IMPLEMENT STEP-001")
+        except ValueError as exc:
+            assert "dependency-incomplete:STEP-002" in str(exc), exc
+        else:
+            raise AssertionError("direct IMPLEMENT accepted incomplete dependency")
+        assert planning_context_basis(root, "STEP-001") == ready_basis
+
+        # PLAN -> IMPLEMENT edge несёт тот же deterministic runtime precondition.
+        dependency_chain = "STEP PLAN STEP-001 > IMPLEMENT"
+        chain_execution = start_execution(root, dependency_chain)
+        complete_command(root, dependency_chain, "STEP PLAN STEP-001", "SUCCESS")
+        chain_next = resolve_root(root, dependency_chain)
+        assert chain_next.get("runtimePreconditions") == ["step-implement-ready"], chain_next
+        try:
+            begin_command(root, dependency_chain, "STEP IMPLEMENT STEP-001")
+        except ValueError as exc:
+            assert "dependency-incomplete:STEP-002" in str(exc), exc
+        else:
+            raise AssertionError("PLAN -> IMPLEMENT bypassed dependency completion")
+
+        # Completion proof появляется без изменения semantic dependency contract:
+        # существующий Ready basis остаётся свежим и IMPLEMENT сразу разрешается.
+        dependency_path = root / "planning/tasks/STEP-002.md"
+        dependency_text = dependency_path.read_text(encoding="utf-8")
+        write(
+            dependency_path,
+            dependency_text.replace("status: planned", "status: completed").replace(
+                "## Evidence\n\n—",
+                "## Evidence\n\nResearch dependency complete.",
+            ),
+        )
+        assert planning_context_basis(root, "STEP-001") == ready_basis
+        direct_implement = start_execution(root, "STEP IMPLEMENT STEP-001")
+        complete_command(
+            root,
+            direct_implement["rootCommand"],
+            "STEP IMPLEMENT STEP-001",
+            "SUCCESS",
+        )
 
         # Independent commands coexist and invalid reverse chains never create state.
         first = start_execution(root, "PROJECT STATUS")
