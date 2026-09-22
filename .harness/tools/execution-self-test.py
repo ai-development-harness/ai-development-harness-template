@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import multiprocessing
 from pathlib import Path
 import re
 import shutil
@@ -295,6 +296,10 @@ Self-test verification.
     )
     return rel
 
+
+def concurrent_start_worker(root_value: str, command: str) -> None:
+    """Отдельный process для regression lost-update execution state."""
+    start_execution(Path(root_value), command)
 
 def assert_resolved(value: dict, status: str, command: str | None, reason: str) -> None:
     assert value["status"] == status, value
@@ -911,6 +916,38 @@ def main() -> int:
         assert "src/auth/session.py" not in multi_commit_gate["changedPaths"], multi_commit_gate
         assert "clean tree has no exact implementation baseline" in multi_commit_gate["reasons"]["security"]
 
+        # Параллельные sessions не должны потерять attempt update или создать
+        # несколько running records одной root command. Восемь процессов
+        # одновременно проходят один load -> mutate -> save transaction.
+        concurrent_command = "HARNESS CONFIG"
+        workers = [
+            multiprocessing.Process(
+                target=concurrent_start_worker,
+                args=(str(root), concurrent_command),
+            )
+            for _ in range(8)
+        ]
+        for worker_process in workers:
+            worker_process.start()
+        for worker_process in workers:
+            worker_process.join(20)
+            assert worker_process.exitcode == 0, worker_process.exitcode
+
+        concurrent_status = load_status(root)
+        concurrent_records = [
+            item
+            for item in concurrent_status["executions"]
+            if item.get("rootCommand") == concurrent_command
+            and item.get("status") == "running"
+        ]
+        assert len(concurrent_records) == 1, concurrent_records
+        assert concurrent_records[0]["current"]["attempt"] == 8, concurrent_records[0]
+        complete_command(
+            root,
+            concurrent_command,
+            concurrent_command,
+            "SUCCESS",
+        )
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
 
