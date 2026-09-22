@@ -45,15 +45,19 @@
 - `STEP NEXT`
 - `PROJECT RECONCILE`
 - `RELEASE CHECK`
+- `HARNESS HELP`
 - `HARNESS UPDATE CHECK`
 - `HARNESS UPDATE APPLY`
 - `GIT CHECK`
 - `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 - `GIT PUSH`
 - `GIT PR`
+- `GIT PR FINISH`
 - `GIT SYNC`
 
 Канонический синтаксис и chain operator описаны в `.harness/docs/COMMAND_SYNTAX.md`. Полный machine-readable graph команд и переходов — `.harness/command-transitions.json`, человекочитаемая матрица — `.harness/docs/COMMAND_TRANSITIONS.md`. Точная семантика project execution находится в `.harness/docs/EXECUTION_PROTOCOL.md`. Maintenance semantics self-update — в `.harness/docs/UPDATES.md`. Термины Harness определены в `.harness/docs/GLOSSARY.md`.
+
+Для STEP-команд пользователь может передать target как `STEP-NNN` или `NNN`; structural parser всегда нормализует short form в canonical `STEP-NNN` до execution tracking.
 
 ### Обязательный command preflight
 
@@ -283,6 +287,10 @@ Self-update самого Harness выполняется только через 
 
 Если пользователь уже внёс такую мелкую правку вручную, разрешён прямой `GIT CHECK` → `GIT COMMIT` без STEP после проверки diff. Если изменение оказалось не мелким — остановись и предложи `STEP ADD:`. Подробности: `.harness/docs/QUICK_CHANGES.md`.
 
+### `HARNESS HELP`
+
+После обычного structural gate запусти `python3 .harness/tools/harness-help.py`. Не собирай command list из памяти и не дополняй его командами, которых нет в CTS registry.
+
 ## 15. Harness self-update
 
 Self-update protocol layer не является STEP.
@@ -322,7 +330,7 @@ Self-update protocol layer не является STEP.
 
 ## 17. Git workflow
 
-Git mutation выполняется только явными командами `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC` и по configured `repository.gitPolicy`.
+Git mutation выполняется только явными командами `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT PR FINISH`, `GIT SYNC` и по configured `repository.gitPolicy`.
 
 Safety-critical Git decision перед mutation принадлежит deterministic preflight:
 

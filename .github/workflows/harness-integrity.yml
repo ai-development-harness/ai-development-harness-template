@@ -98,10 +98,18 @@ jobs:
         # Пример: publication chain проходит, обратный GIT PR → GIT COMMIT обязан вернуть non-zero.
         run: |
           python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR' >/dev/null
+          python3 .harness/tools/validate-command.py --json -- 'STEP RUN 024' | grep -q 'STEP RUN STEP-024'
+          python3 .harness/tools/validate-command.py --json -- 'HARNESS HELP' >/dev/null
+          python3 .harness/tools/validate-command.py --json -- 'GIT PR FINISH' >/dev/null
+          if python3 .harness/tools/validate-command.py --json -- 'STEP RUN 24' >/dev/null 2>&1; then
+            echo "Expected invalid short STEP target for STEP RUN 24"
+            exit 1
+          fi
           if python3 .harness/tools/validate-command.py --json -- 'GIT PR > COMMIT' >/dev/null 2>&1; then
             echo "Expected INVALID_CHAIN for GIT PR > COMMIT"
             exit 1
           fi
+          python3 .harness/tools/harness-help.py --json | grep -q '"canonical": "HARNESS HELP"'
 
       # Проверить единый local execution state на полном наборе canonical commands.
       # Пример: single/chain/STEP RUN, interruption, независимые команды и conditional transitions.

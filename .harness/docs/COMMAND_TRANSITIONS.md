@@ -69,7 +69,7 @@ A > B
 
 - первый segment обязан иметь explicit DOMAIN;
 - DOMAIN наследуется последующими shorthand-сегментами;
-- STEP target наследуется внутри STEP chain;
+- STEP target принимает `STEP-NNN` или shorthand `NNN`, затем нормализуется в canonical `STEP-NNN` и наследуется внутри STEP chain;
 - `HARNESS UPDATE CHECK ... > APPLY` нормализует `APPLY` в `HARNESS UPDATE APPLY`;
 - explicit target последующего segment не может отличаться от первого.
 
@@ -170,12 +170,14 @@ Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтом�
 | `SKILL CREATE:` | no | — | standalone-only |
 | `GITHUB GENERATE TEMPLATES` | no | — | standalone-only |
 | `RELEASE CHECK` | no | — | standalone-only |
+| `HARNESS HELP` | no | — | standalone-only |
 | `HARNESS UPDATE CHECK` | yes | HARNESS UPDATE APPLY | UPDATE APPLY: result=PASS; pre=matching-update-target-and-route |
 | `HARNESS UPDATE APPLY` | yes | — | terminal chain segment |
 | `GIT CHECK` | yes | GIT COMMIT<br>GIT PUSH<br>GIT PR | COMMIT: result=PASS; pre=—<br>PUSH: result=PASS; pre=git-push-ready<br>PR: result=PASS; pre=git-pr-ready |
 | `GIT COMMIT` | yes | GIT PUSH | PUSH: result=SUCCESS; pre=— |
 | `GIT PUSH` | yes | GIT PR | PR: result=SUCCESS; pre=— |
 | `GIT PR` | yes | — | terminal chain segment |
+| `GIT PR FINISH` | no | — | standalone-only |
 | `GIT SYNC` | no | — | standalone-only |
 <!-- COMMAND-TRANSITIONS:END -->
 

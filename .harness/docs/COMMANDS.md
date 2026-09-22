@@ -6,6 +6,8 @@
 
 State transitions выполнения описаны в `.harness/docs/EXECUTION_PROTOCOL.md`.
 
+Для STEP target допускается пользовательский shorthand `NNN` (не менее трёх цифр). Structural parser до dispatch нормализует его в canonical `STEP-NNN`, поэтому `STEP RUN 024` и `STEP RUN STEP-024` адресуют один и тот же STEP. В durable state/docs сохраняется canonical форма.
+
 Старые ненеймспейсные формы не являются каноническими alias. Локальные пользовательские alias-команды можно добавить только явно в `AGENTS.local.md`; они читаются после `AGENTS.md`.
 
 ## Цепочки
@@ -19,6 +21,16 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
 Вся цепочка сначала нормализуется и проверяется по `.harness/command-transitions.json`. Отсутствующий edge означает `INVALID_CHAIN` и ноль выполненных сегментов. После structural PASS дальнейшее выполнение определяется `onPreviousResult` и `runtimePreconditions` конкретного edge. Полные правила — в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md) и [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md).
+
+## `HARNESS HELP`
+
+Read-only deterministic справка по command surface. Команда читает metadata непосредственно из `.harness/command-transitions.json` и выводит команды, сгруппированные по domain, с кратким описанием и ссылкой на документацию:
+
+```bash
+python3 .harness/tools/harness-help.py
+```
+
+Отдельный вручную поддерживаемый список команд для HELP не допускается: CTS registry остаётся единым machine-readable source of truth.
 
 ## `PROJECT INIT`
 
@@ -160,6 +172,14 @@ Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged
 ## `GIT PR`
 
 Создаёт Pull Request для опубликованной ветки либо возвращает существующий PR согласно policy. Использует `.github/pull_request_template.md`, repository evidence и verification; дубликаты не создаёт.
+
+## `GIT PR FINISH`
+
+Standalone post-merge cleanup. Команда проверяет через deterministic `git-preflight.py pr-finish`, что текущий PR действительно имеет состояние MERGED, working tree чистый, return branch можно безопасно fast-forward-нуть и локальная PR-ветка удалима обычным `git branch -d`.
+
+После PASS выполняется exact ordered mutation plan: переключение на сохранённую return branch (при отсутствии local state — на PR base), разрешённый `--ff-only` sync и удаление старой локальной PR-ветки. Force-delete (`-D`), remote branch deletion, reset/rebase запрещены.
+
+После успешного `GIT PR` git-workflow сохраняет local-only `.harness/local/git/pr-state.json` с PR number/head/base/return branch; файл удаляется только после полностью успешного FINISH.
 
 ## `GIT SYNC`
 

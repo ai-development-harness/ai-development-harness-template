@@ -47,6 +47,7 @@ GITHUB GENERATE TEMPLATES
 
 RELEASE CHECK
 
+HARNESS HELP
 HARNESS UPDATE CHECK
 HARNESS UPDATE CHECK TO vX.X.X
 HARNESS UPDATE APPLY
@@ -57,8 +58,18 @@ GIT COMMIT
 GIT COMMIT: обновить документацию Harness
 GIT PUSH
 GIT PR
+GIT PR FINISH
 GIT SYNC
 ```
+
+Для STEP target разрешена сокращённая пользовательская форма только из цифр:
+
+```text
+STEP RUN 024
+STEP PLAN 024 > IMPLEMENT > REVIEW
+```
+
+До transition checks она нормализуется в canonical `STEP-024`. Формы короче трёх цифр и произвольные suffix/prefix не принимаются.
 
 Старые ненеймспейсные формы не являются каноническими alias. Если пользователь хочет локальный alias, он задаётся явно в `AGENTS.local.md`.
 
