@@ -2,7 +2,7 @@
 
 Execution Status — локальный crash-safe слой, который фиксирует фактическое выполнение **всех** canonical Harness-команд между session/runtime interruptions.
 
-Исключение: `HARNESS RESUME` — control-selector над уже существующим record. Он не создаёт новый root execution; continuation остаётся внутри исходного `executionId/rootCommand`.
+Исключение: `HARNESS RESUME` — управляющая команда над уже существующим состоянием выполнения. Она не создаёт новое корневое выполнение и работает только тогда, когда существует ровно одна безопасная точка продолжения.
 
 Он не добавляет новых пользовательских команд и не создаёт вторую state machine.
 

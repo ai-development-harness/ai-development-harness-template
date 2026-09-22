@@ -45,16 +45,15 @@ python3 .harness/tools/harness-ux.py status --json
 ```
 
 <a id="command-harness-resume"></a>
-## `HARNESS RESUME` / `HARNESS RESUME: <executionId>`
+## `HARNESS RESUME`
 
-Продолжает существующий interrupted execution. Без ID выбирает единственный resumable execution; при нескольких возвращает `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
+Продолжает единственное незавершённое выполнение, которое можно безопасно возобновить. Если таких выполнений нет — возвращает `BLOCKED/NO_RESUMABLE_EXECUTION`; если их несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
 
 ```bash
 python3 .harness/tools/harness-ux.py resume --json
-python3 .harness/tools/harness-ux.py resume --execution exec-... --json
 ```
 
-Команда не создаёт новый root execution: она возвращает exact существующие `executionId`, `rootCommand` и `command`.
+Команда не создаёт новое корневое выполнение: она возвращает идентификатор, корневую команду и точную команду продолжения уже существующего выполнения.
 
 <a id="command-harness-doctor"></a>
 ## `HARNESS DOCTOR`

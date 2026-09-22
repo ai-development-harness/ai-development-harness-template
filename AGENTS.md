@@ -84,7 +84,7 @@ python3 .harness/tools/execution-state.py start \
   --command '<raw canonical command>'
 ```
 
-Для `HARNESS RESUME` после CTS PASS выполни `python3 .harness/tools/harness-ux.py resume [--execution <id>] --json`. Не создавай отдельный root для RESUME; продолжай exact executionId/rootCommand/command из resolver output.
+Для `HARNESS RESUME` после CTS PASS выполни `python3 .harness/tools/harness-ux.py resume --json`. Не создавай отдельное корневое выполнение. Продолжай только если resolver вернул ровно одну допустимую точку; при `NO_RESUMABLE_EXECUTION` или `MULTIPLE_RESUMABLE_EXECUTIONS` остановись.
 
 Единый local state:
 

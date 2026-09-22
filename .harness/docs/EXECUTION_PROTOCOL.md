@@ -167,7 +167,7 @@ Output строится из command metadata в `.harness/command-transitions.j
 
 `HARNESS DOCTOR` разделяет required core dependencies и optional capabilities; отсутствие неактивного Claude/Codex runtime или GitHub CLI не является global blocker.
 
-`HARNESS RESUME[: <executionId>]` — control command: после CTS PASS она не регистрируется как новый root execution, а выбирает существующий running record и возвращает exact current/next command.
+`HARNESS RESUME` — управляющая команда без параметров. После CTS PASS она не регистрируется как новое корневое выполнение: если существует ровно одна безопасная точка продолжения, resolver возвращает соответствующую текущую или следующую команду. При нуле или нескольких возможных точках команда возвращает `BLOCKED`.
 
 ## 1. Сущности
 

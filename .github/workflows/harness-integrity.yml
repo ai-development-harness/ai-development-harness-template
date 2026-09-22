@@ -101,7 +101,11 @@ jobs:
           python3 .harness/tools/validate-command.py --json -- 'STEP RUN 024' | grep -q 'STEP RUN STEP-024'
           python3 .harness/tools/validate-command.py --json -- 'HARNESS HELP' >/dev/null
           python3 .harness/tools/validate-command.py --json -- 'HARNESS STATUS' >/dev/null
-          python3 .harness/tools/validate-command.py --json -- 'HARNESS RESUME: exec-001' >/dev/null
+          python3 .harness/tools/validate-command.py --json -- 'HARNESS RESUME' >/dev/null
+          if python3 .harness/tools/validate-command.py --json -- 'HARNESS RESUME: exec-001' >/dev/null 2>&1; then
+            echo "Expected HARNESS RESUME with arguments to be rejected"
+            exit 1
+          fi
           python3 .harness/tools/validate-command.py --json -- 'HARNESS DOCTOR' >/dev/null
           python3 .harness/tools/validate-command.py --json -- 'HARNESS CONFIG' >/dev/null
           python3 .harness/tools/validate-command.py --json -- 'STEP LIST' >/dev/null
