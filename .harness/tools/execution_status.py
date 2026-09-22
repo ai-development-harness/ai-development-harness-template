@@ -44,6 +44,7 @@ from command_transitions import (
 from document_contract import render_document
 from harness_config import ConfigError, get, load_git_policy, update_lock_path
 from planning_contract import (
+    implementation_prerequisite_failures,
     latest_matching_planning_review,
     max_fix_review_cycles,
     plan_content_hash,
@@ -330,6 +331,19 @@ def _command_context(root: Path, command: str) -> dict[str, Any]:
 # Зарегистрировать новый root invocation либо resume уже running invocation с тем же normalized rootCommand.
 def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
     normalized = _normalize_root(root, raw_command)
+
+    # Первый executable segment не имеет incoming CTS edge, поэтому его
+    # command-specific preconditions проверяются отдельно до создания local
+    # execution record. Это делает direct STEP IMPLEMENT таким же fail-closed,
+    # как PLAN -> IMPLEMENT внутри chain/RUN.
+    if normalized["mode"] != "orchestration":
+        failures = _command_dispatch_precondition_failures(
+            root,
+            normalized["sequence"][0],
+        )
+        if failures:
+            raise ValueError("command precondition failed: " + "; ".join(failures))
+
     status = load_status(root)
 
     # Повтор той же root command после session interruption должен resume
@@ -518,6 +532,27 @@ def _update_runtime_precondition(
 
 # Выполнить runtimePreconditions CTS edge непосредственно перед dispatch. Возврат
 # списка причин делает неизвестный/недоказанный precondition fail-closed.
+def _command_dispatch_precondition_failures(
+    root: Path,
+    command: str,
+) -> list[str]:
+    """Проверить prerequisites команды, у которой нет incoming CTS edge."""
+    parsed = normalize_single_command(root, command)
+    if (
+        parsed.get("domain") == "STEP"
+        and parsed.get("operation") == "IMPLEMENT"
+        and parsed.get("target")
+    ):
+        return [
+            f"step-implement-ready: {issue}"
+            for issue in implementation_prerequisite_failures(
+                root,
+                str(parsed["target"]),
+            )
+        ]
+    return []
+
+
 def _runtime_precondition_failures(
     root: Path,
     execution: dict[str, Any],
@@ -531,6 +566,12 @@ def _runtime_precondition_failures(
             issue = _git_runtime_precondition(root, name)
         elif name == "matching-update-target-and-route":
             issue = _update_runtime_precondition(root, current, next_command)
+        elif name == "step-implement-ready":
+            command_failures = _command_dispatch_precondition_failures(
+                root,
+                next_command,
+            )
+            issue = "; ".join(command_failures) if command_failures else None
         else:
             issue = f"unknown-runtime-precondition:{name}"
         if issue is not None:
@@ -716,15 +757,19 @@ def begin_command(
             f"resolver expects {expected!r}, cannot begin {normalized_command!r}"
         )
 
-    preconditions = [] if allow_first_orchestration_child else list(
-        resolved.get("runtimePreconditions") or []
-    )
-    failures = _runtime_precondition_failures(
-        root,
-        execution,
-        normalized_command,
-        preconditions,
-    )
+    if allow_first_orchestration_child:
+        failures = _command_dispatch_precondition_failures(
+            root,
+            normalized_command,
+        )
+    else:
+        preconditions = list(resolved.get("runtimePreconditions") or [])
+        failures = _runtime_precondition_failures(
+            root,
+            execution,
+            normalized_command,
+            preconditions,
+        )
     if failures:
         # Предыдущая child command уже завершилась фактическим result. Не
         # перезаписываем её: blocker относится к переходу/корневой execution.
