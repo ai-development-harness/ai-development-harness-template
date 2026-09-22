@@ -62,6 +62,22 @@
           "summary": "Создать новый STEP из короткого описания задачи.",
           "documentation": ".harness/docs/COMMANDS.md#command-step-add"
         },
+        "LIST": {
+          "canonical": "STEP LIST",
+          "chainAllowed": false,
+          "target": "none",
+          "input": "none",
+          "summary": "Показать компактный список canonical STEP и их текущих состояний.",
+          "documentation": ".harness/docs/COMMANDS.md#command-step-list"
+        },
+        "SHOW": {
+          "canonical": "STEP SHOW STEP-NNN",
+          "chainAllowed": false,
+          "target": "step",
+          "input": "none",
+          "summary": "Показать подробное состояние выбранного STEP и связанную execution context.",
+          "documentation": ".harness/docs/COMMANDS.md#command-step-show"
+        },
         "NEXT": {
           "canonical": "STEP NEXT",
           "chainAllowed": false,
@@ -248,6 +264,38 @@
           "input": "none",
           "summary": "Применить допустимый Harness update route.",
           "documentation": ".harness/docs/COMMANDS.md#command-harness-update-apply"
+        },
+        "STATUS": {
+          "canonical": "HARNESS STATUS",
+          "chainAllowed": false,
+          "target": "none",
+          "input": "none",
+          "summary": "Показать operational state Harness, Git и незавершённые executions.",
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-status"
+        },
+        "RESUME": {
+          "canonical": "HARNESS RESUME",
+          "chainAllowed": false,
+          "target": "none",
+          "input": "optional",
+          "summary": "Продолжить единственный interrupted execution или выбранный executionId.",
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-resume"
+        },
+        "DOCTOR": {
+          "canonical": "HARNESS DOCTOR",
+          "chainAllowed": false,
+          "target": "none",
+          "input": "none",
+          "summary": "Проверить core dependencies, repository health и optional capabilities.",
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-doctor"
+        },
+        "CONFIG": {
+          "canonical": "HARNESS CONFIG",
+          "chainAllowed": false,
+          "target": "none",
+          "input": "none",
+          "summary": "Показать effective Harness configuration и её source files.",
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-config"
         }
       },
       "transitions": [
