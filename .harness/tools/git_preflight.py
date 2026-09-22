@@ -722,7 +722,7 @@ def _github_pr_view(root: Path, config: dict[str, Any], selector: str | int) -> 
     if shutil.which(tool) is None:
         raise GitPreflightError("PR_TOOL_UNAVAILABLE", f"configured PR tool is unavailable: {tool}")
     proc = subprocess.run(
-        [tool, "pr", "view", str(selector), "--json", "number,state,mergedAt,headRefName,baseRefName,url"],
+        [tool, "pr", "view", str(selector), "--json", "number,state,mergedAt,headRefName,headRefOid,baseRefName,url"],
         cwd=root,
         text=True,
         stdout=subprocess.PIPE,
@@ -771,6 +771,7 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
     state = data.get("state")
     merged_at = data.get("mergedAt")
     head_branch = data.get("headRefName")
+    head_oid = data.get("headRefOid")
     base_branch = data.get("baseRefName")
     if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
         raise GitPreflightError("PR_QUERY_INVALID", "PR number is missing or invalid")
@@ -780,6 +781,14 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
         raise GitPreflightError(
             "PR_HEAD_MISMATCH",
             f"merged PR head {head_branch!r} does not match current branch {branch!r}",
+        )
+    if not isinstance(head_oid, str) or re.fullmatch(r"[0-9a-fA-F]{40}", head_oid) is None:
+        raise GitPreflightError("PR_QUERY_INVALID", "PR headRefOid is missing or invalid")
+    current_head = repo.head()
+    if current_head != head_oid:
+        raise GitPreflightError(
+            "PR_HEAD_SHA_MISMATCH",
+            f"local HEAD {current_head!r} differs from merged PR head {head_oid!r}",
         )
     if not isinstance(base_branch, str) or not base_branch.strip():
         raise GitPreflightError("PR_QUERY_INVALID", "PR base branch is missing")
@@ -840,11 +849,6 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
         remote_return,
         check=False,
     )
-    if ancestry.returncode:
-        raise GitPreflightError(
-            "LOCAL_BRANCH_NOT_GIT_MERGED",
-            f"{branch} is not an ancestor of {remote}/{return_branch}; force deletion is forbidden",
-        )
 
     steps: list[dict[str, Any]] = [
         {"operation": "switch-return-branch", "argv": ["git", "switch", return_branch]}
@@ -856,9 +860,23 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
                 "argv": ["git", "merge", "--ff-only", f"{remote}/{return_branch}"],
             }
         )
-    steps.append(
-        {"operation": "delete-local-pr-branch", "argv": ["git", "branch", "-d", branch]}
-    )
+    if ancestry.returncode == 0:
+        delete_step = {
+            "operation": "delete-local-pr-branch",
+            "mode": "git-merged",
+            "argv": ["git", "branch", "-d", branch],
+        }
+    else:
+        # Squash/rebase merge не сохраняет ancestry feature branch. Provider
+        # уже доказал MERGED exact headRefOid, а current local HEAD обязан ему
+        # совпадать. update-ref с old OID работает как compare-and-swap:
+        # удаление произойдёт только если ref всё ещё указывает на проверенный SHA.
+        delete_step = {
+            "operation": "delete-local-pr-branch",
+            "mode": "provider-verified-head",
+            "argv": ["git", "update-ref", "-d", f"refs/heads/{branch}", head_oid],
+        }
+    steps.append(delete_step)
 
     return _result(
         "pr-finish",
@@ -870,6 +888,8 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
         remote=remote,
         returnBranchAhead=local_ahead,
         returnBranchBehind=remote_ahead,
+        mergedHeadOid=head_oid,
+        gitAncestryMerged=ancestry.returncode == 0,
         worktree=worktree,
         stateFile=str(PR_STATE_PATH) if local_state is not None else None,
         deleteStateFileAfterSuccess=local_state is not None,

@@ -250,13 +250,15 @@ def main() -> int:
         run(finish_project, "git", "add", "finish.txt")
         run(finish_project, "git", "commit", "-qm", "feat: finish")
         run(finish_project, "git", "push", "-q", "-u", "origin", "feature/finish")
+        finish_head = run(finish_project, "git", "rev-parse", "HEAD")
 
         merger = base / "finish-merger"
         run(base, "git", "clone", "-q", str(finish_remote), str(merger))
         run(merger, "git", "config", "user.email", "merge@example.invalid")
         run(merger, "git", "config", "user.name", "Merge Test")
         run(merger, "git", "switch", "-c", "main", "--track", "origin/main")
-        run(merger, "git", "merge", "--no-ff", "origin/feature/finish", "-m", "merge PR")
+        run(merger, "git", "merge", "--squash", "origin/feature/finish")
+        run(merger, "git", "commit", "-qm", "squash PR")
         run(merger, "git", "push", "-q", "origin", "main")
 
         pr_state = {
@@ -277,6 +279,7 @@ def main() -> int:
             "state": "MERGED",
             "mergedAt": "2026-09-22T00:00:00Z",
             "headRefName": "feature/finish",
+            "headRefOid": finish_head,
             "baseRefName": "main",
             "url": "https://example.invalid/pr/42",
         }
@@ -291,6 +294,12 @@ def main() -> int:
         finish_gate = pr_finish_preflight(finish_project, pr_data=merged_pr)
         assert finish_gate["status"] == "PASS", finish_gate
         assert finish_gate["returnBranch"] == "main", finish_gate
+        assert finish_gate["gitAncestryMerged"] is False, finish_gate
+        assert finish_gate["mergedHeadOid"] == finish_head, finish_gate
+        assert finish_gate["mutationPlan"]["steps"][-1]["mode"] == "provider-verified-head", finish_gate
+        assert finish_gate["mutationPlan"]["steps"][-1]["argv"] == [
+            "git", "update-ref", "-d", "refs/heads/feature/finish", finish_head
+        ], finish_gate
         assert finish_gate["mutationPlan"]["forceDeleteForbidden"] is True
         assert finish_gate["mutationPlan"]["deleteRemoteBranch"] is False
         for step in finish_gate["mutationPlan"]["steps"]:
