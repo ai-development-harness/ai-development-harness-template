@@ -29,6 +29,8 @@ Per-STEP файлы запрещены.
 
 Каталог `.harness/local/` исключён из Git. Execution Status является operational state, а не product evidence.
 
+Все read-modify-write операции сериализуются advisory lock-файлом `.harness/local/execution/execution-status.lock`. На Unix используется `flock`, на Windows — `msvcrt.locking`; lock освобождается ОС при завершении процесса. Atomic `os.replace` сохраняет целостность JSON, а lock отдельно предотвращает lost update между параллельными sessions/subagents.
+
 ## Execution record
 
 Каждый явный запуск пользователя создаёт независимую execution record.

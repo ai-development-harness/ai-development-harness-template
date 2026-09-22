@@ -725,6 +725,7 @@ Semantic качество плана static validator не оценивает �
 - unresolved placeholder detection;
 - stable/content hashes;
 - durable report timestamp identity;
+- immutable durable report create через `O_CREAT|O_EXCL` без overwrite race;
 - atomic UTF-8 writes.
 
 Все более высокоуровневые validators должны использовать этот module вместо собственных несовместимых Markdown/YAML parsers.
@@ -886,6 +887,8 @@ Project templates принадлежат проекту после INIT, поэ�
 - fix/review cycle counter.
 
 `load_status()` и `save_status()` всегда вызывают schema validation, поэтому повреждённый local state не трактуется как пустой.
+
+Public execution-state mutations держат advisory lock на всю transaction `load → mutate → save`. Self-test запускает параллельные процессы и проверяет отсутствие lost update/duplicate running record.
 
 ---
 
