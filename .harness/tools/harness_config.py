@@ -37,7 +37,12 @@ class ConfigError(ValueError):
 # работал сразу после checkout.
 # ---------------------------------------------------------------------------
 def _strip_comment(raw: str) -> str:
-    """Удалить YAML comment вне одинарных/двойных кавычек."""
+    """Удалить YAML comment вне кавычек только после separation whitespace.
+
+    В plain scalar символ ``#`` является частью значения, если перед ним нет
+    whitespace. Поэтому ``C#`` и ``docs/architecture.md#auth`` должны
+    сохраняться, а ``value # comment`` — обрезаться до ``value``.
+    """
     quote: str | None = None
     escaped = False
     for index, char in enumerate(raw):
@@ -53,7 +58,11 @@ def _strip_comment(raw: str) -> str:
             elif quote == char:
                 quote = None
             continue
-        if char == "#" and quote is None:
+        if (
+            char == "#"
+            and quote is None
+            and (index == 0 or raw[index - 1].isspace())
+        ):
             return raw[:index].rstrip()
     return raw.rstrip()
 
