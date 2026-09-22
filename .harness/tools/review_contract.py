@@ -495,7 +495,8 @@ def repository_revision(root: Path) -> dict[str, str | None]:
             digest.update(b"OTHER\0")
         else:
             digest.update(b"DELETED\0")
-        digest.update(b"\0")    return {"git_head": git_head, "worktree_hash": "sha256:" + digest.hexdigest()}
+        digest.update(b"\0")
+    return {"git_head": git_head, "worktree_hash": "sha256:" + digest.hexdigest()}
 
 
 def _parse_findings(document: dict[str, Any]) -> list[dict[str, str]]:
