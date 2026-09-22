@@ -155,6 +155,15 @@ jobs:
         # Пример: custom repository.gitPolicy path реально загружается config layer.
         run: python3 .harness/tools/harness-config-self-test.py
 
+      # Проверить, что always-on Harness instructions не растут незаметно.
+      # Пример: project-generated blocks не входят в core budget, а рост AGENTS bootstrap блокируется.
+      - name: Validate always-on context budget
+        # Public gate проверяет реальный checkout; self-test покрывает marker/missing-file/overflow regressions.
+        # Пример: Claude budget = controlled AGENTS.md + CLAUDE.md adapter.
+        run: |
+          python3 .harness/tools/context-budget.py --json | grep -q '"status": "PASS"'
+          python3 .harness/tools/context-budget-self-test.py
+
       # Проверить schema contracts durable audit/release/skill-search reports.
       # Пример: candidate_count должен точно соответствовать shortlist #1..#N.
       - name: Validate durable report contracts
