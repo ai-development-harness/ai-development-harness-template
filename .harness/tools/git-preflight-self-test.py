@@ -240,6 +240,7 @@ def main() -> int:
         write(finish_project, ".harness/git-policy.toml", policy())
         write(finish_project, ".harness/tools/validate.py", validator())
         write(finish_project, ".github/pull_request_template.md", "# PR\n")
+        write(finish_project, ".gitignore", ".harness/local/\n")
         write(finish_project, "README.md", "finish base\n")
         run(finish_project, "git", "add", ".")
         run(finish_project, "git", "commit", "-qm", "initial")

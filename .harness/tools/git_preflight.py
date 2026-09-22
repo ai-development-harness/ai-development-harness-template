@@ -785,6 +785,11 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
         raise GitPreflightError("PR_QUERY_INVALID", "PR base branch is missing")
 
     if local_state is not None:
+        if local_state["pr"] != number:
+            raise GitPreflightError(
+                "PR_STATE_NUMBER_MISMATCH",
+                f"local PR state number {local_state['pr']} differs from provider PR #{number}",
+            )
         if local_state["baseBranch"] != base_branch:
             raise GitPreflightError(
                 "PR_STATE_BASE_MISMATCH",
