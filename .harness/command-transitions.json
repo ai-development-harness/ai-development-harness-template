@@ -277,8 +277,8 @@
           "canonical": "HARNESS RESUME",
           "chainAllowed": false,
           "target": "none",
-          "input": "optional",
-          "summary": "Продолжить единственное прерванное выполнение или выполнение с указанным идентификатором.",
+          "input": "none",
+          "summary": "Продолжить единственное выполнение, которое можно безопасно возобновить.",
           "documentation": ".harness/docs/COMMANDS.md#command-harness-resume"
         },
         "DOCTOR": {

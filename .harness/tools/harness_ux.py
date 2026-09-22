@@ -145,34 +145,24 @@ def harness_status(root: Path) -> dict[str, Any]:
     }
 
 
-def harness_resume(root: Path, execution_id: str | None = None) -> dict[str, Any]:
-    # Resolver может применить narrow durable recovery proofs; это часть resume,
-    # а не read-only status query.
+def harness_resume(root: Path) -> dict[str, Any]:
+    # Resolver может применить узкие durable recovery proofs; это часть
+    # продолжения, а не read-only запроса состояния.
     items = unresolved_executions(root)
-    if execution_id:
-        selected = next((item for item in items if item.get("executionId") == execution_id), None)
-        if selected is None:
-            return {
-                "status": "BLOCKED",
-                "reasonCode": "EXECUTION_NOT_FOUND",
-                "executionId": execution_id,
-                "executions": items,
-            }
-    else:
-        running = [item for item in items if item.get("status") in {"RESUME", "NEXT"}]
-        if len(running) == 0:
-            return {
-                "status": "BLOCKED",
-                "reasonCode": "NO_RESUMABLE_EXECUTION",
-                "executions": items,
-            }
-        if len(running) > 1:
-            return {
-                "status": "BLOCKED",
-                "reasonCode": "MULTIPLE_RESUMABLE_EXECUTIONS",
-                "executions": running,
-            }
-        selected = running[0]
+    resumable = [item for item in items if item.get("status") in {"RESUME", "NEXT"}]
+    if len(resumable) == 0:
+        return {
+            "status": "BLOCKED",
+            "reasonCode": "NO_RESUMABLE_EXECUTION",
+            "executions": items,
+        }
+    if len(resumable) > 1:
+        return {
+            "status": "BLOCKED",
+            "reasonCode": "MULTIPLE_RESUMABLE_EXECUTIONS",
+            "executions": resumable,
+        }
+    selected = resumable[0]
 
     if selected.get("status") == "BLOCKED" or not selected.get("command"):
         return {

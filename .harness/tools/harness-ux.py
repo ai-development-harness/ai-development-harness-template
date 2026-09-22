@@ -23,7 +23,6 @@ def main() -> int:
         "action",
         choices=["status", "resume", "doctor", "config", "step-list", "step-show"],
     )
-    parser.add_argument("--execution")
     parser.add_argument("--step")
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args()
@@ -33,7 +32,7 @@ def main() -> int:
         if args.action == "status":
             value = harness_status(root)
         elif args.action == "resume":
-            value = harness_resume(root, args.execution)
+            value = harness_resume(root)
         elif args.action == "doctor":
             value = harness_doctor(root)
         elif args.action == "config":

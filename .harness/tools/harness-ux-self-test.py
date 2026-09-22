@@ -126,10 +126,6 @@ plan:
         assert ambiguous["status"] == "BLOCKED", ambiguous
         assert ambiguous["reasonCode"] == "MULTIPLE_RESUMABLE_EXECUTIONS", ambiguous
 
-        explicit = harness_resume(root, first["executionId"])
-        assert explicit["status"] == "PASS", explicit
-        assert explicit["executionId"] == first["executionId"], explicit
-
     print("HARNESS UX SELF-TEST: PASS")
     return 0
 
