@@ -35,6 +35,47 @@ python3 .harness/tools/harness-help.py
 
 Отдельный вручную поддерживаемый список команд для HELP не допускается: CTS registry остаётся единым machine-readable source of truth.
 
+<a id="command-harness-status"></a>
+## `HARNESS STATUS`
+
+Read-only operational snapshot: Harness release/generation, project initialization, Git branch/worktree, unresolved executions и GitHub PR capability.
+
+```bash
+python3 .harness/tools/harness-ux.py status --json
+```
+
+<a id="command-harness-resume"></a>
+## `HARNESS RESUME` / `HARNESS RESUME: <executionId>`
+
+Продолжает существующий interrupted execution. Без ID выбирает единственный resumable execution; при нескольких возвращает `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
+
+```bash
+python3 .harness/tools/harness-ux.py resume --json
+python3 .harness/tools/harness-ux.py resume --execution exec-... --json
+```
+
+Команда не создаёт новый root execution: она возвращает exact существующие `executionId`, `rootCommand` и `command`.
+
+<a id="command-harness-doctor"></a>
+## `HARNESS DOCTOR`
+
+Deterministic диагностика required core dependencies, repository/protocol health и optional capabilities.
+
+```bash
+python3 .harness/tools/harness-ux.py doctor --json
+```
+
+Codex/Claude и `gh` являются capability-specific: их отсутствие само по себе не делает общий Doctor `BLOCKED`.
+
+<a id="command-harness-config"></a>
+## `HARNESS CONFIG`
+
+Read-only effective manifest/Git/update configuration с указанием source files.
+
+```bash
+python3 .harness/tools/harness-ux.py config --json
+```
+
 <a id="command-project-init"></a>
 ## `PROJECT INIT`
 
@@ -57,6 +98,24 @@ python3 .harness/tools/harness-help.py
 - возвращает `STEP PLAN STEP-NNN`.
 
 Production code не меняется.
+
+<a id="command-step-list"></a>
+## `STEP LIST`
+
+Read-only список canonical STEP: ID, title, lifecycle status, priority, type, phase, plan status и path.
+
+```bash
+python3 .harness/tools/harness-ux.py step-list --json
+```
+
+<a id="command-step-show"></a>
+## `STEP SHOW STEP-NNN`
+
+Read-only snapshot одного STEP. Общий CTS принимает также shorthand `NNN`. Показывает metadata, plan, dependencies/statuses, REQ/ADR/risk flags, latest valid review и связанные unresolved executions.
+
+```bash
+python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
+```
 
 <a id="command-skill-find"></a>
 ## `SKILL FIND: <описание>`

@@ -160,6 +160,15 @@ python3 .harness/tools/harness-help.py
 
 Output строится из command metadata в `.harness/command-transitions.json`; command-specific project/Git state и LLM reasoning для справки не требуются.
 
+
+### 0.4. Operational UX commands
+
+`HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST` и `STEP SHOW STEP-NNN` выполняются deterministic через `.harness/tools/harness-ux.py` и не мутируют product/project artifacts.
+
+`HARNESS DOCTOR` разделяет required core dependencies и optional capabilities; отсутствие неактивного Claude/Codex runtime или GitHub CLI не является global blocker.
+
+`HARNESS RESUME[: <executionId>]` — control command: после CTS PASS она не регистрируется как новый root execution, а выбирает существующий running record и возвращает exact current/next command.
+
 ## 1. Сущности
 
 ### Requirement (`REQ-NNN`)
