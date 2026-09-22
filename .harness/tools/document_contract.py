@@ -214,15 +214,72 @@ def split_frontmatter(text: str) -> tuple[dict[str, Any] | None, str]:
     return data, normalized[end + 5 :]
 
 
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+
+
+def markdown_headings(body: str) -> list[tuple[int, int, str]]:
+    """Вернуть ATX headings вне fenced code blocks.
+
+    Harness использует headings как machine-readable boundaries. Regex по
+    отдельным строкам недостаточен: ``##`` внутри fenced example не является
+    структурой документа и не должен менять section/hash semantics.
+
+    Поддерживаются backtick/tilde fences длиной >= 3: closing fence использует
+    тот же символ и не короче opening fence. Незакрытый fence fail-safe
+    трактует весь оставшийся текст как code content и не создаёт ложные
+    machine-readable headings.
+    """
+    headings: list[tuple[int, int, str]] = []
+    fence_char: str | None = None
+    fence_length = 0
+
+    for index, line in enumerate(body.replace("\r\n", "\n").split("\n")):
+        if fence_char is not None:
+            closing = re.fullmatch(
+                rf" {{0,3}}{re.escape(fence_char)}{{{fence_length},}}[ \t]*",
+                line,
+            )
+            if closing:
+                fence_char = None
+                fence_length = 0
+            continue
+
+        fence = _FENCE_OPEN_RE.match(line)
+        if fence:
+            marker = fence.group(1)
+            suffix = fence.group(2)
+            # Backtick info string по CommonMark не может содержать backtick.
+            if marker[0] != "`" or "`" not in suffix:
+                fence_char = marker[0]
+                fence_length = len(marker)
+                continue
+
+        heading = _HEADING_RE.match(line)
+        if heading:
+            headings.append(
+                (index, len(heading.group(1)), heading.group(2).strip())
+            )
+
+    return headings
+
+
 def parse_sections(body: str) -> tuple[dict[str, str], list[str]]:
-    """Разобрать ## sections и отдельно вернуть duplicate names."""
+    """Разобрать реальные ``##`` sections и отдельно вернуть duplicate names."""
+    lines = body.replace("\r\n", "\n").split("\n")
+    section_headings = {
+        index: title
+        for index, level, title in markdown_headings(body)
+        if level == 2
+    }
     sections: dict[str, list[str]] = {}
     duplicates: list[str] = []
     current: str | None = None
-    for line in body.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
-        if match:
-            current = match.group(1).strip()
+
+    for index, line in enumerate(lines):
+        heading = section_headings.get(index)
+        if heading is not None:
+            current = heading
             if current in sections:
                 duplicates.append(current)
             else:
@@ -230,11 +287,11 @@ def parse_sections(body: str) -> tuple[dict[str, str], list[str]]:
             continue
         if current is not None:
             sections[current].append(line)
+
     return (
-        {name: normalize_text("\n".join(lines)) for name, lines in sections.items()},
+        {name: normalize_text("\n".join(value)) for name, value in sections.items()},
         duplicates,
     )
-
 
 def first_h1(body: str) -> str:
     return next((line.strip() for line in body.splitlines() if line.strip()), "")
@@ -297,6 +354,12 @@ def has_unresolved_placeholder(value: str) -> bool:
 
 
 def _yaml_scalar(value: Any) -> str:
+    """Сериализовать scalar так, чтобы restricted parser восстановил его тип.
+
+    Plain form разрешается только если тот же canonical parser читает значение
+    обратно как exact ``str``. Это защищает строки ``"1"``, ``"001"``,
+    ``"true"`` и ``"null"`` от тихого превращения в int/bool/None.
+    """
     if value is None:
         return "null"
     if value is True:
@@ -307,15 +370,18 @@ def _yaml_scalar(value: Any) -> str:
         return str(value)
     if not isinstance(value, str):
         raise DocumentError(f"unsupported frontmatter scalar type: {type(value).__name__}")
-    if value == "":
-        return '""'
-    if re.fullmatch(r"[A-Za-z0-9_./:@+\-]+", value) and value.lower() not in {
-        "null", "true", "false"
-    }:
-        return value
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
 
+    if re.fullmatch(r"[A-Za-z0-9_./:@+#\-]+", value):
+        try:
+            parsed = parse_yaml_subset(f"value: {value}\n").get("value")
+        except ConfigError:
+            parsed = None
+        if isinstance(parsed, str) and parsed == value:
+            return value
+
+    # JSON double-quoted string входит в поддерживаемый subset parser-а и
+    # корректно экранирует quote/backslash/control characters.
+    return json.dumps(value, ensure_ascii=False)
 
 def dump_yaml_subset(value: dict[str, Any], *, indent: int = 0) -> list[str]:
     lines: list[str] = []
