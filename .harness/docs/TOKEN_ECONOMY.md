@@ -48,14 +48,16 @@ Token count зависит от модели и tokenizer. Core CI не долж
 
 Это не попытка точно предсказать счёт за API. Метрика нужна для другого invariant: always-on Harness context не должен незаметно расти.
 
-Baseline v0.7.0:
+Baseline после progressive-disclosure refactor:
 
-| Runtime | Harness-controlled chars |
-| --- | ---: |
-| Codex | 19 275 |
-| Claude Code | 20 080 |
+| Runtime | Harness-controlled chars | До refactor | Снижение |
+| --- | ---: | ---: | ---: |
+| Codex | 7 224 | 19 275 | 62,5% |
+| Claude Code | 8 029 | 20 080 | 60,0% |
 
-Повышение этих лимитов считается архитектурным изменением и должно быть явно видно в diff/review.
+`AGENTS.md` после refactor является bootstrap/router. Command playbooks остаются pull-based в skills/docs и не должны возвращаться в always-on файл.
+
+Повышение этих лимитов считается архитектурным изменением и должно быть явно видно в diff/review. Снижение лимита после очередной оптимизации приветствуется и фиксирует достигнутую экономию как новый ceiling.
 
 ## Python source и комментарии
 

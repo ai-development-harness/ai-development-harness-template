@@ -14,7 +14,7 @@ PROJECT-CONTEXT и SKILL-ROUTING намеренно выводятся отде�
 динамический контекст. Tool показывает их размер, но baseline core Harness они
 не могут скрыто увеличивать или уменьшать.
 
-Budget constants зафиксированы по v0.7.0. Их изменение является явным
+Budget constants первоначально введены в v0.7.0 и после bootstrap refactor зафиксированы на новом минимальном baseline. Их изменение является явным
 архитектурным решением и должно быть видно в diff/review.
 """
 from __future__ import annotations
@@ -32,11 +32,11 @@ PROJECT_MARKERS = ("PROJECT-CONTEXT", "SKILL-ROUTING")
 DEFAULT_BUDGETS: dict[str, dict[str, Any]] = {
     "codex": {
         "files": ("AGENTS.md",),
-        "max_chars": 19275,
+        "max_chars": 7224,
     },
     "claude": {
         "files": ("AGENTS.md", "CLAUDE.md"),
-        "max_chars": 20080,
+        "max_chars": 8029,
     },
 }
 
