@@ -146,12 +146,12 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 <a id="command-step-plan"></a>
 ## `STEP PLAN STEP-NNN`
 
-Сначала валидирует task contract, type-specific dependency proofs, linked REQ/ADR, explicit `architecture_refs` и relevant OQ. После draft Implementation plan обязательный independent planning-review сохраняет exact `context_basis` и отдельный `plan_content_hash`. Только matching PASS позволяет `stamp-plan` выставить `plan.status=ready`. Изменение plan body или relevant upstream input делает plan stale без повторного reasoning.
+Сначала валидирует semantic task/dependency contracts, linked REQ/ADR, explicit `architecture_refs` и relevant OQ. Завершение dependencies для PLAN не требуется. После draft Implementation plan обязательный independent planning-review сохраняет exact schema-v4 `context_basis` и отдельный `plan_content_hash`. Только matching PASS позволяет `stamp-plan` выставить `plan.status=ready`. Reverse traceability/priority/phase/completion state dependency не stale-ят plan; изменение semantic input — stale-ит.
 
 <a id="command-step-implement"></a>
 ## `STEP IMPLEMENT STEP-NNN`
 
-Реализует только current Ready plan в пределах task contract. При первой product mutation ставит canonical `status: in_progress`, добавляет/обновляет tests и запускает verification. `status: completed` недопустим до schema-valid independent review PASS и type-specific completion proof.
+Реализует только current Ready plan в пределах task contract. До dispatch execution layer детерминированно применяет `step-implement-ready`: проверяет freshness plan/review и type-specific completion proofs direct dependencies. При первой product mutation ставит canonical `status: in_progress`, добавляет/обновляет tests и запускает verification. `status: completed` недопустим до schema-valid independent review PASS и type-specific completion proof.
 
 <a id="command-step-review"></a>
 ## `STEP REVIEW STEP-NNN`
