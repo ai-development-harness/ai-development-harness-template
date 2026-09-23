@@ -31,7 +31,7 @@ python3 .harness/tools/git-preflight.py pr --json
 python3 .harness/tools/git-preflight.py sync --json
 ```
 
-`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Mechanical mutations исполняет `.harness/tools/git-action.py`. `GIT SYNC` и `GIT PR FINISH` dispatcher вызывает напрямую без LLM; `GIT COMMIT`, `GIT PUSH` и `GIT PR` используют модель только там, где остаётся semantic scope/message/post-push/PR-prose решение. Configured `git fetch` разрешён как operational refresh remote refs.
+`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Mechanical mutations исполняет `.harness/tools/git-action.py`. `GIT SYNC` и `GIT PR FINISH` dispatcher вызывает напрямую без LLM. `GIT COMMIT` и `GIT PR` сохраняют semantic message/prose boundary. Standalone `GIT PUSH` сохраняет semantic logical-scope check, но PUSH непосредственно после успешного canonical COMMIT в той же explicit chain выполняется deterministic fast-path без второго model turn. Configured `git fetch` разрешён как operational refresh remote refs.
 
 LLM/agent по-прежнему отвечает за semantic decisions — например, является ли diff одним logical change и какой commit type соответствует фактическому изменению. Но protected branch, remote divergence, publish state, force prohibition, clean-worktree requirement, PR base/tool и ff-only safety больше не интерпретируются вручную.
 
@@ -104,7 +104,7 @@ when_on_protected = "auto-create" # auto-create | stay | block
 after_push = "create-if-missing"
 ```
 
-Поэтому `GIT PUSH` остаётся semantic boundary только для follow-up: `git-action.py push` возвращает factual `afterPush = never|ask|create-if-missing`, и модель использует именно это поле вместо повторного чтения Git policy. Сама push mutation полностью deterministic. Чтобы только отправлять ветку:
+Standalone `GIT PUSH` остаётся semantic boundary для проверки logical scope и follow-up: `git-action.py push` возвращает factual `afterPush = never|ask|create-if-missing`, и модель использует именно это поле вместо повторного чтения Git policy. Если PUSH является следующим segment после успешного `GIT COMMIT` в той же chain, logical scope уже проверен COMMIT: dispatcher вызывает `git-action.py push` напрямую и не тратит второй model turn. Сама push mutation в обоих случаях полностью deterministic. Чтобы только отправлять ветку:
 
 ```toml
 [pull_request]
