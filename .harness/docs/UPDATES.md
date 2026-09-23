@@ -275,10 +275,55 @@ Target tag не добавляется в graph заранее: release metadata
 - `manifest.harness.release`;
 - configured lock `release`;
 - lock `source.ref = v<release>`;
-- optional legacy-compatible `source.commit`, если он уже записан;
+- **без** `lock.source.commit` внутри release snapshot;
 - graph `latest`
 
-должны быть согласованы для опубликованного release. Deterministic updater при каждой операции разрешает release именно через `refs/tags/<tag>`; если lock уже содержит `source.commit`, изменение tag target даёт `SOURCE_TAG_MOVED`.
+должны быть согласованы для опубликованного release.
+
+Release snapshot не может корректно pin-ить собственный commit OID: SHA самого release commit появляется только после создания commit/merge/tag. Поэтому `source.commit` в template/release lock отсутствует. После установки или обновления конкретного проекта deterministic updater/adoption разрешает реально существующий immutable tag и записывает его точный OID уже в **project lock**. С этого момента изменение tag target даёт `SOURCE_TAG_MOVED`.
+
+### Recovery для ошибочных v0.6.0 / v0.7.0 snapshots
+
+Опубликованные `v0.6.0` и `v0.7.0` содержат ошибочный stale pin:
+
+```text
+e366c48777150a9e9d2f6d670d8976b8a8df2d5c
+```
+
+Он относится к подготовке `v0.5.3`, а не к этим тегам. Это затрагивает проекты, созданные непосредственно из release snapshot, а не проекты, которые дошли до версии через updater (updater записывает корректный OID).
+
+Для точечного восстановления **только** известных ошибочных пар замени stale pin на опубликованный tag OID:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path(".harness/harness.lock.json")
+lock = json.loads(path.read_text(encoding="utf-8"))
+
+known = {
+    ("v0.6.0", "e366c48777150a9e9d2f6d670d8976b8a8df2d5c"):
+        "b9a6bf80ae766236475c57a54f725c570e119ab7",
+    ("v0.7.0", "e366c48777150a9e9d2f6d670d8976b8a8df2d5c"):
+        "fe1df7eafe0c482f609d56b31ea9fe2c1c019670",
+}
+
+source = lock.get("source", {})
+pair = (source.get("ref"), source.get("commit"))
+target = known.get(pair)
+if target is None:
+    raise SystemExit(f"lock does not match a known recoverable release pin: {pair!r}")
+
+source["commit"] = target
+path.write_text(json.dumps(lock, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(f"repaired {pair[0]} lock pin -> {target}")
+PY
+```
+
+После этого обязательно выполни `HARNESS UPDATE CHECK`. Engine заново разрешит tag и проверит exact current-release state; если локальный Harness расходится с immutable release, update останется заблокированным.
+
+Нельзя применять этот recovery к любому произвольному `SOURCE_TAG_MOVED`: вне двух известных пар mismatch остаётся security blocker.
 
 `harness.version` — поколение protocol/schema family, а не номер каждой поставки.
 
