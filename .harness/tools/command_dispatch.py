@@ -30,6 +30,7 @@ from execution_status import (
     begin_command,
     block_execution,
     complete_command,
+    load_status,
     resolve_root,
     start_execution,
 )
@@ -43,6 +44,7 @@ from harness_ux import (
     step_show,
 )
 from step_context import build_step_context
+from verification import run_step_verification
 
 
 SCHEMA_VERSION = 1
@@ -97,6 +99,119 @@ def _execution_identity(execution: dict[str, Any]) -> dict[str, Any]:
         "executionId": execution.get("executionId"),
         "rootCommand": execution.get("rootCommand"),
     }
+
+
+def _active_execution(root: Path, root_command: str) -> dict[str, Any] | None:
+    """Найти active execution без изменения attempt/resolver state."""
+    status = load_status(root)
+    for execution in reversed(status.get("executions", [])):
+        if (
+            execution.get("rootCommand") == root_command
+            and execution.get("status") == "running"
+        ):
+            return execution
+    return None
+
+
+def _verification_before_completion(
+    root: Path,
+    root_command: str,
+    command: str,
+    result: str,
+    details: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Enforce Verification before IMPLEMENT/FIX SUCCESS.
+
+    Первый элемент tuple — early dispatcher response. None означает, что
+    completion разрешён. Второй — compact details для durable execution state.
+    """
+    if result != "SUCCESS":
+        return None, details
+
+    route = route_command(root, command)
+    if route.get("domain") != "STEP" or route.get("operation") not in {
+        "IMPLEMENT",
+        "FIX",
+    }:
+        return None, details
+
+    step_id = route.get("target")
+    if not isinstance(step_id, str) or not step_id:
+        return (
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                "rootCommand": root_command,
+                "command": command,
+                "reasonCode": "VERIFICATION_STEP_TARGET_MISSING",
+            },
+            None,
+        )
+
+    manual_results = None
+    if isinstance(details, dict):
+        value = details.get("manualVerification")
+        if value is not None:
+            manual_results = value
+
+    verification = run_step_verification(
+        root,
+        step_id,
+        manual_results=manual_results,
+        write_evidence=True,
+    )
+    verification_status = verification.get("status")
+
+    if verification_status == "PASS":
+        compact = {
+            key: value
+            for key, value in (details or {}).items()
+            if key != "manualVerification"
+        }
+        compact["verification"] = {
+            "status": "PASS",
+            "runAt": verification.get("runAt"),
+            "revision": verification.get("revision"),
+        }
+        return None, compact
+
+    if verification_status in {"FAIL", "MANUAL_REQUIRED"}:
+        execution = _active_execution(root, root_command)
+        if execution is None:
+            return (
+                {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "status": "BLOCKED",
+                    "rootCommand": root_command,
+                    "command": command,
+                    "reasonCode": "ACTIVE_EXECUTION_NOT_FOUND",
+                    "verification": verification,
+                },
+                None,
+            )
+        handoff = _semantic_handoff(root, execution, command)
+        handoff["reasonCode"] = "VERIFICATION_" + str(verification_status)
+        handoff["verification"] = verification
+        return handoff, None
+
+    try:
+        block_execution(root, root_command, command=command)
+    except (OSError, ValueError):
+        pass
+    return (
+        {
+            "schemaVersion": SCHEMA_VERSION,
+            "status": "BLOCKED",
+            "rootCommand": root_command,
+            "command": command,
+            "reasonCode": verification.get(
+                "reasonCode",
+                "VERIFICATION_BLOCKED",
+            ),
+            "verification": verification,
+        },
+        None,
+    )
 
 
 def _semantic_handoff(
@@ -315,12 +430,22 @@ def complete_dispatch(
 ) -> dict[str, Any]:
     """Зафиксировать semantic result и сразу dispatch-нуть continuation."""
     try:
+        early, completion_details = _verification_before_completion(
+            root,
+            root_command,
+            command,
+            result,
+            details,
+        )
+        if early is not None:
+            return early
+
         execution = complete_command(
             root,
             root_command,
             command,
             result,
-            details=details,
+            details=completion_details,
         )
         resolved = resolve_root(root, root_command)
     except (OSError, ValueError) as exc:
