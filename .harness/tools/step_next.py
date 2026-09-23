@@ -302,6 +302,8 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
     # Fresh candidates are still useful as alternatives, but cannot beat
     # resumable work because sourceRank is lower priority.
     for step_id in order:
+        if step_id in seen_execution_steps:
+            continue
         task = tasks[step_id]
         try:
             command, reasons = _fresh_command(root, step_id, task)
