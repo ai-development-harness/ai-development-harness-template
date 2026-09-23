@@ -15,9 +15,10 @@ Execution Status ведёт global wrapper.
 - Используй `implementer` или `mechanic` по сложности.
 - Соблюдай mutation policy/out-of-scope и Accepted ADR.
 - Добавь необходимые tests.
-- Выполни реальные verification targets.
-- Запиши Evidence: command, exit code и observed facts. Не реконструируй terminal output.
+- Verification commands вручную не запускай только ради completion: при result `SUCCESS` dispatcher сам запускает canonical Verification и пишет generated Evidence.
+- `VERIFICATION_FAIL` возвращает factual command failure — исправь его и повтори completion. `VERIFICATION_MANUAL_REQUIRED` означает выполнить только перечисленные manual checks и передать exact `manualVerification` observations через dispatcher details.
+- `VERIFICATION_BLOCKED` не обходи reasoning-ом: invalid/mutating verification требует исправления contract/workflow.
 - Не ставь `status: completed` до independent schema-valid review PASS и type-specific completion proof.
-- После полного scope + verification + Evidence command завершается result `SUCCESS`.
+- После полного scope предложи result `SUCCESS`; фактический verification gate принадлежит dispatcher.
 
 Single IMPLEMENT после SUCCESS останавливается. Только explicit chain или `STEP RUN` может продолжить к REVIEW.
