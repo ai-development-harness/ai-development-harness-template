@@ -433,8 +433,8 @@
           "summary": "Показать результаты предварительной проверки Git и текущее состояние репозитория.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-check",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "git-workflow"
+            "kind": "deterministic",
+            "handler": "git-check"
           }
         },
         "COMMIT": {
