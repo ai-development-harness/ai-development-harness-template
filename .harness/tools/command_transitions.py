@@ -47,6 +47,9 @@ KNOWN_DISPATCH_HANDLERS = {
     "step-list",
     "step-show",
     "step-next",
+    "git-push",
+    "git-pr-finish",
+    "git-sync",
 }
 CONTEXT_PHASES = {"plan", "implement", "review"}
 
