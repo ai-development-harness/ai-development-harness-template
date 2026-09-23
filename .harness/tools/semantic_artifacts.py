@@ -27,6 +27,8 @@ from planning_contract import (
     plan_content_hash,
     planning_context_basis,
     read_task,
+    step_completion_proof,
+    task_path,
     validate_planning_review_report,
 )
 from review_contract import (
@@ -35,6 +37,7 @@ from review_contract import (
     repository_revision,
     validate_review_report,
 )
+from projection_contract import ProjectionDerivationError, write_projections
 from review_gates import required_reviewers
 from verification import render_verification_entries, validate_verification_entries
 
@@ -454,6 +457,76 @@ def _render_findings(findings: list[dict[str, str]]) -> str:
     return "\n".join(chunks).strip()
 
 
+def _complete_step_after_pass(root: Path, step_id: str) -> dict[str, Any]:
+    """Close STEP only when the full type-specific completion proof is real.
+
+    The immutable PASS review is created first for the exact implementation
+    revision. Lifecycle metadata is then changed mechanically. If proof fails,
+    the STEP bytes are restored; the PASS report remains durable evidence, but
+    execution cannot claim completion.
+    """
+    path = task_path(root, step_id)
+    original = path.read_text(encoding="utf-8")
+    task = read_task(root, step_id)
+    previous_status = task["frontmatter"].get("status")
+    if previous_status == "completed":
+        proof = step_completion_proof(root, step_id)
+        return {
+            "completed": bool(proof["complete"]),
+            "previousStatus": previous_status,
+            "proof": proof,
+            "projections": [],
+        }
+
+    meta = deepcopy(task["frontmatter"])
+    meta["status"] = "completed"
+    atomic_write_text(path, render_document(meta, task["body"]))
+
+    try:
+        proof = step_completion_proof(root, step_id)
+    except (OSError, ValueError) as exc:
+        atomic_write_text(path, original)
+        return {
+            "completed": False,
+            "previousStatus": previous_status,
+            "reasonCode": "STEP_COMPLETION_PROOF_ERROR",
+            "message": str(exc),
+        }
+
+    if not proof["complete"]:
+        atomic_write_text(path, original)
+        return {
+            "completed": False,
+            "previousStatus": previous_status,
+            "reasonCode": "STEP_COMPLETION_PROOF_INCOMPLETE",
+            "proof": proof,
+        }
+
+    try:
+        projections = write_projections(root)
+    except (ProjectionDerivationError, OSError, ValueError) as exc:
+        atomic_write_text(path, original)
+        # Best-effort restore of projections to the restored canonical state.
+        try:
+            write_projections(root)
+        except (ProjectionDerivationError, OSError, ValueError):
+            pass
+        return {
+            "completed": False,
+            "previousStatus": previous_status,
+            "reasonCode": "STEP_COMPLETION_PROJECTION_FAILED",
+            "message": str(exc),
+            "proof": proof,
+        }
+
+    return {
+        "completed": True,
+        "previousStatus": previous_status,
+        "proof": proof,
+        "projections": projections,
+    }
+
+
 def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     """Create one validated immutable implementation review for exact revision."""
     data = _step_review_payload(payload)
@@ -515,7 +588,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         raise SemanticArtifactError(
             "generated STEP review failed canonical validation: " + "; ".join(errors)
         )
-    return {
+    result = {
         "schemaVersion": 1,
         "status": data["verdict"].upper(),
         "completionResult": data["verdict"].upper(),
@@ -528,6 +601,16 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "required": gate["required"],
         },
     }
+    if data["verdict"] == "pass":
+        completion = _complete_step_after_pass(root, step_id)
+        result["stepCompletion"] = completion
+        if not completion.get("completed"):
+            result["completionResult"] = "BLOCKED"
+            result["reasonCode"] = completion.get(
+                "reasonCode",
+                "STEP_COMPLETION_PROOF_INCOMPLETE",
+            )
+    return result
 
 
 __all__ = [
