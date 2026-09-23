@@ -339,46 +339,56 @@ def run_step_verification(
         }
 
     commands: list[dict[str, Any]] = []
-    for entry in entries:
-        if entry["kind"] != "command":
-            continue
-        before = repository_revision(root)
-        if not _revision_equal(before, revision):
-            return {
-                "schemaVersion": 1,
-                "status": "BLOCKED",
-                "stepId": step_id,
-                "reasonCode": "VERIFICATION_BASELINE_CHANGED",
-                "commands": commands,
-            }
+    try:
+        for entry in entries:
+            if entry["kind"] != "command":
+                continue
+            before = repository_revision(root)
+            if not _revision_equal(before, revision):
+                return {
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "stepId": step_id,
+                    "reasonCode": "VERIFICATION_BASELINE_CHANGED",
+                    "commands": commands,
+                }
 
-        item = _run_command(
-            root,
-            entry["value"],
-            timeout_seconds=timeout,
-        )
-        commands.append(item)
-        if item["status"] == "BLOCKED":
-            return {
-                "schemaVersion": 1,
-                "status": "BLOCKED",
-                "stepId": step_id,
-                "reasonCode": item.get("reasonCode"),
-                "commands": commands,
-                "message": item.get("message"),
-            }
+            item = _run_command(
+                root,
+                entry["value"],
+                timeout_seconds=timeout,
+            )
+            commands.append(item)
+            if item["status"] == "BLOCKED":
+                return {
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "stepId": step_id,
+                    "reasonCode": item.get("reasonCode"),
+                    "commands": commands,
+                    "message": item.get("message"),
+                }
 
-        after = repository_revision(root)
-        if not _revision_equal(revision, after):
-            return {
-                "schemaVersion": 1,
-                "status": "BLOCKED",
-                "stepId": step_id,
-                "reasonCode": "VERIFICATION_MUTATED_REPOSITORY",
-                "commands": commands,
-                "revisionBefore": revision,
-                "revisionAfter": after,
-            }
+            after = repository_revision(root)
+            if not _revision_equal(revision, after):
+                return {
+                    "schemaVersion": 1,
+                    "status": "BLOCKED",
+                    "stepId": step_id,
+                    "reasonCode": "VERIFICATION_MUTATED_REPOSITORY",
+                    "commands": commands,
+                    "revisionBefore": revision,
+                    "revisionAfter": after,
+                }
+    except (OSError, ValueError) as exc:
+        return {
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "stepId": step_id,
+            "reasonCode": "VERIFICATION_RUNTIME_BLOCKED",
+            "commands": commands,
+            "message": str(exc),
+        }
 
     if any(item["status"] == "FAIL" for item in commands):
         status = "FAIL"
