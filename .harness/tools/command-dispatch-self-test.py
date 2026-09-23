@@ -326,6 +326,7 @@ def main() -> int:
         assert update_done["status"] == "DONE", update_done
         assert update_done["result"]["status"] == "SUCCESS", update_done
         assert update_done["result"]["engineStatus"] == "NO_UPDATE", update_done
+        assert update_done["result"]["nextAction"] is None, update_done
 
         # HARNESS RESUME не создаёт отдельную root execution и возвращает
         # semantic handoff существующей interrupted command.
