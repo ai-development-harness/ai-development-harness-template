@@ -178,7 +178,7 @@ def resolve_step_action(root: Path, step_id: str) -> dict[str, Any]:
     try:
         task = read_task(root, step_id)
         command, reasons = _fresh_command(root, step_id, task)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, KeyError, TypeError) as exc:
         return {
             "status": "BLOCKED",
             "reasonCode": "STEP_ACTION_STATE_INVALID",
