@@ -192,6 +192,7 @@ def main() -> int:
         assert "--force" not in push_gate["mutationPlan"]["argv"], push_gate
         push_action = execute_push(project)
         assert push_action["status"] == "SUCCESS", push_action
+        assert push_action["afterPush"] == "create-if-missing", push_action
 
         # PR gate requires exact published HEAD and configured base/tool/template.
         pr_gate = pr_preflight(project)
