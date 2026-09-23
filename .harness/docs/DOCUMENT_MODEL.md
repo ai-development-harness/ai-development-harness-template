@@ -161,6 +161,8 @@ SHA-256 нормализованного текста `Implementation plan`.
 
 Completion proof **не входит** в planning basis. Он проверяется deterministic непосредственно перед `STEP IMPLEMENT` через runtime precondition `step-implement-ready`. Поэтому dependent STEP можно спланировать заранее, но начать mutation до фактического завершения prerequisite нельзя.
 
+После implementation review PASS тот же proof используется для deterministic lifecycle close: writer временно переводит STEP в `completed`, проверяет полный type-specific proof и только при успехе сохраняет status и регенерирует projections. При недостаточном Evidence/ADR/proof status откатывается, а immutable PASS review сохраняется как честный semantic verdict без ложного completion.
+
 ## Implementation review
 
 STEP REVIEW создаёт immutable schema-v1 report `REVIEW-<UTC timestamp>.md`. Planning/INIT semantic reports аналогично используют `PLAN-REVIEW-<UTC timestamp>.md` и `INIT-REVIEW-<UTC timestamp>.md`; sortable canonical names определяют deterministic history order. Для schema-v1 durable reports timestamp в filename и `created_at` обязаны обозначать один и тот же whole-second UTC instant. Поэтому report нельзя сделать «новее» только будущим filename при старом metadata timestamp. Existing durable report path immutable и не может быть перезаписан вместо создания нового. STEP не хранит отдельный mutable `review.latest_*` cache: latest state выводится из immutable review history, чтобы запись результата review не меняла только что проверенную revision.
