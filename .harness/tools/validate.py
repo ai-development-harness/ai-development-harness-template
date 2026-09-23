@@ -852,7 +852,9 @@ def validate_repository_surface(
     policy: dict,
     files: list[str],
     max_tracked_file_size_mb: int,
+    mode: str,
     errors: list[str],
+    warnings: list[str],
 ) -> None:
     # --- Защита от возврата legacy syntax --------------------------------
     # Старые pre-namespace invocations запрещены в Harness-owned files.
@@ -1361,7 +1363,9 @@ def main() -> int:
         policy,
         files,
         max_tracked_file_size_mb,
+        args.mode,
         errors,
+        warnings,
     )
 
     # Финальный exit code — публичный contract CI/tooling:
