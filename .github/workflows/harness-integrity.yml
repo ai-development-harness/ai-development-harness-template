@@ -3,16 +3,20 @@
 name: Harness Integrity
 
 # GitHub Actions events, на которых выполняется baseline Harness validation.
-# Проверка запускается только для PR в main и после фактического изменения main.
+# Пример: pull_request в main и push в main после merge.
 on:
   # Проверять Pull Request, направленный в main.
-  # Каждый новый commit в уже открытом PR создаёт новую проверку pull_request.
+  # Пример: feature/token-budget → main запускает Harness Integrity.
   pull_request:
+    # Ограничить base branch основной веткой проекта.
+    # Пример: main.
     branches:
       - main
   # После merge PR GitHub создаёт push в main — это отдельная финальная проверка.
-  # Push в feature/release-ветки без открытого PR CI не запускает.
+  # Пример: squash merge PR → push нового commit в main → Harness Integrity.
   push:
+    # Не запускать CI для обычных push в feature/release-ветки.
+    # Пример: только main.
     branches:
       - main
 
@@ -24,12 +28,13 @@ permissions:
   contents: read
 
 # Не выполнять одновременно устаревшие проверки одного PR или устаревшие push-проверки main.
+# Пример: второй commit в PR отменяет только предыдущую проверку того же PR.
 concurrency:
   # PR группируются по номеру, push после merge — по ref основной ветки.
-  # Разные типы событий не конкурируют друг с другом.
+  # Пример: Harness Integrity-pull_request-74 и Harness Integrity-push-refs/heads/main.
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  # Новый commit в PR отменяет только предыдущую проверку этого же PR.
-  # Несколько быстрых merge в main аналогично оставляют только актуальную post-merge проверку.
+  # Новый запуск заменяет только устаревший запуск из той же concurrency-группы.
+  # Пример: true сохраняет только актуальную проверку одного PR.
   cancel-in-progress: true
 
 # Набор jobs workflow.
