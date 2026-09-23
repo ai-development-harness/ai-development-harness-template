@@ -28,6 +28,7 @@ from command_transitions import (
 )
 from execution_status import (
     begin_command,
+    block_execution,
     complete_command,
     resolve_root,
     start_execution,
@@ -226,7 +227,13 @@ def _dispatch_running(
         str(execution["rootCommand"]),
         route["command"],
         command_result,
-        details={"deterministicResult": result},
+        details={
+            "dispatch": {
+                "kind": "deterministic",
+                "handler": dispatch.get("handler"),
+                "status": status,
+            }
+        },
     )
     resolved = resolve_root(root, str(execution["rootCommand"]))
 
@@ -280,6 +287,14 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
     try:
         return _dispatch_running(root, execution, command)
     except (DispatchError, OSError, ValueError) as exc:
+        try:
+            block_execution(
+                root,
+                str(execution["rootCommand"]),
+                command=command,
+            )
+        except (OSError, ValueError):
+            pass
         return {
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
@@ -324,6 +339,10 @@ def complete_dispatch(
             execution = begin_command(root, root_command, next_command)
             return _dispatch_running(root, execution, next_command)
         except (DispatchError, OSError, ValueError) as exc:
+            try:
+                block_execution(root, root_command, command=next_command)
+            except (OSError, ValueError):
+                pass
             return {
                 "schemaVersion": SCHEMA_VERSION,
                 "status": "BLOCKED",
@@ -362,6 +381,10 @@ def resume_dispatch(
         execution = begin_command(root, root_command, command)
         return _dispatch_running(root, execution, command)
     except (DispatchError, OSError, ValueError) as exc:
+        try:
+            block_execution(root, root_command, command=command)
+        except (OSError, ValueError):
+            pass
         return {
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
