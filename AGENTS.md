@@ -81,7 +81,7 @@ Machine details остаются pull-based в `.harness/docs/COMMAND_SYNTAX.md`
 
 Для STEP target `NNN` parser нормализует в `STEP-NNN`. Chain `>` допустим только по explicit CTS edges; cross-domain chain запрещён. Не угадывай переходы.
 
-Read-only UX (`HARNESS STATUS/DOCTOR/CONFIG`, `STEP LIST/SHOW`) получает факты из `harness-ux.py`; не дополняй output предположениями.
+Read-only UX (`HARNESS STATUS/DOCTOR/CONFIG`, `STEP LIST/SHOW/NEXT`) получает факты из deterministic tools; не дополняй output предположениями и не переоценивай recommendation reasoning-ом.
 
 ## 4. Global safety invariants
 
