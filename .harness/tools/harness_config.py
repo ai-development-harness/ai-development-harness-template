@@ -351,6 +351,22 @@ def max_fix_review_cycles(root: Path) -> int:
     return value
 
 
+def verification_command_timeout_seconds(root: Path) -> int:
+    """Timeout одной executable Verification command."""
+    manifest = load_manifest(root)
+    value = require(manifest, "execution.verificationCommandTimeoutSeconds")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 1 <= value <= 3600
+    ):
+        raise ConfigError(
+            "manifest execution.verificationCommandTimeoutSeconds "
+            "must be an integer from 1 to 3600"
+        )
+    return value
+
+
 def review_policy(root: Path, kind: str) -> str:
     if kind not in {"security", "tests"}:
         raise ConfigError(f"unknown review policy: {kind}")
