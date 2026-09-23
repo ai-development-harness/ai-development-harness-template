@@ -22,14 +22,15 @@ permissions:
   # Пример: `read` достаточно для checkout и локальной проверки.
   contents: read
 
-# Не выполнять одновременно push/PR validation одной head branch.
-# Пример: открытие PR для уже проверяемой feature/token-budget отменяет старый push-run.
+# Не выполнять одновременно устаревшие проверки одного типа для одной head branch.
+# Push и pull_request намеренно разделены: открытие PR не должно отменять уже идущий push-run.
 concurrency:
-  # Stable group использует PR head ref или обычный ref_name.
-  # Пример: Harness Integrity-feature/token-budget.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  # Новый commit/PR event делает предыдущую проверку той же ветки устаревшей.
-  # Пример: true экономит runner time без ослабления final check.
+  # Группа включает тип события и ветку.
+  # Пример: Harness Integrity-push-feature/token-budget и
+  # Harness Integrity-pull_request-feature/token-budget — разные группы.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  # Новый commit отменяет только предыдущую проверку того же типа события и той же ветки.
+  # Это экономит runner time, но не превращает push/PR в конкурирующие запуски.
   cancel-in-progress: true
 
 # Набор jobs workflow.
