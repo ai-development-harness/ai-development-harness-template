@@ -90,6 +90,7 @@ required_files = [
   ".harness/tools/harness-update.py",
   ".harness/tools/harness-update-self-test.py",
   ".harness/tools/update-migration-self-test.py",
+  ".harness/tools/run-self-tests.py",
   ".gitmessage",
 ]
 
