@@ -290,6 +290,7 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
     result: dict[str, Any] = {
         "schemaVersion": 1,
         "status": "PASS" if verdict == "pass" else "BLOCKED",
+        "completionResult": "SUCCESS" if verdict == "pass" else "BLOCKED",
         "stepId": step_id,
         "verdict": verdict,
         "report": path.relative_to(root).as_posix(),
@@ -301,6 +302,7 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
             result["plan"] = stamp_plan(root, step_id)
         except (OSError, ValueError) as exc:
             result["status"] = "BLOCKED"
+            result["completionResult"] = "BLOCKED"
             result["reasonCode"] = "PLAN_STAMP_BLOCKED"
             result["message"] = str(exc)
     return result
@@ -516,6 +518,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     return {
         "schemaVersion": 1,
         "status": data["verdict"].upper(),
+        "completionResult": data["verdict"].upper(),
         "stepId": step_id,
         "verdict": data["verdict"],
         "report": path.relative_to(root).as_posix(),
