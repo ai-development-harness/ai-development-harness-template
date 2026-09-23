@@ -193,7 +193,7 @@ PLAN (если актуального плана нет)
 <a id="command-step-next"></a>
 ## `STEP NEXT`
 
-Read-only рекомендация следующего **unblocked** шага на основании dependencies, priority, risk и roadmap. Не выбирает просто минимальный номер.
+Read-only deterministic рекомендация. Сначала продолжает resumable STEP execution, иначе выбирает executable STEP по прозрачному ranking: in-progress перед planned → priority → transitive downstream impact → число explicit risk flags как tie-breaker видимости → canonical roadmap order. Dependency completion не требуется для PLAN, но обязателен для IMPLEMENT. Result содержит exact canonical command и ranking breakdown. Это рекомендация, а не sprint planning.
 
 <a id="command-project-reconcile"></a>
 ## `PROJECT RECONCILE`
