@@ -74,6 +74,7 @@ from harness_config import (
 )
 from project_integrity import validate_project_integrity
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending
+from reasoning_boundaries import projection_drift_errors
 
 
 # Claude-specific defense-in-depth. Эти rules не являются canonical Git policy:
@@ -526,8 +527,14 @@ def validate_command_surface(root: Path, policy: dict, errors: list[str]) -> Non
         errors.append(f"invalid .harness/command-transitions.json: {exc}")
 
     if transition_table is not None:
-        errors.extend(validate_transition_table(transition_table))
+        transition_errors = validate_transition_table(transition_table)
+        errors.extend(transition_errors)
         table_commands = set(canonical_commands(transition_table))
+        if not transition_errors:
+            errors.extend(
+                "reasoning-boundaries: " + item
+                for item in projection_drift_errors(root, transition_table)
+            )
 
         # Command documentation reference — часть machine-readable contract.
         # Каждая команда обязана ссылаться на уникальный local Markdown anchor,
