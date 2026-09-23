@@ -76,7 +76,7 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 ### 0.4. Deterministic dispatch
 
-`HARNESS HELP`, `HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST`, `STEP SHOW STEP-NNN`, `STEP NEXT`, а также mechanical `GIT SYNC` и `GIT PR FINISH` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их без semantic handoff/model call.
+`HARNESS HELP`, `HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST`, `STEP SHOW STEP-NNN`, `STEP NEXT`, а также `GIT CHECK`, mechanical `GIT SYNC` и `GIT PR FINISH` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их без semantic handoff/model call.
 
 Read-only и mutating handlers используют один invariant: tool возвращает factual `PASS|SUCCESS|BLOCKED`, а dispatcher сохраняет exact result в execution state и не переинтерпретирует его reasoning-ом.
 
@@ -458,7 +458,7 @@ Read-only machine preflight:
 python3 .harness/tools/git-preflight.py check --json
 ```
 
-Tool разрешает configured `.harness/manifest.yaml → repository.gitPolicy`, показывает branch/protection/upstream, staged/unstaged/untracked и Harness validation result. Agent отдельно анализирует semantic grouping, suspicious/unrelated files и traceability. Ничего не stage/commit/push.
+Dispatcher напрямую запускает deterministic Git preflight: tool разрешает configured `.harness/manifest.yaml → repository.gitPolicy`, показывает branch/protection/upstream, staged/unstaged/untracked и Harness validation result. Model call отсутствует; semantic grouping/commit scope появляется только на `GIT COMMIT`. Ничего не stage/commit/push.
 
 ## 19. `GIT COMMIT` / `GIT COMMIT: <подсказка>`
 
