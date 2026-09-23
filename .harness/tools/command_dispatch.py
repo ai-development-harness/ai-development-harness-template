@@ -35,7 +35,7 @@ from execution_status import (
     start_execution,
 )
 from harness_help import help_catalog
-from git_action import execute_pr_finish, execute_push, execute_sync
+from git_action import execute_pr_finish, execute_sync
 from harness_ux import (
     harness_config,
     harness_doctor,
@@ -297,8 +297,6 @@ def _deterministic_handler(
         return step_show(root, target)
     if handler == "step-next":
         return resolve_step_next(root)
-    if handler == "git-push":
-        return execute_push(root)
     if handler == "git-pr-finish":
         return execute_pr_finish(root)
     if handler == "git-sync":
