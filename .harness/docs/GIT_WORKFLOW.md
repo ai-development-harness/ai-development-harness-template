@@ -31,7 +31,7 @@ python3 .harness/tools/git-preflight.py pr --json
 python3 .harness/tools/git-preflight.py sync --json
 ```
 
-`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Mechanical mutations `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`, `GIT PR FINISH` исполняет `.harness/tools/git-action.py`: он повторяет preflight и проверяет postconditions. Для PR semantic boundary ограничена title/body content; provider find/reuse/create и local lifecycle state выполняются deterministic. Configured `git fetch` разрешён как operational refresh remote refs.
+`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Mechanical mutations исполняет `.harness/tools/git-action.py`. `GIT SYNC` и `GIT PR FINISH` dispatcher вызывает напрямую без LLM; `GIT COMMIT`, `GIT PUSH` и `GIT PR` используют модель только там, где остаётся semantic scope/message/post-push/PR-prose решение. Configured `git fetch` разрешён как operational refresh remote refs.
 
 LLM/agent по-прежнему отвечает за semantic decisions — например, является ли diff одним logical change и какой commit type соответствует фактическому изменению. Но protected branch, remote divergence, publish state, force prohibition, clean-worktree requirement, PR base/tool и ff-only safety больше не интерпретируются вручную.
 
@@ -104,7 +104,7 @@ when_on_protected = "auto-create" # auto-create | stay | block
 after_push = "create-if-missing"
 ```
 
-Поэтому после push агент проверяет наличие PR и создаёт его при отсутствии. Чтобы только отправлять ветку:
+Поэтому `GIT PUSH` остаётся semantic boundary: после успешной mechanical mutation runtime применяет post-push policy и при необходимости переходит к PR prose/handoff. Чтобы только отправлять ветку:
 
 ```toml
 [pull_request]
@@ -119,7 +119,7 @@ after_push = "never"
 
 ### `GIT PR FINISH`
 
-После merge Pull Request команда завершает локальный lifecycle feature branch.
+После merge Pull Request команда детерминированно, без semantic skill/model call, завершает локальный lifecycle feature branch.
 
 ```bash
 python3 .harness/tools/git-preflight.py pr-finish --json
@@ -133,7 +133,7 @@ PASS требует чистое рабочее дерево, состояние
 
 ### `GIT SYNC`
 
-Default `GIT SYNC` через `git-action.py sync` повторяет preflight и делает fetch + ahead/behind report; при `ff-only` executor сам выполняет разрешённый fast-forward и проверяет HEAD. Для автоматического безопасного fast-forward:
+`GIT SYNC` dispatcher выполняет детерминированно, без semantic skill/model call. Default `GIT SYNC` через `git-action.py sync` повторяет preflight и делает fetch + ahead/behind report; при `ff-only` executor сам выполняет разрешённый fast-forward и проверяет HEAD. Для автоматического безопасного fast-forward:
 
 ```toml
 [sync]
