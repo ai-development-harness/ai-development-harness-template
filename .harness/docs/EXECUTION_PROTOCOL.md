@@ -284,10 +284,10 @@ Execution tracking уже ведётся root execution wrapper.
 5. Выполнить scope/mutation policy.
 6. Не реализовывать future/unrelated work.
 7. Добавить/обновить tests.
-8. Запустить реальные Verification commands.
-9. Обновить Evidence.
+8. При готовности реализации предложить command result `SUCCESS`; dispatcher сам запускает explicit `- command:` entries из `## Verification` без shell и обновляет generated Evidence.
+9. `VERIFICATION_FAIL` возвращает factual command result в тот же IMPLEMENT; `VERIFICATION_MANUAL_REQUIRED` требует только listed manual checks; `VERIFICATION_BLOCKED` не обходится reasoning-ом.
 10. Не ставить `Выполнено` до required review PASS.
-11. После полного scope + verification + Evidence command завершается `SUCCESS`.
+11. Command завершается только после PASS deterministic/manual Verification contract.
 
 Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN`.
 
@@ -317,9 +317,9 @@ Single REVIEW после verdict останавливается. Внутри ch
 2. Исправлять только findings категорий `implementation`/`evidence` и необходимый supporting code в scope.
 3. Contract finding, изменение Acceptance/REQ/ADR/dependencies или missing prerequisite → `BLOCKED` + corrective STEP/RESEARCH/ADR; не превращать FIX в скрытый scope expansion.
 4. При `RESUME` сначала изучить существующий diff и продолжить незавершённые findings.
-5. Запустить relevant tests/verification.
-6. Обновить Evidence.
-7. После полного исправления command завершается `SUCCESS`.
+5. После исправлений предложить `SUCCESS`; dispatcher сам повторно запускает canonical Verification и generated Evidence writer.
+6. Factual FAIL остаётся в FIX; manual checks выполняются только при explicit `MANUAL_REQUIRED`.
+7. Command завершается только после PASS Verification; старый review не изменяется.
 8. Счёт `FIX → REVIEW` ведёт Execution Status, а не память агента.
 
 Single FIX после SUCCESS останавливается. Внутри chain/RUN CTS может продолжить к свежему REVIEW.
