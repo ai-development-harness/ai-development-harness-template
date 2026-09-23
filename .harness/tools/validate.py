@@ -152,6 +152,12 @@ def validate_harness_policy_schema(policy: dict, errors: list[str]) -> None:
             isinstance(item, str) and item.strip() for item in value
         ):
             errors.append(f"harness-policy: {key} must be a string array")
+        elif len(set(value)) != len(value):
+            duplicates = sorted({item for item in value if value.count(item) > 1})
+            errors.append(
+                f"harness-policy: {key} must not contain duplicates: "
+                + ", ".join(duplicates)
+            )
 
     bool_keys = (
         "check_config_parameter_comments",
