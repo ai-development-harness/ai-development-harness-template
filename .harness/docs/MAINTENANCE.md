@@ -66,7 +66,7 @@ Runtime tuning относится к `shared`: пользователь може
 
 Всё неизвестное считается project-owned и updater не меняет. Например project-specific `.claude/skills/**` не становится Harness-owned только потому, что находится внутри `.claude/`.
 
-То же относится к локальным ignored artifacts внутри managed directory: `__pycache__/`, bytecode и другие ignored cache/build files не входят в ownership scope только из-за совпадения с glob. Updater классифицирует OURS через Git tracked state; untracked ignored paths пропускаются, untracked non-ignored collisions блокируют update.
+То же относится к локальным игнорируемым артефактам внутри управляемого каталога: `__pycache__/`, bytecode и другие cache/build-файлы не входят в область владения только из-за совпадения с glob. Новый управляемый путь блокируется, если до обновления на его месте уже существует неотслеживаемый пользовательский файл. Путь, который уже принадлежит текущему неизменяемому BASE, после промежуточного перехода может оставаться неотслеживаемым до финального коммита и не считается новым конфликтом; для `harness_owned` его содержимое при этом обязано точно совпадать с BASE.
 
 ## Legacy projects
 
