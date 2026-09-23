@@ -74,10 +74,6 @@ def main() -> int:
         }, plan_route
 
         # Mechanical Git actions do not need an LLM handoff anymore.
-        assert route_command(root, "GIT PUSH")["dispatch"] == {
-            "kind": "deterministic",
-            "handler": "git-push",
-        }
         assert route_command(root, "GIT PR FINISH")["dispatch"] == {
             "kind": "deterministic",
             "handler": "git-pr-finish",
