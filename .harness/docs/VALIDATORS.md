@@ -808,6 +808,46 @@ python3 .harness/tools/step-context.py STEP-NNN --phase review --json
 
 ---
 
+# 10A. Deterministic STEP Verification runner
+
+## Файлы
+
+- engine: `.harness/tools/verification.py`
+- CLI: `.harness/tools/verify-step.py`
+- regression: `.harness/tools/verification-self-test.py`
+
+## Роль
+
+Исполняет machine-executable `## Verification` без LLM и формирует factual generated Evidence.
+
+## Contract
+
+- `- command: \`...\`` — argv-команда, запускаемая напрямую без shell;
+- `- manual: ...` — действительно неавтоматизируемая semantic/visual проверка;
+- shell control operators не разрешены; сложную проверку нужно вынести в repository script;
+- timeout берётся из `execution.verificationCommandTimeoutSeconds`;
+- repository revision до/после каждой command обязана совпасть;
+- PASS Evidence хранит exit code, duration, stdout/stderr SHA-256 и byte counts; raw successful output не загружается в model context;
+- FAIL может вернуть короткий diagnostic tail;
+- manual checks не считаются PASS без exact supplied observation.
+
+## CLI
+
+```bash
+python3 .harness/tools/verify-step.py STEP-NNN
+python3 .harness/tools/verify-step.py STEP-NNN --manual-json '[{"check":"...","status":"PASS","observed":"..."}]'
+```
+
+По умолчанию CLI обновляет только generated `VERIFICATION-EVIDENCE` block в STEP Evidence. `--no-write-evidence` оставляет artifact неизменным.
+
+## Exit codes
+
+- `0` — PASS;
+- `1` — FAIL или MANUAL_REQUIRED;
+- `2` — BLOCKED.
+
+---
+
 # 11. Machine-readable Markdown document contract
 
 ## Файл

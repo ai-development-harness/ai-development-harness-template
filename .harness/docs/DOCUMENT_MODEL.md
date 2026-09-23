@@ -290,3 +290,8 @@ PROJECT RECONCILE
 ```
 
 Operational `.harness/local/execution/execution-status.json` помогает пережить crash/session restart, но не заменяет canonical documents и immutable proof artifacts.
+
+
+## Verification и Evidence
+
+STEP `## Verification` использует explicit `- command: \`...\`` и optional `- manual: ...`. Deterministic runner обновляет только markers `VERIFICATION-EVIDENCE`; semantic observations допускаются вне generated block. Verification command не имеет права неожиданно менять repository revision.

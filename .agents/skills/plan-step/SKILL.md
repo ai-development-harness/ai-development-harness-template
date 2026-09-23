@@ -28,7 +28,8 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
    - ownership не конфликтует с соседними STEP;
    - architecture prerequisite имеет explicit ref;
    - OPEN OQ/TBD не блокирует решение.
-4. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
+4. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
+5. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
 ## Phase B — draft implementation plan
 

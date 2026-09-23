@@ -64,6 +64,7 @@ from harness_config import (
     load_update_policy,
     local_brief_path,
     max_fix_review_cycles,
+    verification_command_timeout_seconds,
     protocol_path,
     repository_path,
     resolve_repo_path,
@@ -1070,6 +1071,7 @@ def validate_repository_surface(
         ):
             language_value(root, language_key)
         max_fix_review_cycles(root)
+        verification_command_timeout_seconds(root)
         review_policy(root, "security")
         review_policy(root, "tests")
         skill_search_max_results(root)
