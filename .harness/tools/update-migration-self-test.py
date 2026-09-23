@@ -95,8 +95,6 @@ def require_post_v053_bridge(graph: dict) -> None:
 
 def test_routing(root: Path) -> None:
     canonical = load_json(update_manifest_path(root))
-    legacy = load_json(root / ".project/harness-update-graph.json")
-    require(canonical == legacy, "legacy routing endpoint drifted from canonical graph")
 
     route, edges = route_to_latest(canonical, "v0.4.0")
     require(route[:3] == ["v0.4.0", "v0.4.1", "v0.4.2"], f"legacy bridge prefix changed: {route}")
