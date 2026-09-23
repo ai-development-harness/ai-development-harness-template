@@ -391,6 +391,30 @@ def _git_head(root: Path) -> str | None:
     return value or None
 
 
+def git_commit_completion_proven(
+    root: Path,
+    execution: dict[str, Any],
+) -> bool:
+    """Prove that the current canonical COMMIT advanced repository HEAD."""
+
+    current = execution.get("current")
+    if not isinstance(current, dict) or current.get("status") != "running":
+        return False
+    try:
+        parsed = normalize_single_command(root, str(current.get("command") or ""))
+    except ValueError:
+        return False
+    if parsed.get("domain") != "GIT" or parsed.get("operation") != "COMMIT":
+        return False
+
+    context = current.get("context")
+    before = context.get("gitHeadBefore") if isinstance(context, dict) else None
+    now = _git_head(root)
+    # before=None is valid for the first commit in an unborn repository. A
+    # non-empty current HEAD still proves that the COMMIT created durable state.
+    return now is not None and now != before
+
+
 
 # Собрать минимальный context, нужный только для crash recovery конкретных commands; не превращать его в копию project state.
 def _command_context(root: Path, command: str) -> dict[str, Any]:
@@ -1149,11 +1173,12 @@ def _durable_recovery_result(
                 ):
                     return "PASS"
 
-    if parsed.get("domain") == "GIT" and parsed.get("operation") == "COMMIT":
-        before = current.get("context", {}).get("gitHeadBefore")
-        now = _git_head(root)
-        if before and now and before != now:
-            return "SUCCESS"
+    if (
+        parsed.get("domain") == "GIT"
+        and parsed.get("operation") == "COMMIT"
+        and git_commit_completion_proven(root, execution)
+    ):
+        return "SUCCESS"
 
     return None
 
