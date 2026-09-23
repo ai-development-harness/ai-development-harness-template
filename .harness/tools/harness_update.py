@@ -40,6 +40,10 @@ UPDATER_RUNTIME_PATHS = {
     ".harness/tools/harness-update.py",
 }
 OWNERSHIP_CLASSES = ("harness_owned", "shared", "marker_merge")
+# Current deterministic updater intentionally supports only projects whose
+# installed Harness baseline is v0.6.0 or newer. Older transitions remain in
+# the graph as immutable release history, not as a supported runtime entrypoint.
+MIN_SUPPORTED_RELEASE = "v0.6.0"
 
 
 class UpdateError(RuntimeError):
@@ -435,6 +439,15 @@ def _semver(tag: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())
 
 
+def _require_supported_release(tag: str, *, label: str) -> None:
+    """Fail closed when current/adoption release is below the supported floor."""
+    if _semver(tag) < _semver(MIN_SUPPORTED_RELEASE):
+        raise UpdateError(
+            "UNSUPPORTED_HARNESS_RELEASE",
+            f"{label} {tag} is older than minimum supported {MIN_SUPPORTED_RELEASE}",
+        )
+
+
 def _validate_graph(data: dict[str, Any], tag_pattern: str) -> tuple[str, dict[str, Hop]]:
     if data.get("schemaVersion") != 1:
         raise UpdateError("INVALID_UPDATE_GRAPH", "update graph schemaVersion must be 1")
@@ -551,6 +564,8 @@ def resolve_update(root: Path, target: str | None, source: GitSource) -> tuple[d
         raise UpdateError("INVALID_RELEASE_TAG", f"target does not match source.tag_pattern: {requested}")
     if re.fullmatch(tag_pattern, current) is None:
         raise UpdateError("INVALID_UPDATE_LOCK", f"lock source.ref does not match tag pattern: {current}")
+    _require_supported_release(current, label="current release")
+    _require_supported_release(requested, label="target release")
     manifest = load_manifest(root)
     manifest_release = get(manifest, "harness.release")
     if lock.get("release") != manifest_release or current != f"v{manifest_release}":
@@ -1075,6 +1090,7 @@ def adopt_legacy(root: Path, *, baseline: str, source_url: str | None = None) ->
         raise UpdateError("LOCK_ALREADY_EXISTS", f"update lock already exists: {lock_path.relative_to(root)}")
     if re.fullmatch(tag_pattern, baseline) is None:
         raise UpdateError("INVALID_RELEASE_TAG", f"baseline does not match source.tag_pattern: {baseline}")
+    _require_supported_release(baseline, label="adoption baseline")
 
     manifest = load_manifest(root)
     if get(manifest, "harness.release") != baseline.removeprefix("v"):
