@@ -53,6 +53,7 @@ from planning_contract import (
     plan_content_hash,
     planning_context_basis,
     read_task as read_planning_task,
+    step_completion_proof,
     task_contract_snapshot,
     task_path as configured_task_path,
 )
@@ -1116,7 +1117,11 @@ def _durable_recovery_result(
                 return None
 
     # REVIEW можно восстановить по новому immutable report, появившемуся после
-    # reviewReportBefore. Это экономит повторный дорогой review после crash.
+    # reviewReportBefore. FAIL/BLOCKED не меняют STEP lifecycle и потому требуют
+    # exact current revision. PASS writer после валидного report может выполнить
+    # единственную post-review mutation status->completed; тогда exact revision
+    # закономерно меняется, а recovery использует более сильный combined proof:
+    # новый PASS report + completed STEP + type-specific completion proof.
     if parsed.get("domain") == "STEP" and parsed.get("operation") == "REVIEW":
         target = parsed.get("target")
         baseline = current.get("context", {}).get("reviewReportBefore")
@@ -1126,6 +1131,23 @@ def _durable_recovery_result(
                 verdict = review.get("verdict")
                 if verdict in {"PASS", "FAIL", "BLOCKED"}:
                     return verdict
+
+            latest = latest_review(root, target, require_current_revision=False)
+            if (
+                latest is not None
+                and latest.get("path") != baseline
+                and latest.get("verdict") == "PASS"
+            ):
+                try:
+                    task = read_planning_task(root, target)
+                    proof = step_completion_proof(root, target)
+                except (OSError, ValueError, FileNotFoundError):
+                    return None
+                if (
+                    task["frontmatter"].get("status") == "completed"
+                    and proof.get("complete") is True
+                ):
+                    return "PASS"
 
     if parsed.get("domain") == "GIT" and parsed.get("operation") == "COMMIT":
         before = current.get("context", {}).get("gitHeadBefore")
