@@ -76,7 +76,7 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 ### 0.4. Deterministic UX
 
-`HARNESS HELP/STATUS/DOCTOR/CONFIG` и `STEP LIST/SHOW` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их сам и не создаёт semantic handoff.
+`HARNESS HELP`, `HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST` и `STEP SHOW STEP-NNN` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их сам и не создаёт semantic handoff.
 
 ## 1. Сущности
 
