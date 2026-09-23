@@ -9,7 +9,7 @@ import tempfile
 
 from command_dispatch import start_dispatch
 from execution_status import complete_command, start_execution
-from step_next import resolve_step_next
+from step_next import resolve_step_action, resolve_step_next
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -178,6 +178,11 @@ def main() -> int:
         assert first["status"] == "PASS", first
         assert first["command"] == "STEP PLAN STEP-001", first
         assert first["selected"]["ranking"]["priority"] == "critical", first
+
+        exact = resolve_step_action(root, "STEP-001")
+        assert exact["status"] == "PASS", exact
+        assert exact["stepType"] == "implementation", exact
+        assert exact["command"] == "STEP PLAN STEP-001", exact
 
         # Same priority: a STEP that unlocks more downstream active work wins.
         reset_steps(root)
