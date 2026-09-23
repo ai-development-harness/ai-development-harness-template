@@ -106,7 +106,7 @@ Engine перед первой записью сам повторно прове
 3. current updater прекращает route с `UPDATER_RELOAD_REQUIRED`;
 4. после reload повторяется та же APPLY-команда к исходному final target.
 
-APPLY не запускает target scripts/install/bootstrap actions и не делает commit/push/PR.
+APPLY не запускает target scripts/install/bootstrap actions и не делает commit/push/PR. Dispatcher добавляет к factual engine result deterministic `nextAction`: после `UPDATED` — `GIT CHECK`; при `UPDATER_RELOAD_REQUIRED` — reload и повтор exact APPLY; при `NO_UPDATE` — `null`. Если последующий Git gate обнаруживает project schema migration pending, до commit выполняется `PROJECT RECONCILE`.
 
 После update:
 
