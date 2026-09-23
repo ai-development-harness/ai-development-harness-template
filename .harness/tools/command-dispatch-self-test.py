@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 
+import command_dispatch as command_dispatch_module
 from command_dispatch import (
     complete_dispatch,
     route_command,
@@ -82,6 +83,21 @@ def main() -> int:
             "kind": "deterministic",
             "handler": "git-sync",
         }
+
+        # Mutating deterministic handler may return SUCCESS rather than PASS.
+        # Dispatcher must persist exact SUCCESS and finish without semantic handoff.
+        original_sync = command_dispatch_module.execute_sync
+        command_dispatch_module.execute_sync = lambda _root: {
+            "status": "SUCCESS",
+            "action": "sync",
+            "mutated": False,
+        }
+        try:
+            sync_result = start_dispatch(root, "GIT SYNC")
+        finally:
+            command_dispatch_module.execute_sync = original_sync
+        assert sync_result["status"] == "DONE", sync_result
+        assert sync_result["result"]["status"] == "SUCCESS", sync_result
 
         # Удалённый dispatch metadata должен ломать graph fail-closed.
         table = load_transition_table(root)
