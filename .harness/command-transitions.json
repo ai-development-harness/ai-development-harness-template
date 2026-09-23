@@ -481,8 +481,8 @@
           "summary": "Завершить локальную работу после слияния запроса: вернуться на исходную ветку и удалить локальную ветку запроса.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-pr-finish",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "git-workflow"
+            "kind": "deterministic",
+            "handler": "git-pr-finish"
           }
         },
         "SYNC": {
@@ -493,8 +493,8 @@
           "summary": "Показать расхождение с удалённой веткой или выполнить разрешённую синхронизацию в режиме fast-forward.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-sync",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "git-workflow"
+            "kind": "deterministic",
+            "handler": "git-sync"
           }
         }
       },

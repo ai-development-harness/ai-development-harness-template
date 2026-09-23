@@ -86,6 +86,8 @@ Pull Request provider mechanics также не являются reasoning-за�
 
 Git workflow следует той же границе: после semantic staging/message decisions `git-action.py` повторяет preflight, выполняет COMMIT/PUSH/SYNC/PR FINISH и проверяет postconditions. Модели не нужно читать/копировать `mutationPlan.argv` и вручную исполнять mechanical steps.
 
+`GIT SYNC` и `GIT PR FINISH` маршрутизируются как deterministic dispatcher handlers: для них model call отсутствует полностью. `GIT PUSH` намеренно остаётся semantic из-за configurable post-push policy `ask|create-if-missing`; это пример того, где экономия токенов не должна ломать существующее поведение.
+
 ## Gate
 
 Проверка:

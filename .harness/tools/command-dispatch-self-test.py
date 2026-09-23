@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 
+import command_dispatch as command_dispatch_module
 from command_dispatch import (
     complete_dispatch,
     route_command,
@@ -72,6 +73,31 @@ def main() -> int:
             "skill": "plan-step",
             "contextPhase": "plan",
         }, plan_route
+
+        # Mechanical Git actions do not need an LLM handoff anymore.
+        assert route_command(root, "GIT PR FINISH")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "git-pr-finish",
+        }
+        assert route_command(root, "GIT SYNC")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "git-sync",
+        }
+
+        # Mutating deterministic handler may return SUCCESS rather than PASS.
+        # Dispatcher must persist exact SUCCESS and finish without semantic handoff.
+        original_sync = command_dispatch_module.execute_sync
+        command_dispatch_module.execute_sync = lambda _root: {
+            "status": "SUCCESS",
+            "action": "sync",
+            "mutated": False,
+        }
+        try:
+            sync_result = start_dispatch(root, "GIT SYNC")
+        finally:
+            command_dispatch_module.execute_sync = original_sync
+        assert sync_result["status"] == "DONE", sync_result
+        assert sync_result["result"]["status"] == "SUCCESS", sync_result
 
         # Удалённый dispatch metadata должен ломать graph fail-closed.
         table = load_transition_table(root)

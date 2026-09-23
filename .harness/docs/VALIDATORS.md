@@ -249,7 +249,7 @@ python3 .harness/tools/harness-dispatch.py route --command '<canonical command>'
 
 - invalid chain не создаёт execution;
 - command routing берётся только из CTS `dispatch` metadata;
-- deterministic handlers завершаются без LLM;
+- deterministic handlers, включая mutating `GIT SYNC` / `GIT PR FINISH`, завершаются без LLM;
 - semantic node возвращает exact `skillPath`;
 - PLAN/IMPLEMENT/REVIEW получают exact phase context через `step_context.py`;
 - `complete` автоматически разрешает следующий chain segment;
@@ -260,7 +260,7 @@ Dispatcher не интерпретирует product semantics и не выпо�
 
 ## Exit codes
 
-- `0` — deterministic DONE/PASS, semantic handoff или другой неблокирующий result;
+- `0` — deterministic DONE/PASS/SUCCESS, semantic handoff или другой неблокирующий result;
 - `1` — BLOCKED.
 
 ---
