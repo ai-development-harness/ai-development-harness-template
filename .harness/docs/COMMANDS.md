@@ -237,7 +237,7 @@ Maintenance mutation protocol layer без STEP и без model call. Dispatcher
 HARNESS UPDATE APPLY TO vX.X.X
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Project-owned schema migration после protocol update выполняет `PROJECT RECONCILE`. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
+Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Deterministic result содержит `nextAction`: `UPDATED → GIT CHECK`, `UPDATER_RELOAD_REQUIRED → reload-and-repeat exact APPLY`, `NO_UPDATE → null`. Если GIT gate показывает pending project schema migration, её выполняет `PROJECT RECONCILE` до commit.
 
 <a id="command-git-check"></a>
 ## `GIT CHECK`
