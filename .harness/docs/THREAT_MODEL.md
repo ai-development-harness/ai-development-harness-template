@@ -32,6 +32,8 @@ Harness **не** является защитой от:
 
 Runtime-specific permissions, Claude deny rules, Codex sandbox и Git hooks являются defense-in-depth. Они не заменяют runtime-neutral canonical contracts.
 
+Текущий Claude adapter использует project-level `permissions.deny` для обычных Bash/PowerShell форм прямых Git mutations. Это снижает риск случайного bypass, но command-pattern permission rules не считаются непреодолимой sandbox boundary и намеренно не дублируют весь parser Git policy. Codex adapter сохраняет `sandbox_mode = "workspace-write"` и `approval_policy = "on-request"`; mutation safety для обоих runtime доказывается одинаковыми deterministic tools.
+
 ## Trust boundaries
 
 ### LLM / semantic layer
