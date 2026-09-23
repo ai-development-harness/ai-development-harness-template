@@ -73,6 +73,20 @@ def main() -> int:
             "contextPhase": "plan",
         }, plan_route
 
+        # Mechanical Git actions do not need an LLM handoff anymore.
+        assert route_command(root, "GIT PUSH")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "git-push",
+        }
+        assert route_command(root, "GIT PR FINISH")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "git-pr-finish",
+        }
+        assert route_command(root, "GIT SYNC")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "git-sync",
+        }
+
         # Удалённый dispatch metadata должен ломать graph fail-closed.
         table = load_transition_table(root)
         del table["domains"]["STEP"]["commands"]["PLAN"]["dispatch"]
