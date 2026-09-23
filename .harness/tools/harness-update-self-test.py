@@ -367,6 +367,39 @@ def test_supported_floor_reload_chain(temp: Path) -> None:
     assert len(reports) == 2, reports
 
 
+def test_stale_release_snapshot_pin_recovery(temp: Path) -> None:
+    """Stale release self-pin блокируется, точечная замена на tag OID восстанавливает route."""
+
+    source, base_files, oids = supported_floor_source(temp)
+    project = project_from_v060(
+        temp / "stale-release-pin-project",
+        base_files,
+        oids["v0.6.0"],
+    )
+    lock_path = project / ".harness/harness.lock.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    lock["source"]["commit"] = "e366c48777150a9e9d2f6d670d8976b8a8df2d5c"
+    write(project, ".harness/harness.lock.json", json.dumps(lock, indent=2) + "\n")
+
+    try:
+        check_update(project, target="v0.8.0", source_url=str(source))
+    except UpdateError as exc:
+        assert exc.code == "SOURCE_TAG_MOVED", (exc.code, exc)
+    else:
+        raise AssertionError("stale release snapshot pin bypassed SOURCE_TAG_MOVED")
+
+    # Recovery не отключает tag pinning: заменяется только известный stale OID
+    # на доказанный OID текущего immutable tag.
+    lock["source"]["commit"] = oids["v0.6.0"]
+    write(project, ".harness/harness.lock.json", json.dumps(lock, indent=2) + "\n")
+
+    checked = check_update(project, target="v0.8.0", source_url=str(source))
+    assert checked["status"] == "PASS", checked
+    assert checked["route"] == ["v0.6.0", "v0.7.0", "v0.8.0"], checked
+    assert checked["checkedThrough"] == "v0.7.0", checked
+    assert checked["reloadBoundary"] == "v0.7.0", checked
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-update-engine-") as tmp:
         temp = Path(tmp)
@@ -531,7 +564,13 @@ def main() -> int:
         else:
             raise AssertionError("moved release tag was accepted")
 
-        test_supported_floor_reload_chain(temp)
+        stale_pin_case = temp / "stale-pin-case"
+        stale_pin_case.mkdir()
+        test_stale_release_snapshot_pin_recovery(stale_pin_case)
+
+        reload_chain_case = temp / "reload-chain-case"
+        reload_chain_case.mkdir()
+        test_supported_floor_reload_chain(reload_chain_case)
 
     print("HARNESS UPDATE SELF-TEST: PASS")
     return 0

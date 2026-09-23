@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -627,6 +628,17 @@ def test_release_metadata(root: Path) -> None:
     require(graph["latest"] == f"v{release}", "graph.latest must match manifest release")
     require(lock["release"] == release, "lock release must match manifest release")
     require(lock["source"]["ref"] == f"v{release}", "lock source.ref must match manifest release")
+
+    # В каноническом source repository release snapshot не может содержать
+    # source.commit: SHA самого release commit появляется только после commit/tag.
+    # В пользовательском project lock этот pin, наоборот, корректен и записывается
+    # updater/adoption после разрешения реально существующего immutable tag.
+    source_repository = lock["source"].get("repository")
+    if os.environ.get("GITHUB_REPOSITORY") == source_repository:
+        require(
+            "commit" not in lock["source"],
+            "canonical release snapshot lock must not contain source.commit",
+        )
 
 
 def main() -> int:
