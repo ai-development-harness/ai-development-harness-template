@@ -1273,7 +1273,7 @@ def validate_repository_surface(
 
     # В commit-mode staged state — информационная проверка: агент ещё может
     # безопасно сформировать stage согласно git-policy.
-    if args.mode == "commit":
+    if mode == "commit":
         code, staged = run_git(root, "diff", "--cached", "--name-only")
         if code == 0 and not staged.strip():
             warnings.append("no staged files yet; COMMIT agent may stage files according to git-policy")
