@@ -369,10 +369,19 @@ def _persist_pr_state(
                 "PR_STATE_CONFLICT",
                 "existing local PR state belongs to another PR/head/base",
             )
-        # Preserve a previously proven return branch across idempotent re-run.
+        # Preserve a previously proven return branch across idempotent re-run
+        # only while that local ref still exists and is not the PR head.
         previous_return = existing.get("returnBranch")
         if isinstance(previous_return, str) and previous_return.strip():
-            state["returnBranch"] = previous_return
+            valid_return = Repo(root).git(
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{previous_return}",
+                check=False,
+            )
+            if valid_return.returncode == 0 and previous_return != gate["branch"]:
+                state["returnBranch"] = previous_return
 
     atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
     return path.relative_to(root).as_posix()
