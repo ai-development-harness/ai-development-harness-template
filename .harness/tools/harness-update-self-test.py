@@ -65,12 +65,23 @@ repository:
 '''
 
 
-def graph(latest: str, transitions: list[tuple[str, str]]) -> str:
+def graph(
+    latest: str,
+    transitions: list[tuple[str, str]],
+    *,
+    reload_edges: set[tuple[str, str]] | None = None,
+) -> str:
+    reload_edges = reload_edges or set()
     payload = {
         "schemaVersion": 1,
         "latest": latest,
         "transitions": [
-            {"from": source, "to": target, "kind": "standard", "reloadRequired": False}
+            {
+                "from": source,
+                "to": target,
+                "kind": "standard",
+                "reloadRequired": (source, target) in reload_edges,
+            }
             for source, target in transitions
         ],
     }
@@ -157,6 +168,203 @@ def project_from_base(root: Path, base_files: dict[str, str], base_oid: str) -> 
     run(project, "git", "add", ".")
     run(project, "git", "commit", "-qm", "project base")
     return project
+
+
+def supported_floor_source(root: Path) -> tuple[Path, dict[str, str], dict[str, str]]:
+    """Собрать synthetic v0.6.0 → v0.7.0 → v0.8.0 release source."""
+
+    source = root / "supported-floor-source"
+    source.mkdir()
+    run(source, "git", "init", "-q", "-b", "main")
+    run(source, "git", "config", "user.email", "harness-test@example.invalid")
+    run(source, "git", "config", "user.name", "Harness Test")
+
+    transitions = [("v0.6.0", "v0.7.0"), ("v0.7.0", "v0.8.0")]
+    reload_edges = {("v0.6.0", "v0.7.0")}
+    base_files = {
+        ".harness/harness-update.toml": policy(precise_skills=True),
+        ".harness/harness-update-graph.json": graph(
+            "v0.6.0",
+            [],
+        ),
+        ".harness/manifest.yaml": manifest("0.6.0"),
+        ".harness/tools/validate.py": validator(),
+        ".harness/tools/harness_update.py": "# updater runtime v0.6.0\n",
+        ".harness/tools/harness-update.py": "# updater cli v0.6.0\n",
+        ".agents/skills/core/SKILL.md": "core v0.6.0\n",
+        "shared.txt": "base-line-1\nline-2\nbase-line-3\n",
+        "AGENTS.md": agents("before v0.6.0", "\nbase project\n", "after v0.6.0"),
+    }
+    for path, text in base_files.items():
+        write(source, path, text)
+    run(source, "git", "add", ".")
+    run(source, "git", "commit", "-qm", "v0.6.0")
+    run(source, "git", "tag", "v0.6.0")
+    oids = {"v0.6.0": run(source, "git", "rev-parse", "v0.6.0^{commit}")}
+
+    # v0.7.0 меняет сам updater и вводит новый Harness-owned файл.
+    # Это заставляет первый APPLY завершиться на reload boundary.
+    write(
+        source,
+        ".harness/harness-update-graph.json",
+        graph(
+            "v0.7.0",
+            [("v0.6.0", "v0.7.0")],
+            reload_edges=reload_edges,
+        ),
+    )
+    write(source, ".harness/manifest.yaml", manifest("0.7.0"))
+    write(source, ".harness/tools/harness_update.py", "# updater runtime v0.7.0\n")
+    write(source, ".harness/tools/harness-update.py", "# updater cli v0.7.0\n")
+    write(source, ".harness/tools/v070-only.py", "# introduced in v0.7.0\n")
+    write(source, ".agents/skills/core/SKILL.md", "core v0.7.0\n")
+    write(source, "shared.txt", "base-line-1\nline-2\nv070-line-3\n")
+    write(source, "AGENTS.md", agents("before v0.7.0", "\nbase project\n", "after v0.7.0"))
+    run(source, "git", "add", ".")
+    run(source, "git", "commit", "-qm", "v0.7.0")
+    run(source, "git", "tag", "v0.7.0")
+    oids["v0.7.0"] = run(source, "git", "rev-parse", "v0.7.0^{commit}")
+
+    # v0.8.0 сохраняет topology updater-а, поэтому после перезагрузки маршрут
+    # должен завершиться без ещё одной reload boundary.
+    write(
+        source,
+        ".harness/harness-update-graph.json",
+        graph("v0.8.0", transitions, reload_edges=reload_edges),
+    )
+    write(source, ".harness/manifest.yaml", manifest("0.8.0"))
+    write(source, ".harness/tools/v070-only.py", "# updated in v0.8.0\n")
+    write(source, ".agents/skills/core/SKILL.md", "core v0.8.0\n")
+    write(source, "shared.txt", "base-line-1\nv080-line-2\nv070-line-3\n")
+    write(source, "AGENTS.md", agents("before v0.8.0", "\nbase project\n", "after v0.8.0"))
+    run(source, "git", "add", ".")
+    run(source, "git", "commit", "-qm", "v0.8.0")
+    run(source, "git", "tag", "v0.8.0")
+    oids["v0.8.0"] = run(source, "git", "rev-parse", "v0.8.0^{commit}")
+    return source, base_files, oids
+
+
+def project_from_v060(
+    root: Path,
+    base_files: dict[str, str],
+    base_oid: str,
+) -> Path:
+    """Создать реальный Git project с Harness v0.6.0 и локальными изменениями."""
+
+    for path, text in base_files.items():
+        write(root, path, text)
+    write(root, ".harness/manifest.yaml", manifest("0.6.0", initialized=True))
+    write(root, "shared.txt", "local-line-1\nline-2\nbase-line-3\n")
+    write(
+        root,
+        "AGENTS.md",
+        agents("before v0.6.0", "\nLOCAL PROJECT CONTEXT\n", "after v0.6.0"),
+    )
+    write(root, ".agents/skills/custom/SKILL.md", "project custom skill\n")
+    write(
+        root,
+        ".harness/harness.lock.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "harnessVersion": "1",
+                "release": "0.6.0",
+                "source": {
+                    "repository": "example/harness",
+                    "ref": "v0.6.0",
+                    "commit": base_oid,
+                },
+                "updatedAt": None,
+            },
+            indent=2,
+        )
+        + "\n",
+    )
+    run(root, "git", "init", "-q", "-b", "main")
+    run(root, "git", "config", "user.email", "project@example.invalid")
+    run(root, "git", "config", "user.name", "Project")
+    run(root, "git", "add", ".")
+    run(root, "git", "commit", "-qm", "project on v0.6.0")
+    return root
+
+
+def test_supported_floor_reload_chain(temp: Path) -> None:
+    """Доказать v0.6.0 → v0.7.0 → reload → v0.8.0 одним final target."""
+
+    source, base_files, oids = supported_floor_source(temp)
+    project = project_from_v060(
+        temp / "supported-floor-project",
+        base_files,
+        oids["v0.6.0"],
+    )
+
+    checked = check_update(project, target="v0.8.0", source_url=str(source))
+    assert checked["status"] == "PASS", checked
+    assert checked["route"] == ["v0.6.0", "v0.7.0", "v0.8.0"], checked
+    assert checked["checkedThrough"] == "v0.7.0", checked
+    assert checked["reloadBoundary"] == "v0.7.0", checked
+    assert len(checked["hops"]) == 1, checked
+
+    first = apply_update(project, target="v0.8.0", source_url=str(source))
+    assert first["status"] == "UPDATER_RELOAD_REQUIRED", first
+    assert first["current"] == "v0.7.0", first
+    assert first["resolvedTarget"] == "v0.8.0", first
+    assert first["route"] == ["v0.6.0", "v0.7.0"], first
+
+    lock = json.loads((project / ".harness/harness.lock.json").read_text())
+    assert lock["release"] == "0.7.0", lock
+    assert lock["source"]["ref"] == "v0.7.0", lock
+    assert lock["source"]["commit"] == oids["v0.7.0"], lock
+    assert "updater runtime v0.7.0" in (
+        project / ".harness/tools/harness_update.py"
+    ).read_text(encoding="utf-8")
+
+    # Новый файл v0.7.0 намеренно ещё не tracked: пользователь не должен
+    # коммитить промежуточный hop только ради продолжения после reload.
+    status = run(
+        project,
+        "git",
+        "status",
+        "--porcelain",
+        "--",
+        ".harness/tools/v070-only.py",
+    )
+    assert status.startswith("??"), status
+
+    # Имитация перезагрузки: следующий вызов уже опирается на lock v0.7.0 и
+    # установленный control plane v0.7.0, но сохраняет исходный final target.
+    resumed_check = check_update(
+        project,
+        target="v0.8.0",
+        source_url=str(source),
+    )
+    assert resumed_check["route"] == ["v0.7.0", "v0.8.0"], resumed_check
+    assert resumed_check["checkedThrough"] == "v0.8.0", resumed_check
+    assert resumed_check["reloadBoundary"] is None, resumed_check
+
+    second = apply_update(project, target="v0.8.0", source_url=str(source))
+    assert second["status"] == "UPDATED", second
+    assert second["current"] == "v0.8.0", second
+    assert second["route"] == ["v0.7.0", "v0.8.0"], second
+
+    final_lock = json.loads((project / ".harness/harness.lock.json").read_text())
+    assert final_lock["release"] == "0.8.0", final_lock
+    assert final_lock["source"]["ref"] == "v0.8.0", final_lock
+    assert final_lock["source"]["commit"] == oids["v0.8.0"], final_lock
+
+    manifest_text = (project / ".harness/manifest.yaml").read_text(encoding="utf-8")
+    assert 'release: "0.8.0"' in manifest_text, manifest_text
+    assert (project / ".harness/tools/v070-only.py").read_text() == "# updated in v0.8.0\n"
+    assert (project / ".agents/skills/custom/SKILL.md").read_text() == "project custom skill\n"
+
+    shared = (project / "shared.txt").read_text(encoding="utf-8")
+    assert shared == "local-line-1\nv080-line-2\nv070-line-3\n", shared
+    merged_agents = (project / "AGENTS.md").read_text(encoding="utf-8")
+    assert "before v0.8.0" in merged_agents and "after v0.8.0" in merged_agents
+    assert "LOCAL PROJECT CONTEXT" in merged_agents
+
+    reports = sorted((project / "reports").glob("UPDATE-*.md"))
+    assert len(reports) == 2, reports
 
 
 def main() -> int:
@@ -322,6 +530,8 @@ def main() -> int:
             assert exc.code == "SOURCE_TAG_MOVED", (exc.code, exc)
         else:
             raise AssertionError("moved release tag was accepted")
+
+        test_supported_floor_reload_chain(temp)
 
     print("HARNESS UPDATE SELF-TEST: PASS")
     return 0
