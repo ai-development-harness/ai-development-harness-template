@@ -88,6 +88,21 @@ def main() -> int:
             "handler": "git-sync",
         }
 
+
+        # Status/update commands consume deterministic engines directly.
+        assert route_command(root, "PROJECT STATUS")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "project-status",
+        }
+        assert route_command(root, "HARNESS UPDATE CHECK")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "harness-update-check",
+        }
+        assert route_command(root, "HARNESS UPDATE APPLY")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "harness-update-apply",
+        }
+
         # Mutating deterministic handler may return SUCCESS rather than PASS.
         # Dispatcher must persist exact SUCCESS and finish without semantic handoff.
         original_sync = command_dispatch_module.execute_sync
@@ -144,6 +159,48 @@ def main() -> int:
         )
         assert done["status"] == "DONE", done
 
+
+        # Normal coding STEP RUN skips the root run-step model turn and hands
+        # the exact child command directly to its semantic skill. Special types
+        # keep the semantic run-step fallback.
+        original_action = command_dispatch_module.resolve_step_action
+        original_context = command_dispatch_module.build_step_context
+        command_dispatch_module.resolve_step_action = lambda _root, step_id: {
+            "status": "PASS",
+            "stepId": step_id,
+            "stepType": "implementation",
+            "lifecycleStatus": "planned",
+            "command": f"STEP PLAN {step_id}",
+        }
+        command_dispatch_module.build_step_context = lambda _root, _step, _phase: {
+            "status": "PASS",
+            "readPaths": [],
+            "deterministic": {},
+        }
+        try:
+            coding_run = start_dispatch(root, "STEP RUN STEP-123")
+        finally:
+            command_dispatch_module.resolve_step_action = original_action
+            command_dispatch_module.build_step_context = original_context
+        assert coding_run["status"] == "SEMANTIC", coding_run
+        assert coding_run["command"] == "STEP PLAN STEP-123", coding_run
+        assert coding_run["skill"] == "plan-step", coding_run
+
+        command_dispatch_module.resolve_step_action = lambda _root, step_id: {
+            "status": "PASS",
+            "stepId": step_id,
+            "stepType": "research",
+            "lifecycleStatus": "planned",
+            "command": f"STEP PLAN {step_id}",
+        }
+        try:
+            special_run = start_dispatch(root, "STEP RUN STEP-124")
+        finally:
+            command_dispatch_module.resolve_step_action = original_action
+        assert special_run["status"] == "SEMANTIC", special_run
+        assert special_run["command"] == "STEP RUN STEP-124", special_run
+        assert special_run["skill"] == "run-step", special_run
+
         # Deterministic CHECK должен автоматически пройти первый segment
         # и вернуть модели только следующий semantic COMMIT handoff.
         chain = start_dispatch(root, "GIT CHECK > COMMIT")
@@ -158,6 +215,78 @@ def main() -> int:
             "SUCCESS",
         )
         assert chain_done["status"] == "DONE", chain_done
+
+
+        # Standalone PUSH still requires semantic scope reasoning.
+        standalone_push = start_dispatch(root, "GIT PUSH")
+        assert standalone_push["status"] == "SEMANTIC", standalone_push
+        assert standalone_push["command"] == "GIT PUSH", standalone_push
+        complete_dispatch(
+            root,
+            standalone_push["rootCommand"],
+            standalone_push["command"],
+            "SUCCESS",
+        )
+
+        # After canonical COMMIT in the same chain PUSH is purely mechanical:
+        # execute_push owns fetch/preflight/mutation/postcondition, so no second
+        # git-operator model turn is required.
+        original_push = command_dispatch_module.execute_push
+        command_dispatch_module.execute_push = lambda _root: {
+            "status": "SUCCESS",
+            "action": "push",
+            "branch": "test",
+            "head": "deadbeef",
+            "afterPush": "never",
+        }
+        try:
+            git_chain = start_dispatch(root, "GIT CHECK > COMMIT > PUSH")
+            assert git_chain["status"] == "SEMANTIC", git_chain
+            assert git_chain["command"] == "GIT COMMIT", git_chain
+            git_done = complete_dispatch(
+                root,
+                git_chain["rootCommand"],
+                git_chain["command"],
+                "SUCCESS",
+            )
+        finally:
+            command_dispatch_module.execute_push = original_push
+        assert git_done["status"] == "DONE", git_done
+        assert git_done["result"]["status"] == "SUCCESS", git_done
+        assert git_done["result"]["fastPath"] == "after-canonical-commit", git_done
+
+        # UPDATE CHECK > APPLY persists exact machine route/lock details, so the
+        # existing matching-update-target-and-route precondition remains active
+        # even though both segments now run without an LLM.
+        lock_ref = json.loads(
+            (root / ".harness/harness.lock.json").read_text(encoding="utf-8")
+        )["source"]["ref"]
+        original_check_update = command_dispatch_module.check_update
+        original_apply_update = command_dispatch_module.apply_update
+        command_dispatch_module.check_update = lambda _root, target=None: {
+            "status": "PASS",
+            "current": lock_ref,
+            "resolvedTarget": target or lock_ref,
+            "route": [lock_ref],
+            "checkedThrough": lock_ref,
+        }
+        command_dispatch_module.apply_update = lambda _root, target=None: {
+            "status": "NO_UPDATE",
+            "current": lock_ref,
+            "resolvedTarget": target or lock_ref,
+            "route": [lock_ref],
+        }
+        try:
+            update_done = start_dispatch(
+                root,
+                f"HARNESS UPDATE CHECK TO {lock_ref} > APPLY",
+            )
+        finally:
+            command_dispatch_module.check_update = original_check_update
+            command_dispatch_module.apply_update = original_apply_update
+        assert update_done["status"] == "DONE", update_done
+        assert update_done["result"]["status"] == "SUCCESS", update_done
+        assert update_done["result"]["engineStatus"] == "NO_UPDATE", update_done
 
         # HARNESS RESUME не создаёт отдельную root execution и возвращает
         # semantic handoff существующей interrupted command.
