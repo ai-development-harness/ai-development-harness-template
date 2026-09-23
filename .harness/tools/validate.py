@@ -584,6 +584,16 @@ def validate_command_surface(root: Path, policy: dict, errors: list[str]) -> Non
                         f"{documentation} (found {anchor_count})"
                     )
 
+                dispatch = spec.get("dispatch")
+                if isinstance(dispatch, dict) and dispatch.get("kind") == "semantic":
+                    skill = dispatch.get("skill")
+                    if isinstance(skill, str) and skill.strip():
+                        skill_path = root / ".agents" / "skills" / skill / "SKILL.md"
+                        if not skill_path.is_file():
+                            errors.append(
+                                f"command dispatch for '{command_name}' references missing skill: {skill}"
+                            )
+
         for command in policy.get("required_commands", []):
             if command not in table_commands:
                 errors.append(

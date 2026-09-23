@@ -2,7 +2,7 @@
 
 Команды — стабильный человеко-машинный интерфейс. Каноническая форма начинается с явного namespace: `<DOMAIN> <ACTION> ...`. Подробный синтаксис и chain operator `>` описаны в [`COMMAND_SYNTAX.md`](COMMAND_SYNTAX.md).
 
-Допустимость переходов между командами определяется **только** machine-readable graph `.harness/command-transitions.json`. Полная человекочитаемая матрица — [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md). До skill routing canonical command проходит deterministic `.harness/tools/validate-command.py`.
+Допустимость переходов и routing команд определяется **только** machine-readable graph `.harness/command-transitions.json`. Обычный runtime передаёт raw command в `.harness/tools/harness-dispatch.py`: dispatcher выполняет structural gate/execution/continuation и возвращает deterministic result либо exact semantic skill handoff. `validate-command.py` остаётся read-only диагностическим structural gate.
 
 State transitions выполнения описаны в `.harness/docs/EXECUTION_PROTOCOL.md`.
 

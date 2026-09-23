@@ -24,32 +24,23 @@ Accepted ADR не переписывай задним числом. Расхож
 
 ## 2. Bootstrap любой canonical command
 
-Canonical command сначала проходит structural gate, **до чтения command-specific skill и project/Git state**:
+Не воспроизводи CTS/execution/routing вручную. Любой canonical input передай единой deterministic boundary:
 
 ```bash
-python3 .harness/tools/validate-command.py --json -- '<raw canonical command>'
+python3 .harness/tools/harness-dispatch.py start --command '<raw canonical command>'
 ```
 
-Structural FAIL означает: не выполнять segments, не создавать execution record и не интерпретировать command вручную.
+Dispatcher сам выполняет structural validation, execution state, runtime preconditions и deterministic handlers. Для semantic node он возвращает единственный `skillPath` и, для STEP PLAN/IMPLEMENT/REVIEW, exact phase context. Читай только их.
 
-После PASS зарегистрируй root execution до command-specific dispatch:
+После semantic работы передай factual result обратно dispatcher:
 
 ```bash
-python3 .harness/tools/execution-state.py start --command '<raw canonical command>'
+python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --result PASS|SUCCESS|FAIL|BLOCKED
 ```
 
-Исключение — `HARNESS RESUME`: после structural PASS выполни `python3 .harness/tools/harness-ux.py resume --json`; отдельную root execution не создавай.
+Dispatcher сам разрешит chain/orchestration continuation. Для interruption используй `harness-dispatch.py resume`; `HARNESS RESUME` отдельную root execution не создаёт. `PASS/BLOCKED` deterministic tools reasoning-ом не переопределяй.
 
-Дальше используй deterministic resolver/runtime preconditions и **только соответствующий skill**. Не восстанавливай скриптовые проверки reasoning-ом и не переопределяй `PASS/BLOCKED` deterministic tools.
-
-Machine sources:
-
-- command/transition graph: `.harness/command-transitions.json`;
-- syntax: `.harness/docs/COMMAND_SYNTAX.md`;
-- execution semantics: `.harness/docs/EXECUTION_PROTOCOL.md`;
-- restart/resume: `.harness/docs/EXECUTION_STATUS.md`;
-- self-update: `.harness/docs/UPDATES.md`;
-- terms: `.harness/docs/GLOSSARY.md`.
+Machine details остаются pull-based в `.harness/docs/COMMAND_SYNTAX.md`, `EXECUTION_PROTOCOL.md`, `EXECUTION_STATUS.md` и `UPDATES.md`.
 
 ## 3. Canonical command surface
 
