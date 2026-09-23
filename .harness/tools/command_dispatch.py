@@ -373,8 +373,13 @@ def _git_push_after_commit_fast_path(
         or not isinstance(index, int)
         or index <= 0
         or index >= len(sequence)
-        or sequence[index - 1] != "GIT COMMIT"
     ):
+        return None
+    try:
+        previous = route_command(root, str(sequence[index - 1]))
+    except DispatchError:
+        return None
+    if previous.get("domain") != "GIT" or previous.get("operation") != "COMMIT":
         return None
 
     try:
