@@ -88,7 +88,7 @@ Pull Request provider mechanics также не являются reasoning-за�
 
 Git workflow следует той же границе: после semantic staging/message decisions `git-action.py` повторяет preflight, выполняет COMMIT/PUSH/SYNC/PR FINISH и проверяет postconditions. Модели не нужно читать/копировать `mutationPlan.argv` и вручную исполнять mechanical steps.
 
-`GIT CHECK`, `GIT SYNC` и `GIT PR FINISH` маршрутизируются как deterministic dispatcher handlers: для них model call отсутствует полностью. Standalone `GIT PUSH` сохраняет semantic logical-scope boundary. Если PUSH идёт непосредственно после успешного canonical COMMIT в той же chain, scope уже доказан этим segment, поэтому dispatcher использует deterministic push fast-path без повторного model call.
+`GIT CHECK`, `GIT SYNC` и `GIT PR FINISH` маршрутизируются как deterministic dispatcher handlers: для них model call отсутствует полностью. Standalone `GIT PUSH` сохраняет semantic logical-scope boundary. Если PUSH идёт непосредственно после успешного canonical COMMIT в той же chain, scope уже доказан этим segment, а dispatcher дополнительно требует machine-proof продвижения HEAD; только после этого используется deterministic push fast-path без повторного model call.
 
 ## Gate
 
