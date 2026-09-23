@@ -62,7 +62,6 @@ plan:
 ## Verification
 
 - command: `python3 .harness/tools/validate.py --mode manual`
-- manual: Добавлять только действительно неавтоматизируемую semantic/visual проверку; удалить строку, если manual check не нужен.
 
 ## Deliverables
 
