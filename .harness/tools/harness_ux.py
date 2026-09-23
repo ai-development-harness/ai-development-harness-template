@@ -355,7 +355,10 @@ def project_status(root: Path) -> dict[str, Any]:
         },
         "inProgress": groups.get("in_progress", []),
         "blocked": groups.get("blocked", []),
-        "completed": groups.get("completed", []),
+        "completed": [
+            str(item["id"])
+            for item in groups.get("completed", [])
+        ],
         "nextWork": next_work,
         "validation": "PASS",
     }
