@@ -169,6 +169,42 @@ def _fresh_command(
     return f"STEP IMPLEMENT {step_id}", []
 
 
+
+def resolve_step_action(root: Path, step_id: str) -> dict[str, Any]:
+    """Resolve the exact next canonical action for one STEP without ranking."""
+
+    if step_id.isdigit() and len(step_id) >= 3:
+        step_id = f"STEP-{step_id}"
+    try:
+        task = read_task(root, step_id)
+        command, reasons = _fresh_command(root, step_id, task)
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "BLOCKED",
+            "reasonCode": "STEP_ACTION_STATE_INVALID",
+            "stepId": step_id,
+            "message": str(exc),
+        }
+
+    meta = task["frontmatter"]
+    if command is None:
+        return {
+            "status": "BLOCKED",
+            "reasonCode": "STEP_ACTION_BLOCKED",
+            "stepId": step_id,
+            "stepType": meta.get("type"),
+            "lifecycleStatus": meta.get("status"),
+            "reasons": reasons,
+        }
+    return {
+        "status": "PASS",
+        "stepId": step_id,
+        "stepType": meta.get("type"),
+        "lifecycleStatus": meta.get("status"),
+        "command": command,
+    }
+
+
 def _step_id_from_execution(item: dict[str, Any]) -> str | None:
     for value in (item.get("command"), item.get("rootCommand")):
         if isinstance(value, str):
