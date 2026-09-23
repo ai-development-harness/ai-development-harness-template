@@ -250,6 +250,7 @@ def main() -> int:
         # execute_push owns fetch/preflight/mutation/postcondition, so no second
         # git-operator model turn is required.
         original_push = command_dispatch_module.execute_push
+        original_commit_proof = command_dispatch_module.git_commit_completion_proven
         command_dispatch_module.execute_push = lambda _root: {
             "status": "SUCCESS",
             "action": "push",
@@ -257,6 +258,7 @@ def main() -> int:
             "head": "deadbeef",
             "afterPush": "never",
         }
+        command_dispatch_module.git_commit_completion_proven = lambda _root, _execution: True
         try:
             git_chain = start_dispatch(root, "GIT CHECK > COMMIT > PUSH")
             assert git_chain["status"] == "SEMANTIC", git_chain
@@ -269,9 +271,28 @@ def main() -> int:
             )
         finally:
             command_dispatch_module.execute_push = original_push
+            command_dispatch_module.git_commit_completion_proven = original_commit_proof
         assert git_done["status"] == "DONE", git_done
         assert git_done["result"]["status"] == "SUCCESS", git_done
         assert git_done["result"]["fastPath"] == "after-canonical-commit", git_done
+
+        # A semantic SUCCESS claim alone cannot unlock the no-model PUSH path:
+        # repository HEAD advancement is a required deterministic proof.
+        command_dispatch_module.git_commit_completion_proven = (
+            lambda _root, _execution: False
+        )
+        try:
+            unproven_chain = start_dispatch(root, "GIT CHECK > COMMIT > PUSH")
+            unproven = complete_dispatch(
+                root,
+                unproven_chain["rootCommand"],
+                unproven_chain["command"],
+                "SUCCESS",
+            )
+        finally:
+            command_dispatch_module.git_commit_completion_proven = original_commit_proof
+        assert unproven["status"] == "BLOCKED", unproven
+        assert unproven["reasonCode"] == "COMMIT_POSTCONDITION_FAILED", unproven
 
         # UPDATE CHECK > APPLY persists exact machine route/lock details, so the
         # existing matching-update-target-and-route precondition remains active
