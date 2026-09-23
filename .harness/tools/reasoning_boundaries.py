@@ -38,6 +38,10 @@ DOC_PREAMBLE = (
     "Таблица и числовая\n"
     "сводка ниже генерируются автоматически. Ручное редактирование блока между\n"
     "служебными маркерами запрещено.\n\n"
+    "Режим относится к собственной обработке канонической команды. Если команда\n"
+    "запускает дочерние команды, их вычисления учитываются отдельно. Например,\n"
+    "обычный STEP RUN управляется скриптом, но дочерние PLAN, IMPLEMENT, REVIEW\n"
+    "и FIX по-прежнему выполняют необходимую смысловую работу модели.\n\n"
     "Машиночитаемая проекция для внешних потребителей:\n\n"
     + FENCE + "text\n"
     ".harness/reasoning-boundaries.json\n"
@@ -77,6 +81,13 @@ def build_projection(table: dict[str, Any]) -> dict[str, Any]:
     return {
         "schemaVersion": 1,
         "generatedFrom": ".harness/command-transitions.json",
+        "classification": {
+            "scope": "command-node",
+            "description": (
+                "Режим относится к собственной обработке канонической команды; "
+                "вызванные ею дочерние команды учитываются отдельно."
+            ),
+        },
         "summary": {
             "total": len(commands),
             "none": counts["none"],
