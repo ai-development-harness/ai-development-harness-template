@@ -315,6 +315,7 @@ def main() -> int:
         finish_gate = pr_finish_preflight(finish_project, pr_data=merged_pr)
         assert finish_gate["status"] == "PASS", finish_gate
         assert finish_gate["returnBranch"] == "main", finish_gate
+        assert finish_gate["resumed"] is False, finish_gate
         assert finish_gate["gitAncestryMerged"] is False, finish_gate
         assert finish_gate["mergedHeadOid"] == finish_head, finish_gate
         assert finish_gate["mutationPlan"]["steps"][-1]["mode"] == "provider-verified-head", finish_gate
@@ -323,6 +324,19 @@ def main() -> int:
         ], finish_gate
         assert finish_gate["mutationPlan"]["forceDeleteForbidden"] is True
         assert finish_gate["mutationPlan"]["deleteRemoteBranch"] is False
+
+        # Crash-window regression: первый mutation step уже успел переключить
+        # return branch, но local PR state и feature ref ещё существуют.
+        run(finish_project, "git", "switch", "main")
+        resumed_gate = pr_finish_preflight(finish_project, pr_data=merged_pr)
+        assert resumed_gate["status"] == "PASS", resumed_gate
+        assert resumed_gate["resumed"] is True, resumed_gate
+        assert resumed_gate["currentBranch"] == "main", resumed_gate
+        assert all(
+            step["operation"] != "switch-return-branch"
+            for step in resumed_gate["mutationPlan"]["steps"]
+        ), resumed_gate
+
         finish_action = execute_pr_finish(finish_project, pr_data=merged_pr)
         assert finish_action["status"] == "SUCCESS", finish_action
         assert finish_action["returnBranch"] == "main", finish_action
@@ -334,6 +348,21 @@ def main() -> int:
             cwd=finish_project,
         )
         assert missing.returncode != 0
+
+        # Второе crash-window: branch cleanup завершён, но state file удалить
+        # не успели. Повторный FINISH должен стать безопасным no-op + state cleanup.
+        write(
+            finish_project,
+            ".harness/local/git/pr-state.json",
+            json.dumps(pr_state, ensure_ascii=False, indent=2) + "\n",
+        )
+        cleanup_gate = pr_finish_preflight(finish_project, pr_data=merged_pr)
+        assert cleanup_gate["status"] == "PASS", cleanup_gate
+        assert cleanup_gate["resumed"] is True, cleanup_gate
+        assert cleanup_gate["mutationPlan"]["steps"] == [], cleanup_gate
+        cleanup_action = execute_pr_finish(finish_project, pr_data=merged_pr)
+        assert cleanup_action["status"] == "SUCCESS", cleanup_action
+        assert not (finish_project / ".harness/local/git/pr-state.json").exists()
 
     print("GIT PREFLIGHT SELF-TEST: PASS")
     return 0

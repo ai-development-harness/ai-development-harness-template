@@ -14,7 +14,11 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-2. Получи exact inputs одним deterministic вызовом:\n   ```bash\n   python3 .harness/tools/step-context.py STEP-NNN --phase plan --json\n   ```\n   Прочитай только `readPaths` из результата, затем исследуй только действительно relevant code/tests/config. Не обходи manifest/REQ/ADR/OQ directories вручную. Completion dependency для PLAN не вычисляй.
+2. Получи exact inputs одним deterministic вызовом:
+   ```bash
+   python3 .harness/tools/step-context.py STEP-NNN --phase plan --json
+   ```
+   Прочитай только `readPaths` из результата, затем исследуй только действительно relevant code/tests/config. Не обходи manifest/REQ/ADR/OQ directories вручную. Completion dependency для PLAN не вычисляй.
 3. Проверь semantic consistency:
    - Goal/Scope/Out of scope/Mutation policy согласованы;
    - Acceptance следует из REQ/ADR и не требует forbidden mutation;

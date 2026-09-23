@@ -129,6 +129,8 @@ PASS требует чистое рабочее дерево, состояние
 
 После PASS exact ordered plan исполняет `git-action.py pr-finish`: switch → optional ff-only sync → удаление локальной PR-ветки → postconditions → удаление local PR state. При обычном merge используется `git branch -d`, после squash/rebase — compare-and-swap `git update-ref -d <ref> <verified-head-oid>`. `git branch -D`, удаление remote branch, reset/rebase запрещены.
 
+`GIT PR FINISH` crash-resumable: если session/process оборвался после переключения на `returnBranch`, повторный запуск принимает только recorded `headBranch|returnBranch`, заново сверяет provider `MERGED`, exact `headRefOid` и return-branch relation, после чего выполняет только оставшиеся sync/delete steps. Если feature ref уже удалён, но local PR state остался, повторный запуск завершает только state cleanup.
+
 ### `GIT SYNC`
 
 Default `GIT SYNC` через `git-action.py sync` повторяет preflight и делает fetch + ahead/behind report; при `ff-only` executor сам выполняет разрешённый fast-forward и проверяет HEAD. Для автоматического безопасного fast-forward:

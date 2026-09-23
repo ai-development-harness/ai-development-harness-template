@@ -83,8 +83,6 @@ required_files = [
   ".harness/tools/git_preflight.py",
   ".harness/tools/git_action.py",
   ".harness/tools/git-action.py",
-  ".harness/tools/git_action.py",
-  ".harness/tools/git-action.py",
   ".harness/tools/git-preflight.py",
   ".harness/tools/git-preflight-self-test.py",
   ".harness/tools/git-policy-self-test.py",
