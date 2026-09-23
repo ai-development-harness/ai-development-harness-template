@@ -28,6 +28,8 @@ GitHub Actions official actions pinned по immutable commit SHA, соответ
 
 Context budget gate фиксирует размер Harness-controlled always-on instructions до выбора skill. Generated project blocks в `AGENTS.md` учитываются отдельно и не входят в core limit. Текущий baseline: 7 224 chars для Codex и 8 029 chars для Claude Code (после сокращения always-on bootstrap на ~60%). Подробности — в [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md).
 
+Отдельный gate границ вычислений модели проверяет, что `.harness/reasoning-boundaries.json` и generated-блок [`REASONING_BOUNDARIES.md`](REASONING_BOUNDARIES.md) совпадают с CTS, а каждый объявленный условный быстрый путь указывает на существующую функцию. Проверка входит в общий `validate.py`, а синтетическая регрессия автоматически обнаруживается `run-self-tests.py`.
+
 Repository hardening self-test проверяет validator boundaries на synthetic tracked checkout: фактическую Git ignore semantics через `git check-ignore`, отсутствие ignored/untracked TOML в config surface и containment Codex role configs внутри `.codex/agents`.
 
 Git policy self-test проверяет fail-closed schema boundary через публичный validator: неизвестный/опечаточный safety key не может быть молча проигнорирован.
