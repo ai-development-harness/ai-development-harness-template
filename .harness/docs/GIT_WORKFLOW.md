@@ -31,7 +31,7 @@ python3 .harness/tools/git-preflight.py pr --json
 python3 .harness/tools/git-preflight.py sync --json
 ```
 
-`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Поддерживаемые mechanical mutations (`GIT COMMIT`, `GIT PUSH`, `GIT SYNC`, `GIT PR FINISH`) исполняет `.harness/tools/git-action.py`: он повторяет preflight, выполняет exact argv и проверяет postcondition. `GIT PR` пока остаётся provider boundary после deterministic preflight. Configured `git fetch` разрешён как operational refresh remote refs.
+`git-preflight.py` не создаёт mutation и возвращает `PASS/BLOCKED` + exact plan. Mechanical mutations `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT SYNC`, `GIT PR FINISH` исполняет `.harness/tools/git-action.py`: он повторяет preflight и проверяет postconditions. Для PR semantic boundary ограничена title/body content; provider find/reuse/create и local lifecycle state выполняются deterministic. Configured `git fetch` разрешён как operational refresh remote refs.
 
 LLM/agent по-прежнему отвечает за semantic decisions — например, является ли diff одним logical change и какой commit type соответствует фактическому изменению. Но protected branch, remote divergence, publish state, force prohibition, clean-worktree requirement, PR base/tool и ff-only safety больше не интерпретируются вручную.
 
@@ -115,7 +115,7 @@ after_push = "never"
 
 ### `GIT PR`
 
-`GIT PR` можно вызвать отдельно. Перед provider action обязательный `git-preflight.py pr` доказывает, что exact local HEAD опубликован, configured base существует, preferred tool доступен и body template остаётся внутри repository. После `PASS` агент не создаёт duplicate PR при `reuse_existing=true` и заполняет traceability/verification из repository evidence. Default template — `.github/pull_request_template.md`.
+`GIT PR` можно вызвать отдельно. Модель формирует только semantic body (и title, если `title_from_commit=false`) в `.harness/local/git/**`, затем вызывает `git-action.py pr`. Executor повторяет preflight, ищет exact open head/base PR через configured provider, переиспользует его по policy либо создаёт новый, проверяет provider `headRefOid` против exact published HEAD и сам сохраняет `.harness/local/git/pr-state.json`. Default body template — `.github/pull_request_template.md`.
 
 ### `GIT PR FINISH`
 

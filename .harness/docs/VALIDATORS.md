@@ -697,6 +697,7 @@ python3 .harness/tools/git-action.py commit --json \
   --slug user-search \
   --message-file .harness/local/git/commit-message.txt
 python3 .harness/tools/git-action.py push --json
+python3 .harness/tools/git-action.py pr --body-file .harness/local/git/pr-body.md --json
 python3 .harness/tools/git-action.py sync --json
 python3 .harness/tools/git-action.py pr-finish --json
 ```
@@ -705,10 +706,9 @@ Executor повторяет canonical preflight непосредственно �
 
 - COMMIT создаёт только exact `requiredBranch`, если protected-branch preflight потребовал его; message file разрешён только под `.harness/local/git/`; postcondition — новый HEAD.
 - PUSH исполняет только returned non-force argv; postcondition — configured remote branch совпадает с local HEAD.
+- PR принимает semantic body/title только из `.harness/local/git/**`, сам ищет/reuse/create provider PR, сверяет exact head OID и сохраняет local PR state.
 - SYNC разрешает только report/noop или exact `git merge --ff-only`; postcondition — local HEAD совпадает с configured remote.
 - PR FINISH исполняет ordered exact steps, проверяет return branch и удаление verified local PR branch; local PR state удаляется только после полного успеха.
-
-`GIT PR` creation не входит в executor: provider action остаётся отдельной trust boundary с semantic title/body. См. `THREAT_MODEL.md`.
 
 Exit codes: `0` — SUCCESS; `2` — BLOCKED/preflight/mutation/postcondition failure.
 

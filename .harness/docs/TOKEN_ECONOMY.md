@@ -79,6 +79,8 @@ Semantic artifact persistence следует тому же правилу. PLAN/
 
 Verification — такой же mechanical layer. Explicit `- command: \`...\`` из STEP запускает `verification.py` без shell; runner фиксирует exit code, duration и hashes output, проверяет отсутствие неожиданных repository mutations и обновляет generated Evidence. Модель получает только factual failure/manual checks, а не должна сама запускать команды и пересказывать terminal output.
 
+Pull Request provider mechanics также не являются reasoning-задачей. Модель формирует только semantic PR prose; `git-action.py pr` выполняет exact provider query/reuse/create, head-OID postcondition и PR lifecycle state.
+
 Git workflow следует той же границе: после semantic staging/message decisions `git-action.py` повторяет preflight, выполняет COMMIT/PUSH/SYNC/PR FINISH и проверяет postconditions. Модели не нужно читать/копировать `mutationPlan.argv` и вручную исполнять mechanical steps.
 
 ## Gate

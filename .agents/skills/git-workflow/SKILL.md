@@ -89,23 +89,18 @@ Executor сам повторяет preflight, исполняет только re
 
 ## GIT PR
 
-Непосредственно перед PR:
+Сначала semantic часть: по repository evidence и configured template подготовь только PR body в regular file под `.harness/local/git/**`. Title-файл нужен только если preflight сообщает `titleFromCommit=false`; при default `true` executor сам берёт exact subject текущего commit.
+
+Не ищи existing PR, не вызывай `gh pr create/list/view` и не записывай `pr-state.json` вручную. Вызови:
 
 ```bash
-python3 .harness/tools/git-preflight.py pr --json
+python3 .harness/tools/git-action.py pr --body-file .harness/local/git/pr-body.md --json
 ```
 
-PASS доказывает:
+При `titleFromCommit=false` добавь `--title-file .harness/local/git/pr-title.txt`.
 
-- current HEAD полностью опубликован в configured push remote;
-- configured PR base существует;
-- `pull_request.provider` / `preferred_tool` разрешены policy и tool доступен;
-- body template существует внутри repository;
-- draft/reuse/title flags прочитаны из policy.
+Executor сам повторяет PR preflight, использует только configured provider/tool/head/base/draft policy, ищет exact open head/base PR, переиспользует его при `reuse_existing=true` либо создаёт новый, проверяет provider head OID == exact published HEAD и атомарно сохраняет local PR lifecycle state. Повторный запуск idempotent для того же PR.
 
-Используй `mutationPlan` и policy буквально. Не подменяй provider/tool самостоятельно. Если `reuse_existing=true`, сначала переиспользуй существующий open PR той же head/base.
-
-После успешного создания/переиспользования PR сохрани local-only `.harness/local/git/pr-state.json` schema v1 с полями `pr`, `headBranch`, `baseBranch`, `returnBranch`, `url`. Для `returnBranch` используй предыдущую существующую локальную ветку из истории переключений Git, если она отличается от head; иначе configured/actual PR base. Файл находится под уже ignored `.harness/local/**` и не коммитится. `GIT PR FINISH` дополнительно сверяет текущий локальный HEAD с GitHub `headRefOid`, поэтому squash/rebase merge не требует Git ancestry.
 
 ## GIT PR FINISH
 
