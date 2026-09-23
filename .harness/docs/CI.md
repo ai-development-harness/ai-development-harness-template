@@ -12,26 +12,18 @@ Bash не используется как реализация validator: тек
 
 В GitHub Actions версия Python задаётся явно через `actions/setup-python`, поэтому CI не зависит от случайной версии интерпретатора в `ubuntu-latest`.
 
-Workflow запускает baseline validator и dependency-free smoke/self-tests protocol tooling:
+Workflow запускает baseline validator, public CLI smoke checks и единый discoverable regression runner:
 
 ```bash
 python3 .harness/tools/validate.py --mode ci
 python3 .harness/tools/check-command-references.py --json
-python3 .harness/tools/command-references-self-test.py
 python3 .harness/tools/validate-command.py --json -- 'GIT CHECK > COMMIT > PUSH > PR'
-python3 .harness/tools/execution-self-test.py
-python3 .harness/tools/review-gates-self-test.py
-python3 .harness/tools/planning-contract-self-test.py
-python3 .harness/tools/document-contract-self-test.py
-python3 .harness/tools/context-budget.py --json
-python3 .harness/tools/context-budget-self-test.py
-python3 .harness/tools/repository-hardening-self-test.py
-python3 .harness/tools/git-policy-self-test.py
-python3 .harness/tools/git-preflight-self-test.py
-python3 .harness/tools/harness-update-self-test.py
-python3 .harness/tools/update-migration-self-test.py
+python3 .harness/tools/run-self-tests.py
 ```
 
+`run-self-tests.py` автоматически обнаруживает все `.harness/tools/*-self-test.py`, выполняет их в стабильном порядке и не требует ручного добавления нового regression-файла в workflow. `--list` показывает discovery surface, `--json` возвращает compact aggregate result.
+
+GitHub Actions official actions pinned по immutable commit SHA, соответствующим используемому major tag. Workflow concurrency группируется по head branch; новый push/PR event отменяет устаревший run той же ветки, но не смешивает разные branches.
 Для command transition gate workflow дополнительно проверяет отрицательный case (`GIT PR > COMMIT` обязан завершиться non-zero).
 
 Context budget gate фиксирует размер Harness-controlled always-on instructions до выбора skill. Generated project blocks в `AGENTS.md` учитываются отдельно и не входят в core limit. Текущий baseline: 7 224 chars для Codex и 8 029 chars для Claude Code (после сокращения always-on bootstrap на ~60%). Подробности — в [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md).
