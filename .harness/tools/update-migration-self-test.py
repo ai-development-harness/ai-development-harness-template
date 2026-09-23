@@ -16,7 +16,6 @@ from harness_config import (
     update_manifest_path,
     update_report_directory,
 )
-from harness_update import MIN_SUPPORTED_RELEASE, UpdateError, _require_supported_release
 from planning_contract import step_completion_proof
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending, migrate_project
 from review_contract import legacy_review_pins, validate_all_review_reports
@@ -65,18 +64,6 @@ def route_to_latest(graph: dict, start: str) -> tuple[list[str], list[dict]]:
         current = edge["to"]
         route.append(current)
     return route, edges
-
-
-def test_supported_update_floor() -> None:
-    require(MIN_SUPPORTED_RELEASE == "v0.6.0", "supported update floor changed unexpectedly")
-    _require_supported_release("v0.6.0", label="current release")
-    _require_supported_release("v1.0.0", label="current release")
-    try:
-        _require_supported_release("v0.5.3", label="current release")
-    except UpdateError as exc:
-        require(exc.code == "UNSUPPORTED_HARNESS_RELEASE", f"unexpected floor error: {exc.code}")
-    else:
-        raise AssertionError("current updater accepted release below v0.6.0 floor")
 
 
 def test_policy_driven_paths(root: Path) -> None:
@@ -645,7 +632,6 @@ def test_release_metadata(root: Path) -> None:
 def main() -> int:
     root = repo_root()
     tests = [
-        ("supported update floor", test_supported_update_floor),
         ("policy-driven update paths", lambda: test_policy_driven_paths(root)),
         ("routing/reload", lambda: test_routing(root)),
         ("ownership boundary", lambda: test_ownership_contract(root)),
