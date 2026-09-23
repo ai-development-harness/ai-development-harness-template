@@ -233,6 +233,7 @@ def main() -> int:
             },
         )
         assert planning_review["status"] == "PASS", planning_review
+        assert planning_review["completionResult"] == "SUCCESS", planning_review
         planning_report = root / planning_review["report"]
         assert not validate_planning_review_report(
             root, planning_report, expected_step_id="STEP-001"
@@ -258,6 +259,7 @@ def main() -> int:
             },
         )
         assert step_review["status"] == "PASS", step_review
+        assert step_review["completionResult"] == "PASS", step_review
         assert step_review["specializedReviewGate"]["required"] == ["tests"], step_review
         review_report = root / step_review["report"]
         assert not validate_review_report(
