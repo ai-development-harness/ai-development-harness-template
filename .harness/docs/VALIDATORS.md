@@ -215,6 +215,56 @@ python3 .harness/tools/validate-command.py -- 'GIT PR > COMMIT'
 
 ---
 
+# 2A. Stateful command dispatcher
+
+## Файлы
+
+- CLI: `.harness/tools/harness-dispatch.py`
+- engine: `.harness/tools/command_dispatch.py`
+- regression: `.harness/tools/command-dispatch-self-test.py`
+
+## Роль
+
+Canonical runtime boundary между raw Harness command и semantic моделью. Объединяет CTS structural gate, execution state, continuation и machine-readable dispatch metadata.
+
+## Когда использовать
+
+- для любого пользовательского canonical command в обычном runtime;
+- для resume interrupted execution;
+- при тестировании command→skill routing;
+- при разработке нового deterministic command handler.
+
+## CLI
+
+```bash
+python3 .harness/tools/harness-dispatch.py start --command '<raw command>'
+python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --result PASS
+python3 .harness/tools/harness-dispatch.py resume [--root '<root>']
+python3 .harness/tools/harness-dispatch.py route --command '<canonical command>'
+```
+
+По умолчанию output compact JSON; `--pretty` предназначен для ручной диагностики.
+
+## Что доказывает/делает
+
+- invalid chain не создаёт execution;
+- command routing берётся только из CTS `dispatch` metadata;
+- deterministic handlers завершаются без LLM;
+- semantic node возвращает exact `skillPath`;
+- PLAN/IMPLEMENT/REVIEW получают exact phase context через `step_context.py`;
+- `complete` автоматически разрешает следующий chain segment;
+- `resume` не создаёт ложную root execution для `HARNESS RESUME`;
+- dispatch error fail-closed блокирует active execution.
+
+Dispatcher не интерпретирует product semantics и не выполняет semantic skill вместо модели.
+
+## Exit codes
+
+- `0` — deterministic DONE/PASS, semantic handoff или другой неблокирующий result;
+- `1` — BLOCKED.
+
+---
+
 # 3. Deprecated command reference checker
 
 ## Файлы
