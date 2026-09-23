@@ -76,7 +76,7 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 ### 0.4. Deterministic dispatch
 
-`HARNESS HELP/STATUS/DOCTOR/CONFIG`, `STEP LIST/SHOW/NEXT`, а также mechanical `GIT SYNC` и `GIT PR FINISH` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их без semantic handoff/model call.
+`HARNESS HELP`, `HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST`, `STEP SHOW STEP-NNN`, `STEP NEXT`, а также mechanical `GIT SYNC` и `GIT PR FINISH` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их без semantic handoff/model call.
 
 Read-only и mutating handlers используют один invariant: tool возвращает factual `PASS|SUCCESS|BLOCKED`, а dispatcher сохраняет exact result в execution state и не переинтерпретирует его reasoning-ом.
 
