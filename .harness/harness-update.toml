@@ -47,7 +47,6 @@ harness_owned = [
   ".agents/skills/run-step/**",
   ".agents/skills/audit-step/**",
   ".agents/skills/project-status/**",
-  ".agents/skills/next-step/**",
   ".agents/skills/reconcile-project/**",
   ".agents/skills/release-check/**",
   ".agents/skills/requirements-review/**",
