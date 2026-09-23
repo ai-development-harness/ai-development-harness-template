@@ -37,6 +37,7 @@ description: Run an independent read-only review of an exact repository revision
    ```
 
    Writer сам повторно вычисляет exact repository revision и specialized gate, требует результаты всех mandatory reviewers, создаёт immutable report через exclusive reservation и проверяет его canonical validator-ом.
+   Execution result бери только из `completionResult` writer-а (`PASS|FAIL|BLOCKED`); не вычисляй verdict второй раз после записи report.
 8. Product code не исправляй. При BLOCKED укажи corrective STEP/RESEARCH/ADR в semantic finding/rationale; contract defect не маршрутизируй в FAIL→FIX.
 
 Crash recovery доверяет только schema-valid writer report для той же exact repository revision.
