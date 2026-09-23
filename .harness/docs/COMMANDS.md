@@ -252,7 +252,7 @@ Read-only deterministic Git preflight без model call: dispatcher возвра
 <a id="command-git-push"></a>
 ## `GIT PUSH`
 
-Проверяет Harness, fetch/divergence и protected-branch policy, затем без force отправляет текущую ветку в configured remote. Standalone `GIT PUSH` сохраняет semantic scope check. В explicit chain, где PUSH непосредственно следует за успешно завершённым canonical `GIT COMMIT`, повторный model turn не нужен: dispatcher вызывает deterministic `git-action.py push` напрямую, потому что logical scope уже зафиксирован COMMIT.
+Проверяет Harness, fetch/divergence и protected-branch policy, затем без force отправляет текущую ветку в configured remote. Standalone `GIT PUSH` сохраняет semantic scope check. В explicit chain, где PUSH непосредственно следует за успешно завершённым canonical `GIT COMMIT`, повторный model turn не нужен: dispatcher сначала доказывает продвижение HEAD относительно durable `gitHeadBefore`, затем вызывает deterministic `git-action.py push` напрямую. Одного заявленного `SUCCESS` для fast-path недостаточно.
 
 <a id="command-git-pr"></a>
 ## `GIT PR`
