@@ -564,8 +564,13 @@ def main() -> int:
         else:
             raise AssertionError("moved release tag was accepted")
 
-        test_stale_release_snapshot_pin_recovery(temp)
-        test_supported_floor_reload_chain(temp)
+        stale_pin_case = temp / "stale-pin-case"
+        stale_pin_case.mkdir()
+        test_stale_release_snapshot_pin_recovery(stale_pin_case)
+
+        reload_chain_case = temp / "reload-chain-case"
+        reload_chain_case.mkdir()
+        test_supported_floor_reload_chain(reload_chain_case)
 
     print("HARNESS UPDATE SELF-TEST: PASS")
     return 0
