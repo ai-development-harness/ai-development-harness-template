@@ -146,7 +146,7 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 <a id="command-step-plan"></a>
 ## `STEP PLAN STEP-NNN`
 
-Сначала валидирует semantic task/dependency contracts, linked REQ/ADR, explicit `architecture_refs` и relevant OQ. Завершение dependencies для PLAN не требуется. После draft Implementation plan обязательный independent planning-review сохраняет exact schema-v4 `context_basis` и отдельный `plan_content_hash`. Только matching PASS позволяет `stamp-plan` выставить `plan.status=ready`. Reverse traceability/priority/phase/completion state dependency не stale-ят plan; изменение semantic input — stale-ит.
+Сначала валидирует semantic task/dependency contracts, linked REQ/ADR, explicit `architecture_refs` и relevant OQ. Завершение dependencies для PLAN не требуется. Planner возвращает structured Implementation plan/Verification payload, а `semantic-writer.py` сам рендерит STEP draft. Independent reviewer также возвращает только structured verdict/findings/rationale; writer вычисляет exact schema-v4 `context_basis`/`plan_content_hash`, создаёт immutable planning-review и при PASS выполняет Ready stamp. Reverse traceability/priority/phase/completion state dependency не stale-ят plan; изменение semantic input — stale-ит.
 
 <a id="command-step-implement"></a>
 ## `STEP IMPLEMENT STEP-NNN`
@@ -156,7 +156,7 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 <a id="command-step-review"></a>
 ## `STEP REVIEW STEP-NNN`
 
-Независимая проверка exact repository revision. Перед reasoning deterministic preselector вычисляет обязательные security/test reviewers по `review.security/tests`, risk flags, STEP type и factual changed surface. Immutable schema-v1 report содержит `git_head` и при dirty tree `worktree_hash`, structured findings и specialized review metadata. `FAIL` разрешён только для implementation/evidence defects; contract defect → `BLOCKED`. Crash recovery доверяет только schema-valid report для той же revision.
+Независимая проверка exact repository revision. Перед reasoning deterministic preselector вычисляет обязательные security/test reviewers по `review.security/tests`, risk flags, STEP type и factual changed surface. Reviewer возвращает structured verdict/findings/observations; `semantic-writer.py` сам фиксирует exact revision/gate basis, создаёт immutable report, валидирует его и возвращает execution `completionResult`. `FAIL` разрешён только для implementation/evidence defects; contract defect → `BLOCKED`. Crash recovery доверяет только schema-valid report для той же revision.
 
 <a id="command-step-fix"></a>
 ## `STEP FIX STEP-NNN`

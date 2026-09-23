@@ -15,21 +15,29 @@ description: Run an independent read-only review of an exact repository revision
    python3 .harness/tools/step-context.py STEP-NNN --phase review --json
    ```
    Прочитай только `readPaths` + relevant diff/code/tests. `deterministic.specializedReviewGate` содержит exact `basis`, `required`, reasons и changed surface; `deterministic.repositoryRevision` содержит exact `git_head/worktree_hash`. Модель может добавить reviewer, но не убрать required. Не вызывай отдельные gates и не восстанавливай revision вручную.
-3. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan с реализацией и tests. Сделай полный проход текущей revision и собери все material findings.
-4. Categories:
+3. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan с реализацией и tests. Сделай полный semantic проход exact revision и собери material findings.
+4. Верни structured payload:
+   - `verdict: pass|fail|blocked`;
+   - `findings[]`: `title/severity/category/location/scenario/impact/fixDirection`;
+   - `verificationObservations`;
+   - `rationale`;
+   - `specializedReviews.security/tests` только для реально выполненных specialized reviews: `status + evidence`.
+5. Categories:
    - `implementation` — реализация/тест не соответствует непротиворечивому contract;
    - `evidence` — acceptance недостаточно доказан;
-   - `contract` — сам STEP/REQ/ADR/dependency/Acceptance противоречив или требует отсутствующего решения.
-5. Routing:
+   - `contract` — STEP/REQ/ADR/dependency/Acceptance противоречив или требует отсутствующего решения.
+6. Routing:
    - `pass` — findings нет;
-   - `fail` — есть implementation/evidence findings, исправимые внутри scope;
-   - `blocked` — есть contract defect/missing prerequisite/stale planning context либо blocking evidence condition, которую нельзя безопасно исправить внутри текущего STEP.
-6. Создай новый immutable schema-v1 report `REVIEW-<UTC timestamp>.md` в configured `protocol.reviewDirectory/STEP-NNN/`. Каждый finding обязан иметь Severity, Category, Location, Scenario, Impact, Fix direction. В `specialized_reviews.gate_basis` и `specialized_reviews.required` запиши exact значения preselector; статусы security/tests обязаны им соответствовать. Для выполненного specialized review заполни `security_evidence` / `tests_evidence` конкретной краткой сводкой или ссылкой на реально существующее durable evidence. Это evidence reference/summary, а не автоматически доверенный filesystem path.
-7. До completion проверь report:
-   ```bash
-   python3 .harness/tools/review_contract.py --file '<report-path>' --current-revision
-   ```
-   Невалидный report нельзя использовать как verdict.
-8. Product code не исправляй. При BLOCKED укажи corrective STEP/RESEARCH/ADR; не отправляй contract defect в FAIL→FIX.
+   - `fail` — implementation/evidence findings, исправимые внутри scope;
+   - `blocked` — contract defect/missing prerequisite либо blocking evidence condition.
+7. Не создавай review Markdown/frontmatter, timestamp, revision или gate metadata вручную. Передай JSON в:
 
-Crash recovery доверяет только schema-valid report для той же exact repository revision.
+   ```bash
+   python3 .harness/tools/semantic-writer.py step-review STEP-NNN --payload-file '<local-json-or->'
+   ```
+
+   Writer сам повторно вычисляет exact repository revision и specialized gate, требует результаты всех mandatory reviewers, создаёт immutable report через exclusive reservation и проверяет его canonical validator-ом.
+   Execution result бери только из `completionResult` writer-а (`PASS|FAIL|BLOCKED`); не вычисляй verdict второй раз после записи report.
+8. Product code не исправляй. При BLOCKED укажи corrective STEP/RESEARCH/ADR в semantic finding/rationale; contract defect не маршрутизируй в FAIL→FIX.
+
+Crash recovery доверяет только schema-valid writer report для той же exact repository revision.

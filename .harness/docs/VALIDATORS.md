@@ -848,6 +848,40 @@ python3 .harness/tools/verify-step.py STEP-NNN --manual-json '[{"check":"...","s
 
 ---
 
+# 10B. Structured semantic artifact writers
+
+## Файлы
+
+- engine: `.harness/tools/semantic_artifacts.py`
+- CLI: `.harness/tools/semantic-writer.py`
+- regression: `.harness/tools/semantic-artifacts-self-test.py`
+
+## Роль
+
+Модель принимает semantic решения, но не форматирует canonical STEP/report artifacts вручную.
+
+Поддерживаются:
+
+- `plan-draft` — structured Implementation plan + Verification → mutation только соответствующих STEP sections и `plan.status=draft`;
+- `planning-review` — verdict/findings/rationale → immutable planning-review с exact fingerprints; PASS atomically handoff-ится в canonical Ready stamp;
+- `step-review` — structured findings/verdict/specialized results → immutable STEP review с exact repository revision и deterministic gate metadata.
+
+## Payload boundary
+
+`implementationPlan` — массив structured steps: `title`, `actions[]`, optional `files[]/tests[]/risks[]`. Markdown headings/lists рендерит Python.
+
+Writer принимает payload через stdin (`--payload-file -`) либо regular JSON file только под `.harness/local/**`. Неожиданные keys, multiline structural fields и inconsistent verdict/findings блокируются fail-closed.
+
+## Trust chain
+
+- timestamp/name резервируются через `O_CREAT|O_EXCL`;
+- model не задаёт `context_basis`, `plan_content_hash`, repository revision или specialized gate basis;
+- generated report до возврата результата проходит canonical validator;
+- writer возвращает exact `completionResult`, который execution layer использует без повторного reasoning.
+
+
+---
+
 # 11. Machine-readable Markdown document contract
 
 ## Файл

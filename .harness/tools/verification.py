@@ -83,6 +83,49 @@ def parse_verification(root: Path, step_id: str) -> list[dict[str, str]]:
     return entries
 
 
+def validate_verification_entries(entries: Any) -> list[dict[str, str]]:
+    """Validate structured Verification payload before STEP mutation."""
+    if not isinstance(entries, list) or not entries:
+        raise VerificationError("verification must be a non-empty array")
+    normalized: list[dict[str, str]] = []
+    for index, item in enumerate(entries, 1):
+        if not isinstance(item, dict):
+            raise VerificationError(f"verification[{index}] must be an object")
+        unexpected = sorted(set(item) - {"kind", "value"})
+        if unexpected:
+            raise VerificationError(
+                f"verification[{index}] has unsupported keys: " + ", ".join(unexpected)
+            )
+        kind = item.get("kind")
+        value = item.get("value")
+        if kind not in {"command", "manual"}:
+            raise VerificationError(
+                f"verification[{index}].kind must be command or manual"
+            )
+        if not isinstance(value, str) or not value.strip():
+            raise VerificationError(
+                f"verification[{index}].value must be non-empty"
+            )
+        value = value.strip()
+        if kind == "command":
+            _argv(value)
+        normalized.append({"kind": kind, "value": value})
+    return normalized
+
+
+def render_verification_entries(entries: Any) -> str:
+    """Render validated structured Verification entries into canonical Markdown."""
+    values = validate_verification_entries(entries)
+    tick = chr(96)
+    lines: list[str] = []
+    for item in values:
+        if item["kind"] == "command":
+            lines.append(f"- command: {tick}{item['value']}{tick}")
+        else:
+            lines.append(f"- manual: {item['value']}")
+    return "\n".join(lines)
+
+
 def _argv(command: str) -> list[str]:
     try:
         argv = shlex.split(command)
@@ -426,5 +469,7 @@ def run_step_verification(
 __all__ = [
     "VerificationError",
     "parse_verification",
+    "render_verification_entries",
     "run_step_verification",
+    "validate_verification_entries",
 ]
