@@ -457,8 +457,8 @@
           "summary": "Отправить текущую ветку в настроенный удалённый репозиторий без принудительной отправки.",
           "documentation": ".harness/docs/COMMANDS.md#command-git-push",
           "dispatch": {
-            "kind": "deterministic",
-            "handler": "git-push"
+            "kind": "semantic",
+            "skill": "git-workflow"
           }
         },
         "PR": {
