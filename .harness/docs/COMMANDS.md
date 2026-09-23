@@ -240,7 +240,7 @@ Updater не выполняет executable migration/install/bootstrap actions �
 <a id="command-git-check"></a>
 ## `GIT CHECK`
 
-Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged/unstaged/untracked, Harness integrity, policy и подозрительные файлы. Ничего не stage/commit/push.
+Read-only deterministic Git preflight без model call: dispatcher возвращает branch/upstream, staged/unstaged/untracked, Harness integrity и effective policy facts. Ничего не stage/commit/push; semantic logical-change анализ нужен только при последующем `GIT COMMIT`.
 
 <a id="command-git-commit"></a>
 ## `GIT COMMIT` / `GIT COMMIT: <подсказка>`
