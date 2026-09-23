@@ -3,17 +3,22 @@
 name: Harness Integrity
 
 # GitHub Actions events, на которых выполняется baseline Harness validation.
-# Пример: push + pull_request + ручной workflow_dispatch.
+# Пример: pull_request в main и push в main после merge.
 on:
-  # Проверять каждый push любой ветки.
-  # Пример: commit в feature/* сразу получает Harness integrity result.
-  push:
-  # Проверять Pull Request до merge.
-  # Пример: удаление обязательного protocol-файла блокируется ещё в PR.
+  # Проверять Pull Request, направленный в main.
+  # Пример: feature/token-budget → main запускает Harness Integrity.
   pull_request:
-  # Разрешить ручной запуск workflow из GitHub UI/API.
-  # Пример: повторная проверка после внешней настройки repository.
-  workflow_dispatch:
+    # Ограничить base branch основной веткой проекта.
+    # Пример: main.
+    branches:
+      - main
+  # После merge PR GitHub создаёт push в main — это отдельная финальная проверка.
+  # Пример: squash merge PR → push нового commit в main → Harness Integrity.
+  push:
+    # Не запускать CI для обычных push в feature/release-ветки.
+    # Пример: только main.
+    branches:
+      - main
 
 # Минимальные GitHub token permissions всего workflow.
 # Пример: только `contents: read`, потому что workflow ничего не публикует.
@@ -22,14 +27,14 @@ permissions:
   # Пример: `read` достаточно для checkout и локальной проверки.
   contents: read
 
-# Не выполнять одновременно push/PR validation одной head branch.
-# Пример: открытие PR для уже проверяемой feature/token-budget отменяет старый push-run.
+# Не выполнять одновременно устаревшие проверки одного PR или устаревшие push-проверки main.
+# Пример: второй commit в PR отменяет только предыдущую проверку того же PR.
 concurrency:
-  # Stable group использует PR head ref или обычный ref_name.
-  # Пример: Harness Integrity-feature/token-budget.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  # Новый commit/PR event делает предыдущую проверку той же ветки устаревшей.
-  # Пример: true экономит runner time без ослабления final check.
+  # PR группируются по номеру, push после merge — по ref основной ветки.
+  # Пример: Harness Integrity-pull_request-74 и Harness Integrity-push-refs/heads/main.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  # Новый запуск заменяет только устаревший запуск из той же concurrency-группы.
+  # Пример: true сохраняет только актуальную проверку одного PR.
   cancel-in-progress: true
 
 # Набор jobs workflow.
