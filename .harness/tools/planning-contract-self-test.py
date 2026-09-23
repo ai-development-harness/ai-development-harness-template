@@ -413,6 +413,26 @@ def main() -> int:
         assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
         assert not validate_planning_contracts(root), validate_planning_contracts(root)
 
+        # status=completed без type-specific durable proof не является
+        # допустимым lifecycle state даже если сам STEP schema-valid.
+        completed_dependency = (
+            root / "work/tasks/STEP-1001.md"
+        ).read_text(encoding="utf-8")
+        write(
+            root / "work/tasks/STEP-1001.md",
+            completed_dependency.replace(
+                "Research result recorded.",
+                "—",
+            ),
+        )
+        completion_errors = validate_planning_contracts(root)
+        assert any(
+            "completed STEP completion proof failed: research step has no durable Evidence"
+            in item
+            for item in completion_errors
+        ), completion_errors
+        write(root / "work/tasks/STEP-1001.md", completed_dependency)
+
         # Project-owned STEP template follows configured architecture path.
         task_template = template_targets(root)[root / "work/tasks/TEMPLATE.md"]
         assert "spec/architecture.md#relevant-section" in task_template

@@ -877,6 +877,20 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
                         f"{prefix}: plan.reviewed_report does not point to matching PASS report"
                     )
 
+    # completed — это не самостоятельное доказательство выполнения. Canonical
+    # lifecycle разрешён только вместе с type-specific durable completion proof:
+    # Evidence, accepted ADR и/или trusted PASS review в зависимости от STEP type.
+    if meta.get("status") == "completed":
+        try:
+            proof = step_completion_proof(root, step_id)
+        except (DocumentError, ConfigError, OSError, ValueError) as exc:
+            errors.append(f"{prefix}: cannot prove completed lifecycle: {exc}")
+        else:
+            for reason in proof["reasons"]:
+                errors.append(
+                    f"{prefix}: completed STEP completion proof failed: {reason}"
+                )
+
 
 # Open Question validator: ID/status/affects targets и обязательные sections.
 # PROJECT и конкретные STEP/REQ/ADR — единственные допустимые blocker targets.

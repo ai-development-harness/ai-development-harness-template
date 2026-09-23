@@ -808,7 +808,7 @@ Static validator и fingerprint engine для REQ/ADR/OQ/STEP planning model.
 - mutation policy structure;
 - unresolved placeholders;
 - dependency cycles;
-- type-specific completion proofs для lifecycle/projections и `STEP IMPLEMENT` runtime gate; completion state не входит в schema-v4 planning basis;
+- type-specific completion proofs: каждый STEP со `status=completed` обязан иметь durable proof; тот же proof используется lifecycle/projections и `STEP IMPLEMENT` runtime gate; completion state не входит в schema-v4 planning basis;
 - relevant OQ blockers;
 - `plan.context_basis`;
 - `plan.content_hash`;

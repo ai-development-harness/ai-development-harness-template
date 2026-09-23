@@ -185,7 +185,58 @@ def main() -> int:
         assert adopted_lock["source"]["commit"] == base_oid, adopted_lock
         assert any("custom/SKILL.md" in item for item in adopted["divergences"]), adopted
 
+        # Current updater больше не принимает operational baselines ниже v0.6.0,
+        # даже если historical graph хранит старые release edges.
+        unsupported = project_from_base(temp / "unsupported", base_files, base_oid)
+        write(unsupported, ".harness/manifest.yaml", manifest("0.5.3", initialized=True))
+        unsupported_lock = json.loads(
+            (unsupported / ".harness/harness.lock.json").read_text(encoding="utf-8")
+        )
+        unsupported_lock["release"] = "0.5.3"
+        unsupported_lock["source"]["ref"] = "v0.5.3"
+        unsupported_lock["source"].pop("commit", None)
+        write(
+            unsupported,
+            ".harness/harness.lock.json",
+            json.dumps(unsupported_lock, indent=2) + "\n",
+        )
+        try:
+            check_update(unsupported, target="v1.1.0", source_url=str(source))
+        except UpdateError as exc:
+            assert exc.code == "UNSUPPORTED_HARNESS_RELEASE", (exc.code, exc)
+        else:
+            raise AssertionError("current updater accepted current release below v0.6.0")
+
+        unsupported_legacy = project_from_base(
+            temp / "unsupported-legacy",
+            base_files,
+            base_oid,
+        )
+        (unsupported_legacy / ".harness/harness.lock.json").unlink()
+        write(
+            unsupported_legacy,
+            ".harness/manifest.yaml",
+            manifest("0.5.3", initialized=True),
+        )
+        try:
+            adopt_legacy(
+                unsupported_legacy,
+                baseline="v0.5.3",
+                source_url=str(source),
+            )
+        except UpdateError as exc:
+            assert exc.code == "UNSUPPORTED_HARNESS_RELEASE", (exc.code, exc)
+        else:
+            raise AssertionError("legacy adoption accepted baseline below v0.6.0")
+
         project = project_from_base(temp / "project", base_files, base_oid)
+        try:
+            check_update(project, target="v0.5.3", source_url=str(source))
+        except UpdateError as exc:
+            assert exc.code == "UNSUPPORTED_HARNESS_RELEASE", (exc.code, exc)
+        else:
+            raise AssertionError("current updater accepted target release below v0.6.0")
+
         checked = check_update(project, target="v1.1.0", source_url=str(source))
         assert checked["status"] == "PASS", checked
         assert checked["route"] == ["v1.0.0", "v1.1.0"], checked

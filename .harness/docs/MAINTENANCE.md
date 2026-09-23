@@ -72,7 +72,7 @@ Runtime tuning относится к `shared`: пользователь може
 
 Если проект создан до появления lock, безопасный BASE неизвестен. Updater не должен угадывать его по похожести файлов.
 
-Legacy adoption разрешён только для явно известного release через `update-harness`: укажи конкретный immutable tag `vX.Y.Z`. При неизвестном baseline нужен ручной reconciliation.
+Legacy adoption разрешён только для явно известного release через `update-harness`: укажи конкретный immutable tag `vX.Y.Z`. Current updater принимает baseline только начиная с `v0.6.0`; более старый release возвращает `UNSUPPORTED_HARNESS_RELEASE`. При неизвестном или более старом baseline нужен ручной reconciliation.
 
 ## Project-specific skills
 
