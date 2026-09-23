@@ -44,6 +44,7 @@ from harness_ux import (
     step_show,
 )
 from step_context import build_step_context
+from step_next import resolve_step_next
 from verification import run_step_verification
 
 
@@ -293,6 +294,8 @@ def _deterministic_handler(
         if not isinstance(target, str) or not target:
             raise DispatchError("STEP_TARGET_MISSING", "STEP SHOW requires target")
         return step_show(root, target)
+    if handler == "step-next":
+        return resolve_step_next(root)
     if handler == "harness-resume":
         # HARNESS RESUME не создаёт собственную execution. Его special flow
         # обрабатывается start_dispatch()/resume_dispatch().
