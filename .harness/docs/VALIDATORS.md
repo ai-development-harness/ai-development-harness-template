@@ -80,6 +80,7 @@ Validator проверяет protocol/repository invariants, но **не зам�
 - CTS graph и command surface;
 - deprecated command references;
 - runtime bindings Codex/Claude;
+- обязательный Claude project-level `permissions.deny` набор для прямых Git mutations в обход `git-action.py`;
 - `.gitignore` semantics через `git check-ignore`;
 - forbidden tracked paths/secrets/artifacts;
 - UTF-8, final newline, trailing whitespace, merge markers;
