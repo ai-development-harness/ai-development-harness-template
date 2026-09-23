@@ -34,8 +34,8 @@
           "summary": "Показать текущее состояние проекта, блокирующие проблемы и доступную работу.",
           "documentation": ".harness/docs/COMMANDS.md#command-project-status",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "project-status"
+            "kind": "deterministic",
+            "handler": "project-status"
           }
         },
         "RECONCILE": {
@@ -342,8 +342,8 @@
           "summary": "Проверить доступный путь обновления Harness без внесения изменений.",
           "documentation": ".harness/docs/COMMANDS.md#command-harness-update-check",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "update-harness"
+            "kind": "deterministic",
+            "handler": "harness-update-check"
           }
         },
         "UPDATE APPLY": {
@@ -354,8 +354,8 @@
           "summary": "Применить допустимое обновление Harness.",
           "documentation": ".harness/docs/COMMANDS.md#command-harness-update-apply",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "update-harness"
+            "kind": "deterministic",
+            "handler": "harness-update-apply"
           }
         },
         "STATUS": {

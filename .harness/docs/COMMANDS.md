@@ -178,7 +178,9 @@ PLAN (если актуального плана нет)
  → CLOSE
 ```
 
-При blocker или исчерпании циклов останавливается и не маскирует failure. Лимит `execution.maxFixReviewCycles` enforce-ится Execution Resolver детерминированно и сохраняется между sessions.
+Для обычных coding STEP (`implementation | bugfix | refactor | hardening`) сам root-orchestration выполняет dispatcher без отдельного model turn: deterministic resolver выбирает `PLAN/IMPLEMENT/REVIEW/FIX`, а reasoning вызывается только внутри соответствующих semantic child-команд. Для type-specific flows (`research | adr | audit | review | documentation | release`) сохраняется semantic `run-step` fallback.
+
+При blocker или исчерпании циклов orchestration останавливается и не маскирует failure. Лимит `execution.maxFixReviewCycles` enforce-ится Execution Resolver детерминированно и сохраняется между sessions.
 
 <a id="command-step-audit"></a>
 ## `STEP AUDIT STEP-NNN`
@@ -188,7 +190,7 @@ PLAN (если актуального плана нет)
 <a id="command-project-status"></a>
 ## `PROJECT STATUS`
 
-Проверяет и при необходимости регенерирует projection статусов, показывает blockers, unblocked work и drift indicators. Не пишет product code.
+Deterministic команда без model call. Пересобирает tracked projections из canonical state, запускает manual Harness integrity и возвращает structured snapshot: summary по lifecycle, in-progress, blocked, completed и deterministic `STEP NEXT`. Не пишет product code и не интерпретирует project intent.
 
 <a id="command-step-next"></a>
 ## `STEP NEXT`
@@ -216,14 +218,14 @@ Read-only проверка маршрута Harness update. Manifest задаё�
 
 Без `TO` конечный target берётся из configured `source.update_manifest.latest`. С `TO <tag>` пользователь задаёт конкретный конечный target. В обоих случаях updater обязан построить допустимую цепочку release hops; существующий immutable tag без route не считается допустимым target.
 
-Команда моделирует весь route hop-by-hop, показывает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
+Dispatcher вызывает deterministic update engine напрямую, без model call. Команда моделирует весь route hop-by-hop, возвращает bridge/reload boundaries, safe changes/conflicts и не меняет working tree, Git refs, lock, STEP, commit, push или PR.
 
 Команда разрешена как до, так и после `PROJECT INIT`: `project.initialized: false` не является blocker для проверки Harness update.
 
 <a id="command-harness-update-apply"></a>
 ## `HARNESS UPDATE APPLY [TO <tag>]`
 
-Maintenance mutation protocol layer без STEP. Standalone APPLY сам выполняет fresh deterministic validation/preflight; в chain `CHECK > APPLY` переход разрешён только после PASS CHECK для того же target/route.
+Maintenance mutation protocol layer без STEP и без model call. Dispatcher напрямую вызывает deterministic updater. Standalone APPLY сам выполняет fresh deterministic validation/preflight; в chain `CHECK > APPLY` переход разрешён только после PASS CHECK для того же target/route.
 
 Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
 
@@ -235,7 +237,7 @@ Maintenance mutation protocol layer без STEP. Standalone APPLY сам вып�
 HARNESS UPDATE APPLY TO vX.X.X
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Project-owned schema migration после protocol update выполняет `PROJECT RECONCILE`. После неё: inspect diff → `GIT CHECK > COMMIT` либо те же команды отдельно.
+Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Deterministic result содержит `nextAction`: `UPDATED → GIT CHECK`, `UPDATER_RELOAD_REQUIRED → reload-and-repeat exact APPLY`, `NO_UPDATE → null`. Если GIT gate показывает pending project schema migration, её выполняет `PROJECT RECONCILE` до commit.
 
 <a id="command-git-check"></a>
 ## `GIT CHECK`
@@ -250,7 +252,7 @@ Read-only deterministic Git preflight без model call: dispatcher возвра
 <a id="command-git-push"></a>
 ## `GIT PUSH`
 
-Проверяет Harness, fetch/divergence и protected-branch policy, затем без force отправляет текущую ветку в configured remote. После успешного push применяет PR-policy: ничего, предложить PR или создать PR при отсутствии.
+Проверяет Harness, fetch/divergence и protected-branch policy, затем без force отправляет текущую ветку в configured remote. Standalone `GIT PUSH` сохраняет semantic scope check. В explicit chain, где PUSH непосредственно следует за успешно завершённым canonical `GIT COMMIT`, повторный model turn не нужен: dispatcher сначала доказывает продвижение HEAD относительно durable `gitHeadBefore`, затем вызывает deterministic `git-action.py push` напрямую. Одного заявленного `SUCCESS` для fast-path недостаточно.
 
 <a id="command-git-pr"></a>
 ## `GIT PR`
