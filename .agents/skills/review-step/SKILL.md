@@ -10,11 +10,7 @@ description: Run an independent read-only review of an exact repository revision
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-2. Получи phase-specific context одним deterministic вызовом:
-   ```bash
-   python3 .harness/tools/step-context.py STEP-NNN --phase review --json
-   ```
-   Прочитай только `readPaths` + relevant diff/code/tests. `deterministic.specializedReviewGate` содержит exact `basis`, `required`, reasons и changed surface; `deterministic.repositoryRevision` содержит exact `git_head/worktree_hash`. Модель может добавить reviewer, но не убрать required. Не вызывай отдельные gates и не восстанавливай revision вручную.
+2. Используй только phase `context`, уже возвращённый canonical dispatcher handoff. Прочитай `readPaths` + relevant diff/code/tests. `deterministic.specializedReviewGate` содержит exact gate, а `deterministic.repositoryRevision` — exact revision. Повторно `step-context.py`/gates не вызывай и revision вручную не восстанавливай. Модель может добавить reviewer, но не убрать required.
 3. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan с реализацией и tests. Сделай полный semantic проход exact revision и собери material findings.
 4. Верни structured payload:
    - `verdict: pass|fail|blocked`;

@@ -1,126 +1,65 @@
 ---
 name: git-workflow
-description: Semantic Git workflow for CHECK, COMMIT, PUSH post-policy and PR prose; mechanical Git mutations remain deterministic.
+description: Provide only semantic Git inputs for COMMIT, PUSH follow-up policy, and PR prose; deterministic tools own Git/provider safety and mutations.
 ---
 # git-workflow
 
-Используй для semantic segments `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR` и соответствующих Git-chain segments. `GIT SYNC` и `GIT PR FINISH` dispatcher выполняет без LLM.
+CTS направляет сюда только Git-команды с semantic частью: `GIT COMMIT`, `GIT PUSH`, `GIT PR`. `GIT CHECK`, `GIT SYNC` и `GIT PR FINISH` dispatcher выполняет без LLM.
 
-## Главный принцип
+## Общие semantic обязанности
 
-Git policy остаётся в configured `.harness/manifest.yaml → repository.gitPolicy`, но safety-critical решение «можно ли сейчас выполнять mutation» принимает deterministic tool:
-
-```bash
-python3 .harness/tools/git-preflight.py check --json
-python3 .harness/tools/git-preflight.py commit --json [--commit-type <type>] [--slug <slug>]
-python3 .harness/tools/git-preflight.py push --json
-python3 .harness/tools/git-preflight.py pr --json
-```
-
-Agent не должен вручную переопределять `PASS/BLOCKED`, protected-branch decision, remote ahead/behind, publish state, PR base/tool или ff-only safety.
-
-Preflight остаётся read-oriented proof. Для `GIT COMMIT` и `GIT PUSH` mutation выполняй через `git-action.py`, который повторяет preflight и проверяет postcondition. Для `GIT PR` модель формирует только title/body semantics; provider find/reuse/create/state уже выполняет executor. `GIT SYNC` и `GIT PR FINISH` вообще не требуют загрузки этого skill.
-
-## Общие правила
-
-1. До mutation изучи фактический diff/status и semantic scope.
-2. Не включай unrelated changes.
-3. `require_single_logical_change` остаётся semantic обязанностью агента: deterministic tool не угадывает смысл файлов.
-4. STEP/REQ/ADR traceability не обязательна для подтверждённого micro-change/PROJECT QUICK FIX.
-5. Если diff без STEP меняет behavior/API/data/security/architecture/dependencies — остановись и предложи `STEP ADD:`.
-6. Force-push, destructive reset/clean, automatic merge/rebase и amend запрещены без отдельного явного protocol path; обычный Git workflow их не использует.
-
-## GIT CHECK
-
-Запусти:
-
-```bash
-python3 .harness/tools/git-preflight.py check --json
-```
-
-Покажи branch, protection, upstream, staged/unstaged/untracked, configured remotes/base и Harness validation result. CHECK ничего не stage/commit/push.
+- Проверь фактический diff и logical scope; unrelated changes не включай.
+- Если change без STEP меняет behavior/API/data/security/architecture/dependencies — остановись и предложи `STEP ADD:`.
+- Не переопределяй `PASS/BLOCKED`, branch/remote/base/provider/draft/force/ff-only decisions deterministic tools.
+- Force-push, destructive reset/clean, automatic merge/rebase и amend не добавляй.
 
 ## GIT COMMIT
 
-1. Определи фактический logical change по diff.
-2. Выбери commit type только из `commit.types`; optional user hint не заменяет diff.
-3. Stage согласно `commit.stage_mode`:
-   - `staged-only` — не добавлять новые paths к index;
-   - `tracked-only` — не stage новые files;
-   - `all-safe` — stage только проверенный logical change, без `git add .` вслепую.
-4. Сформируй semantic commit message по `.gitmessage`/policy и сохрани его в local-only `.harness/local/git/commit-message.txt`.
-5. Выполни mutation только через:
+1. Определи один logical change.
+2. Выбери разрешённый commit type и короткий semantic slug.
+3. Подготовь staging согласно configured `commit.stage_mode`; не используй `git add .` вслепую.
+4. Сформируй commit message по project language/`.gitmessage` и сохрани только в `.harness/local/git/commit-message.txt`.
+5. Вызови один mutation boundary:
 
 ```bash
 python3 .harness/tools/git-action.py commit --json \
   --commit-type '<type>' \
-  --slug '<short semantic slug>' \
+  --slug '<slug>' \
   --message-file .harness/local/git/commit-message.txt
 ```
 
-Executor повторяет commit preflight, при exact `PROTECTED_BRANCH_REQUIRES_NEW_BRANCH` создаёт только returned branch, валидирует mechanical message constraints, создаёт commit и проверяет изменение HEAD. COMMIT никогда не делает push.
-
-Machine gate детерминированно проверяет Harness validation, empty commit, stage-mode ограничения, protected branch и initial-commit exception. Семантику logical change/message всё ещё обязан проверить агент.
+Executor сам повторяет commit preflight, при необходимости создаёт exact required branch, проверяет message mechanics, создаёт commit и доказывает изменение HEAD. Ручной `git commit` не выполняй.
 
 ## GIT PUSH
 
-После semantic проверки scope выполни push через:
+После проверки semantic scope вызови:
 
 ```bash
 python3 .harness/tools/git-action.py push --json
 ```
 
-Tool:
+Executor сам fetch/preflight-ит configured remote, запрещает force/remote-ahead/protected-branch violations и проверяет remote HEAD postcondition. Не выполняй `git push` вручную.
 
-- использует только configured `push.remote`;
-- выполняет fetch, если `fetch_before_push=true`;
-- запускает Harness validation, если требуется;
-- применяет `require_clean_worktree`;
-- проверяет protected branch / initial bootstrap exception;
-- считает exact ahead/behind относительно configured remote branch;
-- блокирует remote-ahead состояние: при `force=never` безопасного автоматического push поверх неизвестных remote commits нет;
-- гарантирует `force=never`;
-- формирует `mutationPlan.argv` с `--set-upstream` / tag behavior согласно policy.
+Используй только возвращённый `afterPush`:
 
-Executor сам повторяет preflight, исполняет только returned non-force argv и проверяет, что configured remote branch совпал с local HEAD. Не выполняй `git push` вручную.
-
-После успешного push применяй `pull_request.after_push`: `never | ask | create-if-missing`.
+- `never` — закончить;
+- `ask` — предложить `GIT PR`, не создавать его скрыто;
+- `create-if-missing` — перейти к semantic PR prose только если command flow/policy разрешает продолжение. Provider existence/create проверит PR executor, не модель.
 
 ## GIT PR
 
-Сначала semantic часть: по repository evidence и configured template подготовь только PR body в regular file под `.harness/local/git/**`. Title-файл нужен только если preflight сообщает `titleFromCommit=false`; при default `true` executor сам берёт exact subject текущего commit.
+Подготовь только semantic PR body по repository evidence/template в `.harness/local/git/pr-body.md`. Title-файл нужен только если executor/preflight явно вернул `PR_TITLE_REQUIRED`; тогда создай одно-строчный `.harness/local/git/pr-title.txt`.
 
-Не ищи existing PR, не вызывай `gh pr create/list/view` и не записывай `pr-state.json` вручную. Вызови:
+Вызови:
 
 ```bash
 python3 .harness/tools/git-action.py pr --body-file .harness/local/git/pr-body.md --json
 ```
 
-При `titleFromCommit=false` добавь `--title-file .harness/local/git/pr-title.txt`.
+При требовании title повтори с `--title-file`.
 
-Executor сам повторяет PR preflight, использует только configured provider/tool/head/base/draft policy, ищет exact open head/base PR, переиспользует его при `reuse_existing=true` либо создаёт новый, проверяет provider head OID == exact published HEAD и атомарно сохраняет local PR lifecycle state. Повторный запуск idempotent для того же PR.
-
-
-## Deterministic-only Git commands
-
-`GIT SYNC` и `GIT PR FINISH` не являются semantic work. Их dispatcher вызывает напрямую через `git-action.py`; этот skill для них не загружается.
+Не вызывай `gh pr create/list/view`, не выбирай head/base/provider/draft и не записывай `pr-state.json` вручную. Executor сам find/reuse/create-ит exact PR, сверяет provider head OID и сохраняет lifecycle state.
 
 ## Failure policy
 
-Любой `BLOCKED` останавливает текущий Git segment. Не обходи blocker ручной командой с более слабыми параметрами.
-
-Типичные blockers:
-
-- detached HEAD;
-- invalid configured Git policy;
-- Harness validation failure;
-- empty commit при `allow_empty=false`;
-- protected-branch commit/push;
-- remote missing/ahead;
-- dirty worktree при strict push/sync;
-- unpublished PR head;
-- unavailable configured PR tool;
-- missing PR base/template;
-- diverged/non-ff sync.
-
-После изменения Git policy или preflight contract обновляй synthetic regression и документацию одновременно.
+Любой deterministic `BLOCKED` останавливает segment. Не обходи blocker ручной Git/provider командой с более слабыми параметрами.

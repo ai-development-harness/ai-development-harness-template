@@ -191,6 +191,7 @@ def execute_push(root: Path) -> dict[str, Any]:
         "branch": gate["branch"],
         "remote": gate["remote"],
         "head": head,
+        "afterPush": gate.get("afterPush"),
         "mutation": {"argv": argv},
     }
 

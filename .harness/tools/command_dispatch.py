@@ -34,8 +34,9 @@ from execution_status import (
     resolve_root,
     start_execution,
 )
+from git_action import GitActionError, execute_pr_finish, execute_sync
+from git_preflight import GitPreflightError, check as git_check
 from harness_help import help_catalog
-from git_action import execute_pr_finish, execute_sync
 from harness_ux import (
     harness_config,
     harness_doctor,
@@ -297,10 +298,36 @@ def _deterministic_handler(
         return step_show(root, target)
     if handler == "step-next":
         return resolve_step_next(root)
+    if handler == "git-check":
+        try:
+            return git_check(root)
+        except GitPreflightError as exc:
+            return {
+                "status": "BLOCKED",
+                "reasonCode": exc.code,
+                "message": str(exc),
+                "details": exc.details,
+            }
     if handler == "git-pr-finish":
-        return execute_pr_finish(root)
+        try:
+            return execute_pr_finish(root)
+        except (GitActionError, GitPreflightError) as exc:
+            return {
+                "status": "BLOCKED",
+                "reasonCode": exc.code,
+                "message": str(exc),
+                "details": getattr(exc, "details", {}),
+            }
     if handler == "git-sync":
-        return execute_sync(root)
+        try:
+            return execute_sync(root)
+        except (GitActionError, GitPreflightError) as exc:
+            return {
+                "status": "BLOCKED",
+                "reasonCode": exc.code,
+                "message": str(exc),
+                "details": getattr(exc, "details", {}),
+            }
     if handler == "harness-resume":
         # HARNESS RESUME не создаёт собственную execution. Его special flow
         # обрабатывается start_dispatch()/resume_dispatch().
@@ -344,7 +371,12 @@ def _dispatch_running(
 
     result = _deterministic_handler(root, route["command"])
     status = result.get("status")
-    command_result = status if status in {"PASS", "SUCCESS"} else "BLOCKED"
+    if status not in {"PASS", "SUCCESS", "FAIL", "BLOCKED"}:
+        raise DispatchError(
+            "DETERMINISTIC_RESULT_INVALID",
+            f"{route['command']}: unsupported deterministic status {status!r}",
+        )
+    command_result = str(status)
     completed = complete_command(
         root,
         str(execution["rootCommand"]),

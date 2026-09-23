@@ -47,6 +47,7 @@ KNOWN_DISPATCH_HANDLERS = {
     "step-list",
     "step-show",
     "step-next",
+    "git-check",
     "git-pr-finish",
     "git-sync",
 }
