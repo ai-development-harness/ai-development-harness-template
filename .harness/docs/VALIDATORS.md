@@ -1197,6 +1197,86 @@ Tool использует только Python stdlib и считает Unicode c
 
 ---
 
+# 17A. Карта границ вычислений модели
+
+## Файлы
+
+- `.harness/tools/reasoning_boundaries.py` — движок;
+- `.harness/tools/reasoning-boundaries.py` — командная обёртка;
+- `.harness/tools/reasoning-boundaries-self-test.py` — регрессионная проверка;
+- `.harness/reasoning-boundaries.json` — машиночитаемая проекция;
+- `.harness/docs/REASONING_BOUNDARIES.md` — человекочитаемая таблица и диаграммы.
+
+## Роль
+
+Проверяет и публикует границу между смысловой работой модели и детерминированными скриптами для каждой канонической команды.
+
+Источник истины — `.harness/command-transitions.json → reasoning`. Проекции не являются самостоятельным состоянием и вручную не редактируются.
+
+## Когда использовать
+
+- после изменения `dispatch` любой команды;
+- после добавления или удаления быстрого пути;
+- после переноса работы из модели в скрипт или обратно;
+- перед выпуском новой версии Harness;
+- при подготовке внешней документации на основе машиночитаемой проекции.
+
+## Что проверяет
+
+- у каждой команды есть режим `none | required | conditional`;
+- детерминированная команда имеет только `mode=none`;
+- команда с обязательной моделью перечисляет её смысловую работу;
+- у условной команды есть хотя бы один быстрый путь;
+- каждый быстрый путь ссылается на существующую функцию в `.harness/tools/*.py`;
+- `.harness/reasoning-boundaries.json` точно соответствует таблице команд;
+- generated-блок `REASONING_BOUNDARIES.md` точно соответствует таблице команд.
+
+## CLI
+
+```bash
+python3 .harness/tools/reasoning-boundaries.py
+python3 .harness/tools/reasoning-boundaries.py --json
+python3 .harness/tools/reasoning-boundaries.py --check
+python3 .harness/tools/reasoning-boundaries.py --write
+```
+
+### Аргументы
+
+- `--json` — вывести текущую машиночитаемую проекцию;
+- `--check` — проверить проекции и ссылки на быстрые пути без изменений;
+- `--write` — пересобрать Markdown и JSON из таблицы команд.
+
+`--check` и `--write` взаимоисключающие.
+
+## Exit codes
+
+- `0` — схема, быстрые пути и проекции согласованы;
+- `1` — обнаружена ошибка схемы, отсутствующий быстрый путь или устаревшая проекция;
+- `2` — ошибка аргументов командной строки.
+
+## Примеры
+
+После переноса части команды из модели в скрипт:
+
+```bash
+python3 .harness/tools/reasoning-boundaries.py --write
+python3 .harness/tools/validate.py --mode manual
+```
+
+Проверка без изменений:
+
+```bash
+python3 .harness/tools/reasoning-boundaries.py --check
+```
+
+## Внутренние зависимости / Граница ответственности
+
+Инструмент не решает, нужна ли модели смысловая работа. Это архитектурное решение фиксируется в CTS. Инструмент только проверяет структуру, существование заявленных функций и точность проекций.
+
+Общий `validate.py` вызывает ту же проверку, поэтому рассинхронизация блокирует Harness Integrity.
+
+---
+
 # 18. Self-tests валидаторов
 
 Self-tests проверяют implementation самих gates на synthetic repositories/fixtures. Канонический entry point:
