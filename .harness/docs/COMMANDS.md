@@ -151,7 +151,7 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 <a id="command-step-implement"></a>
 ## `STEP IMPLEMENT STEP-NNN`
 
-Реализует только current Ready plan в пределах task contract. До dispatch execution layer детерминированно применяет `step-implement-ready`: проверяет freshness plan/review и type-specific completion proofs direct dependencies. При первой product mutation ставит canonical `status: in_progress`, добавляет/обновляет tests и запускает verification. `status: completed` недопустим до schema-valid independent review PASS и type-specific completion proof.
+Реализует только current Ready plan в пределах task contract. До dispatch execution layer детерминированно применяет `step-implement-ready`: проверяет freshness plan/review и type-specific completion proofs direct dependencies. При первой product mutation ставит canonical `status: in_progress` и добавляет/обновляет tests. При попытке завершить IMPLEMENT как `SUCCESS` dispatcher сам запускает machine-executable `## Verification` через `verification.py`, пишет generated Evidence и разрешает completion только после PASS; manual checks остаются явной semantic boundary. `status: completed` недопустим до schema-valid independent review PASS и type-specific completion proof.
 
 <a id="command-step-review"></a>
 ## `STEP REVIEW STEP-NNN`
@@ -161,7 +161,7 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 <a id="command-step-fix"></a>
 ## `STEP FIX STEP-NNN`
 
-Исправляет подтверждённые findings последнего применимого FAIL review. Не расширяет scope. После FIX следующая команда — `STEP REVIEW STEP-NNN`.
+Исправляет подтверждённые findings последнего применимого FAIL review. Не расширяет scope. `SUCCESS` проходит тот же deterministic Verification gate, что и IMPLEMENT; factual FAIL остаётся внутри FIX, `MANUAL_REQUIRED` требует только перечисленных manual checks. После PASS Verification следующая команда — `STEP REVIEW STEP-NNN`.
 
 <a id="command-step-run"></a>
 ## `STEP RUN STEP-NNN`
