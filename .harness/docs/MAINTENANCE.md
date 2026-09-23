@@ -52,8 +52,6 @@ HARNESS UPDATE APPLY
 
 Known BASE проекта фиксируется в `.harness/harness.lock.json`. Moving `main` не используется как update baseline.
 
-`v0.4.2` — одноразовая compatibility boundary для переноса control plane из `.project/**` в `.harness/**`. Relocation выполняет updater старого layout до reload; после перехода `.harness/**` является единственным bootstrap namespace, а legacy `.project/local/**` сохраняется только как ignored transitional state.
-
 Current updater читает moving `source.default_branch` только через canonical `.harness/harness-update-graph.json`. Файлы protocol layer для каждого hop по-прежнему читаются только из immutable tags.
 
 ## Ownership
