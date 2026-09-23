@@ -137,6 +137,12 @@ def main() -> int:
             for item in help_result["result"]["domains"]
         ), help_result
 
+
+        project_snapshot = start_dispatch(root, "PROJECT STATUS")
+        assert project_snapshot["status"] == "DONE", project_snapshot
+        assert project_snapshot["result"]["status"] == "PASS", project_snapshot
+        assert project_snapshot["result"]["validation"] == "PASS", project_snapshot
+
         # Structural FAIL ничего не записывает в execution state.
         before = len(load_status(root)["executions"])
         invalid = start_dispatch(root, "GIT PR > COMMIT")
