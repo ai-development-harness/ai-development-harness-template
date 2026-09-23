@@ -97,9 +97,9 @@ Read-only UX (`HARNESS STATUS/DOCTOR/CONFIG`, `STEP LIST/SHOW/NEXT`) получ�
 
 ## 5. Token Economy / progressive disclosure
 
-Модель решает semantic задачи; deterministic/mechanical/computable работу выполняют `.harness/tools/*`.
+Модель решает смысловые задачи; вычислимую механику выполняют `.harness/tools/*`.
 
-**Model consumes decisions/results, not implementation/config internals.**
+Изменил маршрутизацию команды или быстрый путь — обнови `reasoning` в CTS; сгенерированные границы вручную не правь.
 
 В обычной эксплуатации:
 
@@ -140,7 +140,7 @@ Role выбирается по задаче (planner/implementer/reviewer/securi
 
 ## 8. Language и completion response
 
-Язык docs/commits/comments/tests/fixtures/templates бери из `.harness/manifest.yaml → language`; machine keys/enums/identifiers не локализуй.
+Пользовательские ответы и человекочитаемые тексты пиши на языке из `.harness/manifest.yaml → language`; без нужды не смешивай его с английским. Команды, пути, ключи и названия технологий не переводи.
 
 По завершении сообщи кратко: что сделано, затронутые canonical artifacts, проверки/result, blockers/risks и рекомендуемую следующую canonical command. Не пересказывай прочитанные документы.
 
