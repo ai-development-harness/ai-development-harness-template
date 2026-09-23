@@ -3,17 +3,18 @@
 name: Harness Integrity
 
 # GitHub Actions events, на которых выполняется baseline Harness validation.
-# Пример: push + pull_request + ручной workflow_dispatch.
+# Проверка запускается только для PR в main и после фактического изменения main.
 on:
-  # Проверять каждый push любой ветки.
-  # Пример: commit в feature/* сразу получает Harness integrity result.
-  push:
-  # Проверять Pull Request до merge.
-  # Пример: удаление обязательного protocol-файла блокируется ещё в PR.
+  # Проверять Pull Request, направленный в main.
+  # Каждый новый commit в уже открытом PR создаёт новую проверку pull_request.
   pull_request:
-  # Разрешить ручной запуск workflow из GitHub UI/API.
-  # Пример: повторная проверка после внешней настройки repository.
-  workflow_dispatch:
+    branches:
+      - main
+  # После merge PR GitHub создаёт push в main — это отдельная финальная проверка.
+  # Push в feature/release-ветки без открытого PR CI не запускает.
+  push:
+    branches:
+      - main
 
 # Минимальные GitHub token permissions всего workflow.
 # Пример: только `contents: read`, потому что workflow ничего не публикует.
@@ -22,15 +23,13 @@ permissions:
   # Пример: `read` достаточно для checkout и локальной проверки.
   contents: read
 
-# Не выполнять одновременно устаревшие проверки одного типа для одной head branch.
-# Push и pull_request намеренно разделены: открытие PR не должно отменять уже идущий push-run.
+# Не выполнять одновременно устаревшие проверки одного PR или устаревшие push-проверки main.
 concurrency:
-  # Группа включает тип события и ветку.
-  # Пример: Harness Integrity-push-feature/token-budget и
-  # Harness Integrity-pull_request-feature/token-budget — разные группы.
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  # Новый commit отменяет только предыдущую проверку того же типа события и той же ветки.
-  # Это экономит runner time, но не превращает push/PR в конкурирующие запуски.
+  # PR группируются по номеру, push после merge — по ref основной ветки.
+  # Разные типы событий не конкурируют друг с другом.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  # Новый commit в PR отменяет только предыдущую проверку этого же PR.
+  # Несколько быстрых merge в main аналогично оставляют только актуальную post-merge проверку.
   cancel-in-progress: true
 
 # Набор jobs workflow.
