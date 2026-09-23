@@ -260,7 +260,7 @@ Semantic worker готовит только PR prose. `git-action.py pr` дет�
 <a id="command-git-pr-finish"></a>
 ## `GIT PR FINISH`
 
-Standalone post-merge cleanup. Команда проверяет через deterministic `git-preflight.py pr-finish`, что текущий PR действительно имеет состояние MERGED, working tree чистый, return branch можно безопасно fast-forward-нуть и локальная PR-ветка удалима обычным `git branch -d`.
+Standalone post-merge cleanup без model call. Dispatcher напрямую вызывает deterministic executor, который через `git-preflight.py pr-finish` доказывает MERGED state, clean worktree, безопасную return branch и exact удаляемую PR-ветку.
 
 После PASS выполняется exact ordered mutation plan: переключение на сохранённую return branch (при отсутствии local state — на PR base), разрешённый `--ff-only` sync и удаление старой локальной PR-ветки. Force-delete (`-D`), remote branch deletion, reset/rebase запрещены.
 
@@ -269,4 +269,4 @@ Standalone post-merge cleanup. Команда проверяет через dete
 <a id="command-git-sync"></a>
 ## `GIT SYNC`
 
-Fetch + ahead/behind/divergence. По умолчанию read-only report; при `sync.mode="ff-only"` допускает только безопасный fast-forward чистой рабочей копии. Merge/rebase автоматически не выполняются.
+Dispatcher выполняет команду без model call: fetch + ahead/behind/divergence через deterministic executor. По умолчанию read-only report; при `sync.mode="ff-only"` допускается только безопасный fast-forward чистой рабочей копии. Merge/rebase автоматически не выполняются.
