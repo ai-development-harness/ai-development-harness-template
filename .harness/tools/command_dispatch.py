@@ -30,6 +30,7 @@ from execution_status import (
     begin_command,
     block_execution,
     complete_command,
+    git_commit_completion_proven,
     load_status,
     resolve_root,
     start_execution,
@@ -707,6 +708,41 @@ def complete_dispatch(
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Зафиксировать semantic result и сразу dispatch-нуть continuation."""
+
+    # The PUSH fast-path is allowed only when the preceding COMMIT has a
+    # deterministic repository postcondition. This prevents a semantic
+    # SUCCESS claim from skipping the scope boundary without an actual commit.
+    active = _active_execution(root, root_command)
+    if active is not None and result == "SUCCESS":
+        route = route_command(root, command)
+        sequence = active.get("sequence")
+        index = active.get("currentIndex")
+        push_follows = (
+            active.get("mode") == "chain"
+            and isinstance(sequence, list)
+            and isinstance(index, int)
+            and index + 1 < len(sequence)
+            and sequence[index + 1] == "GIT PUSH"
+        )
+        if (
+            push_follows
+            and route.get("domain") == "GIT"
+            and route.get("operation") == "COMMIT"
+            and not git_commit_completion_proven(root, active)
+        ):
+            try:
+                blocked = block_execution(root, root_command, command=command)
+            except (OSError, ValueError):
+                blocked = active
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                **_execution_identity(blocked),
+                "command": command,
+                "reasonCode": "COMMIT_POSTCONDITION_FAILED",
+                "message": "GIT COMMIT reported SUCCESS but repository HEAD did not advance",
+            }
+
     try:
         early, completion_details = _verification_before_completion(
             root,
