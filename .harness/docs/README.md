@@ -14,7 +14,8 @@
 - [`COMMAND_TRANSITIONS.md`](COMMAND_TRANSITIONS.md) — полная transition matrix, validation order и runtime conditions.
 - [`EXECUTION_STATUS.md`](EXECUTION_STATUS.md) — единый local execution-status.json, resume semantics и independent single/chain/orchestration executions.
 - [`LANGUAGE_POLICY.md`](LANGUAGE_POLICY.md) — единая настройка языка для docs/commits/comments/tests/fixtures/templates.
-- [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md) — deterministic-first правила, always-on context budget и граница LLM/tooling.
+- [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md) — правила экономии вычислений модели и постоянного контекста.
+- [`REASONING_BOUNDARIES.md`](REASONING_BOUNDARIES.md) — автоматически поддерживаемая таблица и диаграммы: где нужна модель, а где достаточно скриптов.
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — границы защиты Harness, trust boundaries и defense-in-depth.
 - [`QUICK_CHANGES.md`](QUICK_CHANGES.md) — когда мелкая правка не требует STEP.
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
