@@ -8,32 +8,63 @@
 
 ## 0. Command interface и цепочки
 
-### 0.1. Command Transition System — structural gate всегда первым
+### 0.1. Canonical runtime boundary
 
-Harness использует **Command Transition System (CTS)**. Для canonical command первым выполняется deterministic structural validation по `.harness/command-transitions.json`. Команда является action/transition request; фактическое state берётся из repository/runtime facts:
+Обычный runtime **не** выполняет structural validation, execution registration, resolver и skill routing отдельными reasoning-шагами. Raw canonical command передаётся единой deterministic boundary:
 
 ```bash
-python3 .harness/tools/validate-command.py --json -- '<raw canonical command>'
+python3 .harness/tools/harness-dispatch.py start --command '<raw canonical command>'
 ```
 
-До PASS этого gate запрещено:
+Dispatcher использует `.harness/command-transitions.json` как единый registry syntax/transitions/**dispatch**. До structural PASS никакая execution или mutation не создаётся.
 
-- выбирать command-specific skill;
-- читать state ради трактовки порядка chain;
-- запускать subagent/runtime action;
-- выполнять mutation.
+Результат имеет два основных варианта:
 
-`.harness/docs/COMMAND_TRANSITIONS.md` содержит полную человекочитаемую матрицу. Отсутствующий edge означает `INVALID_CHAIN`; implicit transitions запрещены.
+- deterministic command → tool выполняется без LLM, execution закрывается и возвращается factual result;
+- semantic command → `status: SEMANTIC`, exact `skillPath` и command data; для STEP PLAN/IMPLEMENT/REVIEW дополнительно возвращается phase-specific `step-context`.
 
-Каноническая команда начинается с явного namespace:
+После semantic node factual result передаётся обратно:
 
-```text
-<DOMAIN> <ACTION> [TARGET] [: free-form input]
+```bash
+python3 .harness/tools/harness-dispatch.py complete \
+  --root '<root command>' \
+  --command '<current command>' \
+  --result <SUCCESS|PASS|FAIL|BLOCKED>
 ```
 
-Полная грамматика находится в `.harness/docs/COMMAND_SYNTAX.md`. Старые ненеймспейсные формы не считаются canonical aliases.
+Dispatcher сам применяет CTS `onPreviousResult`, runtime preconditions и при разрешённом continuation начинает следующий segment. Interrupted execution продолжается через:
 
-Оператор `>` разрешает последовательность только внутри одной области:
+```bash
+python3 .harness/tools/harness-dispatch.py resume [--root '<root command>']
+```
+
+`HARNESS RESUME` использует тот же механизм и не создаёт отдельную root execution.
+
+### 0.2. Низкоуровневые contracts
+
+Dispatcher не заменяет существующие engines; он композиционно вызывает их:
+
+1. `validate-command.py` / `command_transitions.py` — structural parsing/normalization;
+2. `execution_status.py` — restart-safe state, locks, completion и resolver;
+3. runtime preconditions — exact Git/STEP/update gates;
+4. deterministic handlers либо semantic skill/context handoff.
+
+Low-level CLI остаются полезны для диагностики и Harness development:
+
+```bash
+python3 .harness/tools/validate-command.py --json -- '<command>'
+python3 .harness/tools/execution-state.py status
+python3 .harness/tools/resolve-next-command.py --json
+python3 .harness/tools/harness-dispatch.py route --command '<canonical command>'
+```
+
+Execution Status хранится в `.harness/local/execution/execution-status.json`, сериализует concurrent read-modify-write transaction project-local advisory lock и не является canonical project evidence. Подробности — в `.harness/docs/EXECUTION_STATUS.md`.
+
+### 0.3. Цепочки
+
+Оператор `>` разрешён только внутри одной CTS domain. Вся цепочка валидируется до первого segment. Следующий segment запускается только если фактический result предыдущего входит в `onPreviousResult` edge и runtime preconditions доказаны.
+
+Примеры:
 
 ```text
 GIT CHECK > COMMIT > PUSH > PR
@@ -41,133 +72,11 @@ STEP PLAN STEP-024 > IMPLEMENT > REVIEW
 HARNESS UPDATE CHECK TO vX.X.X > APPLY
 ```
 
-Правила:
+Отсутствующий/reverse edge, смена domain/STEP target или `BLOCKED` останавливает execution; выполненные mutations автоматически не откатываются.
 
-1. до первого выполнения разобрать и валидировать всю цепочку;
-2. DOMAIN наследуется от первого сегмента; смена DOMAIN внутри цепочки запрещена;
-3. STEP target `STEP-NNN` или shorthand `NNN` сначала нормализуется в canonical `STEP-NNN`, затем наследуется и остаётся неизменным;
-4. HARNESS UPDATE target `TO <tag>` наследуется от CHECK к APPLY;
-5. допустимый порядок определяется только explicit edges из `.harness/command-transitions.json`;
-6. same-domain reverse/invalid order (например `GIT PR > COMMIT`) = `INVALID_CHAIN`; ни один сегмент не выполняется;
-7. после выполнения segment следующий запускается только если фактический result входит в `onPreviousResult` соответствующего edge и выполнены его runtime preconditions;
-8. `FAIL` может быть разрешающим result конкретного edge (например REVIEW → FIX); `BLOCKED` останавливает execution; остальные segments = `NOT_EXECUTED`;
-9. уже выполненные mutations не откатываются автоматически;
-10. cross-domain chain, например `STEP RUN STEP-024 > GIT COMMIT`, не выполняется.
+### 0.4. Deterministic UX
 
-Разрешённые chain surfaces: GIT; ручной STEP flow `PLAN/IMPLEMENT/REVIEW/FIX`; HARNESS UPDATE только `CHECK > APPLY`. PROJECT/SKILL/GITHUB/RELEASE и `STEP RUN`/ `STEP AUDIT` остаются самостоятельными командами.
-
-### 0.2. Execution Status — единый restart-safe слой
-
-После structural PASS каждая canonical command регистрируется в одном local-only файле:
-
-```text
-.harness/local/execution/execution-status.json
-```
-
-Регистрация выполняется **до command-specific dispatch**:
-
-```bash
-python3 .harness/tools/execution-state.py start \
-  --command '<raw canonical command>'
-```
-
-Execution Status применяется ко всем namespaces и не привязан к STEP.
-
-Внутренний `mode` определяется автоматически из уже существующего пользовательского ввода:
-
-- одна command → `single`;
-- explicit chain → `chain`;
-- `STEP RUN STEP-NNN` → `orchestration`.
-
-Это metadata, а не новый command layer.
-
-CTS scope:
-
-> CTS проверяет transitions только внутри одной root execution. Отдельные пользовательские invocations являются независимыми executions и не требуют edge между собой.
-
-Поэтому:
-
-```text
-STEP PLAN STEP-001
-<complete>
-
-GIT COMMIT
-```
-
-валидно как две независимые executions.
-
-Один файл может содержать несколько records. Новая команда не затирает старую interrupted execution.
-
-Current command status:
-
-- `running` — completion не доказан; после interruption resume той же command;
-- `complete` — command завершена;
-- `blocked` — автоматически дальше не идти.
-
-Result: `SUCCESS | PASS | FAIL | BLOCKED`.
-
-Для root execution:
-
-```bash
-python3 .harness/tools/resolve-next-command.py --json \
-  --root '<root canonical command>'
-```
-
-Без `--root` resolver возвращает все unresolved executions.
-
-Поведение после `complete`:
-
-- `single` → остановиться; CTS ничего автоматически не продолжает;
-- `chain` → проверить следующий segment исходной sequence через CTS/result/runtime preconditions;
-- `STEP RUN` → продолжить orchestration через существующие child commands/CTS; если Type выполняется без отдельной child command, RUN остаётся current и после crash resume-ится сам.
-
-Для chain/orchestration переход к следующей child command отмечается:
-
-```bash
-python3 .harness/tools/execution-state.py begin \
-  --root '<root command>' \
-  --command '<next/current child command>'
-```
-
-Completion:
-
-```bash
-python3 .harness/tools/execution-state.py complete \
-  --root '<root command>' \
-  --command '<current command>' \
-  --result <SUCCESS|PASS|FAIL|BLOCKED>
-```
-
-Запись выполняется atomic replace: temporary file → flush/fsync → `os.replace`.
-
-Canonical artifacts имеют приоритет над local operational state. Для существующих команд разрешены узкие deterministic recovery proofs:
-
-- `plan.status=ready` с совпадающими `context_basis`, `content_hash` и matching immutable planning-review PASS может доказать завершённый `STEP PLAN`;
-- новый schema-valid immutable review report для той же exact `git_head + worktree_hash` revision может восстановить verdict `STEP REVIEW`;
-- изменение Git HEAD после `GIT COMMIT` может доказать, что commit уже создан.
-
-Эти проверки не создают profiles и не меняют command surface.
-
-Подробно: `.harness/docs/EXECUTION_STATUS.md`.
-
-### 0.3. `HARNESS HELP`
-
-`HARNESS HELP` — standalone read-only команда. После structural PASS она запускает только deterministic:
-
-```bash
-python3 .harness/tools/harness-help.py
-```
-
-Output строится из command metadata в `.harness/command-transitions.json`; command-specific project/Git state и LLM reasoning для справки не требуются.
-
-
-### 0.4. Operational UX commands
-
-`HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST` и `STEP SHOW STEP-NNN` выполняются deterministic через `.harness/tools/harness-ux.py` и не мутируют product/project artifacts.
-
-`HARNESS DOCTOR` разделяет required core dependencies и optional capabilities; отсутствие неактивного Claude/Codex runtime или GitHub CLI не является global blocker.
-
-`HARNESS RESUME` — управляющая команда без параметров. После CTS PASS она не регистрируется как новое корневое выполнение: если существует ровно одна безопасная точка продолжения, resolver возвращает соответствующую текущую или следующую команду. При нуле или нескольких возможных точках команда возвращает `BLOCKED`.
+`HARNESS HELP/STATUS/DOCTOR/CONFIG` и `STEP LIST/SHOW` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их сам и не создаёт semantic handoff.
 
 ## 1. Сущности
 
