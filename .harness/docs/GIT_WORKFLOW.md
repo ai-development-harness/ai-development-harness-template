@@ -37,7 +37,7 @@ LLM/agent по-прежнему отвечает за semantic decisions — н�
 
 ### `GIT CHECK`
 
-Read-only preflight через `git-preflight.py check`: branch/protection/upstream, staged/unstaged/untracked, configured remotes/base и Harness integrity. Semantic оценку подозрительных/unrelated файлов и предполагаемого commit type/scope делает agent по фактическому diff.
+Read-only deterministic preflight без model call: dispatcher напрямую запускает `git-preflight.py check` и возвращает branch/protection/upstream, staged/unstaged/untracked, configured remotes/base и Harness integrity. Semantic grouping/logical scope не нужен для CHECK; он выполняется позже только если пользователь действительно переходит к `GIT COMMIT`.
 
 ### `GIT COMMIT`
 
@@ -104,7 +104,7 @@ when_on_protected = "auto-create" # auto-create | stay | block
 after_push = "create-if-missing"
 ```
 
-Поэтому `GIT PUSH` остаётся semantic boundary: после успешной mechanical mutation runtime применяет post-push policy и при необходимости переходит к PR prose/handoff. Чтобы только отправлять ветку:
+Поэтому `GIT PUSH` остаётся semantic boundary только для follow-up: `git-action.py push` возвращает factual `afterPush = never|ask|create-if-missing`, и модель использует именно это поле вместо повторного чтения Git policy. Сама push mutation полностью deterministic. Чтобы только отправлять ветку:
 
 ```toml
 [pull_request]
