@@ -195,7 +195,6 @@ forbidden_tracked_globs = [
   "PROJECT_BRIEF.local.md",
   "AGENTS.local.md",
   "CLAUDE.local.md",
-  ".project/local/**",
   ".harness/local/**",
   ".codex/local/**",
   ".claude/local/**",

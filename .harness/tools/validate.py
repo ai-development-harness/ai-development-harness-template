@@ -962,7 +962,6 @@ def validate_repository_surface(
     required_ignored = [
         ("AGENTS.local.md", "AGENTS.local.md"),
         ("CLAUDE.local.md", "CLAUDE.local.md"),
-        (".project/local/", ".project/local/__harness_ignore_probe__"),
         (".harness/local/", ".harness/local/__harness_ignore_probe__"),
         (".codex/local/", ".codex/local/__harness_ignore_probe__"),
         (".claude/local/", ".claude/local/__harness_ignore_probe__"),

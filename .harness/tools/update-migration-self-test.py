@@ -95,8 +95,14 @@ def require_post_v053_bridge(graph: dict) -> None:
 
 def test_routing(root: Path) -> None:
     canonical = load_json(update_manifest_path(root))
-    legacy = load_json(root / ".project/harness-update-graph.json")
-    require(canonical == legacy, "legacy routing endpoint drifted from canonical graph")
+
+    # Поддерживаемый floor после удаления legacy namespace: current updater
+    # обязан сохранять рабочий route для всех проектов начиная с v0.6.0.
+    supported_route, _supported_edges = route_to_latest(canonical, "v0.6.0")
+    require(
+        supported_route[0] == "v0.6.0" and supported_route[-1] == canonical["latest"],
+        f"supported v0.6.0 update route is broken: {supported_route}",
+    )
 
     route, edges = route_to_latest(canonical, "v0.4.0")
     require(route[:3] == ["v0.4.0", "v0.4.1", "v0.4.2"], f"legacy bridge prefix changed: {route}")

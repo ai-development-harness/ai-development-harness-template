@@ -251,14 +251,6 @@ python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
 
 Baseline должен совпадать с current manifest release. Новый lock pin-ит не только tag ref, но и exact commit OID.
 
-## Historical v0.4.x bridge
-
-Для старого namespace `.project/**` использовался обязательный bridge v0.4.2 с `reloadRequired=true`.
-
-Legacy updater relocation переносил control plane в `.harness/**`; после успешного relocation dual-layout не восстанавливается.
-
-Compatibility endpoint `.project/harness-update-graph.json` существует только для discovery старых updater-ов и является исторической bootstrap границей. Current updater после relocation использует configured current policy/update manifest.
-
 ## First deterministic-updater bridge after v0.5.3
 
 Published `v0.5.3` ещё не содержит deterministic `.harness/tools/harness-update.py`. Поэтому **первый release после v0.5.3** обязан добавить edge:

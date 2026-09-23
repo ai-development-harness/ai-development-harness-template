@@ -18,7 +18,7 @@ Namespace/control plane AI Development Harness. Здесь собраны core d
 
 Все эти значения проверяются `.harness/tools/validate.py`, поэтому отсутствующая или недопустимая настройка блокирует Harness validation до запуска orchestration.
 
-Локальные/секретные overrides при необходимости складываются в `.harness/local/`; каталог игнорируется Git. Legacy `.project/local/` также остаётся игнорируемым transitional path, чтобы operational state старых checkout не мог случайно попасть в commit.
+Локальные/секретные overrides при необходимости складываются в `.harness/local/`; каталог игнорируется Git.
 
 ## Ownership внутри namespace
 
