@@ -230,6 +230,13 @@ def main() -> int:
             raise AssertionError("legacy adoption accepted baseline below v0.6.0")
 
         project = project_from_base(temp / "project", base_files, base_oid)
+        try:
+            check_update(project, target="v0.5.3", source_url=str(source))
+        except UpdateError as exc:
+            assert exc.code == "UNSUPPORTED_HARNESS_RELEASE", (exc.code, exc)
+        else:
+            raise AssertionError("current updater accepted target release below v0.6.0")
+
         checked = check_update(project, target="v1.1.0", source_url=str(source))
         assert checked["status"] == "PASS", checked
         assert checked["route"] == ["v1.0.0", "v1.1.0"], checked
