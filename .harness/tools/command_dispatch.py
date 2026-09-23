@@ -755,6 +755,28 @@ def complete_dispatch(
                 "message": str(exc),
             }
 
+    if (
+        resolved.get("status") == "RESUME"
+        and resolved.get("command") == root_command
+        and root_command.startswith("STEP RUN ")
+    ):
+        try:
+            execution = begin_command(root, root_command, root_command)
+            return _dispatch_running(root, execution, root_command)
+        except (DispatchError, OSError, ValueError) as exc:
+            try:
+                block_execution(root, root_command, command=root_command)
+            except (OSError, ValueError):
+                pass
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                **_execution_identity(execution),
+                "command": root_command,
+                "reasonCode": getattr(exc, "code", "ORCHESTRATION_DISPATCH_BLOCKED"),
+                "message": str(exc),
+            }
+
     return _terminal(execution, resolved)
 
 
