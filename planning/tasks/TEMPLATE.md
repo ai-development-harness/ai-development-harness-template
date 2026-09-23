@@ -61,7 +61,8 @@ plan:
 
 ## Verification
 
-- Реальные команды/проверки; не выдумывать отсутствующие scripts.
+- command: `python3 .harness/tools/validate.py --mode manual`
+- manual: Добавлять только действительно неавтоматизируемую semantic/visual проверку; удалить строку, если manual check не нужен.
 
 ## Deliverables
 
@@ -73,7 +74,7 @@ plan:
 
 ## Evidence
 
-Заполняется по факту реализации и verification. Для каждой значимой проверки указывай Command, Exit code и Observed.
+Generated verification block записывает deterministic runner. Дополнительные semantic observations можно хранить вне generated markers.
 
 ## Blocker / Failure reason
 
