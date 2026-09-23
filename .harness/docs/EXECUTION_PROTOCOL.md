@@ -492,19 +492,20 @@ Tool разрешает configured `.harness/manifest.yaml → repository.gitPol
 
 ## 21. `GIT PR`
 
-1. Выполнить:
+1. Semantic worker заполняет PR body по configured template/repository evidence в `.harness/local/git/pr-body.md`. При `title_from_commit=false` дополнительно создаёт одно-строчный `pr-title.txt`.
+2. Выполнить:
    ```bash
-   python3 .harness/tools/git-preflight.py pr --json
+   python3 .harness/tools/git-action.py pr --body-file .harness/local/git/pr-body.md --json
    ```
-2. PASS доказывает exact published HEAD, существующий configured base, доступный preferred tool и repository-contained body template.
-3. Head/base/provider/tool/draft брать из machine plan/policy, не подменять вручную.
-4. При `reuse_existing=true` не создавать duplicate.
-5. Title должен отражать actual change; body заполняется по configured template из STEP/REQ/ADR/evidence/review.
+   При policy `title_from_commit=false` добавить `--title-file .harness/local/git/pr-title.txt`.
+3. Executor повторяет canonical PR preflight, использует только configured provider/tool/head/base/draft, находит exact open PR либо создаёт один согласно `reuse_existing`.
+4. SUCCESS требует provider `headRefOid == published HEAD`; local `.harness/local/git/pr-state.json` executor создаёт/обновляет сам. Ручной `gh pr create/list/view` и ручная запись state запрещены.
+5. Provider/tool blocker не ослаблять ручной командой; semantic title/body не имеют права подменять base/head/provider policy.
 
 ## 22. `GIT PR FINISH`
 
 1. Команда standalone-only и применяется после merge PR.
-2. После успешного `GIT PR` сохранить local-only `.harness/local/git/pr-state.json` schema v1: PR number, headBranch, baseBranch, returnBranch и URL. `returnBranch` = корректная предыдущая local branch; если она недоступна/невалидна — PR base.
+2. Local PR state уже сохранён deterministic PR executor-ом; вручную его не редактировать.
 3. Перед mutation выполнить:
    ```bash
    python3 .harness/tools/git-preflight.py pr-finish --json
