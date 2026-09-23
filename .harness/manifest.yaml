@@ -27,6 +27,9 @@ execution:
   # Максимальное число циклов FIX → REVIEW внутри одного STEP RUN STEP до остановки.
   # Пример: 3; допустимый диапазон 1..5.
   maxFixReviewCycles: 3
+  # Максимальное время одной deterministic Verification command до принудительной остановки.
+  # Пример: 300 секунд; допустимый диапазон 1..3600. Shell не используется.
+  verificationCommandTimeoutSeconds: 300
 
 # Политика specialized reviewers поверх обязательного independent review.
 # Пример: auto использует deterministic preselector, always делает reviewer обязательным всегда.
