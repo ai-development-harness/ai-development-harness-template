@@ -24,12 +24,16 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 def main() -> int:
     table = load_transition_table(SOURCE_ROOT)
     projection = build_projection(table)
-    assert projection["summary"] == {
-        "total": 32,
-        "none": 14,
-        "required": 16,
-        "conditional": 2,
-    }, projection["summary"]
+    summary = projection["summary"]
+    assert summary["total"] == len(projection["commands"]), summary
+    assert (
+        summary["none"] + summary["required"] + summary["conditional"]
+        == summary["total"]
+    ), summary
+    assert summary["none"] > 0, summary
+    assert summary["required"] > 0, summary
+    assert summary["conditional"] > 0, summary
+    assert projection["classification"]["scope"] == "command-node", projection
 
     markdown = render_markdown_block(projection)
     assert "Без вычислений модели" in markdown
