@@ -1,10 +1,10 @@
 ---
 name: git-workflow
-description: Safe Git workflow using configured repository policy plus deterministic preflight gates before COMMIT, PUSH, PR and SYNC mutations.
+description: Semantic Git workflow for CHECK, COMMIT, PUSH post-policy and PR prose; mechanical Git mutations remain deterministic.
 ---
 # git-workflow
 
-Используй для `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR`, `GIT PR FINISH`, `GIT SYNC` и валидных Git-chain segments.
+Используй для semantic segments `GIT CHECK`, `GIT COMMIT`, `GIT PUSH`, `GIT PR` и соответствующих Git-chain segments. `GIT SYNC` и `GIT PR FINISH` dispatcher выполняет без LLM.
 
 ## Главный принцип
 
@@ -15,12 +15,11 @@ python3 .harness/tools/git-preflight.py check --json
 python3 .harness/tools/git-preflight.py commit --json [--commit-type <type>] [--slug <slug>]
 python3 .harness/tools/git-preflight.py push --json
 python3 .harness/tools/git-preflight.py pr --json
-python3 .harness/tools/git-preflight.py sync --json
 ```
 
 Agent не должен вручную переопределять `PASS/BLOCKED`, protected-branch decision, remote ahead/behind, publish state, PR base/tool или ff-only safety.
 
-Preflight остаётся read-oriented proof. Для `GIT COMMIT`, `GIT PUSH`, `GIT SYNC` и `GIT PR FINISH` mutation выполняй через `git-action.py`, который повторяет preflight и проверяет postcondition. `GIT PR` пока остаётся provider boundary: его title/body — semantic inputs, создание/переиспользование выполняется provider tooling после deterministic preflight.
+Preflight остаётся read-oriented proof. Для `GIT COMMIT` и `GIT PUSH` mutation выполняй через `git-action.py`, который повторяет preflight и проверяет postcondition. Для `GIT PR` модель формирует только title/body semantics; provider find/reuse/create/state уже выполняет executor. `GIT SYNC` и `GIT PR FINISH` вообще не требуют загрузки этого skill.
 
 ## Общие правила
 
@@ -102,26 +101,9 @@ python3 .harness/tools/git-action.py pr --body-file .harness/local/git/pr-body.m
 Executor сам повторяет PR preflight, использует только configured provider/tool/head/base/draft policy, ищет exact open head/base PR, переиспользует его при `reuse_existing=true` либо создаёт новый, проверяет provider head OID == exact published HEAD и атомарно сохраняет local PR lifecycle state. Повторный запуск idempotent для того же PR.
 
 
-## GIT PR FINISH
+## Deterministic-only Git commands
 
-Выполни `python3 .harness/tools/git-action.py pr-finish --json`. Executor повторяет provider/Git preflight, исполняет ordered steps, проверяет return branch и удаление exact PR-head ref, после чего удаляет local PR state только при полном успехе. При `BLOCKED` не обходи его ручным switch/delete.
-
-## GIT SYNC
-
-Выполни:
-
-```bash
-python3 .harness/tools/git-action.py sync --json
-```
-
-Executor сначала запускает canonical sync preflight: fetch-ит только `sync.fetch_remote`, считает ahead/behind и выполняет mutation только для exact ff-only plan.
-
-- `mode=report` → mutation запрещена, только отчёт.
-- `mode=ff-only` → tool выдаёт `git merge --ff-only <remote>/<branch>` только для clean behind-only state.
-- local-ahead или diverged state блокирует автоматический sync.
-- automatic merge/rebase не разрешены.
-
-Не выполняй returned merge argv вручную: executor проверяет postcondition local HEAD == configured remote branch.
+`GIT SYNC` и `GIT PR FINISH` не являются semantic work. Их dispatcher вызывает напрямую через `git-action.py`; этот skill для них не загружается.
 
 ## Failure policy
 
