@@ -75,6 +75,32 @@ from project_integrity import validate_project_integrity
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending
 
 
+# Claude-specific defense-in-depth. Эти rules не являются canonical Git policy:
+# они только мешают Claude Code обходить deterministic git-action.py через
+# обычный Bash/PowerShell tool. Runtime-neutral source of truth остаётся
+# `.harness/git-policy.toml` + git_preflight/git_action.
+CLAUDE_REQUIRED_GIT_DENY_RULES = {
+    "Bash(git commit *)",
+    "Bash(git push *)",
+    "Bash(git merge *)",
+    "Bash(git branch -d *)",
+    "Bash(git branch -D *)",
+    "Bash(git update-ref -d *)",
+    "Bash(git reset --hard *)",
+    "Bash(git clean -f*)",
+    "Bash(git clean --force *)",
+    "PowerShell(git commit *)",
+    "PowerShell(git push *)",
+    "PowerShell(git merge *)",
+    "PowerShell(git branch -d *)",
+    "PowerShell(git branch -D *)",
+    "PowerShell(git update-ref -d *)",
+    "PowerShell(git reset --hard *)",
+    "PowerShell(git clean -f*)",
+    "PowerShell(git clean --force *)",
+}
+
+
 # Безопасно вызвать Git и вернуть (exit_code, stdout). Ошибка запуска Git превращается в код 127, а не необработанное исключение.
 def run_git(root: Path, *args: str) -> tuple[int, str]:
     try:
@@ -779,11 +805,26 @@ def validate_runtime_surface(
             effort = claude_settings.get("effortLevel")
             if effort not in {"low", "medium", "high", "xhigh", "max"}:
                 errors.append("Claude settings effortLevel must be low/medium/high/xhigh/max")
-            permissions = claude_settings.get("permissions", {})
-            if permissions and permissions.get("defaultMode") not in {
-                "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"
-            }:
-                errors.append("Claude settings permissions.defaultMode is invalid")
+            permissions = claude_settings.get("permissions")
+            if not isinstance(permissions, dict):
+                errors.append("Claude settings permissions must be an object")
+            else:
+                if permissions.get("defaultMode") not in {
+                    "default", "acceptEdits", "auto", "dontAsk", "bypassPermissions", "plan"
+                }:
+                    errors.append("Claude settings permissions.defaultMode is invalid")
+                deny = permissions.get("deny")
+                if not isinstance(deny, list) or not all(
+                    isinstance(item, str) and item.strip() for item in deny
+                ):
+                    errors.append("Claude settings permissions.deny must be a string array")
+                else:
+                    missing_deny = sorted(CLAUDE_REQUIRED_GIT_DENY_RULES - set(deny))
+                    if missing_deny:
+                        errors.append(
+                            "Claude settings missing required Git deny rules: "
+                            + ", ".join(missing_deny)
+                        )
         except Exception as exc:
             errors.append(f"invalid Claude settings JSON: {exc}")
 
