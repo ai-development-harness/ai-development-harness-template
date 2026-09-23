@@ -31,32 +31,36 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
 4. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
 5. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
-## Phase B — draft implementation plan
+## Phase B — semantic plan payload
 
-1. Запиши содержательный `## Implementation plan`.
-2. Пока semantic planning-review не завершён, выставь `plan.status: draft`; не записывай Ready hashes вручную.
-3. После записи draft повторно вызови `step-context.py STEP-NNN --phase plan --json` и возьми `deterministic.contextBasis` + `deterministic.planContentHash`. Не пересчитывай fingerprints вручную. Schema v4 включает semantic STEP/dependency contracts, semantic linked REQ/ADR, explicit architecture refs и relevant OQ; lifecycle/traceability metadata не входит в basis.
+Не редактируй STEP/frontmatter вручную. Сформируй только semantic JSON:
 
-## Phase C — обязательный independent planning-review
+- `implementationPlan` — непустой массив шагов;
+- каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`;
+- `verification` — массив `{"kind":"command|manual","value":"..."}`.
 
-Для **каждого** STEP PLAN передай готовый draft отдельному `reviewer` agent/session, отличному от planner, который составлял план. Создай immutable schema-v1 report `PLAN-REVIEW-<UTC timestamp>.md` в configured `protocol.planningReviewDirectory/STEP-NNN/` по template:
-
-- `kind: planning_review`;
-- `step_id`;
-- `verdict: pass|blocked`;
-- точные `context_basis` и `plan_content_hash`;
-- `reviewer_role: reviewer` и timestamp.
-
-После любых правок plan/contract fingerprints пересчитай и старый report не переиспользуй.
-
-## Phase D — Ready stamp
-
-Только для matching PASS выполни:
+Сохрани payload только под `.harness/local/**` либо передай через stdin и вызови:
 
 ```bash
-python3 .harness/tools/execution-state.py stamp-plan STEP-NNN
+python3 .harness/tools/semantic-writer.py plan-draft STEP-NNN --payload-file '<local-json-or->'
 ```
 
-`stamp-plan` сам откажет без matching PASS report и atomically запишет `plan.status=ready`, revision, context basis, content hash, reviewed report и timestamp.
+Writer сам заменяет только `## Implementation plan` / `## Verification`, переводит plan в `draft`, валидирует Verification и возвращает exact context/content fingerprints.
 
-После изменения текста Implementation plan Ready автоматически становится stale по content hash. Изменение relevant upstream context делает stale context basis. Не ставь STEP `in_progress` и не меняй production code.
+## Phase C — independent planning-review payload
+
+Передай persisted draft отдельному `reviewer` agent/session, отличному от planner. Reviewer возвращает только:
+
+```json
+{"verdict":"pass|blocked","findings":[],"rationale":"..."}
+```
+
+Не создавай planning-review Markdown/frontmatter вручную. Передай payload в:
+
+```bash
+python3 .harness/tools/semantic-writer.py planning-review STEP-NNN --payload-file '<local-json-or->'
+```
+
+Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready.
+
+После writer PASS команда завершена. Изменение Implementation plan/upstream semantic input позже по-прежнему stale-ит Ready fingerprints. Production code не меняй.
