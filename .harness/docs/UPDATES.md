@@ -47,7 +47,7 @@ python3 .harness/tools/harness-update.py apply [--to vX.Y.Z] --json
 python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
 ```
 
-Agent/skill остаётся orchestration/UI layer: запускает tool, объясняет route/conflict и показывает diff. Он не должен вручную воспроизводить ownership calculation, 3-way merge, marker preservation, filesystem writes или lock advancement.
+Обычные `HARNESS UPDATE CHECK/APPLY` dispatcher выполняет как deterministic handlers без model call. Engine result является factual и не переинтерпретируется reasoning-ом. `update-harness` skill остаётся reference/fallback для explicit legacy adoption, ручной recovery и объяснения сложного blocker пользователю; он не должен вручную воспроизводить ownership calculation, 3-way merge, marker preservation, filesystem writes или lock advancement.
 
 Pre-INIT update:
 
