@@ -70,6 +70,8 @@ Tools отвечают за проверяемые факты и механич�
 
 `GIT PR` пока остаётся отдельной provider boundary: preflight deterministic, но title/body являются semantic inputs, а provider mutation выполняется runtime/provider tooling. Это ограничение должно оставаться явным до появления отдельного provider action contract.
 
+Многошаговый `GIT PR FINISH` допускает crash между mechanical steps. Recovery не доверяет факту текущей ветки: local PR state + provider `MERGED` + exact provider head OID повторно проверяются, и executor продолжает только remaining idempotent/safe cleanup.
+
 ### External skills и sources
 
 Third-party skills, fetched docs и update target content считаются недоверенными данными до inspection. Они не могут повышать свой instruction priority, отключать Harness gates или автоматически выполнять bundled scripts.
