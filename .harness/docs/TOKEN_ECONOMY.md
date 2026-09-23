@@ -73,7 +73,9 @@ Machine-readable config должен читать deterministic tool, когда
 
 Для STEP workflow навигация тоже выполняется pull-based: `step-context.py STEP-NNN --phase plan|implement|review --json` разрешает exact canonical `readPaths` и deterministic phase facts. Tool намеренно не генерирует semantic summary — модель получает исходное evidence, но не сканирует unrelated project docs/manifest directories.
 
-Command bootstrap также не является reasoning-задачей. `harness-dispatch.py` объединяет CTS validation, execution state, continuation и routing. Deterministic read-only commands выполняются внутри dispatcher; semantic command возвращает только exact skill/context handoff. Root-модель не должна отдельно читать transition graph, выбирать skill или вызывать resolver по playbook.
+Command bootstrap также не является reasoning-задачей. `harness-dispatch.py` объединяет CTS validation, execution state, continuation и routing. Deterministic commands, включая `PROJECT STATUS` и `HARNESS UPDATE CHECK/APPLY`, выполняются внутри dispatcher; semantic command возвращает только exact skill/context handoff. Root-модель не должна отдельно читать transition graph, выбирать skill или вызывать resolver по playbook.
+
+Для coding `STEP RUN` dispatcher также владеет mechanical orchestration: exact child-команду выбирает resolver, поэтому между PLAN/IMPLEMENT/REVIEW/FIX не требуется отдельный root-model turn. Reasoning остаётся внутри самих child-команд. Type-specific non-coding flows сохраняют semantic `run-step` fallback.
 
 Semantic artifact persistence следует тому же правилу. PLAN/REVIEW model возвращает structured JSON payload, а `semantic-writer.py` владеет canonical Markdown/YAML rendering, timestamps, fingerprints, immutable report reservation, specialized gate metadata и post-write validation. Модель не должна тратить context/reasoning на ручную сборку frontmatter или повторное вычисление execution result.
 
@@ -86,7 +88,7 @@ Pull Request provider mechanics также не являются reasoning-за�
 
 Git workflow следует той же границе: после semantic staging/message decisions `git-action.py` повторяет preflight, выполняет COMMIT/PUSH/SYNC/PR FINISH и проверяет postconditions. Модели не нужно читать/копировать `mutationPlan.argv` и вручную исполнять mechanical steps.
 
-`GIT CHECK`, `GIT SYNC` и `GIT PR FINISH` маршрутизируются как deterministic dispatcher handlers: для них model call отсутствует полностью. `GIT PUSH` оставляет модели только follow-up policy: executor возвращает factual `afterPush`, поэтому policy/config повторно читать не нужно.
+`GIT CHECK`, `GIT SYNC` и `GIT PR FINISH` маршрутизируются как deterministic dispatcher handlers: для них model call отсутствует полностью. Standalone `GIT PUSH` сохраняет semantic logical-scope boundary. Если PUSH идёт непосредственно после успешного canonical COMMIT в той же chain, scope уже доказан этим segment, поэтому dispatcher использует deterministic push fast-path без повторного model call.
 
 ## Gate
 
