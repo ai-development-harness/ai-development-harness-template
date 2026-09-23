@@ -35,6 +35,7 @@ from execution_status import (
     start_execution,
 )
 from harness_help import help_catalog
+from git_action import execute_pr_finish, execute_push, execute_sync
 from harness_ux import (
     harness_config,
     harness_doctor,
@@ -296,6 +297,12 @@ def _deterministic_handler(
         return step_show(root, target)
     if handler == "step-next":
         return resolve_step_next(root)
+    if handler == "git-push":
+        return execute_push(root)
+    if handler == "git-pr-finish":
+        return execute_pr_finish(root)
+    if handler == "git-sync":
+        return execute_sync(root)
     if handler == "harness-resume":
         # HARNESS RESUME не создаёт собственную execution. Его special flow
         # обрабатывается start_dispatch()/resume_dispatch().
@@ -339,7 +346,7 @@ def _dispatch_running(
 
     result = _deterministic_handler(root, route["command"])
     status = result.get("status")
-    command_result = "PASS" if status == "PASS" else "BLOCKED"
+    command_result = status if status in {"PASS", "SUCCESS"} else "BLOCKED"
     completed = complete_command(
         root,
         str(execution["rootCommand"]),
