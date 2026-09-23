@@ -37,6 +37,18 @@ KNOWN_RUNTIME_PRECONDITIONS = {
     "git-pr-ready",
 }
 
+DISPATCH_KINDS = {"deterministic", "semantic"}
+KNOWN_DISPATCH_HANDLERS = {
+    "harness-help",
+    "harness-status",
+    "harness-resume",
+    "harness-doctor",
+    "harness-config",
+    "step-list",
+    "step-show",
+}
+CONTEXT_PHASES = {"plan", "implement", "review"}
+
 
 
 def load_transition_table(root: Path) -> dict[str, Any]:
@@ -155,6 +167,51 @@ def validate_transition_table(table: dict[str, Any]) -> list[str]:
                         "must be a non-empty string"
                     )
 
+            dispatch = spec.get("dispatch")
+            if not isinstance(dispatch, dict):
+                errors.append(
+                    f"command-transitions: {domain_name}.{operation}.dispatch must be an object"
+                )
+            else:
+                kind = dispatch.get("kind")
+                if kind not in DISPATCH_KINDS:
+                    errors.append(
+                        f"command-transitions: {domain_name}.{operation}.dispatch.kind "
+                        f"must be one of {sorted(DISPATCH_KINDS)}"
+                    )
+                elif kind == "deterministic":
+                    handler = dispatch.get("handler")
+                    if handler not in KNOWN_DISPATCH_HANDLERS:
+                        errors.append(
+                            f"command-transitions: {domain_name}.{operation}.dispatch.handler "
+                            f"must be one of {sorted(KNOWN_DISPATCH_HANDLERS)}"
+                        )
+                    unexpected = sorted(set(dispatch) - {"kind", "handler"})
+                    if unexpected:
+                        errors.append(
+                            f"command-transitions: {domain_name}.{operation}.dispatch "
+                            "has unsupported keys: " + ", ".join(unexpected)
+                        )
+                elif kind == "semantic":
+                    skill = dispatch.get("skill")
+                    if not isinstance(skill, str) or not skill.strip():
+                        errors.append(
+                            f"command-transitions: {domain_name}.{operation}.dispatch.skill "
+                            "must be a non-empty string"
+                        )
+                    phase = dispatch.get("contextPhase")
+                    if phase is not None and phase not in CONTEXT_PHASES:
+                        errors.append(
+                            f"command-transitions: {domain_name}.{operation}.dispatch.contextPhase "
+                            f"must be one of {sorted(CONTEXT_PHASES)}"
+                        )
+                    unexpected = sorted(set(dispatch) - {"kind", "skill", "contextPhase"})
+                    if unexpected:
+                        errors.append(
+                            f"command-transitions: {domain_name}.{operation}.dispatch "
+                            "has unsupported keys: " + ", ".join(unexpected)
+                        )
+
         for alias, operation in aliases.items():
             if operation not in commands:
                 errors.append(
@@ -223,6 +280,15 @@ def validate_transition_table(table: dict[str, Any]) -> list[str]:
 
     return errors
 
+
+
+def dispatch_spec(
+    table: dict[str, Any],
+    domain: str,
+    operation: str,
+) -> dict[str, Any]:
+    """Вернуть validated dispatch metadata одной canonical command."""
+    return dict(table["domains"][domain]["commands"][operation]["dispatch"])
 
 
 def canonical_commands(table: dict[str, Any]) -> list[str]:
