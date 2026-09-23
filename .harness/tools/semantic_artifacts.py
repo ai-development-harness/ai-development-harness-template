@@ -63,6 +63,82 @@ def _text(value: Any, label: str) -> str:
     return value.strip()
 
 
+def _single_line(value: Any, label: str) -> str:
+    result = _text(value, label)
+    if "\n" in result or "\r" in result:
+        raise SemanticArtifactError(f"{label} must be a single line")
+    return result
+
+
+def _string_array(value: Any, label: str, *, required: bool = False) -> list[str]:
+    if value is None and not required:
+        return []
+    if not isinstance(value, list):
+        raise SemanticArtifactError(f"{label} must be an array")
+    result = [
+        _single_line(item, f"{label}[{index}]")
+        for index, item in enumerate(value)
+    ]
+    if required and not result:
+        raise SemanticArtifactError(f"{label} must not be empty")
+    return result
+
+
+def _implementation_plan(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or not value:
+        raise SemanticArtifactError("implementationPlan must be a non-empty array")
+    steps: list[dict[str, Any]] = []
+    allowed = {"title", "actions", "files", "tests", "risks"}
+    for index, raw in enumerate(value, 1):
+        item = _require_object(raw, f"implementationPlan[{index}]")
+        _exact_keys(item, allowed, f"implementationPlan[{index}]")
+        steps.append(
+            {
+                "title": _single_line(
+                    item.get("title"),
+                    f"implementationPlan[{index}].title",
+                ),
+                "actions": _string_array(
+                    item.get("actions"),
+                    f"implementationPlan[{index}].actions",
+                    required=True,
+                ),
+                "files": _string_array(
+                    item.get("files"),
+                    f"implementationPlan[{index}].files",
+                ),
+                "tests": _string_array(
+                    item.get("tests"),
+                    f"implementationPlan[{index}].tests",
+                ),
+                "risks": _string_array(
+                    item.get("risks"),
+                    f"implementationPlan[{index}].risks",
+                ),
+            }
+        )
+    return steps
+
+
+def _render_implementation_plan(steps: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for index, item in enumerate(steps, 1):
+        lines.extend([f"### {index}. {item['title']}", ""])
+        for action in item["actions"]:
+            lines.append(f"- {action}")
+        for label, key in (
+            ("Files", "files"),
+            ("Tests", "tests"),
+            ("Risks", "risks"),
+        ):
+            values = item[key]
+            if values:
+                lines.extend(["", f"**{label}:**"])
+                lines.extend(f"- {value}" for value in values)
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
 def _replace_h2_section(body: str, title: str, value: str) -> str:
     """Replace one real H2 section while preserving all other body bytes semantically."""
     normalized = body.replace("\r\n", "\n")
@@ -88,7 +164,8 @@ def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     """Persist semantic plan/Verification payload without letting model edit metadata."""
     data = _require_object(payload, "plan payload")
     _exact_keys(data, {"implementationPlan", "verification"}, "plan payload")
-    implementation_plan = _text(data.get("implementationPlan"), "implementationPlan")
+    implementation_steps = _implementation_plan(data.get("implementationPlan"))
+    implementation_plan = _render_implementation_plan(implementation_steps)
     verification = validate_verification_entries(data.get("verification"))
     verification_text = render_verification_entries(verification)
 
@@ -122,6 +199,7 @@ def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "planStatus": "draft",
         "contextBasis": planning_context_basis(root, step_id),
         "planContentHash": plan_content_hash(root, step_id),
+        "implementationPlan": implementation_steps,
         "verification": verification,
     }
 
