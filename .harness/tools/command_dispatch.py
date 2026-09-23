@@ -34,19 +34,22 @@ from execution_status import (
     resolve_root,
     start_execution,
 )
-from git_action import GitActionError, execute_pr_finish, execute_sync
+from git_action import GitActionError, execute_pr_finish, execute_push, execute_sync
 from git_preflight import GitPreflightError, check as git_check
 from harness_help import help_catalog
+from harness_update import UpdateError, apply_update, check_update
 from harness_ux import (
     harness_config,
     harness_doctor,
     harness_resume,
     harness_status,
+    project_status,
     step_list,
     step_show,
 )
+from planning_contract import step_completion_proof
 from step_context import build_step_context
-from step_next import resolve_step_next
+from step_next import resolve_step_action, resolve_step_next
 from verification import run_step_verification
 
 
@@ -273,6 +276,211 @@ def _semantic_handoff(
     return result
 
 
+
+CODING_STEP_TYPES = {"implementation", "bugfix", "refactor", "hardening"}
+
+
+def _update_target(route: dict[str, Any]) -> str | None:
+    target = route.get("target")
+    return str(target) if isinstance(target, str) and target else None
+
+
+def _machine_completion_details(
+    *,
+    handler: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist only exact machine facts needed by continuation/recovery."""
+
+    details: dict[str, Any] = {
+        "dispatch": {
+            "kind": "deterministic",
+            "handler": handler,
+            "status": result.get("status"),
+        }
+    }
+    extra = result.get("executionDetails")
+    if isinstance(extra, dict):
+        details.update(extra)
+    return details
+
+
+def _finish_machine_result(
+    root: Path,
+    execution: dict[str, Any],
+    command: str,
+    result: dict[str, Any],
+    *,
+    handler: str,
+) -> dict[str, Any]:
+    status = result.get("status")
+    if status not in {"PASS", "SUCCESS", "FAIL", "BLOCKED"}:
+        raise DispatchError(
+            "DETERMINISTIC_RESULT_INVALID",
+            f"{command}: unsupported deterministic status {status!r}",
+        )
+
+    completed = complete_command(
+        root,
+        str(execution["rootCommand"]),
+        command,
+        str(status),
+        details=_machine_completion_details(handler=handler, result=result),
+    )
+    resolved = resolve_root(root, str(execution["rootCommand"]))
+
+    if resolved.get("status") == "NEXT" and resolved.get("command"):
+        next_command = str(resolved["command"])
+        next_execution = begin_command(
+            root,
+            str(execution["rootCommand"]),
+            next_command,
+        )
+        return _dispatch_running(root, next_execution, next_command)
+
+    # Coding STEP RUN should not wake a model just to ask the resolver what to
+    # do after a child command. Once a semantic child is complete, re-enter the
+    # deterministic root orchestrator and let it either close the STEP or choose
+    # the next child. Special STEP types still fall back to the run-step skill.
+    if (
+        resolved.get("status") == "RESUME"
+        and resolved.get("command") == execution.get("rootCommand")
+        and str(execution.get("rootCommand", "")).startswith("STEP RUN ")
+    ):
+        root_command = str(execution["rootCommand"])
+        root_execution = begin_command(root, root_command, root_command)
+        return _dispatch_running(root, root_execution, root_command)
+
+    return _terminal(completed, resolved, result=result)
+
+
+def _git_push_after_commit_fast_path(
+    root: Path,
+    execution: dict[str, Any],
+    route: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Execute PUSH without a model only after COMMIT in the same explicit chain."""
+
+    if route.get("domain") != "GIT" or route.get("operation") != "PUSH":
+        return None
+    if execution.get("mode") != "chain":
+        return None
+    sequence = execution.get("sequence")
+    index = execution.get("currentIndex")
+    if (
+        not isinstance(sequence, list)
+        or not isinstance(index, int)
+        or index <= 0
+        or index >= len(sequence)
+        or sequence[index - 1] != "GIT COMMIT"
+    ):
+        return None
+
+    try:
+        result = execute_push(root)
+    except (GitActionError, GitPreflightError) as exc:
+        return {
+            "status": "BLOCKED",
+            "reasonCode": exc.code,
+            "message": str(exc),
+            "details": getattr(exc, "details", {}),
+        }
+    result = dict(result)
+    result["fastPath"] = "after-canonical-commit"
+    return result
+
+
+def _dispatch_step_run(
+    root: Path,
+    execution: dict[str, Any],
+    route: dict[str, Any],
+) -> dict[str, Any]:
+    """Use deterministic orchestration for ordinary coding STEP types.
+
+    Non-coding types deliberately keep the semantic run-step fallback because
+    ADR/RESEARCH/AUDIT/DOCUMENTATION/RELEASE flows may require type-specific
+    semantic work that is not represented by the coding CTS edges.
+    """
+
+    target = route.get("target")
+    if not isinstance(target, str) or not target:
+        raise DispatchError("STEP_TARGET_MISSING", "STEP RUN requires target")
+
+    action = resolve_step_action(root, target)
+    step_type = action.get("stepType")
+    lifecycle = action.get("lifecycleStatus")
+
+    if isinstance(step_type, str) and step_type not in CODING_STEP_TYPES:
+        return _semantic_handoff(root, execution, route["command"])
+
+    if not isinstance(step_type, str):
+        result = {
+            "status": "BLOCKED",
+            "reasonCode": action.get("reasonCode", "STEP_RUN_STATE_INVALID"),
+            "message": action.get("message", "cannot resolve STEP type"),
+            "details": action,
+        }
+        return _finish_machine_result(
+            root,
+            execution,
+            route["command"],
+            result,
+            handler="step-run-orchestrator",
+        )
+
+    if lifecycle == "completed":
+        proof = step_completion_proof(root, target)
+        if proof.get("complete") is True:
+            result = {
+                "status": "SUCCESS",
+                "stepId": target,
+                "stepType": step_type,
+                "completionProof": proof.get("proof_hash"),
+                "orchestration": "already-complete",
+            }
+        else:
+            result = {
+                "status": "BLOCKED",
+                "reasonCode": "STEP_COMPLETION_PROOF_FAILED",
+                "stepId": target,
+                "stepType": step_type,
+                "details": proof,
+            }
+        return _finish_machine_result(
+            root,
+            execution,
+            route["command"],
+            result,
+            handler="step-run-orchestrator",
+        )
+
+    if action.get("status") != "PASS":
+        result = {
+            "status": "BLOCKED",
+            "reasonCode": action.get("reasonCode", "STEP_RUN_ACTION_BLOCKED"),
+            "stepId": target,
+            "stepType": step_type,
+            "details": action,
+        }
+        return _finish_machine_result(
+            root,
+            execution,
+            route["command"],
+            result,
+            handler="step-run-orchestrator",
+        )
+
+    child = action.get("command")
+    if not isinstance(child, str) or not child:
+        raise DispatchError("STEP_RUN_CHILD_MISSING", f"{target}: no next child command")
+    child_execution = begin_command(
+        root,
+        str(execution["rootCommand"]),
+        child,
+    )
+    return _dispatch_running(root, child_execution, child)
+
+
 def _deterministic_handler(
     root: Path,
     command: str,
@@ -289,6 +497,44 @@ def _deterministic_handler(
         return harness_doctor(root)
     if handler == "harness-config":
         return harness_config(root)
+    if handler == "project-status":
+        return project_status(root)
+    if handler == "harness-update-check":
+        try:
+            result = check_update(root, target=_update_target(route))
+        except (UpdateError, OSError, ValueError) as exc:
+            return {
+                "status": "BLOCKED",
+                "reasonCode": getattr(exc, "code", "CONFIG_OR_IO_ERROR"),
+                "message": str(exc),
+            }
+        result = dict(result)
+        result["executionDetails"] = {
+            "resolvedTarget": result.get("resolvedTarget"),
+            "route": result.get("route"),
+            "lockRef": result.get("current"),
+        }
+        return result
+    if handler == "harness-update-apply":
+        try:
+            raw = apply_update(root, target=_update_target(route))
+        except (UpdateError, OSError, ValueError) as exc:
+            return {
+                "status": "BLOCKED",
+                "reasonCode": getattr(exc, "code", "CONFIG_OR_IO_ERROR"),
+                "message": str(exc),
+            }
+        engine_status = raw.get("status")
+        if engine_status not in {"UPDATED", "NO_UPDATE", "UPDATER_RELOAD_REQUIRED"}:
+            return {
+                "status": "BLOCKED",
+                "reasonCode": "UPDATE_RESULT_INVALID",
+                "details": raw,
+            }
+        result = dict(raw)
+        result["engineStatus"] = engine_status
+        result["status"] = "SUCCESS"
+        return result
     if handler == "step-list":
         return step_list(root)
     if handler == "step-show":
@@ -366,42 +612,34 @@ def _dispatch_running(
 ) -> dict[str, Any]:
     route = route_command(root, command)
     dispatch = route["dispatch"]
+
+    if (
+        route.get("domain") == "STEP"
+        and route.get("operation") == "RUN"
+        and execution.get("mode") == "orchestration"
+    ):
+        return _dispatch_step_run(root, execution, route)
+
     if dispatch.get("kind") == "semantic":
-        return _semantic_handoff(root, execution, route["command"])
+        fast = _git_push_after_commit_fast_path(root, execution, route)
+        if fast is None:
+            return _semantic_handoff(root, execution, route["command"])
+        return _finish_machine_result(
+            root,
+            execution,
+            route["command"],
+            fast,
+            handler="git-push-after-commit",
+        )
 
     result = _deterministic_handler(root, route["command"])
-    status = result.get("status")
-    if status not in {"PASS", "SUCCESS", "FAIL", "BLOCKED"}:
-        raise DispatchError(
-            "DETERMINISTIC_RESULT_INVALID",
-            f"{route['command']}: unsupported deterministic status {status!r}",
-        )
-    command_result = str(status)
-    completed = complete_command(
+    return _finish_machine_result(
         root,
-        str(execution["rootCommand"]),
+        execution,
         route["command"],
-        command_result,
-        details={
-            "dispatch": {
-                "kind": "deterministic",
-                "handler": dispatch.get("handler"),
-                "status": status,
-            }
-        },
+        result,
+        handler=str(dispatch.get("handler") or "unknown"),
     )
-    resolved = resolve_root(root, str(execution["rootCommand"]))
-
-    if resolved.get("status") == "NEXT" and resolved.get("command"):
-        next_command = str(resolved["command"])
-        next_execution = begin_command(
-            root,
-            str(execution["rootCommand"]),
-            next_command,
-        )
-        return _dispatch_running(root, next_execution, next_command)
-
-    return _terminal(completed, resolved, result=result)
 
 
 def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
