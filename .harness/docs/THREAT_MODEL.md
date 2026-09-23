@@ -70,7 +70,7 @@ Tools отвечают за проверяемые факты и механич�
 
 `git-preflight.py` остаётся read-oriented policy/safety proof. Для `GIT COMMIT`, `GIT PUSH`, `GIT SYNC` и `GIT PR FINISH` approved mutation исполняет `git-action.py`, который повторяет preflight, выполняет exact argv и проверяет postcondition.
 
-`GIT PR` пока остаётся отдельной provider boundary: preflight deterministic, но title/body являются semantic inputs, а provider mutation выполняется runtime/provider tooling. Это ограничение должно оставаться явным до появления отдельного provider action contract.
+`GIT PR` имеет узкую semantic boundary только для title/body content. Provider mechanics выполняет `git-action.py`: повторный preflight, exact head/base query, reuse/create, published head-OID postcondition и local PR state. Недоверенный semantic prose не может подменить provider/head/base/draft policy.
 
 Многошаговый `GIT PR FINISH` допускает crash между mechanical steps. Recovery не доверяет факту текущей ветки: local PR state + provider `MERGED` + exact provider head OID повторно проверяются, и executor продолжает только remaining idempotent/safe cleanup.
 
