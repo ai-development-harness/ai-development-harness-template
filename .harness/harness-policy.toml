@@ -122,7 +122,6 @@ required_skills = [
   "run-step",
   "audit-step",
   "project-status",
-  "next-step",
   "reconcile-project",
   "release-check",
   "requirements-review",
