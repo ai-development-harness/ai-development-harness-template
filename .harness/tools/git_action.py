@@ -3,11 +3,9 @@
 
 Semantic inputs остаются у модели/пользователя: staging scope, commit type,
 commit message и PR prose. После этого mechanical mutation выполняет этот tool:
-он повторно запускает canonical preflight, исполняет только разрешённый argv и
-проверяет postcondition.
-
-GIT PR creation намеренно не входит в executor: provider action пока остаётся
-отдельной trust boundary с semantic title/body и provider state.
+он повторно запускает canonical preflight, исполняет разрешённый Git/provider
+action и проверяет postcondition. Provider mechanics GIT PR также deterministic:
+модель задаёт только semantic title/body, а find/reuse/create/state делает tool.
 """
 from __future__ import annotations
 
@@ -18,6 +16,7 @@ import re
 import subprocess
 from typing import Any
 
+from document_contract import atomic_write_text
 from harness_config import ConfigError
 from git_preflight import (
     GitPreflightError,
@@ -25,6 +24,7 @@ from git_preflight import (
     Repo,
     commit_preflight,
     pr_finish_preflight,
+    pr_preflight,
     push_preflight,
     sync_preflight,
 )
@@ -195,6 +195,279 @@ def execute_push(root: Path) -> dict[str, Any]:
     }
 
 
+def _pr_input_path(root: Path, value: Path, *, label: str) -> Path:
+    """Resolve semantic PR input only from ignored local Git state."""
+    path = value if value.is_absolute() else root / value
+    path = path.resolve()
+    allowed = (root / ".harness/local/git").resolve()
+    try:
+        path.relative_to(allowed)
+    except ValueError as exc:
+        raise GitActionError(
+            "PR_INPUT_PATH_BLOCKED",
+            f"{label} file must stay under .harness/local/git/",
+        ) from exc
+    if not path.is_file() or path.is_symlink():
+        raise GitActionError(
+            "PR_INPUT_MISSING",
+            f"{label} file must be a regular file: {path}",
+        )
+    return path
+
+
+def _provider_json(root: Path, argv: list[str]) -> Any:
+    proc = subprocess.run(
+        argv,
+        cwd=root,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode:
+        raise GitActionError(
+            "PR_PROVIDER_FAILED",
+            proc.stderr.strip() or proc.stdout.strip() or "PR provider command failed",
+            argv=argv,
+            exitCode=proc.returncode,
+        )
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise GitActionError(
+            "PR_PROVIDER_INVALID_JSON",
+            "PR provider returned invalid JSON",
+            argv=argv,
+        ) from exc
+
+
+def _open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
+    """Query exact open head/base PRs through configured provider tool."""
+    tool = str(gate["preferredTool"])
+    if gate.get("provider") != "github" or tool != "gh":
+        raise GitActionError(
+            "PR_PROVIDER_UNSUPPORTED",
+            "deterministic PR action currently supports provider=github, tool=gh",
+        )
+    data = _provider_json(
+        root,
+        [
+            tool,
+            "pr",
+            "list",
+            "--head",
+            str(gate["branch"]),
+            "--base",
+            str(gate["base"]),
+            "--state",
+            "open",
+            "--limit",
+            "10",
+            "--json",
+            "number,url,state,headRefName,headRefOid,baseRefName,isDraft,title",
+        ],
+    )
+    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+        raise GitActionError("PR_PROVIDER_INVALID_JSON", "PR list must be a JSON array")
+    exact = [
+        item
+        for item in data
+        if item.get("headRefName") == gate["branch"]
+        and item.get("baseRefName") == gate["base"]
+        and item.get("state") == "OPEN"
+    ]
+    return exact
+
+
+def _validate_provider_pr(gate: dict[str, Any], item: dict[str, Any]) -> None:
+    number = item.get("number")
+    url = item.get("url")
+    if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+        raise GitActionError("PR_PROVIDER_INVALID_JSON", "PR number is missing or invalid")
+    if not isinstance(url, str) or not url.strip():
+        raise GitActionError("PR_PROVIDER_INVALID_JSON", "PR URL is missing")
+    if item.get("headRefName") != gate["branch"]:
+        raise GitActionError("PR_POSTCONDITION_FAILED", "provider PR head branch mismatch")
+    if item.get("baseRefName") != gate["base"]:
+        raise GitActionError("PR_POSTCONDITION_FAILED", "provider PR base branch mismatch")
+    if item.get("headRefOid") != gate["publishedHead"]:
+        raise GitActionError(
+            "PR_POSTCONDITION_FAILED",
+            "provider PR head OID does not match exact published HEAD",
+            expected=gate["publishedHead"],
+            actual=item.get("headRefOid"),
+        )
+
+
+def _return_branch(root: Path, *, head: str, base: str) -> str:
+    repo = Repo(root)
+    previous = repo.git(
+        "rev-parse",
+        "--abbrev-ref",
+        "@{-1}",
+        check=False,
+    )
+    candidate = previous.stdout.strip() if previous.returncode == 0 else ""
+    if candidate and candidate not in {"HEAD", head}:
+        exists = repo.git(
+            "show-ref",
+            "--verify",
+            "--quiet",
+            f"refs/heads/{candidate}",
+            check=False,
+        )
+        if exists.returncode == 0:
+            return candidate
+
+    base_exists = repo.git(
+        "show-ref",
+        "--verify",
+        "--quiet",
+        f"refs/heads/{base}",
+        check=False,
+    )
+    if base_exists.returncode:
+        raise GitActionError(
+            "PR_RETURN_BRANCH_MISSING",
+            f"neither previous local branch nor PR base exists locally: {base}",
+        )
+    return base
+
+
+def _persist_pr_state(
+    root: Path,
+    *,
+    gate: dict[str, Any],
+    item: dict[str, Any],
+) -> str:
+    path = root / PR_STATE_PATH
+    return_branch = _return_branch(
+        root,
+        head=str(gate["branch"]),
+        base=str(gate["base"]),
+    )
+    state = {
+        "version": 1,
+        "pr": item["number"],
+        "headBranch": gate["branch"],
+        "baseBranch": gate["base"],
+        "returnBranch": return_branch,
+        "url": item["url"],
+    }
+
+    if path.is_file():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise GitActionError(
+                "INVALID_PR_STATE",
+                f"cannot read existing {PR_STATE_PATH}: {exc}",
+            ) from exc
+        identity = ("pr", "headBranch", "baseBranch")
+        if any(existing.get(key) != state[key] for key in identity):
+            raise GitActionError(
+                "PR_STATE_CONFLICT",
+                "existing local PR state belongs to another PR/head/base",
+            )
+        # Preserve a previously proven return branch across idempotent re-run.
+        previous_return = existing.get("returnBranch")
+        if isinstance(previous_return, str) and previous_return.strip():
+            state["returnBranch"] = previous_return
+
+    atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
+    return path.relative_to(root).as_posix()
+
+
+def execute_pr(
+    root: Path,
+    *,
+    title_file: Path | None = None,
+    body_file: Path | None = None,
+) -> dict[str, Any]:
+    """Find/reuse/create GitHub PR and persist deterministic local lifecycle state."""
+    gate = pr_preflight(root)
+    existing = _open_prs(root, gate)
+    if len(existing) > 1:
+        raise GitActionError(
+            "PR_AMBIGUOUS",
+            "multiple open PRs match configured head/base",
+            prs=[item.get("number") for item in existing],
+        )
+
+    reused = bool(existing)
+    if existing:
+        if not gate.get("reuseExisting"):
+            raise GitActionError(
+                "PR_ALREADY_EXISTS",
+                "an open PR already exists and pull_request.reuse_existing=false",
+                pr=existing[0].get("number"),
+            )
+        item = existing[0]
+    else:
+        if body_file is None:
+            raise GitActionError(
+                "PR_BODY_REQUIRED",
+                "creating a PR requires --body-file",
+            )
+        body_path = _pr_input_path(root, body_file, label="PR body")
+        if not body_path.read_text(encoding="utf-8").strip():
+            raise GitActionError("PR_BODY_INVALID", "PR body must not be empty")
+
+        if gate.get("titleFromCommit"):
+            title = Repo(root).git("log", "-1", "--pretty=%s").stdout.strip()
+        else:
+            if title_file is None:
+                raise GitActionError(
+                    "PR_TITLE_REQUIRED",
+                    "policy requires semantic --title-file",
+                )
+            title_path = _pr_input_path(root, title_file, label="PR title")
+            title = title_path.read_text(encoding="utf-8").strip()
+        if not title or "\n" in title or "\r" in title:
+            raise GitActionError("PR_TITLE_INVALID", "PR title must be one non-empty line")
+
+        argv = [
+            str(gate["preferredTool"]),
+            "pr",
+            "create",
+            "--head",
+            str(gate["branch"]),
+            "--base",
+            str(gate["base"]),
+            "--title",
+            title,
+            "--body-file",
+            str(body_path),
+        ]
+        if gate.get("draft"):
+            argv.append("--draft")
+        _run(root, argv)
+
+        existing = _open_prs(root, gate)
+        if len(existing) != 1:
+            raise GitActionError(
+                "PR_POSTCONDITION_FAILED",
+                "provider did not expose exactly one open PR after create",
+                matchCount=len(existing),
+            )
+        item = existing[0]
+
+    _validate_provider_pr(gate, item)
+    state_file = _persist_pr_state(root, gate=gate, item=item)
+    return {
+        "status": "SUCCESS",
+        "action": "pr",
+        "pr": item["number"],
+        "url": item["url"],
+        "branch": gate["branch"],
+        "base": gate["base"],
+        "head": gate["publishedHead"],
+        "reused": reused,
+        "draft": bool(item.get("isDraft")),
+        "stateFile": state_file,
+    }
+
+
 def execute_sync(root: Path) -> dict[str, Any]:
     gate = sync_preflight(root)
     plan = gate.get("mutationPlan", {})
@@ -289,10 +562,12 @@ def repo_root() -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Deterministic Git mutation executor")
-    parser.add_argument("action", choices=["commit", "push", "sync", "pr-finish"])
+    parser.add_argument("action", choices=["commit", "push", "pr", "sync", "pr-finish"])
     parser.add_argument("--commit-type")
     parser.add_argument("--slug")
     parser.add_argument("--message-file", type=Path)
+    parser.add_argument("--title-file", type=Path)
+    parser.add_argument("--body-file", type=Path)
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args()
     root = repo_root()
@@ -312,6 +587,12 @@ def main() -> int:
             )
         elif args.action == "push":
             result = execute_push(root)
+        elif args.action == "pr":
+            result = execute_pr(
+                root,
+                title_file=args.title_file,
+                body_file=args.body_file,
+            )
         elif args.action == "sync":
             result = execute_sync(root)
         else:
