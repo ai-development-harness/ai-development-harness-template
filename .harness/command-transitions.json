@@ -20,7 +20,11 @@
           "target": "none",
           "input": "none",
           "summary": "Инициализировать проект под управлением Harness из локального описания проекта.",
-          "documentation": ".harness/docs/COMMANDS.md#command-project-init"
+          "documentation": ".harness/docs/COMMANDS.md#command-project-init",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "init-project"
+          }
         },
         "STATUS": {
           "canonical": "PROJECT STATUS",
@@ -28,7 +32,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать текущее состояние проекта, блокирующие проблемы и доступную работу.",
-          "documentation": ".harness/docs/COMMANDS.md#command-project-status"
+          "documentation": ".harness/docs/COMMANDS.md#command-project-status",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "project-status"
+          }
         },
         "RECONCILE": {
           "canonical": "PROJECT RECONCILE",
@@ -36,7 +44,11 @@
           "target": "none",
           "input": "none",
           "summary": "Сверить артефакты проекта с фактическим состоянием репозитория и подготовить необходимые исправления.",
-          "documentation": ".harness/docs/COMMANDS.md#command-project-reconcile"
+          "documentation": ".harness/docs/COMMANDS.md#command-project-reconcile",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "reconcile-project"
+          }
         },
         "QUICK FIX": {
           "canonical": "PROJECT QUICK FIX:",
@@ -44,7 +56,11 @@
           "target": "none",
           "input": "required",
           "summary": "Выполнить небольшое безопасное изменение без отдельного STEP.",
-          "documentation": ".harness/docs/COMMANDS.md#command-project-quick-fix"
+          "documentation": ".harness/docs/COMMANDS.md#command-project-quick-fix",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "quick-fix"
+          }
         }
       },
       "transitions": []
@@ -60,7 +76,11 @@
           "target": "none",
           "input": "required",
           "summary": "Создать новый STEP из краткого описания задачи.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-add"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-add",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "add-plan-step"
+          }
         },
         "LIST": {
           "canonical": "STEP LIST",
@@ -68,7 +88,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать компактный список STEP и их текущих состояний.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-list"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-list",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "step-list"
+          }
         },
         "SHOW": {
           "canonical": "STEP SHOW STEP-NNN",
@@ -76,7 +100,11 @@
           "target": "step",
           "input": "none",
           "summary": "Показать подробное состояние выбранного STEP и связанный контекст выполнения.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-show"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-show",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "step-show"
+          }
         },
         "NEXT": {
           "canonical": "STEP NEXT",
@@ -84,7 +112,11 @@
           "target": "none",
           "input": "none",
           "summary": "Рекомендовать следующий STEP, который можно выполнять.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-next"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-next",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "next-step"
+          }
         },
         "PLAN": {
           "canonical": "STEP PLAN STEP-NNN",
@@ -92,7 +124,12 @@
           "target": "step",
           "input": "none",
           "summary": "Подготовить и независимо проверить план реализации STEP.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-plan"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-plan",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "plan-step",
+            "contextPhase": "plan"
+          }
         },
         "IMPLEMENT": {
           "canonical": "STEP IMPLEMENT STEP-NNN",
@@ -100,7 +137,12 @@
           "target": "step",
           "input": "none",
           "summary": "Выполнить утверждённый план реализации выбранного STEP.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-implement"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-implement",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "implement-step",
+            "contextPhase": "implement"
+          }
         },
         "REVIEW": {
           "canonical": "STEP REVIEW STEP-NNN",
@@ -108,7 +150,12 @@
           "target": "step",
           "input": "none",
           "summary": "Провести независимую проверку текущей реализации STEP.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-review"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-review",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "review-step",
+            "contextPhase": "review"
+          }
         },
         "FIX": {
           "canonical": "STEP FIX STEP-NNN",
@@ -116,7 +163,11 @@
           "target": "step",
           "input": "none",
           "summary": "Исправить подтверждённые замечания последней неуспешной проверки.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-fix"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-fix",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "fix-step"
+          }
         },
         "RUN": {
           "canonical": "STEP RUN STEP-NNN",
@@ -124,7 +175,11 @@
           "target": "step",
           "input": "none",
           "summary": "Автоматически провести STEP через планирование, реализацию, проверку и циклы исправлений.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-run"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-run",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "run-step"
+          }
         },
         "AUDIT": {
           "canonical": "STEP AUDIT STEP-NNN",
@@ -132,7 +187,11 @@
           "target": "step",
           "input": "none",
           "summary": "Провести формальный аудит STEP без изменения рабочего кода и данных проекта.",
-          "documentation": ".harness/docs/COMMANDS.md#command-step-audit"
+          "documentation": ".harness/docs/COMMANDS.md#command-step-audit",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "audit-step"
+          }
         }
       },
       "transitions": [
@@ -183,7 +242,11 @@
           "target": "none",
           "input": "required",
           "summary": "Найти подходящие навыки и сформировать короткий список кандидатов.",
-          "documentation": ".harness/docs/COMMANDS.md#command-skill-find"
+          "documentation": ".harness/docs/COMMANDS.md#command-skill-find",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "find-skill"
+          }
         },
         "INSTALL": {
           "canonical": "SKILL INSTALL:",
@@ -191,7 +254,11 @@
           "target": "none",
           "input": "required",
           "summary": "Установить выбранный навык после проверки содержимого и происхождения.",
-          "documentation": ".harness/docs/COMMANDS.md#command-skill-install"
+          "documentation": ".harness/docs/COMMANDS.md#command-skill-install",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "install-skill"
+          }
         },
         "CREATE": {
           "canonical": "SKILL CREATE:",
@@ -199,7 +266,11 @@
           "target": "none",
           "input": "required",
           "summary": "Создать навык проекта для отсутствующего сценария работы.",
-          "documentation": ".harness/docs/COMMANDS.md#command-skill-create"
+          "documentation": ".harness/docs/COMMANDS.md#command-skill-create",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "create-skill"
+          }
         }
       },
       "transitions": []
@@ -215,7 +286,11 @@
           "target": "none",
           "input": "none",
           "summary": "Пересоздать шаблоны GitHub для задач и запросов на слияние с учётом текущего проекта.",
-          "documentation": ".harness/docs/COMMANDS.md#command-github-generate-templates"
+          "documentation": ".harness/docs/COMMANDS.md#command-github-generate-templates",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "generate-github-templates"
+          }
         }
       },
       "transitions": []
@@ -231,7 +306,11 @@
           "target": "none",
           "input": "none",
           "summary": "Проверить готовность проекта к выпуску новой версии.",
-          "documentation": ".harness/docs/COMMANDS.md#command-release-check"
+          "documentation": ".harness/docs/COMMANDS.md#command-release-check",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "release-check"
+          }
         }
       },
       "transitions": []
@@ -249,7 +328,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать доступные команды Harness с краткими описаниями и ссылками на документацию.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-help"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-help",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "harness-help"
+          }
         },
         "UPDATE CHECK": {
           "canonical": "HARNESS UPDATE CHECK",
@@ -257,7 +340,11 @@
           "target": "release-optional",
           "input": "none",
           "summary": "Проверить доступный путь обновления Harness без внесения изменений.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-update-check"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-update-check",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "update-harness"
+          }
         },
         "UPDATE APPLY": {
           "canonical": "HARNESS UPDATE APPLY",
@@ -265,7 +352,11 @@
           "target": "release-optional",
           "input": "none",
           "summary": "Применить допустимое обновление Harness.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-update-apply"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-update-apply",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "update-harness"
+          }
         },
         "STATUS": {
           "canonical": "HARNESS STATUS",
@@ -273,7 +364,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать текущее состояние Harness, Git и незавершённых выполнений команд.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-status"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-status",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "harness-status"
+          }
         },
         "RESUME": {
           "canonical": "HARNESS RESUME",
@@ -281,7 +376,11 @@
           "target": "none",
           "input": "none",
           "summary": "Продолжить единственное выполнение, которое можно безопасно возобновить.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-resume"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-resume",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "harness-resume"
+          }
         },
         "DOCTOR": {
           "canonical": "HARNESS DOCTOR",
@@ -289,7 +388,11 @@
           "target": "none",
           "input": "none",
           "summary": "Проверить обязательные зависимости, исправность Harness и доступность необязательных возможностей.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-doctor"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-doctor",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "harness-doctor"
+          }
         },
         "CONFIG": {
           "canonical": "HARNESS CONFIG",
@@ -297,7 +400,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать фактически применяемую конфигурацию Harness и файлы, из которых она получена.",
-          "documentation": ".harness/docs/COMMANDS.md#command-harness-config"
+          "documentation": ".harness/docs/COMMANDS.md#command-harness-config",
+          "dispatch": {
+            "kind": "deterministic",
+            "handler": "harness-config"
+          }
         }
       },
       "transitions": [
@@ -324,7 +431,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать результаты предварительной проверки Git и текущее состояние репозитория.",
-          "documentation": ".harness/docs/COMMANDS.md#command-git-check"
+          "documentation": ".harness/docs/COMMANDS.md#command-git-check",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "git-workflow"
+          }
         },
         "COMMIT": {
           "canonical": "GIT COMMIT",
@@ -332,7 +443,11 @@
           "target": "none",
           "input": "optional",
           "summary": "Безопасно подготовить и создать локальный коммит в соответствии с политикой Git.",
-          "documentation": ".harness/docs/COMMANDS.md#command-git-commit"
+          "documentation": ".harness/docs/COMMANDS.md#command-git-commit",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "git-workflow"
+          }
         },
         "PUSH": {
           "canonical": "GIT PUSH",
@@ -340,7 +455,11 @@
           "target": "none",
           "input": "none",
           "summary": "Отправить текущую ветку в настроенный удалённый репозиторий без принудительной отправки.",
-          "documentation": ".harness/docs/COMMANDS.md#command-git-push"
+          "documentation": ".harness/docs/COMMANDS.md#command-git-push",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "git-workflow"
+          }
         },
         "PR": {
           "canonical": "GIT PR",
@@ -348,7 +467,11 @@
           "target": "none",
           "input": "none",
           "summary": "Создать или переиспользовать запрос на слияние для опубликованной ветки.",
-          "documentation": ".harness/docs/COMMANDS.md#command-git-pr"
+          "documentation": ".harness/docs/COMMANDS.md#command-git-pr",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "git-workflow"
+          }
         },
         "PR FINISH": {
           "canonical": "GIT PR FINISH",
@@ -356,7 +479,11 @@
           "target": "none",
           "input": "none",
           "summary": "Завершить локальную работу после слияния запроса: вернуться на исходную ветку и удалить локальную ветку запроса.",
-          "documentation": ".harness/docs/COMMANDS.md#command-git-pr-finish"
+          "documentation": ".harness/docs/COMMANDS.md#command-git-pr-finish",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "git-workflow"
+          }
         },
         "SYNC": {
           "canonical": "GIT SYNC",
@@ -364,7 +491,11 @@
           "target": "none",
           "input": "none",
           "summary": "Показать расхождение с удалённой веткой или выполнить разрешённую синхронизацию в режиме fast-forward.",
-          "documentation": ".harness/docs/COMMANDS.md#command-git-sync"
+          "documentation": ".harness/docs/COMMANDS.md#command-git-sync",
+          "dispatch": {
+            "kind": "semantic",
+            "skill": "git-workflow"
+          }
         }
       },
       "transitions": [
