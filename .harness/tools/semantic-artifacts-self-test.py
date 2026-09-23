@@ -153,7 +153,22 @@ def main() -> int:
             root,
             "STEP-001",
             {
-                "implementationPlan": "1. Изменить модуль.\n2. Добавить тест.",
+                "implementationPlan": [
+                    {
+                        "title": "Изменить модуль",
+                        "actions": [
+                            "Обновить основной deterministic writer.",
+                            "Сохранить semantic scope без ручного frontmatter.",
+                        ],
+                        "files": [".harness/tools/semantic_artifacts.py"],
+                        "tests": ["Добавить regression для rendered plan."],
+                        "risks": ["Не позволить модели подменить metadata."],
+                    },
+                    {
+                        "title": "Добавить тест",
+                        "actions": ["Проверить canonical Markdown rendering."],
+                    },
+                ],
                 "verification": [
                     {"kind": "command", "value": 'python3 -c "print(2)"'},
                     {"kind": "manual", "value": "Проверить semantic outcome"},
@@ -166,13 +181,18 @@ def main() -> int:
         assert planned["frontmatter"]["plan"]["context_basis"] is None
         assert "Изменить модуль" in planned["sections"]["Implementation plan"]
         assert "- manual: Проверить semantic outcome" in planned["sections"]["Verification"]
+        assert "**Files:**" in planned["sections"]["Implementation plan"]
+        assert ".harness/tools/semantic_artifacts.py" in planned["sections"]["Implementation plan"]
+        assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
 
         try:
             write_plan_draft(
                 root,
                 "STEP-001",
                 {
-                    "implementationPlan": "x",
+                    "implementationPlan": [
+                        {"title": "x", "actions": ["y"]}
+                    ],
                     "verification": [{"kind": "command", "value": "python3 -V"}],
                     "unexpected": True,
                 },
@@ -181,6 +201,27 @@ def main() -> int:
             pass
         else:
             raise AssertionError("unknown plan payload key was accepted")
+
+        try:
+            write_plan_draft(
+                root,
+                "STEP-001",
+                {
+                    "implementationPlan": [
+                        {
+                            "title": "Bad\n## Injected",
+                            "actions": ["Would corrupt structure"],
+                        }
+                    ],
+                    "verification": [
+                        {"kind": "command", "value": "python3 -V"}
+                    ],
+                },
+            )
+        except SemanticArtifactError:
+            pass
+        else:
+            raise AssertionError("multiline plan title was accepted")
 
         planning_review = write_planning_review(
             root,
