@@ -104,7 +104,7 @@ when_on_protected = "auto-create" # auto-create | stay | block
 after_push = "create-if-missing"
 ```
 
-Standalone `GIT PUSH` остаётся semantic boundary для проверки logical scope и follow-up: `git-action.py push` возвращает factual `afterPush = never|ask|create-if-missing`, и модель использует именно это поле вместо повторного чтения Git policy. Если PUSH является следующим segment после успешного `GIT COMMIT` в той же chain, logical scope уже проверен COMMIT: dispatcher вызывает `git-action.py push` напрямую и не тратит второй model turn. Сама push mutation в обоих случаях полностью deterministic. Чтобы только отправлять ветку:
+Standalone `GIT PUSH` остаётся semantic boundary для проверки logical scope и follow-up: `git-action.py push` возвращает factual `afterPush = never|ask|create-if-missing`, и модель использует именно это поле вместо повторного чтения Git policy. Если PUSH является следующим segment после успешного `GIT COMMIT` в той же chain, logical scope уже проверен COMMIT: перед fast-path dispatcher дополнительно доказывает, что repository HEAD действительно изменился относительно `gitHeadBefore`, и только затем вызывает `git-action.py push` без второго model turn. Одного semantic `SUCCESS` недостаточно. Сама push mutation в обоих случаях полностью deterministic. Чтобы только отправлять ветку:
 
 ```toml
 [pull_request]
