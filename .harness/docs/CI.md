@@ -36,7 +36,7 @@ Git policy self-test проверяет fail-closed schema boundary через �
 
 Git preflight self-test создаёт synthetic repository + bare remote и прогоняет machine gates для protected branch, bootstrap push, feature publish, exact PR head, remote-ahead blocker и clean ff-only sync. Он не использует GitHub/network и не создаёт реальные PR.
 
-Deterministic updater self-test создаёт локальные synthetic source/project Git repositories и прогоняет реальный update engine: explicit legacy adoption, immutable tag pinning, CHECK/APPLY, shared 3-way merge, marker preservation, core-vs-project skill ownership и collision при попытке нового core slug захватить project skill.
+Детерминированная самопроверка обновлятора создаёт локальные синтетические source/project Git-репозитории и прогоняет реальный механизм обновления: явное принятие старого проекта, фиксацию неизменяемых тегов, CHECK/APPLY, трёхстороннее слияние, сохранение marker-блоков, владение core/project skills и конфликт при попытке нового core slug занять пользовательский skill. Отдельный сценарий закрепляет поддерживаемую нижнюю границу: `v0.6.0 → v0.7.0 → обязательная перезагрузка → v0.8.0`, включая продолжение с файлами Harness, созданными первым переходом и ещё не добавленными в индекс Git.
 
 Update migration self-test отдельно сохраняет historical compatibility coverage: legacy route/reload boundaries, control-plane relocation, project-owned schema migration/idempotency и release metadata. Оба теста dependency-free и не запускают LLM/agent; real-project dogfood остаётся дополнительным уровнем проверки.
 

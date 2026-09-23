@@ -773,7 +773,17 @@ def analyze_hop(
         base_mode = _source_permissions(base_entries.get(path), path=path, ref=hop.source) if path in base_entries else None
         target_mode = _source_permissions(target_entries.get(path), path=path, ref=hop.target) if path in target_entries else None
         ours = overrides[path] if overrides is not None and path in overrides else tree.read_bytes(path)
-        if target_class is not None and _local_untracked_collision(tree, tracked, path):
+        # После reload boundary файлы, введённые предыдущим hop, уже принадлежат
+        # текущему immutable BASE, но ещё не обязаны быть добавлены в Git index:
+        # commit выполняется только после завершения всего маршрута обновления.
+        # Поэтому untracked collision применим только к пути, отсутствующему в
+        # BASE текущего release. Иначе безопасное продолжение multi-hop update
+        # ошибочно блокировалось бы сразу после обязательной перезагрузки.
+        if (
+            target_class is not None
+            and base is MISSING
+            and _local_untracked_collision(tree, tracked, path)
+        ):
             raise UpdateError("UNTRACKED_MANAGED_COLLISION", f"untracked non-ignored managed path collision: {path}")
         blocks = target_marker_map.get(path, []) if target_class == "marker_merge" else []
         if target_class == "marker_merge" and not blocks:
