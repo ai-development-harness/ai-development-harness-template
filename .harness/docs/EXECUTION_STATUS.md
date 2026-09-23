@@ -390,12 +390,14 @@ planning-review.plan_content_hash = current content_hash
 
 При старте REVIEW сохраняется baseline последнего report.
 
-Crash recovery использует только **новый schema-valid immutable report**, который:
+Crash recovery сначала ищет **новый schema-valid immutable report**, который:
 
 - относится к тому же STEP;
 - содержит допустимый verdict/finding structure;
 - удовлетворяет deterministic specialized-review requirements;
-- ссылается на ту же exact repository revision.
+- для FAIL/BLOCKED ссылается на ту же exact repository revision.
+
+Для PASS есть дополнительный строго ограниченный post-review case: structured writer уже мог выполнить lifecycle-only mutation `status → completed` после того, как exact revision была проверена. Тогда recovery требует одновременно новый PASS report относительно baseline, canonical `status: completed` и успешный type-specific completion proof. Без всех трёх условий semantic review повторно не пропускается.
 
 Exact revision:
 

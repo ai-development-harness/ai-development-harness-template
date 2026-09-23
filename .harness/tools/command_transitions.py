@@ -46,6 +46,7 @@ KNOWN_DISPATCH_HANDLERS = {
     "harness-config",
     "step-list",
     "step-show",
+    "step-next",
 }
 CONTEXT_PHASES = {"plan", "implement", "review"}
 

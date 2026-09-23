@@ -114,8 +114,8 @@
           "summary": "Рекомендовать следующий STEP, который можно выполнять.",
           "documentation": ".harness/docs/COMMANDS.md#command-step-next",
           "dispatch": {
-            "kind": "semantic",
-            "skill": "next-step"
+            "kind": "deterministic",
+            "handler": "step-next"
           }
         },
         "PLAN": {

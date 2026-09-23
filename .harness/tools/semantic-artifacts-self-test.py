@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 
+from execution_status import resolve_root, start_execution
 from planning_contract import read_task, validate_planning_review_report
 from review_contract import validate_review_report
 from semantic_artifacts import (
@@ -242,6 +243,41 @@ def main() -> int:
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
 
+        # Semantic PASS alone cannot close a STEP without durable Evidence.
+        incomplete_review = write_step_review(
+            root,
+            "STEP-001",
+            {
+                "verdict": "pass",
+                "findings": [],
+                "verificationObservations": "Semantic review itself passed.",
+                "rationale": "Material implementation defects не обнаружены.",
+                "specializedReviews": {
+                    "tests": {
+                        "status": "pass",
+                        "evidence": "Test reviewer подтвердил coverage.",
+                    }
+                },
+            },
+        )
+        assert incomplete_review["status"] == "PASS", incomplete_review
+        assert incomplete_review["completionResult"] == "BLOCKED", incomplete_review
+        assert incomplete_review["reasonCode"] == "STEP_COMPLETION_PROOF_INCOMPLETE"
+        assert read_task(root, "STEP-001")["frontmatter"]["status"] == "planned"
+
+        # Add factual implementation lifecycle/Evidence, then start REVIEW so
+        # crash recovery records the first PASS report as its baseline.
+        current_text = step_path.read_text(encoding="utf-8")
+        current_text = current_text.replace("status: planned", "status: in_progress", 1)
+        current_text = current_text.replace(
+            "## Evidence\n\n—",
+            "## Evidence\n\nVerification runner: PASS.",
+            1,
+        )
+        step_path.write_text(current_text, encoding="utf-8", newline="\n")
+        review_execution = start_execution(root, "STEP REVIEW STEP-001")
+        assert review_execution["status"] == "running", review_execution
+
         step_review = write_step_review(
             root,
             "STEP-001",
@@ -260,14 +296,21 @@ def main() -> int:
         )
         assert step_review["status"] == "PASS", step_review
         assert step_review["completionResult"] == "PASS", step_review
+        assert step_review["stepCompletion"]["completed"] is True, step_review
         assert step_review["specializedReviewGate"]["required"] == ["tests"], step_review
+        assert read_task(root, "STEP-001")["frontmatter"]["status"] == "completed"
+
         review_report = root / step_review["report"]
         assert not validate_review_report(
             root,
             review_report,
-            require_current_revision=True,
             expected_step_id="STEP-001",
         )
+
+        # The lifecycle-only completed mutation changes current revision after
+        # review. Recovery must still prove PASS from new report + completion proof.
+        recovered = resolve_root(root, "STEP REVIEW STEP-001")
+        assert recovered["status"] == "DONE", recovered
 
         before = set((root / "planning/reviews/STEP-001").glob("REVIEW-*.md"))
         try:

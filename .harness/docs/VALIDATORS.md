@@ -749,6 +749,41 @@ Exit codes: `0` — SUCCESS; `2` — BLOCKED/preflight/mutation/postcondition fa
 
 ---
 
+# 9A. Deterministic STEP NEXT resolver
+
+## Файлы
+
+- engine: `.harness/tools/step_next.py`
+- CLI: `.harness/tools/step-next.py`
+- regression: `.harness/tools/step-next-self-test.py`
+
+## Роль
+
+Возвращает один explainable next-step recommendation без LLM ranking.
+
+Стабильный порядок:
+
+1. resumable STEP execution;
+2. in-progress перед planned;
+3. `critical > high > medium > low`;
+4. больший transitive downstream impact;
+5. больше explicit non-`none` risk flags — только visibility tie-breaker, не severity score;
+6. canonical roadmap order.
+
+Для STEP без Ready plan dependency completion не блокирует `STEP PLAN`. Для Ready plan `STEP IMPLEMENT` допускается только при PASS `implementation_prerequisite_failures`. Current exact FAIL review маршрутизируется в `STEP FIX`.
+
+## CLI
+
+```bash
+python3 .harness/tools/step-next.py
+python3 .harness/tools/step-next.py --pretty
+```
+
+PASS возвращает exact `command`, selected candidate, compact alternatives и ranking breakdown. При отсутствии executable STEP возвращается `BLOCKED/NO_EXECUTABLE_STEP` с ограниченным списком blockers.
+
+
+---
+
 # 10. Planning contract validator
 
 ## Файл
