@@ -255,7 +255,7 @@ Read-only Git preflight: проверяет branch/upstream/ahead-behind, staged
 <a id="command-git-pr"></a>
 ## `GIT PR`
 
-Создаёт Pull Request для опубликованной ветки либо возвращает существующий PR согласно policy. Использует `.github/pull_request_template.md`, repository evidence и verification; дубликаты не создаёт.
+Semantic worker готовит только PR prose. `git-action.py pr` детерминированно повторяет preflight, ищет/переиспользует либо создаёт GitHub PR, сверяет exact provider head OID и сам сохраняет local PR lifecycle state. Base/head/provider/draft policy модель не выбирает.
 
 <a id="command-git-pr-finish"></a>
 ## `GIT PR FINISH`
@@ -264,7 +264,7 @@ Standalone post-merge cleanup. Команда проверяет через dete
 
 После PASS выполняется exact ordered mutation plan: переключение на сохранённую return branch (при отсутствии local state — на PR base), разрешённый `--ff-only` sync и удаление старой локальной PR-ветки. Force-delete (`-D`), remote branch deletion, reset/rebase запрещены.
 
-После успешного `GIT PR` git-workflow сохраняет local-only `.harness/local/git/pr-state.json` с PR number/head/base/return branch; файл удаляется только после полностью успешного FINISH.
+После успешного `GIT PR` deterministic executor уже сохраняет local-only `.harness/local/git/pr-state.json`; файл удаляется только после полностью успешного FINISH.
 
 <a id="command-git-sync"></a>
 ## `GIT SYNC`
