@@ -192,7 +192,7 @@ def supported_floor_source(root: Path) -> tuple[Path, dict[str, str], dict[str, 
         ".harness/tools/harness_update.py": "# updater runtime v0.6.0\n",
         ".harness/tools/harness-update.py": "# updater cli v0.6.0\n",
         ".agents/skills/core/SKILL.md": "core v0.6.0\n",
-        "shared.txt": "base-line-1\nline-2\nbase-line-3\n",
+        "shared.txt": "base-line-1\nstable-line-2\nstable-line-3\nstable-line-4\nbase-line-5\n",
         "AGENTS.md": agents("before v0.6.0", "\nbase project\n", "after v0.6.0"),
     }
     for path, text in base_files.items():
@@ -218,7 +218,7 @@ def supported_floor_source(root: Path) -> tuple[Path, dict[str, str], dict[str, 
     write(source, ".harness/tools/harness-update.py", "# updater cli v0.7.0\n")
     write(source, ".harness/tools/v070-only.py", "# introduced in v0.7.0\n")
     write(source, ".agents/skills/core/SKILL.md", "core v0.7.0\n")
-    write(source, "shared.txt", "base-line-1\nline-2\nv070-line-3\n")
+    write(source, "shared.txt", "base-line-1\nstable-line-2\nstable-line-3\nstable-line-4\nv070-line-5\n")
     write(source, "AGENTS.md", agents("before v0.7.0", "\nbase project\n", "after v0.7.0"))
     run(source, "git", "add", ".")
     run(source, "git", "commit", "-qm", "v0.7.0")
@@ -235,7 +235,7 @@ def supported_floor_source(root: Path) -> tuple[Path, dict[str, str], dict[str, 
     write(source, ".harness/manifest.yaml", manifest("0.8.0"))
     write(source, ".harness/tools/v070-only.py", "# updated in v0.8.0\n")
     write(source, ".agents/skills/core/SKILL.md", "core v0.8.0\n")
-    write(source, "shared.txt", "base-line-1\nv080-line-2\nv070-line-3\n")
+    write(source, "shared.txt", "base-line-1\nstable-line-2\nv080-line-3\nstable-line-4\nv070-line-5\n")
     write(source, "AGENTS.md", agents("before v0.8.0", "\nbase project\n", "after v0.8.0"))
     run(source, "git", "add", ".")
     run(source, "git", "commit", "-qm", "v0.8.0")
@@ -254,7 +254,7 @@ def project_from_v060(
     for path, text in base_files.items():
         write(root, path, text)
     write(root, ".harness/manifest.yaml", manifest("0.6.0", initialized=True))
-    write(root, "shared.txt", "local-line-1\nline-2\nbase-line-3\n")
+    write(root, "shared.txt", "local-line-1\nstable-line-2\nstable-line-3\nstable-line-4\nbase-line-5\n")
     write(
         root,
         "AGENTS.md",
@@ -358,7 +358,7 @@ def test_supported_floor_reload_chain(temp: Path) -> None:
     assert (project / ".agents/skills/custom/SKILL.md").read_text() == "project custom skill\n"
 
     shared = (project / "shared.txt").read_text(encoding="utf-8")
-    assert shared == "local-line-1\nv080-line-2\nv070-line-3\n", shared
+    assert shared == "local-line-1\nstable-line-2\nv080-line-3\nstable-line-4\nv070-line-5\n", shared
     merged_agents = (project / "AGENTS.md").read_text(encoding="utf-8")
     assert "before v0.8.0" in merged_agents and "after v0.8.0" in merged_agents
     assert "LOCAL PROJECT CONTEXT" in merged_agents
