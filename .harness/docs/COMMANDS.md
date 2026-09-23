@@ -156,7 +156,7 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 <a id="command-step-review"></a>
 ## `STEP REVIEW STEP-NNN`
 
-Независимая проверка exact repository revision. Перед reasoning deterministic preselector вычисляет обязательные security/test reviewers по `review.security/tests`, risk flags, STEP type и factual changed surface. Reviewer возвращает structured verdict/findings/observations; `semantic-writer.py` сам фиксирует exact revision/gate basis, создаёт immutable report, валидирует его и возвращает execution `completionResult`. `FAIL` разрешён только для implementation/evidence defects; contract defect → `BLOCKED`. Crash recovery доверяет только schema-valid report для той же revision.
+Независимая проверка exact repository revision. Перед reasoning deterministic preselector вычисляет обязательные security/test reviewers. Reviewer возвращает structured verdict/findings/observations; `semantic-writer.py` сам фиксирует exact revision/gate basis и создаёт immutable report. При PASS writer дополнительно переводит STEP в `completed` только если type-specific completion proof полностью доказан, затем синхронизирует projections; иначе report остаётся PASS, но execution получает BLOCKED и STEP не закрывается. Crash recovery принимает либо exact current-revision report, либо строгий post-review proof `new PASS report + completed STEP + completion proof`.
 
 <a id="command-step-fix"></a>
 ## `STEP FIX STEP-NNN`
