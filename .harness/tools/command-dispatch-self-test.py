@@ -75,6 +75,10 @@ def main() -> int:
         }, plan_route
 
         # Mechanical Git actions do not need an LLM handoff anymore.
+        assert route_command(root, "GIT CHECK")["dispatch"] == {
+            "kind": "deterministic",
+            "handler": "git-check",
+        }
         assert route_command(root, "GIT PR FINISH")["dispatch"] == {
             "kind": "deterministic",
             "handler": "git-pr-finish",
@@ -140,27 +144,17 @@ def main() -> int:
         )
         assert done["status"] == "DONE", done
 
-        # Chain continuation больше не требует ручного resolve/begin/routing:
-        # completion первого semantic node сразу возвращает следующий handoff.
+        # Deterministic CHECK должен автоматически пройти первый segment
+        # и вернуть модели только следующий semantic COMMIT handoff.
         chain = start_dispatch(root, "GIT CHECK > COMMIT")
         assert chain["status"] == "SEMANTIC", chain
-        assert chain["command"] == "GIT CHECK", chain
+        assert chain["command"] == "GIT COMMIT", chain
         assert chain["skill"] == "git-workflow", chain
-
-        next_node = complete_dispatch(
-            root,
-            chain["rootCommand"],
-            chain["command"],
-            "PASS",
-        )
-        assert next_node["status"] == "SEMANTIC", next_node
-        assert next_node["command"] == "GIT COMMIT", next_node
-        assert next_node["skill"] == "git-workflow", next_node
 
         chain_done = complete_dispatch(
             root,
-            next_node["rootCommand"],
-            next_node["command"],
+            chain["rootCommand"],
+            chain["command"],
             "SUCCESS",
         )
         assert chain_done["status"] == "DONE", chain_done
