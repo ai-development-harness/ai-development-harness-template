@@ -74,9 +74,11 @@ HARNESS UPDATE CHECK TO vX.X.X > APPLY
 
 Отсутствующий/reverse edge, смена domain/STEP target или `BLOCKED` останавливает execution; выполненные mutations автоматически не откатываются.
 
-### 0.4. Deterministic UX
+### 0.4. Deterministic dispatch
 
-`HARNESS HELP`, `HARNESS STATUS`, `HARNESS DOCTOR`, `HARNESS CONFIG`, `STEP LIST` и `STEP SHOW STEP-NNN` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их сам и не создаёт semantic handoff.
+`HARNESS HELP/STATUS/DOCTOR/CONFIG`, `STEP LIST/SHOW/NEXT`, а также mechanical `GIT SYNC` и `GIT PR FINISH` зарегистрированы в CTS как `dispatch.kind=deterministic`. Dispatcher выполняет их без semantic handoff/model call.
+
+Read-only и mutating handlers используют один invariant: tool возвращает factual `PASS|SUCCESS|BLOCKED`, а dispatcher сохраняет exact result в execution state и не переинтерпретирует его reasoning-ом.
 
 ## 1. Сущности
 
