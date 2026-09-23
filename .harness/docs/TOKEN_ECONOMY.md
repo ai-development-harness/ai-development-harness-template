@@ -75,6 +75,8 @@ Machine-readable config должен читать deterministic tool, когда
 
 Command bootstrap также не является reasoning-задачей. `harness-dispatch.py` объединяет CTS validation, execution state, continuation и routing. Deterministic read-only commands выполняются внутри dispatcher; semantic command возвращает только exact skill/context handoff. Root-модель не должна отдельно читать transition graph, выбирать skill или вызывать resolver по playbook.
 
+Verification — такой же mechanical layer. Explicit `- command: \`...\`` из STEP запускает `verification.py` без shell; runner фиксирует exit code, duration и hashes output, проверяет отсутствие неожиданных repository mutations и обновляет generated Evidence. Модель получает только factual failure/manual checks, а не должна сама запускать команды и пересказывать terminal output.
+
 Git workflow следует той же границе: после semantic staging/message decisions `git-action.py` повторяет preflight, выполняет COMMIT/PUSH/SYNC/PR FINISH и проверяет postconditions. Модели не нужно читать/копировать `mutationPlan.argv` и вручную исполнять mechanical steps.
 
 ## Gate
