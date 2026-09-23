@@ -96,6 +96,11 @@ Core Harness следует правилу **model consumes decisions/results, n
 
 Always-on bootstrap ограничен deterministic budget gate; детали и справка должны оставаться pull-based в skills/docs. Правила и baseline описаны в [`TOKEN_ECONOMY.md`](TOKEN_ECONOMY.md).
 
+## Regression discovery
+
+Новые synthetic regressions оформляй как `.harness/tools/<name>-self-test.py`. Harness Integrity не перечисляет их вручную: `run-self-tests.py` обнаруживает файлы по suffix и автоматически включает их в suite. Это уменьшает риск добавить validator без CI coverage.
+
+Skill/agent Markdown frontmatter разбирается тем же restricted YAML contract из `document_contract.py`, что и остальные machine-readable Markdown artifacts. Не добавляй локальные YAML-парсеры в `validate.py`.
 ## Поддержка Python validators и validation gates
 
 Python validators являются частью executable protocol contract, поэтому code comments и human-readable reference обновляются **одновременно** с behavior.

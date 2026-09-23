@@ -786,6 +786,8 @@ python3 .harness/tools/step-context.py STEP-NNN --phase review --json
 
 Все более высокоуровневые validators должны использовать этот module вместо собственных несовместимых Markdown/YAML parsers.
 
+`validate.py` для skill/Claude-agent frontmatter также вызывает canonical `split_frontmatter()` из `document_contract.py`; отдельного упрощённого YAML parser в агрегаторе больше нет.
+
 `markdown_headings()` является общей structural primitive для machine-readable Markdown. Architecture refs используют тот же scanner, поэтому fenced examples не могут тихо обрезать planning fingerprint.
 
 ---
@@ -999,7 +1001,7 @@ Dependency-free gate фиксирует верхнюю границу Harness-co
 - Claude controlled budget: тот же controlled `AGENTS.md` + `CLAUDE.md`;
 - корректность marker boundaries: malformed/duplicate START/END дают FAIL;
 - наличие и UTF-8 читаемость always-on files;
-- отсутствие роста controlled context выше baseline v0.7.0: 19 275 chars для Codex и 20 080 chars для Claude.
+- отсутствие роста controlled context выше текущего post-refactor ceiling: 7 224 chars для Codex и 8 029 chars для Claude.
 
 `projectChars` и `observedChars` возвращаются для диагностики, но project-owned generated blocks не расходуют core Harness budget.
 
@@ -1037,25 +1039,17 @@ Tool использует только Python stdlib и считает Unicode c
 
 # 18. Self-tests валидаторов
 
-Self-tests проверяют implementation самих gates на synthetic repositories/fixtures:
+Self-tests проверяют implementation самих gates на synthetic repositories/fixtures. Канонический entry point:
 
 ```bash
-python3 .harness/tools/command-references-self-test.py
-python3 .harness/tools/execution-self-test.py
-python3 .harness/tools/review-gates-self-test.py
-python3 .harness/tools/planning-contract-self-test.py
-python3 .harness/tools/document-contract-self-test.py
-python3 .harness/tools/report-contract-self-test.py
-python3 .harness/tools/repository-hardening-self-test.py
-python3 .harness/tools/git-policy-self-test.py
-python3 .harness/tools/git-preflight-self-test.py
-python3 .harness/tools/harness-config-self-test.py
-python3 .harness/tools/context-budget-self-test.py
-python3 .harness/tools/harness-update-self-test.py
-python3 .harness/tools/update-migration-self-test.py
+python3 .harness/tools/run-self-tests.py
+python3 .harness/tools/run-self-tests.py --list
+python3 .harness/tools/run-self-tests.py --json
 ```
 
-Self-test PASS означает, что validator/gate выдержал известные positive/negative regressions. Он **не заменяет** запуск валидатора на текущем repository state.
+`run-self-tests.py` автоматически обнаруживает все `.harness/tools/*-self-test.py` и запускает их в стабильном порядке. Новый regression-файл не требует отдельной регистрации в CI; сам runner остаётся required Harness artifact.
+
+Runner продолжает suite после отдельного failure и в конце возвращает non-zero, если упал хотя бы один test. PASS self-test означает, что gate выдержал известные positive/negative regressions; он **не заменяет** запуск baseline validator на текущем repository state.
 
 ---
 
