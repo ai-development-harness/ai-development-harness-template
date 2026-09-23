@@ -251,6 +251,8 @@ python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
 
 Baseline должен совпадать с current manifest release. Новый lock pin-ит не только tag ref, но и exact commit OID.
 
+Текущий deterministic updater поддерживает baseline **не старее `v0.6.0`**. Для current lock, target или adoption baseline ниже этого floor операция завершается с `UNSUPPORTED_HARNESS_RELEASE`. Historical transitions до `v0.6.0` остаются в update graph как immutable release history и regression boundary для старых bridge, но больше не являются поддерживаемой точкой входа runtime.
+
 ## First deterministic-updater bridge after v0.5.3
 
 Published `v0.5.3` ещё не содержит deterministic `.harness/tools/harness-update.py`. Поэтому **первый release после v0.5.3** обязан добавить edge:
