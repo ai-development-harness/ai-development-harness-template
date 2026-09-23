@@ -185,6 +185,11 @@ def main() -> int:
         assert coding_run["status"] == "SEMANTIC", coding_run
         assert coding_run["command"] == "STEP PLAN STEP-123", coding_run
         assert coding_run["skill"] == "plan-step", coding_run
+        command_dispatch_module.block_execution(
+            root,
+            coding_run["rootCommand"],
+            command=coding_run["command"],
+        )
 
         command_dispatch_module.resolve_step_action = lambda _root, step_id: {
             "status": "PASS",
@@ -200,6 +205,13 @@ def main() -> int:
         assert special_run["status"] == "SEMANTIC", special_run
         assert special_run["command"] == "STEP RUN STEP-124", special_run
         assert special_run["skill"] == "run-step", special_run
+        special_done = complete_dispatch(
+            root,
+            special_run["rootCommand"],
+            special_run["command"],
+            "SUCCESS",
+        )
+        assert special_done["status"] == "DONE", special_done
 
         # Deterministic CHECK должен автоматически пройти первый segment
         # и вернуть модели только следующий semantic COMMIT handoff.
