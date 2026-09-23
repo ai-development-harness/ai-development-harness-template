@@ -535,6 +535,18 @@ def _deterministic_handler(
         result = dict(raw)
         result["engineStatus"] = engine_status
         result["status"] = "SUCCESS"
+        if engine_status == "UPDATER_RELOAD_REQUIRED":
+            result["nextAction"] = {
+                "kind": "reload-and-repeat",
+                "command": route["command"],
+            }
+        elif engine_status == "UPDATED":
+            result["nextAction"] = {
+                "kind": "command",
+                "command": "GIT CHECK",
+            }
+        else:
+            result["nextAction"] = None
         return result
     if handler == "step-list":
         return step_list(root)
