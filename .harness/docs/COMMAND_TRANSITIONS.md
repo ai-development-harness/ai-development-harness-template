@@ -116,7 +116,7 @@ INVALID_CHAIN
 
 ### 5. Dispatch
 
-Только после успешной structural validation Harness выбирает соответствующий skill/runtime role и начинает command semantics.
+Только после успешной structural validation Harness выбирает exact dispatch: deterministic handler либо semantic skill/runtime role. Mechanical command не создаёт model turn только потому, что command surface общий.
 
 ## Result model
 
