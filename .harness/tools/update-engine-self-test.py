@@ -424,6 +424,165 @@ def test_adopt_blocks_harness_owned_drift(tmp: Path) -> None:
     assert adopt_legacy(project, baseline="v1.0.0", source_url=str(source))["status"] == "ADOPTED"
 
 
+def _failing_state_writer(payload: str | None) -> str:
+    """Target validator, который пишет local state (или нет) и падает."""
+    write_state = (
+        f"Path({STATE!r}).parent.mkdir(parents=True, exist_ok=True)\n"
+        f"Path({STATE!r}).write_text({payload!r})\n"
+        if payload is not None else ""
+    )
+    return "from pathlib import Path\n" + write_state + "raise SystemExit(1)\n"
+
+
+def test_local_state_rollback_is_byte_exact(tmp: Path) -> None:
+    """#132: failed hop возвращает local state байт-в-байт и удаляет созданный."""
+    # Mutation без смены schemaVersion.
+    same = tmp / "same"
+    same.mkdir()
+    source, project = synthetic_pair(
+        same, base={}, target={".harness/tools/validate.py": _failing_state_writer('{"schemaVersion": 1, "x": 2}')},
+    )
+    original = '{"schemaVersion": 1, "x": 1}\n'
+    write(project, STATE, original)
+    expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
+    assert (project / STATE).read_text() == original
+
+    # Файла не было — созданный hop-ом файл удаляется.
+    created = tmp / "created"
+    created.mkdir()
+    source, project = synthetic_pair(
+        created, base={}, target={".harness/tools/validate.py": _failing_state_writer('{"schemaVersion": 2}')},
+    )
+    assert not (project / STATE).exists()
+    expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
+    assert not (project / STATE).exists(), "state created by failed hop survived rollback"
+
+    # Успешный hop сохраняет намеренную миграцию.
+    ok = tmp / "ok"
+    ok.mkdir()
+    migrating = (
+        "from pathlib import Path\n"
+        f"Path({STATE!r}).write_text('{{\"schemaVersion\": 2}}')\n" + PASS_VALIDATOR
+    )
+    source, project = synthetic_pair(ok, base={}, target={".harness/tools/validate.py": migrating})
+    write(project, STATE, original)
+    assert apply_update(project, source_url=str(source))["status"] == "UPDATED"
+    assert json.loads((project / STATE).read_text())["schemaVersion"] == 2
+
+
+def _update_reports(project: Path) -> list[str]:
+    directory = project / "reports"
+    return sorted(p.name for p in directory.glob("UPDATE-*.md")) if directory.is_dir() else []
+
+
+def test_update_report_only_after_validator_pass(tmp: Path) -> None:
+    """#130: report не существует без PASS и не переживает rollback/recovery."""
+    import harness_update
+    import update_recovery
+
+    failing = tmp / "failing"
+    failing.mkdir()
+    source, project = synthetic_pair(
+        failing, base={}, target={".harness/tools/validate.py": "raise SystemExit(1)\n"},
+    )
+    expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
+    assert _update_reports(project) == [], "report written before validator PASS"
+
+    # Сбой записи journal при регистрации report (OSError/crash): report не
+    # должен существовать незарегистрированным — иначе rollback его не удалит.
+    reserve_fail = tmp / "reserve"
+    reserve_fail.mkdir()
+    source, project = synthetic_pair(reserve_fail, base={}, target={})
+    original_record = harness_update.record_created_report
+
+    def failing_record(root, journal, rel):
+        raise RuntimeError("journal write failed while registering report")
+
+    harness_update.record_created_report = failing_record
+    try:
+        try:
+            apply_update(project, source_url=str(source))
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("fixture did not fail")
+    finally:
+        harness_update.record_created_report = original_record
+    assert _update_reports(project) == [], "orphan report after failed registration"
+    assert not (project / JOURNAL).exists()
+
+    # Crash после создания report, до commit point: recovery удаляет report.
+    crash = tmp / "crash"
+    crash.mkdir()
+    source, project = synthetic_pair(crash, base={}, target={})
+    original_finish = harness_update.finish_journal
+
+    def crashing_finish(root):
+        raise KeyboardInterrupt("simulated crash before commit point")
+
+    harness_update.finish_journal = crashing_finish
+    try:
+        try:
+            apply_update(project, source_url=str(source))
+        except KeyboardInterrupt:
+            pass
+    finally:
+        harness_update.finish_journal = original_finish
+    assert len(_update_reports(project)) == 1, "fixture did not create report"
+    assert update_recovery.recover_pending(project, force=True)["rolledBack"] is True
+    assert _update_reports(project) == [], "report survived recovery"
+
+    # Успешный hop — ровно один report.
+    good = tmp / "good"
+    good.mkdir()
+    source, project = synthetic_pair(good, base={}, target={})
+    assert apply_update(project, source_url=str(source))["status"] == "UPDATED"
+    assert len(_update_reports(project)) == 1
+
+
+STATE_DEPENDENT_VALIDATOR = (
+    "from pathlib import Path\n"
+    "import sys\n"
+    "sys.exit(0 if Path('state-ok.txt').exists() else 1)\n"
+)
+
+
+def test_adopt_requires_postcondition(tmp: Path) -> None:
+    """#133: ADOPTED только после PASS postcondition; при сбое lock не остаётся."""
+    import harness_update
+
+    source, project = synthetic_pair(
+        tmp, base={".harness/tools/validate.py": STATE_DEPENDENT_VALIDATOR}, target={},
+    )
+    lock = project / ".harness/harness.lock.json"
+    lock.unlink()
+    expect_error("POSTCONDITION_FAILED", adopt_legacy, project, baseline="v1.0.0", source_url=str(source))
+    assert not lock.exists(), "lock survived failed adoption postcondition"
+    assert not (project / JOURNAL).exists()
+
+    original = harness_update._run_validator
+
+    def interrupted(root, *, phase):
+        raise KeyboardInterrupt("interrupted adoption postcondition")
+
+    harness_update._run_validator = interrupted
+    try:
+        try:
+            adopt_legacy(project, baseline="v1.0.0", source_url=str(source))
+        except KeyboardInterrupt:
+            pass
+    finally:
+        harness_update._run_validator = original
+    assert not lock.exists(), "lock survived interrupted adoption"
+
+    write(project, "state-ok.txt", "1\n")
+    assert adopt_legacy(project, baseline="v1.0.0", source_url=str(source))["status"] == "ADOPTED"
+    assert lock.is_file()
+    # Повторный CHECK после ADOPTED не находит adoption-specific inconsistency.
+    checked = check_update(project, source_url=str(source))
+    assert checked["status"] == "PASS", checked
+
+
 def test_graph_ignores_tag_named_like_branch(tmp: Path) -> None:
     """#104: tag `main` не подменяет default-branch update graph."""
     source, project = synthetic_pair(tmp, base={}, target={})
@@ -621,6 +780,9 @@ CASES = [
     test_unsafe_source_tree_path,
     test_preinit_template_change,
     test_graph_connectivity,
+    test_local_state_rollback_is_byte_exact,
+    test_update_report_only_after_validator_pass,
+    test_adopt_requires_postcondition,
 ]
 
 

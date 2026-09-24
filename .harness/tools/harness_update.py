@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from document_contract import create_durable_report
 from harness_config import (
@@ -1132,8 +1132,19 @@ def _run_validator(root: Path, *, phase: str) -> None:
         raise UpdateError(code, output or f"Harness validation failed during {phase}")
 
 
-def _write_report(root: Path, *, plan: HopPlan, requested: str, reload_required: bool) -> str:
-    """Durable report одного hop; пишется внутри транзакции hop."""
+def _write_report(
+    root: Path,
+    *,
+    plan: HopPlan,
+    requested: str,
+    reload_required: bool,
+    reserve: Callable[[str], None] | None = None,
+) -> str:
+    """Durable report одного hop; пишется внутри транзакции hop после PASS validator.
+
+    `reserve` получает путь до создания файла (journal registration), поэтому
+    нет окна, в котором незарегистрированный `UPDATE-*.md` уже существует.
+    """
     directory = update_report_directory(root)
     route = [plan.hop.source, plan.hop.target]
     route_yaml = "\n".join(f"  - {item}" for item in route)
@@ -1186,6 +1197,7 @@ Reclassified:
         "UPDATE-",
         directory=directory,
         content_factory=report_content,
+        reserve=(lambda candidate: reserve(candidate.relative_to(root).as_posix())) if reserve else None,
     )
     return path.relative_to(root).as_posix()
 
@@ -1298,10 +1310,18 @@ def _apply_hop(
         # Lock участвует в target validator, поэтому обновляется внутри
         # транзакции до postcondition и откатывается вместе с файлами.
         _write_lock(root, plan.hop.target, source.resolve_tag(plan.hop.target))
-        report = _write_report(root, plan=plan, requested=requested, reload_required=plan.reload_required)
-        record_created_report(root, journal, report)
         update_journal(root, journal, state="verifying")
         _run_validator(root, phase="postcondition")
+        # Report утверждает validator PASS, поэтому создаётся только после
+        # фактического PASS; путь резервируется в journal до создания файла,
+        # чтобы rollback/recovery гарантированно удалил его (#130).
+        report = _write_report(
+            root,
+            plan=plan,
+            requested=requested,
+            reload_required=plan.reload_required,
+            reserve=lambda rel: record_created_report(root, journal, rel),
+        )
     except BaseException:
         # BaseException: KeyboardInterrupt/SystemExit тоже откатываются.
         rollback_journal(root, journal)
@@ -1447,7 +1467,19 @@ def adopt_legacy(root: Path, *, baseline: str, source_url: str | None = None) ->
                 divergences.append(path + " (local-only under historical managed pattern)")
             elif base is not MISSING and ours != base:
                 divergences.append(path + " (differs from baseline)")
-        _write_lock(root, baseline, baseline_oid)
+        # Lock пишется транзакционно и принимается только после PASS того же
+        # postcondition validator, что и обычный hop (#133): ADOPTED означает
+        # валидное resulting state, а не просто «lock записался».
+        lock_rel = lock_path.relative_to(root).as_posix()
+        journal = _begin(root, operation="adopt", source=None, target=baseline, paths=[lock_rel])
+        try:
+            _write_lock(root, baseline, baseline_oid)
+            update_journal(root, journal, state="verifying")
+            _run_validator(root, phase="adoption postcondition")
+        except BaseException:
+            rollback_journal(root, journal)
+            raise
+        finish_journal(root)
         return {
             "status": "ADOPTED",
             "current": baseline,

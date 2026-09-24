@@ -125,6 +125,7 @@ def create_durable_report(
     directory: Path,
     content_factory: Callable[[str], str],
     now: datetime | None = None,
+    reserve: Callable[[Path], None] | None = None,
 ) -> tuple[Path, str]:
     """Атомарно создать immutable timestamped report без overwrite race.
 
@@ -138,6 +139,13 @@ def create_durable_report(
     while True:
         filename = prefix + instant.strftime("%Y%m%dT%H%M%SZ") + ".md"
         path = directory / filename
+        if reserve is not None:
+            # Transactional caller регистрирует путь до создания файла; занятое
+            # имя не регистрируется, чтобы rollback не удалил чужой report.
+            if path.exists() or path.is_symlink():
+                instant += timedelta(seconds=1)
+                continue
+            reserve(path)
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         try:
             fd = os.open(path, flags, 0o666)

@@ -292,18 +292,9 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
         target_path = ensure_no_symlink_parents(root, rel)
         existed = entry.get("existed") is True
 
-        if entry.get("kind") == "local-state":
-            # Restore только если target code изменил schema local state.
-            if not existed:
-                continue
-            backup = (blobs / str(entry.get("backup"))).read_bytes()
-            current = target_path.read_bytes() if target_path.is_file() else None
-            if current is not None and _schema_version(current) == entry.get("schemaVersion"):
-                continue
-            atomic_write_bytes(target_path, backup, mode=int(entry.get("mode") or 0o644))
-            restored.append(rel)
-            continue
-
+        # Local state, затронутый target code внутри hop, откатывается так же
+        # byte-for-byte, как managed files: совпадение schemaVersion не повод
+        # сохранять mutation, а созданный hop-ом файл удаляется (#132).
         if existed:
             backup = (blobs / str(entry.get("backup"))).read_bytes()
             mode = int(entry.get("mode") or 0o644)
