@@ -1650,6 +1650,21 @@ def main() -> int:
             raise AssertionError("unsupported execution schema was accepted")
         assert migration_state_path.read_bytes() == unsupported_bytes
 
+    # Regression #117: повреждённый state (не-object JSON или мусор) — это
+    # ValueError для BLOCKED, а не AttributeError/traceback.
+    with tempfile.TemporaryDirectory(prefix="harness-execution-corrupt-") as tmp:
+        corrupt_root = Path(tmp)
+        state_file = corrupt_root / ".harness/local/execution/execution-status.json"
+        state_file.parent.mkdir(parents=True)
+        for payload in ("[]", "not json"):
+            state_file.write_text(payload, encoding="utf-8")
+            try:
+                load_status(corrupt_root)
+            except ValueError as exc:
+                assert "execution-status" in str(exc), exc
+            else:
+                raise AssertionError(f"corrupt execution state accepted: {payload!r}")
+
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
 

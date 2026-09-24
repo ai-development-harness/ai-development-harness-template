@@ -619,8 +619,14 @@ def load_status(root: Path) -> dict[str, Any]:
     with execution_state_lock(root):
         if not path.is_file():
             return empty_status()
-        with path.open("r", encoding="utf-8") as fh:
-            value = json.load(fh)
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                value = json.load(fh)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"execution-status: cannot parse JSON: {exc}") from exc
+        # Не-object root (array/string) — повреждённый state, а не AttributeError (#117).
+        if not isinstance(value, dict):
+            raise ValueError("execution-status: root must be a JSON object")
 
         if value.get("schemaVersion") == LEGACY_STATUS_SCHEMA_VERSION:
             errors = _validate_v1_status(value)

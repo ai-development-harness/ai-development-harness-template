@@ -9,6 +9,7 @@ from document_contract import (
     markdown_headings,
     parse_sections,
     render_document,
+    atomic_write_text,
     split_frontmatter,
     validate_report_timestamp_identity,
 )
@@ -110,6 +111,22 @@ list:
         )
         has_future_error = "created_at must not be in the future" in errors
         assert has_future_error == expect_error, (delta, errors)
+
+    # Regression #117: atomic rewrite сохраняет permissions существующего файла.
+    import os
+    import tempfile
+
+    if os.name == "posix":
+        with tempfile.TemporaryDirectory(prefix="harness-atomic-mode-") as tmp:
+            target = Path(tmp) / "STEP-001.md"
+            target.write_text("before\n", encoding="utf-8")
+            os.chmod(target, 0o664)
+            atomic_write_text(target, "after\n")
+            assert target.read_text(encoding="utf-8") == "after\n"
+            assert target.stat().st_mode & 0o777 == 0o664, oct(target.stat().st_mode)
+            fresh = Path(tmp) / "new.md"
+            atomic_write_text(fresh, "new\n")
+            assert fresh.stat().st_mode & 0o777 == 0o644, oct(fresh.stat().st_mode)
 
     print("DOCUMENT CONTRACT SELF-TEST: PASS")
     return 0

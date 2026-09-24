@@ -112,6 +112,24 @@ def _execution_identity(execution: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _block_recording_error(
+    root: Path,
+    root_command: str,
+    *,
+    command: str | None,
+) -> str | None:
+    """Зафиксировать blocker; вернуть ошибку записи state вместо её сокрытия.
+
+    Если blocker не удалось сохранить, execution остаётся running: caller
+    обязан сообщить это в BLOCKED ответе (`stateWriteError`), а не молчать (#117).
+    """
+    try:
+        block_execution(root, root_command, command=command)
+    except (OSError, ValueError) as exc:
+        return str(exc)
+    return None
+
+
 def _active_execution(root: Path, root_command: str) -> dict[str, Any] | None:
     """Найти active execution без изменения attempt/resolver state."""
     status = load_status(root)
@@ -242,16 +260,14 @@ def _verification_before_completion(
         handoff["verification"] = verification
         return handoff, None
 
-    try:
-        block_execution(root, root_command, command=command)
-    except (OSError, ValueError):
-        pass
+    state_error = _block_recording_error(root, root_command, command=command)
     return (
         {
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
             "rootCommand": root_command,
             "command": command,
+            **({"stateWriteError": state_error} if state_error else {}),
             "reasonCode": verification.get(
                 "reasonCode",
                 "VERIFICATION_BLOCKED",
@@ -778,19 +794,17 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
     try:
         return _dispatch_running(root, execution, command)
     except (DispatchError, OSError, ValueError) as exc:
-        try:
-            block_execution(
-                root,
-                str(execution["rootCommand"]),
-                command=command,
-            )
-        except (OSError, ValueError):
-            pass
+        state_error = _block_recording_error(
+            root,
+            str(execution["rootCommand"]),
+            command=command,
+        )
         return {
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
             **_execution_identity(execution),
             "command": command,
+            **({"stateWriteError": state_error} if state_error else {}),
             "reasonCode": getattr(exc, "code", "DISPATCH_BLOCKED"),
             "message": str(exc),
         }
@@ -899,11 +913,9 @@ def complete_dispatch(
             execution = begin_command(root, root_command, next_command)
             return _dispatch_running(root, execution, next_command)
         except (DispatchError, OSError, ValueError) as exc:
-            try:
-                block_execution(root, root_command, command=next_command)
-            except (OSError, ValueError):
-                pass
+            state_error = _block_recording_error(root, root_command, command=next_command)
             return {
+                **({"stateWriteError": state_error} if state_error else {}),
                 "schemaVersion": SCHEMA_VERSION,
                 "status": "BLOCKED",
                 **_execution_identity(execution),
@@ -921,11 +933,9 @@ def complete_dispatch(
             execution = begin_command(root, root_command, root_command)
             return _dispatch_running(root, execution, root_command)
         except (DispatchError, OSError, ValueError) as exc:
-            try:
-                block_execution(root, root_command, command=root_command)
-            except (OSError, ValueError):
-                pass
+            state_error = _block_recording_error(root, root_command, command=root_command)
             return {
+                **({"stateWriteError": state_error} if state_error else {}),
                 "schemaVersion": SCHEMA_VERSION,
                 "status": "BLOCKED",
                 **_execution_identity(execution),
@@ -963,11 +973,9 @@ def resume_dispatch(
         execution = begin_command(root, root_command, command)
         return _dispatch_running(root, execution, command)
     except (DispatchError, OSError, ValueError) as exc:
-        try:
-            block_execution(root, root_command, command=command)
-        except (OSError, ValueError):
-            pass
+        state_error = _block_recording_error(root, root_command, command=command)
         return {
+            **({"stateWriteError": state_error} if state_error else {}),
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
             "rootCommand": root_command,
