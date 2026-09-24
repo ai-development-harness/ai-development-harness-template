@@ -1603,9 +1603,15 @@ def begin_command(
 
     if execution["mode"] == "chain":
         # Chain продолжает только sequence, которую пользователь ввёл изначально.
-        # CTS не имеет права добавить в неё «логичный» лишний segment.
+        # CTS не имеет права добавить в неё «логичный» лишний segment. Позиция
+        # всегда продвигается на следующий segment: команда может повторяться
+        # (REVIEW > FIX > REVIEW), и поиск первого вхождения зациклил бы chain (#116).
         sequence = execution["sequence"]
-        index = sequence.index(normalized_command)
+        index = int(execution.get("currentIndex", 0)) + 1
+        if index >= len(sequence) or sequence[index] != normalized_command:
+            raise ValueError(
+                f"chain expects segment {index}, cannot begin {normalized_command!r}"
+            )
         execution["currentIndex"] = index
 
     # FIX -> REVIEW завершает один repair cycle. Счётчик хранится в root
@@ -1614,7 +1620,7 @@ def begin_command(
     previous_parsed = normalize_single_command(root, current["command"])
     next_parsed = normalize_single_command(root, normalized_command)
     if (
-        execution["mode"] == "orchestration"
+        execution["mode"] in {"orchestration", "chain"}
         and previous_parsed.get("domain") == "STEP"
         and previous_parsed.get("operation") == "FIX"
         and current.get("status") == "complete"
@@ -1642,6 +1648,38 @@ def begin_command(
     save_status(root, status)
     return execution
 
+
+
+def _fix_review_limit(
+    root: Path,
+    execution: dict[str, Any],
+    current_command: str,
+    next_command: str,
+    result: str,
+) -> dict[str, Any] | None:
+    """BLOCKED, если REVIEW FAIL открыл бы FIX сверх execution.maxFixReviewCycles."""
+    current_parsed = normalize_single_command(root, current_command)
+    next_parsed = normalize_single_command(root, next_command)
+    if not (
+        current_parsed.get("domain") == "STEP"
+        and current_parsed.get("operation") == "REVIEW"
+        and result == "FAIL"
+        and next_parsed.get("operation") == "FIX"
+    ):
+        return None
+    cycles = int(execution.get("fixReviewCycles", 0))
+    limit = max_fix_review_cycles(root)
+    if cycles < limit:
+        return None
+    return {
+        "status": "BLOCKED",
+        "executionId": execution["executionId"],
+        "rootCommand": execution["rootCommand"],
+        "command": None,
+        "reasonCode": "FIX_REVIEW_LIMIT_REACHED",
+        "fixReviewCycles": cycles,
+        "maxFixReviewCycles": limit,
+    }
 
 
 # Явно остановить root execution как blocked. Blocked state сохраняется между sessions и не продолжается автоматически.
@@ -2018,6 +2056,10 @@ def resolve_execution(
                 "reasonCode": "CHAIN_CONDITION_NOT_MET",
                 "notExecuted": sequence[index + 1 :],
             }
+        # Ручная chain подчиняется тому же FIX↔REVIEW budget, что и STEP RUN.
+        limited = _fix_review_limit(root, execution, current["command"], next_command, result)
+        if limited is not None:
+            return limited
         return {
             "status": "NEXT",
             "executionId": execution["executionId"],
@@ -2054,26 +2096,10 @@ def resolve_execution(
             # execution.maxFixReviewCycles — deterministic orchestration budget,
             # а не рекомендация агенту. После исчерпания лимита REVIEW FAIL не
             # может открыть ещё один FIX даже при повторной session.
-            if (
-                parsed.get("domain") == "STEP"
-                and parsed.get("operation") == "REVIEW"
-                and result == "FAIL"
-                and candidates[0].get("to") == "FIX"
-            ):
-                cycles = int(execution.get("fixReviewCycles", 0))
-                limit = max_fix_review_cycles(root)
-                if cycles >= limit:
-                    return {
-                        "status": "BLOCKED",
-                        "executionId": execution["executionId"],
-                        "rootCommand": execution["rootCommand"],
-                        "command": None,
-                        "reasonCode": "FIX_REVIEW_LIMIT_REACHED",
-                        "fixReviewCycles": cycles,
-                        "maxFixReviewCycles": limit,
-                    }
-
             next_command = _build_next_from_edge(root, current["command"], candidates[0])
+            limited = _fix_review_limit(root, execution, current["command"], next_command, result)
+            if limited is not None:
+                return limited
             return {
                 "status": "NEXT",
                 "executionId": execution["executionId"],
