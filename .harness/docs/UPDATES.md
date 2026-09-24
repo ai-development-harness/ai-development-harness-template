@@ -383,6 +383,8 @@ Remote routing/policy/content рассматриваются как **данны
 - не расширяет ownership через неизвестный local path;
 - не принимает moving branch как release baseline.
 
+Известное расхождение: postcondition validator hop сейчас исполняется из target release ([#98](https://github.com/ai-development-harness/ai-development-harness-template/issues/98)). Пока defects updater-а ([#98](https://github.com/ai-development-harness/ai-development-harness-template/issues/98)–[#101](https://github.com/ai-development-harness/ai-development-harness-template/issues/101)) открыты, `.harness/tools/known-issues-self-test.py` держит release freeze: удаление `harness_owned` patterns, новые marker blocks и изменение template definitions блокируются в CI.
+
 После APPLY пользователь/агент сначала инспектирует diff и проходит обычный Git/Harness validation flow.
 
 ## Regression check
