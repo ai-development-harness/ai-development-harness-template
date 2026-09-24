@@ -21,7 +21,7 @@ from document_contract import (
     markdown_headings,
     render_document,
 )
-from execution_status import stamp_plan
+from execution_status import implementation_baseline_for_step, stamp_plan
 from harness_config import planning_review_directory, review_directory
 from planning_contract import (
     plan_content_hash,
@@ -404,6 +404,11 @@ def _specialized_meta(
     meta: dict[str, Any] = {
         "gate_basis": gate["basis"],
         "required": sorted(required),
+        "implementation_baseline": gate.get("implementationBaseline"),
+        "surface_mode": gate.get("surfaceMode"),
+        "changed_paths_hash": gate.get("changedPathsHash"),
+        "baseline_status": gate.get("baselineStatus"),
+        "baseline_reason": gate.get("baselineReason"),
     }
     for kind in ("security", "tests"):
         if kind in supplied:
@@ -530,7 +535,17 @@ def _complete_step_after_pass(root: Path, step_id: str) -> dict[str, Any]:
 def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     """Create one validated immutable implementation review for exact revision."""
     data = _step_review_payload(payload)
-    gate = required_reviewers(root, step_id)
+    baseline = implementation_baseline_for_step(root, step_id)
+    baseline_sha = (
+        baseline.get("gitHead")
+        if isinstance(baseline, dict)
+        else None
+    )
+    gate = required_reviewers(
+        root,
+        step_id,
+        implementation_baseline=baseline_sha,
+    )
     specialized = _specialized_meta(gate, data["specializedReviews"])
     _validate_specialized_verdict(data["verdict"], specialized)
     revision = repository_revision(root)
@@ -599,6 +614,9 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "specializedReviewGate": {
             "basis": gate["basis"],
             "required": gate["required"],
+            "surfaceMode": gate["surfaceMode"],
+            "implementationBaseline": gate["implementationBaseline"],
+            "changedPathsHash": gate["changedPathsHash"],
         },
     }
     if data["verdict"] == "pass":
