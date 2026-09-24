@@ -7,11 +7,12 @@ import shutil
 import subprocess
 import tempfile
 
+from command_dispatch import start_dispatch
 from execution_status import (
     complete_command,
     implementation_baseline_for_step,
     resolve_root,
-    stamp_review_expectation,
+    review_expectation_for_step,
     start_execution,
 )
 from planning_contract import read_task, validate_planning_review_report
@@ -329,18 +330,16 @@ def main() -> int:
         )
 
         # Отдельная REVIEW invocation после restart/session boundary наследует
-        # durable baseline завершённого IMPLEMENT.
-        review_execution = start_execution(root, "STEP REVIEW STEP-001")
-        assert review_execution["status"] == "running", review_execution
-        assert review_execution["implementationBaseline"]["gitHead"] == baseline_head
+        # durable baseline завершённого IMPLEMENT. Используем canonical dispatcher,
+        # чтобы regression #83 проверял реальный stamp expectation до handoff.
+        review_handoff = start_dispatch(root, "STEP REVIEW STEP-001")
+        assert review_handoff["status"] == "SEMANTIC", review_handoff
+        deterministic = review_handoff["context"]["deterministic"]
+        assert deterministic["implementationBaseline"]["gitHead"] == baseline_head
         restored_baseline = implementation_baseline_for_step(root, "STEP-001")
         assert restored_baseline and restored_baseline["gitHead"] == baseline_head
 
-        clean_gate = required_reviewers(
-            root,
-            "STEP-001",
-            implementation_baseline=baseline_head,
-        )
+        clean_gate = deterministic["specializedReviewGate"]
         assert clean_gate["surfaceMode"] == "implementation-baseline", clean_gate
         assert clean_gate["baselineStatus"] == "valid", clean_gate
         assert clean_gate["implementationBaseline"] == baseline_head, clean_gate
@@ -349,14 +348,14 @@ def main() -> int:
         assert "docs/implementation-note.md" in clean_gate["changedPaths"], clean_gate
         assert clean_gate["required"] == ["security", "tests"], clean_gate
 
-        review_revision = repository_revision(root)
-        stamp_review_expectation(
-            root,
-            review_execution["executionId"],
-            "STEP-001",
-            review_revision,
-            clean_gate["basis"],
-        )
+        review_revision = deterministic["repositoryRevision"]
+        assert review_revision == repository_revision(root)
+        stamped_expectation = review_expectation_for_step(root, "STEP-001")
+        assert stamped_expectation == {
+            "stepId": "STEP-001",
+            "repositoryRevision": review_revision,
+            "gateBasis": clean_gate["basis"],
+        }, stamped_expectation
         pass_review_payload = {
             "verdict": "pass",
             "findings": [],
