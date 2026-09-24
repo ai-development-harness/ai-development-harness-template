@@ -656,6 +656,38 @@ def push_preflight(root: Path) -> dict[str, Any]:
     )
 
 
+_REPO_PART = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def github_repo_selector(repo: Repo, remote: str) -> str | None:
+    """`--repo` для gh из configured remote URL: `owner/repo` или `host/owner/repo`.
+
+    Без явного `--repo` gh выбирает default repository сам — в fork-сценарии это
+    может быть не `push.remote`, а `pr list --head` находит чужие PR с тем же
+    именем ветки (#109). Читается raw `remote.<name>.url` (до insteadOf);
+    нераспознанный URL (например, локальный путь) даёт None.
+    """
+    proc = repo.git("config", "--get", f"remote.{remote}.url", check=False)
+    url = proc.stdout.strip()
+    if proc.returncode or not url:
+        return None
+    match = re.match(r"^[a-z][a-z0-9+.-]*://(?:[^@/]+@)?([^/:]+)(?::\d+)?/(.+)$", url)
+    if match is None:
+        match = re.match(r"^(?:[^@/]+@)?([^/:]+):(?!/)(.+)$", url)
+    if match is None:
+        return None
+    host = match.group(1).lower()
+    parts = [part for part in match.group(2).split("/") if part]
+    if len(parts) < 2:
+        return None
+    owner, name = parts[-2], parts[-1].removesuffix(".git")
+    if not (_REPO_PART.match(owner) and _REPO_PART.match(name)):
+        return None
+    if host in {"github.com", "www.github.com", "ssh.github.com"}:
+        return f"{owner}/{name}"
+    return f"{host}/{owner}/{name}"
+
+
 # ---------------------------------------------------------------------------
 # Action: PR.
 # Требует, чтобы current local HEAD уже был **точно** опубликован в remote head
@@ -715,6 +747,7 @@ def pr_preflight(root: Path) -> dict[str, Any]:
         "pr",
         branch=branch,
         remote=remote,
+        repoSelector=github_repo_selector(repo, remote),
         publishedHead=remote_oid,
         provider=provider,
         preferredTool=preferred_tool,
@@ -770,8 +803,18 @@ def _github_pr_view(root: Path, config: dict[str, Any], selector: str | int) -> 
         )
     if shutil.which(tool) is None:
         raise GitPreflightError("PR_TOOL_UNAVAILABLE", f"configured PR tool is unavailable: {tool}")
+    remote = _text(config["push"], "remote", section="push")
+    repo_selector = github_repo_selector(Repo(root), remote)
+    if repo_selector is None:
+        raise GitPreflightError(
+            "PR_REPO_UNRESOLVED",
+            f"cannot resolve GitHub repository from remote {remote} URL",
+        )
     proc = subprocess.run(
-        [tool, "pr", "view", str(selector), "--json", "number,state,mergedAt,headRefName,headRefOid,baseRefName,url"],
+        [
+            tool, "pr", "view", str(selector), "--repo", repo_selector,
+            "--json", "number,state,mergedAt,headRefName,headRefOid,baseRefName,url",
+        ],
         cwd=root,
         text=True,
         stdout=subprocess.PIPE,
