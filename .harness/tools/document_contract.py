@@ -184,6 +184,9 @@ def timestamped_report_instant(name: str, prefix: str) -> datetime | None:
     return parsed.replace(tzinfo=timezone.utc)
 
 
+REPORT_CLOCK_SKEW_TOLERANCE = timedelta(minutes=5)
+
+
 def validate_report_timestamp_identity(
     path: Path,
     *,
@@ -205,6 +208,11 @@ def validate_report_timestamp_identity(
         return errors
     if created != filename_time:
         errors.append("created_at must match UTC timestamp encoded in filename")
+    # Report «из будущего» навсегда занял бы место latest по sortable filename
+    # и скрыл бы последующие реальные reports (#114). Небольшой допуск —
+    # на расхождение часов между машинами.
+    if created > datetime.now(timezone.utc) + REPORT_CLOCK_SKEW_TOLERANCE:
+        errors.append("created_at must not be in the future")
     return errors
 
 

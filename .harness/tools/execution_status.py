@@ -2246,6 +2246,39 @@ def stamp_review_expectation(
 
 
 @execution_state_mutation
+@execution_state_mutation
+def record_review_report(root: Path, step_id: str, record: dict[str, Any]) -> bool:
+    """Связать созданный writer-ом report с active STEP REVIEW execution.
+
+    Локальный след происхождения: какой execution создал report, с каким
+    content hash и для какой revision. Возвращает False, если active REVIEW нет.
+    """
+    status = load_status(root)
+    for execution in status.get("executions", []):
+        current = execution.get("current")
+        if execution.get("status") != "running" or not isinstance(current, dict):
+            continue
+        if current.get("status") != "running":
+            continue
+        try:
+            parsed = normalize_single_command(root, str(current.get("command") or ""))
+        except ValueError:
+            continue
+        if parsed.get("domain") != "STEP" or parsed.get("operation") != "REVIEW":
+            continue
+        if parsed.get("target") != step_id:
+            continue
+        context = current.get("context")
+        if not isinstance(context, dict):
+            context = {}
+            current["context"] = context
+        context["reviewReport"] = dict(record)
+        execution["updatedAt"] = utc_now()
+        save_status(root, status)
+        return True
+    return False
+
+
 def review_expectation_for_step(
     root: Path,
     step_id: str,

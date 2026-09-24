@@ -2,7 +2,16 @@
 """Regression self-test низкоуровневых Markdown/YAML document contracts."""
 from __future__ import annotations
 
-from document_contract import markdown_headings, parse_sections, render_document, split_frontmatter
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from document_contract import (
+    markdown_headings,
+    parse_sections,
+    render_document,
+    split_frontmatter,
+    validate_report_timestamp_identity,
+)
 from harness_config import parse_yaml_subset
 
 
@@ -87,6 +96,20 @@ list:
     assert values["commented"] == "value", values
     assert values["quoted"] == "C# language", values
     assert values["list"] == ["C#", "docs/architecture.md#auth"], values
+
+    # Regression #114: report из будущего не может стать «latest» по
+    # sortable filename; небольшой clock skew допускается.
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    for delta, expect_error in ((timedelta(days=365 * 70), True), (timedelta(minutes=1), False), (-timedelta(days=1), False)):
+        instant = now + delta
+        name = "REVIEW-" + instant.strftime("%Y%m%dT%H%M%SZ") + ".md"
+        errors = validate_report_timestamp_identity(
+            Path(name),
+            prefix="REVIEW-",
+            created_at=instant.isoformat().replace("+00:00", "Z"),
+        )
+        has_future_error = "created_at must not be in the future" in errors
+        assert has_future_error == expect_error, (delta, errors)
 
     print("DOCUMENT CONTRACT SELF-TEST: PASS")
     return 0
