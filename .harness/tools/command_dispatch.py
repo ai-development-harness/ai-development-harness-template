@@ -43,6 +43,7 @@ from git_action import GitActionError, execute_pr_finish, execute_push, execute_
 from git_preflight import GitPreflightError, check as git_check
 from harness_help import help_catalog
 from harness_update import UpdateError, apply_update, check_update
+from update_recovery import JournalError, recover_pending
 from harness_ux import (
     harness_config,
     harness_doctor,
@@ -772,6 +773,25 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
     if normalized == ["HARNESS RESUME"]:
         return resume_dispatch(root)
 
+    # Pending update journal must be recovered before a new APPLY execution is
+    # written. Otherwise exact rollback of execution-status would erase the
+    # just-created recovery invocation and leave dispatcher state inconsistent.
+    pre_dispatch_recovery: dict[str, Any] | None = None
+    if (
+        normalized
+        and isinstance(normalized[0], str)
+        and normalized[0].startswith("HARNESS UPDATE APPLY")
+    ):
+        try:
+            pre_dispatch_recovery = recover_pending(root)
+        except JournalError as exc:
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                "reasonCode": exc.code,
+                "message": exc.message,
+            }
+
     try:
         execution = start_execution(root, raw_command)
     except (OSError, ValueError) as exc:
@@ -792,7 +812,17 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
             "reasonCode": "CURRENT_COMMAND_MISSING",
         }
     try:
-        return _dispatch_running(root, execution, command)
+        response = _dispatch_running(root, execution, command)
+        if pre_dispatch_recovery is not None:
+            machine_result = response.get("result")
+            if isinstance(machine_result, dict):
+                machine_result.setdefault(
+                    "recoveredInterruptedUpdate",
+                    pre_dispatch_recovery,
+                )
+            else:
+                response["recoveredInterruptedUpdate"] = pre_dispatch_recovery
+        return response
     except (DispatchError, OSError, ValueError) as exc:
         state_error = _block_recording_error(
             root,
