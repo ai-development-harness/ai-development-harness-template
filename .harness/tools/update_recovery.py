@@ -292,10 +292,10 @@ def begin_journal(
             "owner": {"pid": os.getpid(), "host": socket.gethostname()},
             "entries": entries,
             "createdReports": [],
-    }
-    _write_journal(root, journal)
-    _fsync_dir(directory.parent)
-    return journal
+        }
+        _write_journal(root, journal)
+        _fsync_dir(directory.parent)
+        return journal
 
 
 def update_journal(root: Path, journal: dict[str, Any], **changes: Any) -> None:
@@ -360,7 +360,16 @@ def _schema_version(data: bytes) -> Any:
 
 
 def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Byte-for-byte восстановить состояние до hop и удалить журнал."""
+    """Byte-for-byte восстановить состояние до hop и удалить журнал.
+
+    Rollback сериализуется execution-status lock-ом: canonical session не может
+    одновременно записать local state между проверкой pending journal и restore.
+    """
+    with execution_state_lock(root):
+        return _rollback_journal_locked(root, journal)
+
+
+def _rollback_journal_locked(root: Path, journal: dict[str, Any] | None = None) -> dict[str, Any]:
     if journal is None:
         journal = load_journal(root)
     if journal is None:
