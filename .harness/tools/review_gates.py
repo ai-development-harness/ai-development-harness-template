@@ -170,8 +170,8 @@ def _included_path(root: Path, rel: str) -> bool:
 def _worktree_paths(root: Path) -> set[str]:
     paths: set[str] = set()
     for args in (
-        ("diff", "--name-status", "-z", "-M", "-C", "HEAD", "--"),
-        ("diff", "--cached", "--name-status", "-z", "-M", "-C", "--"),
+        ("diff", "--name-status", "-z", "-M", "-C", "--find-copies-harder", "HEAD", "--"),
+        ("diff", "--cached", "--name-status", "-z", "-M", "-C", "--find-copies-harder", "--"),
     ):
         try:
             paths.update(_git_name_status_paths_z(root, *args))
@@ -261,6 +261,7 @@ def _review_surface(
                 "-z",
                 "-M",
                 "-C",
+                "--find-copies-harder",
                 f"{baseline}..HEAD",
                 "--",
             )
