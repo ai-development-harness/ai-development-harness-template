@@ -11,6 +11,7 @@ description: Run an independent read-only review of an exact repository revision
    python3 .harness/tools/validate.py --mode manual
    ```
 2. Используй только phase `context`, уже возвращённый canonical dispatcher handoff. Прочитай `readPaths` + relevant diff/code/tests. `deterministic.specializedReviewGate` содержит exact gate, а `deterministic.repositoryRevision` — exact revision. Повторно `step-context.py`/gates не вызывай и revision вручную не восстанавливай. Модель может добавить reviewer, но не убрать required.
+   `STEP REVIEW` допустим и на чистом post-commit worktree. В этом случае gate использует `surfaceMode=clean-tree-fallback`: последний commit служит только diagnostic surface, а отсутствие durable implementation baseline компенсируется fail-closed требованием `security` + `tests`. Harness-owned `.harness/local/**` и `REVIEW-*.md` не должны менять этот gate.
 3. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan с реализацией и tests. Сделай полный semantic проход exact revision и собери material findings.
 4. Верни structured payload:
    - `verdict: pass|fail|blocked`;

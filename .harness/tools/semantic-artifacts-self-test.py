@@ -10,6 +10,7 @@ import tempfile
 from execution_status import resolve_root, start_execution
 from planning_contract import read_task, validate_planning_review_report
 from review_contract import validate_review_report
+from review_gates import required_reviewers
 from semantic_artifacts import (
     SemanticArtifactError,
     write_plan_draft,
@@ -275,8 +276,19 @@ def main() -> int:
             1,
         )
         step_path.write_text(current_text, encoding="utf-8", newline="\n")
+
+        # Regression #77: REVIEW обязан работать и после Git-фиксации
+        # реализации. Execution state в .harness/local и резервируемый report
+        # не должны менять clean-tree-fallback gate между writer/validator.
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "prepare clean review fixture")
+
         review_execution = start_execution(root, "STEP REVIEW STEP-001")
         assert review_execution["status"] == "running", review_execution
+
+        clean_gate = required_reviewers(root, "STEP-001")
+        assert clean_gate["surfaceMode"] == "clean-tree-fallback", clean_gate
+        assert clean_gate["required"] == ["security", "tests"], clean_gate
 
         step_review = write_step_review(
             root,
@@ -287,17 +299,22 @@ def main() -> int:
                 "verificationObservations": "Generated Evidence и test command проверены.",
                 "rationale": "Material defects не обнаружены.",
                 "specializedReviews": {
+                    "security": {
+                        "status": "pass",
+                        "evidence": "Security reviewer подтвердил отсутствие material risks.",
+                    },
                     "tests": {
                         "status": "pass",
                         "evidence": "Test reviewer подтвердил достаточность coverage.",
-                    }
+                    },
                 },
             },
         )
         assert step_review["status"] == "PASS", step_review
         assert step_review["completionResult"] == "PASS", step_review
         assert step_review["stepCompletion"]["completed"] is True, step_review
-        assert step_review["specializedReviewGate"]["required"] == ["tests"], step_review
+        assert step_review["specializedReviewGate"]["basis"] == clean_gate["basis"], step_review
+        assert step_review["specializedReviewGate"]["required"] == clean_gate["required"], step_review
         assert read_task(root, "STEP-001")["frontmatter"]["status"] == "completed"
 
         review_report = root / step_review["report"]

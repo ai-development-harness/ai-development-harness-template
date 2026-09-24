@@ -118,6 +118,29 @@ def main() -> int:
         assert "src/кириллица.ts" in gate["changedPaths"], gate
         assert "docs/строка\nперенос.md" in gate["changedPaths"], gate
 
+        # Реальный dirty product surface также обязан быть инвариантен к
+        # появлению Harness-owned report: worktree/paths/required/basis не меняются.
+        dirty_report = root / "planning/reviews/STEP-001/REVIEW-20981231T235959Z.md"
+        write(dirty_report, "dirty report fixture\n")
+        dirty_with_report = required_reviewers(root, "STEP-001")
+        assert dirty_with_report["surfaceMode"] == gate["surfaceMode"] == "worktree", (
+            gate,
+            dirty_with_report,
+        )
+        assert dirty_with_report["changedPaths"] == gate["changedPaths"], (
+            gate,
+            dirty_with_report,
+        )
+        assert dirty_with_report["required"] == gate["required"], (
+            gate,
+            dirty_with_report,
+        )
+        assert dirty_with_report["basis"] == gate["basis"], (
+            gate,
+            dirty_with_report,
+        )
+        dirty_report.unlink()
+
         # Clean-tree fallback использует diff-tree и обязан сохранять те же raw
         # path boundaries/Unicode после commit.
         git(root, "add", ".")
@@ -125,6 +148,37 @@ def main() -> int:
         fallback_paths, fallback_mode = _git_changed_paths(root)
         assert fallback_mode == "clean-tree-fallback", (fallback_mode, fallback_paths)
         assert expected.issubset(set(fallback_paths)), fallback_paths
+
+        # Regression #77: Harness-owned report не является product surface и не
+        # имеет права переключать режим/required/basis только фактом резервирования.
+        fallback_gate = required_reviewers(root, "STEP-001")
+        report_path = root / "planning/reviews/STEP-001/REVIEW-20990101T000000Z.md"
+        write(report_path, "reserved report fixture\n")
+
+        after_report_paths, after_report_mode = _git_changed_paths(root)
+        assert after_report_mode == fallback_mode, (
+            fallback_mode,
+            after_report_mode,
+            after_report_paths,
+        )
+        assert after_report_paths == fallback_paths, (
+            fallback_paths,
+            after_report_paths,
+        )
+
+        after_report_gate = required_reviewers(root, "STEP-001")
+        assert after_report_gate["surfaceMode"] == fallback_gate["surfaceMode"], (
+            fallback_gate,
+            after_report_gate,
+        )
+        assert after_report_gate["required"] == fallback_gate["required"], (
+            fallback_gate,
+            after_report_gate,
+        )
+        assert after_report_gate["basis"] == fallback_gate["basis"], (
+            fallback_gate,
+            after_report_gate,
+        )
 
     print("REVIEW GATES SELF-TEST: PASS")
     return 0
