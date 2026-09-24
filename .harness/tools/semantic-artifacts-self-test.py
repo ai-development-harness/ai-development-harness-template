@@ -7,7 +7,12 @@ import shutil
 import subprocess
 import tempfile
 
-from execution_status import resolve_root, start_execution
+from execution_status import (
+    complete_command,
+    implementation_baseline_for_step,
+    resolve_root,
+    start_execution,
+)
 from planning_contract import read_task, validate_planning_review_report
 from review_contract import validate_review_report
 from review_gates import required_reviewers
@@ -254,10 +259,14 @@ def main() -> int:
                 "verificationObservations": "Semantic review itself passed.",
                 "rationale": "Material implementation defects не обнаружены.",
                 "specializedReviews": {
+                    "security": {
+                        "status": "pass",
+                        "evidence": "Security reviewer подтвердил conservative fallback.",
+                    },
                     "tests": {
                         "status": "pass",
                         "evidence": "Test reviewer подтвердил coverage.",
-                    }
+                    },
                 },
             },
         )
@@ -266,8 +275,25 @@ def main() -> int:
         assert incomplete_review["reasonCode"] == "STEP_COMPLETION_PROOF_INCOMPLETE"
         assert read_task(root, "STEP-001")["frontmatter"]["status"] == "planned"
 
-        # Add factual implementation lifecycle/Evidence, then start REVIEW so
-        # crash recovery records the first PASS report as its baseline.
+        # Зафиксировать Ready planning state до implementation lifecycle.
+        # Baseline должен быть HEAD непосредственно перед первой product mutation.
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "prepare implementation baseline")
+
+        implementation_execution = start_execution(
+            root,
+            "STEP IMPLEMENT STEP-001",
+        )
+        implementation_baseline = implementation_execution.get(
+            "implementationBaseline"
+        )
+        assert implementation_baseline, implementation_execution
+        baseline_head = implementation_baseline["gitHead"]
+        assert implementation_baseline_for_step(root, "STEP-001") == implementation_baseline
+
+        # Regression #80: implementation занимает несколько commits. Security
+        # path находится в первом, tests — во втором, последний commit содержит
+        # только docs/evidence. Clean REVIEW обязан видеть полный baseline..HEAD.
         current_text = step_path.read_text(encoding="utf-8")
         current_text = current_text.replace("status: planned", "status: in_progress", 1)
         current_text = current_text.replace(
@@ -276,18 +302,50 @@ def main() -> int:
             1,
         )
         step_path.write_text(current_text, encoding="utf-8", newline="\n")
-
-        # Regression #77: REVIEW обязан работать и после Git-фиксации
-        # реализации. Execution state в .harness/local и резервируемый report
-        # не должны менять clean-tree-fallback gate между writer/validator.
+        auth_path = root / "src/auth/session.py"
+        auth_path.parent.mkdir(parents=True, exist_ok=True)
+        auth_path.write_text("def secure_session():\n    return True\n", encoding="utf-8")
         run(root, "git", "add", ".")
-        run(root, "git", "commit", "-qm", "prepare clean review fixture")
+        run(root, "git", "commit", "-qm", "implementation security change")
 
+        test_path = root / "tests/session_test.py"
+        test_path.parent.mkdir(parents=True, exist_ok=True)
+        test_path.write_text("def test_session():\n    assert True\n", encoding="utf-8")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "implementation tests")
+
+        note_path = root / "docs/implementation-note.md"
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+        note_path.write_text("# Implementation note\n", encoding="utf-8")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "implementation docs")
+
+        complete_command(
+            root,
+            implementation_execution["rootCommand"],
+            "STEP IMPLEMENT STEP-001",
+            "SUCCESS",
+        )
+
+        # Отдельная REVIEW invocation после restart/session boundary наследует
+        # durable baseline завершённого IMPLEMENT.
         review_execution = start_execution(root, "STEP REVIEW STEP-001")
         assert review_execution["status"] == "running", review_execution
+        assert review_execution["implementationBaseline"]["gitHead"] == baseline_head
+        restored_baseline = implementation_baseline_for_step(root, "STEP-001")
+        assert restored_baseline and restored_baseline["gitHead"] == baseline_head
 
-        clean_gate = required_reviewers(root, "STEP-001")
-        assert clean_gate["surfaceMode"] == "clean-tree-fallback", clean_gate
+        clean_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=baseline_head,
+        )
+        assert clean_gate["surfaceMode"] == "implementation-baseline", clean_gate
+        assert clean_gate["baselineStatus"] == "valid", clean_gate
+        assert clean_gate["implementationBaseline"] == baseline_head, clean_gate
+        assert "src/auth/session.py" in clean_gate["changedPaths"], clean_gate
+        assert "tests/session_test.py" in clean_gate["changedPaths"], clean_gate
+        assert "docs/implementation-note.md" in clean_gate["changedPaths"], clean_gate
         assert clean_gate["required"] == ["security", "tests"], clean_gate
 
         step_review = write_step_review(
@@ -315,6 +373,18 @@ def main() -> int:
         assert step_review["stepCompletion"]["completed"] is True, step_review
         assert step_review["specializedReviewGate"]["basis"] == clean_gate["basis"], step_review
         assert step_review["specializedReviewGate"]["required"] == clean_gate["required"], step_review
+        assert (
+            step_review["specializedReviewGate"]["surfaceMode"]
+            == "implementation-baseline"
+        ), step_review
+        assert (
+            step_review["specializedReviewGate"]["implementationBaseline"]
+            == baseline_head
+        ), step_review
+        assert (
+            step_review["specializedReviewGate"]["changedPathsHash"]
+            == clean_gate["changedPathsHash"]
+        ), step_review
         assert read_task(root, "STEP-001")["frontmatter"]["status"] == "completed"
 
         review_report = root / step_review["report"]
