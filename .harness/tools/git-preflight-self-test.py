@@ -192,6 +192,11 @@ def hook_scenarios(base: Path) -> None:
     # доказывается reflog marker-ом, а не текстом message (#131 review).
     for with_head in (True, False):
         repo = _hook_repo(base, f"hook-message-{with_head}", with_head=with_head, commit_msg_hook=True)
+        if not with_head:
+            # Пользователь может отключить reflog глобальной/локальной config.
+            # Executor обязан принудительно создать reflog для своей commit
+            # mutation, иначе marker не докажет ownership первого commit.
+            run(repo, "git", "config", "core.logAllRefUpdates", "false")
         validated_tree = run(repo, "git", "write-tree")
         exc = expect_code(
             "COMMIT_POSTCONDITION_FAILED",
