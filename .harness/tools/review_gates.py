@@ -73,6 +73,47 @@ def _git_paths_z(root: Path, *args: str) -> list[str]:
     ]
 
 
+def _git_name_status_paths_z(root: Path, *args: str) -> list[str]:
+    """Вернуть обе стороны rename/copy из Git --name-status -z.
+
+    --name-only теряет source path rename/copy и может скрыть security/test
+    surface при переносе sensitive файла в нейтральный destination. Parser
+    fail-closed: malformed stream не интерпретируется как безопасно пустой diff.
+    """
+    proc = subprocess.run(
+        ["git", "-c", "core.quotepath=false", *args],
+        cwd=root,
+        text=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return []
+
+    fields = [item for item in proc.stdout.split(b"\0") if item]
+    paths: list[str] = []
+    index = 0
+    try:
+        while index < len(fields):
+            status = fields[index].decode("ascii", errors="strict")
+            index += 1
+            code = status[:1]
+            if code in {"R", "C"}:
+                source = fields[index].decode("utf-8")
+                destination = fields[index + 1].decode("utf-8")
+                index += 2
+                paths.extend([source, destination])
+            else:
+                path = fields[index].decode("utf-8")
+                index += 1
+                paths.append(path)
+    except (IndexError, UnicodeDecodeError):
+        # Unexpected Git transport must not silently shrink review surface.
+        raise ValueError("malformed git --name-status -z output")
+    return paths
+
+
 def _git_ok(root: Path, *args: str) -> bool:
     try:
         proc = subprocess.run(
@@ -129,11 +170,11 @@ def _included_path(root: Path, rel: str) -> bool:
 def _worktree_paths(root: Path) -> set[str]:
     paths: set[str] = set()
     for args in (
-        ("diff", "--name-only", "-z", "HEAD", "--"),
-        ("diff", "--cached", "--name-only", "-z", "--"),
+        ("diff", "--name-status", "-z", "-M", "-C", "HEAD", "--"),
+        ("diff", "--cached", "--name-status", "-z", "-M", "-C", "--"),
     ):
         try:
-            paths.update(_git_paths_z(root, *args))
+            paths.update(_git_name_status_paths_z(root, *args))
         except OSError:
             continue
     try:
@@ -213,11 +254,13 @@ def _review_surface(
     if reason is None:
         committed = {
             path
-            for path in _git_paths_z(
+            for path in _git_name_status_paths_z(
                 root,
                 "diff",
-                "--name-only",
+                "--name-status",
                 "-z",
+                "-M",
+                "-C",
                 f"{baseline}..HEAD",
                 "--",
             )
