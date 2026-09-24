@@ -36,6 +36,7 @@ from review_gates import required_reviewers
 
 
 PHASES = {"plan", "implement", "review"}
+_UNSPECIFIED_BASELINE = object()
 
 
 def _rel(root: Path, path: Path) -> str:
@@ -70,7 +71,7 @@ def build_step_context(
     step_id: str,
     phase: str,
     *,
-    implementation_baseline: dict[str, Any] | None = None,
+    implementation_baseline: dict[str, Any] | None | object = _UNSPECIFIED_BASELINE,
 ) -> dict[str, Any]:
     """Собрать exact context manifest без semantic summarization."""
     if phase not in PHASES:
@@ -179,21 +180,31 @@ def build_step_context(
                 "status": "PASS" if not failures else "BLOCKED",
                 "failures": failures,
             },
-            "implementationBaseline": implementation_baseline,
+            "implementationBaseline": (
+                None
+                if implementation_baseline is _UNSPECIFIED_BASELINE
+                else implementation_baseline
+            ),
         }
     else:
-        baseline_sha = (
-            implementation_baseline.get("gitHead")
-            if isinstance(implementation_baseline, dict)
-            else None
-        )
-        result["deterministic"] = {
-            "implementationBaseline": implementation_baseline,
-            "specializedReviewGate": required_reviewers(
+        if implementation_baseline is _UNSPECIFIED_BASELINE:
+            review_gate = required_reviewers(root, step_id)
+            baseline_value = None
+        else:
+            baseline_sha = (
+                implementation_baseline.get("gitHead")
+                if isinstance(implementation_baseline, dict)
+                else None
+            )
+            review_gate = required_reviewers(
                 root,
                 step_id,
                 implementation_baseline=baseline_sha,
-            ),
+            )
+            baseline_value = implementation_baseline
+        result["deterministic"] = {
+            "implementationBaseline": baseline_value,
+            "specializedReviewGate": review_gate,
             "repositoryRevision": repository_revision(root),
         }
 
