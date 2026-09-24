@@ -58,6 +58,21 @@ Per-STEP файлы запрещены.
 
 Файл может одновременно хранить несколько execution records. Поэтому запуск новой независимой команды не уничтожает сведения об interrupted execution.
 
+Для STEP implementation lifecycle execution record может дополнительно содержать durable baseline:
+
+```json
+{
+  "implementationBaseline": {
+    "stepId": "STEP-001",
+    "gitHead": "<HEAD до первой product mutation>",
+    "capturedAt": "<UTC>",
+    "sourceExecutionId": "exec-..."
+  }
+}
+```
+
+Поле optional: historical schema-v1 state без него остаётся валидным. Новый `STEP IMPLEMENT` фиксирует baseline до semantic handoff; если STEP уже `in_progress`, повторный независимый IMPLEMENT наследует baseline активной lifecycle вместо его сдвига. `REVIEW` и `FIX` наследуют тот же proof, в том числе при запуске отдельной root execution. После restart baseline читается из того же local state и не восстанавливается по chat history.
+
 ## Internal modes
 
 `mode` — внутренняя классификация уже существующего пользовательского ввода, а не новый command layer.
