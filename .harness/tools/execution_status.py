@@ -496,18 +496,23 @@ def _baseline_for_new_command(
         return current
 
     historical = _latest_implementation_baseline(status, step_id)
-    if operation in {"REVIEW", "FIX"}:
-        if historical is not None:
-            execution["implementationBaseline"] = historical
-        return historical
-
-    # IMPLEMENT: reuse the original lifecycle baseline once product mutation has
-    # moved STEP to in_progress. Planned STEP means product mutation has not yet
-    # been established, so a fresh capture is safe and exact.
     try:
         task_status = read_task(root, step_id)["frontmatter"].get("status")
     except (OSError, ValueError, FileNotFoundError):
         task_status = None
+
+    if operation in {"REVIEW", "FIX"}:
+        # Historical baseline относится к текущей implementation lifecycle
+        # только пока canonical STEP действительно in_progress. Planned/new
+        # lifecycle не должна случайно унаследовать proof завершённой работы.
+        if task_status == "in_progress" and historical is not None:
+            execution["implementationBaseline"] = historical
+            return historical
+        return None
+
+    # IMPLEMENT: reuse the original lifecycle baseline once product mutation has
+    # moved STEP to in_progress. Planned STEP means product mutation has not yet
+    # been established, so a fresh capture is safe and exact.
     if task_status == "in_progress" and historical is not None:
         execution["implementationBaseline"] = historical
         return historical
