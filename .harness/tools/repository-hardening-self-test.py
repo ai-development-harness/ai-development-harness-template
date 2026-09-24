@@ -89,6 +89,65 @@ def main() -> int:
         require_failure(validate(root), "merge-conflict marker detected: docs/setext.md")
         run(root, "git", "rm", "-q", "-f", "docs/setext.md")
 
+        # Regression #108: basename-паттерны действуют на любой глубине.
+        for rel, needle in (
+            ("apps/api/.env", "forbidden tracked file: apps/api/.env"),
+            ("apps/api/.env.local", "forbidden tracked file: apps/api/.env.local"),
+            ("deploy/id_ecdsa", "forbidden tracked file: deploy/id_ecdsa"),
+            ("ops/prod.tfstate", "forbidden tracked file: ops/prod.tfstate"),
+            ("certs/app.p12", "forbidden tracked file: certs/app.p12"),
+            (".ssh/config", "forbidden tracked file: .ssh/config"),
+            ("home/.ssh/known_hosts", "forbidden tracked file: home/.ssh/known_hosts"),
+        ):
+            target = root / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("fixture\n", encoding="utf-8")
+            run(root, "git", "add", "-f", rel)
+            require_failure(validate(root), needle)
+            run(root, "git", "rm", "-q", "-f", "--cached", rel)
+            target.unlink()
+        example = root / "apps/api/.env.example"
+        example.parent.mkdir(parents=True, exist_ok=True)
+        example.write_text("API_URL=\n", encoding="utf-8")
+        run(root, "git", "add", "-f", "apps/api/.env.example")
+        allowed_example = validate(root)
+        assert allowed_example.returncode == 0, allowed_example.stdout + allowed_example.stderr
+        run(root, "git", "rm", "-q", "-f", "apps/api/.env.example")
+
+        # Regression #108: любые PEM/PGP private keys и токены, в том числе в binary.
+        begin, end = "-----BEGIN", "-----END"
+        secrets = {
+            "ec": f"{begin} EC PRIVATE KEY-----\nMHcfixture\n{end} EC PRIVATE KEY-----\n",
+            "pgp": f"{begin} PGP PRIVATE KEY BLOCK-----\nfixture\n{end} PGP PRIVATE KEY BLOCK-----\n",
+            "enc": f"{begin} ENCRYPTED PRIVATE KEY-----\nfixture\n{end} ENCRYPTED PRIVATE KEY-----\n",
+            "gh": "token = " + "gh" + "p_" + "A1b2C3d4" * 4 + "E5f6\n",
+            "aws": "key = " + "AK" + "IA" + "Q3EGRSX5NLPY7ZTW\n",
+        }
+        labels = {
+            "ec": "private key material",
+            "pgp": "private key material",
+            "enc": "private key material",
+            "gh": "GitHub token",
+            "aws": "AWS access key",
+        }
+        for name, content in secrets.items():
+            rel = f"docs/secret-{name}.txt"
+            (root / rel).write_text(content, encoding="utf-8")
+            run(root, "git", "add", rel)
+            require_failure(validate(root), f"{labels[name]} detected in tracked file: {rel}")
+            run(root, "git", "rm", "-q", "-f", rel)
+        binary = root / "docs/blob.bin"
+        binary.write_bytes(b"\0\x01binary" + secrets["ec"].encode() + b"\0")
+        run(root, "git", "add", "docs/blob.bin")
+        require_failure(validate(root), "private key material detected in tracked file: docs/blob.bin")
+        run(root, "git", "rm", "-q", "-f", "docs/blob.bin")
+        doc_example = root / "docs/aws-example.md"
+        doc_example.write_text("AWS doc key: " + "AK" + "IA" + "IOSFODNN7EXAMPLE\n", encoding="utf-8")
+        run(root, "git", "add", "docs/aws-example.md")
+        doc_result = validate(root)
+        assert doc_result.returncode == 0, doc_result.stdout + doc_result.stderr
+        run(root, "git", "rm", "-q", "-f", "docs/aws-example.md")
+
         # Комментарий с текстом ignore pattern не является действующим правилом.
         gitignore_path = root / ".gitignore"
         original_ignore = gitignore_path.read_text(encoding="utf-8")
