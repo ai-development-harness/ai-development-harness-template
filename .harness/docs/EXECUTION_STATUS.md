@@ -46,8 +46,8 @@ Per-STEP файлы запрещены.
 ```
 
 - `executions` — только full active/recoverable records (`running` и актуальный `blocked`);
-- `stepRecovery` — минимальные STEP recovery proofs, прежде всего durable implementation baseline;
-- `recentTerminals` — compact terminal tombstones, hard limit **100**;
+- `stepRecovery` — минимальные STEP recovery proofs, прежде всего durable implementation baseline; recovery key `STEP-NNN` обязан совпадать с `implementationBaseline.stepId`;
+- `recentTerminals` — compact terminal tombstones, hard limit **100**; tombstone сохраняет optional `current.details` как recent durable handoff metadata;
 - `nextOrdinal` — monotonic invocation order, чтобы latest semantics не зависела от timestamp collision.
 
 Completed execution не хранится в полном виде бесконечно. При terminal checkpoint full record превращается в tombstone. Historical blocked также перестаёт быть full operational state, когда появляется более новая invocation того же `rootCommand`.
@@ -70,7 +70,7 @@ read v1
 
 `PROJECT RECONCILE` в этой миграции **не участвует**: это local runtime state, а не project-owned document schema.
 
-Migration сохраняет running state, latest operational blocked state и implementation baseline. Superseded historical blocked/completed records превращаются в bounded tombstones. Повреждённый или неизвестный old schema fail-closed: исходный файл не заменяется пустым state.
+Migration сохраняет running state, latest operational blocked state, implementation baseline и optional command-specific `current.details` для recent terminal handoff. Superseded historical blocked/completed records превращаются в bounded tombstones. Повреждённый или неизвестный old schema, включая несовпадающие `stepRecovery` key/baseline identity, fail-closed: исходный файл не заменяется пустым state.
 
 ## Execution record
 
@@ -491,7 +491,7 @@ Blocked/completed root при явном новом запуске создаё�
 
 Execution Status не является audit log или product source of truth.
 
-Полная completed history поэтому не хранится. `recentTerminals` содержит только последние 100 compact tombstones, достаточные для ближайших retry/idempotency checks вроде повторного `complete` и UPDATE handoff. Более старая terminal history намеренно забывается; долгоживущие доказательства должны находиться в canonical artifacts/reports.
+Полная completed history поэтому не хранится. `recentTerminals` содержит только последние 100 compact tombstones, достаточные для ближайших retry/idempotency checks вроде повторного `complete` и UPDATE handoff. Если completed command имела object `current.details`, tombstone сохраняет его в этом recent window: compaction не должна ломать documented durable handoff metadata. Более старая terminal history намеренно забывается; долгоживущие доказательства должны находиться в canonical artifacts/reports.
 
 `running` автоматически не удаляется. Latest actionable `blocked` также сохраняется full record-ом. Когда более новая invocation того же root делает старый blocked историческим, старый record компактируется.
 

@@ -286,6 +286,9 @@ def _validate_execution_record(
     result = current.get("result")
     if result is not None and result not in RESULTS:
         errors.append(f"{prefix}: invalid current.result")
+    details = current.get("details")
+    if details is not None and not isinstance(details, dict):
+        errors.append(f"{prefix}: current.details must be an object")
     attempt = current.get("attempt")
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
         errors.append(f"{prefix}: current.attempt must be >= 1")
@@ -330,6 +333,9 @@ def _validate_terminal_record(value: Any, prefix: str) -> list[str]:
         result = current.get("result")
         if result is not None and result not in RESULTS:
             errors.append(f"{prefix}: invalid current.result")
+        details = current.get("details")
+        if details is not None and not isinstance(details, dict):
+            errors.append(f"{prefix}: current.details must be an object")
     return errors
 
 
@@ -442,6 +448,10 @@ def _validate_v2_status(value: dict[str, Any]) -> list[str]:
             continue
         baseline = item.get("implementationBaseline")
         errors.extend(_validate_baseline(baseline, f"{prefix}.implementationBaseline"))
+        if isinstance(baseline, dict) and baseline.get("stepId") != step_id:
+            errors.append(
+                f"{prefix}.implementationBaseline.stepId must match recovery key {step_id}"
+            )
         updated_at = item.get("updatedAt")
         if updated_at is not None and (
             not isinstance(updated_at, str) or not updated_at.strip()
@@ -469,20 +479,29 @@ def validate_status(value: dict[str, Any]) -> list[str]:
 
 
 def _terminal_from_execution(execution: dict[str, Any]) -> dict[str, Any]:
+    """Сжать terminal execution, сохранив bounded durable handoff metadata."""
     current = execution.get("current")
     current_value = current if isinstance(current, dict) else {}
+    terminal_current: dict[str, Any] = {
+        "command": current_value.get("command"),
+        "status": current_value.get("status"),
+        "result": current_value.get("result"),
+        "completedAt": current_value.get("completedAt"),
+    }
+    details = current_value.get("details")
+    if isinstance(details, dict):
+        # details — command-specific durable handoff metadata (например
+        # resolved UPDATE target/route). Полная execution history удаляется,
+        # но recent tombstone обязан сохранить этот bounded handoff contract.
+        terminal_current["details"] = deepcopy(details)
+
     return {
         "executionId": execution["executionId"],
         "ordinal": execution["ordinal"],
         "rootCommand": execution["rootCommand"],
         "mode": execution["mode"],
         "status": execution["status"],
-        "current": {
-            "command": current_value.get("command"),
-            "status": current_value.get("status"),
-            "result": current_value.get("result"),
-            "completedAt": current_value.get("completedAt"),
-        },
+        "current": terminal_current,
         "completedAt": execution.get("completedAt"),
         "updatedAt": execution.get("updatedAt"),
     }
@@ -907,7 +926,10 @@ def _latest_implementation_baseline(
         item = recovery.get(step_id)
         if isinstance(item, dict):
             baseline = item.get("implementationBaseline")
-            if isinstance(baseline, dict):
+            if (
+                isinstance(baseline, dict)
+                and baseline.get("stepId") == step_id
+            ):
                 return dict(baseline)
 
     # Defensive compatibility для in-memory active record до первого save.

@@ -1096,7 +1096,7 @@ Project templates принадлежат проекту после INIT, поэ�
 
 ## Что проверяет `validate_status()`
 
-Current execution state использует schema v2. Validator проверяет active execution records, monotonic ordinals, bounded `recentTerminals`, `stepRecovery` baseline shape и `nextOrdinal`. Legacy schema v1 остаётся только входом deterministic migration: сначала валидируется v1, затем строится/валидируется v2 и только после этого выполняется atomic replace. Повреждённый legacy state не превращается в empty state.
+Current execution state использует schema v2. Validator проверяет active execution records, monotonic ordinals, bounded `recentTerminals`, optional terminal `current.details`, `stepRecovery` baseline shape **и совпадение recovery key с `implementationBaseline.stepId`**, а также `nextOrdinal`. Legacy schema v1 остаётся только входом deterministic migration: сначала валидируется v1, затем строится/валидируется v2 и только после этого выполняется atomic replace. Повреждённый legacy state не превращается в empty state.
 
 
 - `schemaVersion`;
