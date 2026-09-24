@@ -74,6 +74,21 @@ def main() -> int:
         baseline = validate(root)
         assert baseline.returncode == 0, baseline.stdout + baseline.stderr
 
+        # Regression #110: Markdown setext H1 (`=======`) не merge-conflict marker,
+        # а настоящий conflict block по-прежнему блокируется.
+        setext = root / "docs/setext.md"
+        setext.parent.mkdir(parents=True, exist_ok=True)
+        setext.write_text("Title\n=======\n\ntext\n", encoding="utf-8")
+        run(root, "git", "add", "docs/setext.md")
+        setext_result = validate(root)
+        assert setext_result.returncode == 0, setext_result.stdout + setext_result.stderr
+        setext.write_text(
+            "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n",
+            encoding="utf-8",
+        )
+        require_failure(validate(root), "merge-conflict marker detected: docs/setext.md")
+        run(root, "git", "rm", "-q", "-f", "docs/setext.md")
+
         # Комментарий с текстом ignore pattern не является действующим правилом.
         gitignore_path = root / ".gitignore"
         original_ignore = gitignore_path.read_text(encoding="utf-8")

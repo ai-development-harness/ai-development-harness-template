@@ -1136,7 +1136,9 @@ def validate_repository_surface(
             key_reported.add(rel)
         if policy.get("check_merge_markers", True):
             text = raw.decode("utf-8", errors="ignore")
-            if re.search(r"(?m)^(<<<<<<<|=======|>>>>>>>)", text):
+            # `=======` сам по себе — Markdown setext H1, а не conflict (#110):
+            # маркер — только парные открывающая и закрывающая строки.
+            if re.search(r"(?m)^<<<<<<<(?: |$)", text) and re.search(r"(?m)^>>>>>>>(?: |$)", text):
                 errors.append(f"merge-conflict marker detected: {rel}")
         if is_under(rel, format_paths):
             if policy.get("check_utf8", True):
