@@ -30,6 +30,8 @@ Context budget gate фиксирует размер Harness-controlled always-on
 
 Отдельный gate границ вычислений модели проверяет, что `.harness/reasoning-boundaries.json` и generated-блок [`REASONING_BOUNDARIES.md`](REASONING_BOUNDARIES.md) совпадают с CTS, а каждый объявленный условный быстрый путь указывает на существующую функцию. Проверка входит в общий `validate.py`, а синтетическая регрессия автоматически обнаруживается `run-self-tests.py`.
 
+Known-issues self-test (`.harness/tools/known-issues-self-test.py`) закрепляет ещё не исправленные defects как XFAIL: каждый case описывает правильное поведение и обязан падать ровно известным symptom-ом. XPASS или другой исход — FAIL, после fix case переносится в постоянный regression suite. Тот же self-test держит release freeze: пока defect открыт, запрещены изменения, которые текущий updater применяет некорректно (удаление `harness_owned` patterns, новые marker blocks, изменение template definitions).
+
 Repository hardening self-test проверяет validator boundaries на synthetic tracked checkout: фактическую Git ignore semantics через `git check-ignore`, отсутствие ignored/untracked TOML в config surface и containment Codex role configs внутри `.codex/agents`.
 
 Git policy self-test проверяет fail-closed schema boundary через публичный validator: неизвестный/опечаточный safety key не может быть молча проигнорирован.
