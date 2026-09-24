@@ -234,6 +234,20 @@ def _commit_created_by(repo: Repo, marker: str) -> dict[str, str] | None:
             oid, _, subject = line.partition("\0")
             if subject.startswith(marker + ":"):
                 matches.add((ref, oid))
+    if not matches:
+        # Hook перевёл HEAD в detached state: primary commit сдвинул сам HEAD,
+        # и marker есть только в reflog HEAD.
+        detached = repo.git("symbolic-ref", "-q", "HEAD", check=False).returncode != 0
+        log = repo.git(
+            "log", "-g", "-n", str(REFLOG_SCAN_LIMIT), "--format=%H%x00%gs",
+            "HEAD", check=False,
+        )
+        head_matches = {
+            oid for oid, _, subject in (line.partition("\0") for line in log.stdout.splitlines())
+            if subject.startswith(marker + ":")
+        }
+        if detached and len(head_matches) == 1:
+            matches = {("HEAD", next(iter(head_matches)))}
     # Несколько разных refs/OID означают, что hook выполнил дополнительные
     # ref/commit mutations с унаследованным marker: ownership неоднозначен.
     if len(matches) != 1:
@@ -268,10 +282,16 @@ def _compensate_unvalidated_commit(
     created_branch = ref.removeprefix("refs/heads/")
     if parents:
         target = parents[0]
+        deref = ["--no-deref"] if ref == "HEAD" else []
         moved = repo.git(
-            "update-ref", "-m", "harness: revert unvalidated commit",
+            "update-ref", "-m", "harness: revert unvalidated commit", *deref,
             ref, target, after, check=False,
         )
+    elif ref == "HEAD":
+        return {
+            "status": "not_compensated",
+            "message": f"detached root commit {after}; HEAD left as is for manual review",
+        }
     else:
         target = None
         moved = repo.git("update-ref", "-d", ref, after, check=False)

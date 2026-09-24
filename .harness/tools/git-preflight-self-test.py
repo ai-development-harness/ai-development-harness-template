@@ -241,6 +241,32 @@ def hook_scenarios(base: Path) -> None:
     staged = set(filter(None, run(repo, "git", "diff", "--cached", "--name-only").splitlines()))
     assert {"change.txt", "hook-added.txt"} <= staged, staged
 
+    # Hook переводит HEAD в detached state: primary commit сдвигает сам HEAD,
+    # marker есть только в reflog HEAD — HEAD тоже не должен остаться на нём.
+    repo = _hook_repo(base, "hook-detach", with_head=True)
+    before = run(repo, "git", "rev-parse", "HEAD")
+    detach_hook = repo / ".git/hooks/pre-commit"
+    detach_hook.write_text(
+        HOOK_SWITCHES_BRANCH.replace("git switch -q hook-target", "git switch -q --detach"),
+        encoding="utf-8",
+    )
+    detach_hook.chmod(0o755)
+    exc = expect_code(
+        "COMMIT_POSTCONDITION_FAILED",
+        lambda: execute_commit(
+            repo,
+            commit_type="feat",
+            slug="hooked",
+            message_file=repo / ".harness/local/git/msg.txt",
+        ),
+    )
+    assert exc.details["compensation"]["status"] == "reverted", exc.details
+    assert exc.details["compensation"]["revertedRef"] == "HEAD", exc.details
+    assert run(repo, "git", "rev-parse", "HEAD") == before, "unvalidated commit left as detached HEAD"
+    assert run(repo, "git", "rev-parse", "refs/heads/feature/hooked") == before
+    staged = set(filter(None, run(repo, "git", "diff", "--cached", "--name-only").splitlines()))
+    assert {"change.txt", "hook-added.txt"} <= staged, staged
+
     # Первый commit: branch возвращается в unborn состояние, index = validated tree.
     repo = _hook_repo(base, "hook-initial", with_head=False)
     validated_tree = run(repo, "git", "write-tree")
