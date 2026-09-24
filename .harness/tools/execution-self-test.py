@@ -15,6 +15,7 @@ from execution_status import (
     begin_command,
     block_execution,
     complete_command,
+    implementation_baseline_for_step,
     load_status,
     resolve_root,
     stamp_plan,
@@ -481,12 +482,81 @@ def main() -> int:
             implement_context_pass["deterministic"]["implementPrerequisites"]["status"]
             == "PASS"
         ), implement_context_pass
+        baseline_head_before = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
         direct_implement = start_execution(root, "STEP IMPLEMENT STEP-001")
+        direct_baseline = direct_implement.get("implementationBaseline")
+        assert direct_baseline, direct_implement
+        assert direct_baseline["stepId"] == "STEP-001", direct_baseline
+        assert direct_baseline["gitHead"] == baseline_head_before, direct_baseline
+        assert (
+            direct_baseline["sourceExecutionId"]
+            == direct_implement["executionId"]
+        ), direct_baseline
+
+        # Disk reload имитирует новую session: baseline обязан пережить restart.
+        persisted_direct = next(
+            item
+            for item in load_status(root)["executions"]
+            if item["executionId"] == direct_implement["executionId"]
+        )
+        assert persisted_direct["implementationBaseline"] == direct_baseline, (
+            persisted_direct
+        )
+
         complete_command(
             root,
             direct_implement["rootCommand"],
             "STEP IMPLEMENT STEP-001",
             "SUCCESS",
+        )
+
+        # Planned/new lifecycle не имеет права случайно унаследовать historical
+        # baseline уже завершённого IMPLEMENT. Active REVIEW без proof подавляет
+        # fallback к старой записи.
+        planned_review = start_execution(root, "STEP REVIEW STEP-001")
+        assert "implementationBaseline" not in planned_review, planned_review
+        assert implementation_baseline_for_step(root, "STEP-001") is None
+        complete_command(
+            root,
+            planned_review["rootCommand"],
+            "STEP REVIEW STEP-001",
+            "PASS",
+        )
+
+        # После фактического перехода STEP в in_progress отдельный REVIEW
+        # наследует baseline активной implementation lifecycle и не захватывает
+        # текущий HEAD заново.
+        direct_task_path = root / "planning/tasks/STEP-001.md"
+        direct_task_text = direct_task_path.read_text(encoding="utf-8")
+        write(
+            direct_task_path,
+            direct_task_text.replace("status: planned", "status: in_progress", 1),
+        )
+        direct_review = start_execution(root, "STEP REVIEW STEP-001")
+        assert direct_review["implementationBaseline"] == direct_baseline, direct_review
+        assert (
+            implementation_baseline_for_step(root, "STEP-001")
+            == direct_baseline
+        )
+        complete_command(
+            root,
+            direct_review["rootCommand"],
+            "STEP REVIEW STEP-001",
+            "PASS",
+        )
+        write(
+            direct_task_path,
+            direct_task_path.read_text(encoding="utf-8").replace(
+                "status: in_progress",
+                "status: planned",
+                1,
+            ),
         )
 
         # Independent commands coexist and invalid reverse chains never create state.
@@ -601,7 +671,14 @@ def main() -> int:
             "ORCHESTRATION_CTS_TRANSITION",
         )
 
-        begin_command(root, run_root, "STEP IMPLEMENT STEP-001")
+        run_implement = begin_command(
+            root,
+            run_root,
+            "STEP IMPLEMENT STEP-001",
+        )
+        run_baseline = run_implement.get("implementationBaseline")
+        assert run_baseline, run_implement
+        assert run_baseline["stepId"] == "STEP-001", run_baseline
         assert_resolved(
             resolve_root(root, run_root),
             "RESUME",
@@ -616,7 +693,8 @@ def main() -> int:
 
         # REVIEW crash recovery trusts only valid report for exact revision.
         complete_command(root, run_root, "STEP IMPLEMENT STEP-001", "SUCCESS")
-        begin_command(root, run_root, "STEP REVIEW STEP-001")
+        run_review = begin_command(root, run_root, "STEP REVIEW STEP-001")
+        assert run_review["implementationBaseline"] == run_baseline, run_review
         review_report(root, "FAIL", "REVIEW-20260921T010000Z.md")
         invalid_role = root / "planning/reviews/STEP-001/REVIEW-20260921T005000Z.md"
         valid_text = (root / "planning/reviews/STEP-001/REVIEW-20260921T010000Z.md").read_text(encoding="utf-8")
@@ -671,9 +749,13 @@ def main() -> int:
         recovered = resolve_root(root, run_root)
         assert_resolved(recovered, "NEXT", "STEP FIX STEP-001", "ORCHESTRATION_CTS_TRANSITION")
 
-        begin_command(root, run_root, "STEP FIX STEP-001")
+        run_fix = begin_command(root, run_root, "STEP FIX STEP-001")
+        assert run_fix["implementationBaseline"] == run_baseline, run_fix
         complete_command(root, run_root, "STEP FIX STEP-001", "SUCCESS")
-        begin_command(root, run_root, "STEP REVIEW STEP-001")
+        run_review_after_fix = begin_command(root, run_root, "STEP REVIEW STEP-001")
+        assert (
+            run_review_after_fix["implementationBaseline"] == run_baseline
+        ), run_review_after_fix
         review_report(root, "PASS", "REVIEW-20260921T020000Z.md")
         assert_resolved(
             resolve_root(root, run_root),

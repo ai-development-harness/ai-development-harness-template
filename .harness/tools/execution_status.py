@@ -269,6 +269,45 @@ def validate_status(value: dict[str, Any]) -> list[str]:
             or fix_review_cycles < 0
         ):
             errors.append(f"{prefix}: fixReviewCycles must be a non-negative integer")
+
+        # Optional field для backwards compatibility: historical schema-v1
+        # records, созданные до durable implementation baseline, остаются
+        # валидными и переходят на conservative review fallback.
+        baseline = execution.get("implementationBaseline")
+        if baseline is not None:
+            if not isinstance(baseline, dict):
+                errors.append(f"{prefix}: implementationBaseline must be an object")
+            else:
+                step_id = baseline.get("stepId")
+                git_head = baseline.get("gitHead")
+                captured_at = baseline.get("capturedAt")
+                source_execution_id = baseline.get("sourceExecutionId")
+                if (
+                    not isinstance(step_id, str)
+                    or re.fullmatch(r"STEP-\d{3,}", step_id) is None
+                ):
+                    errors.append(
+                        f"{prefix}: implementationBaseline.stepId must be STEP-NNN"
+                    )
+                if (
+                    not isinstance(git_head, str)
+                    or re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", git_head)
+                    is None
+                ):
+                    errors.append(
+                        f"{prefix}: implementationBaseline.gitHead must be a 40/64-hex Git OID"
+                    )
+                if not isinstance(captured_at, str) or not captured_at.strip():
+                    errors.append(
+                        f"{prefix}: implementationBaseline.capturedAt must be non-empty"
+                    )
+                if (
+                    not isinstance(source_execution_id, str)
+                    or not source_execution_id
+                ):
+                    errors.append(
+                        f"{prefix}: implementationBaseline.sourceExecutionId must be non-empty"
+                    )
     return errors
 
 
@@ -416,8 +455,87 @@ def git_commit_completion_proven(
 
 
 
+# Найти latest durable implementation baseline конкретного STEP в operational history.
+# История не удаляется после completion: REVIEW/FIX отдельной invocation может
+# восстановить baseline предыдущего IMPLEMENT без зависимости от chat/session.
+def _latest_implementation_baseline(
+    status: dict[str, Any],
+    step_id: str,
+) -> dict[str, Any] | None:
+    for item in reversed(status.get("executions", [])):
+        baseline = item.get("implementationBaseline")
+        if isinstance(baseline, dict) and baseline.get("stepId") == step_id:
+            return dict(baseline)
+    return None
+
+
+def _baseline_for_new_command(
+    root: Path,
+    status: dict[str, Any],
+    execution: dict[str, Any],
+    command: str,
+) -> dict[str, Any] | None:
+    """Attach/reuse baseline when entering IMPLEMENT/REVIEW/FIX.
+
+    IMPLEMENT captures HEAD before semantic product mutation. If the STEP is
+    already in_progress, an existing baseline is the start of the same
+    implementation lifecycle and must not be silently moved forward by a new
+    independent IMPLEMENT invocation. REVIEW/FIX only inherit an existing proof;
+    they never invent one for historical executions.
+    """
+    parsed = normalize_single_command(root, command)
+    if parsed.get("domain") != "STEP" or not parsed.get("target"):
+        return None
+    operation = parsed.get("operation")
+    if operation not in {"IMPLEMENT", "REVIEW", "FIX"}:
+        return None
+
+    step_id = str(parsed["target"])
+    current = execution.get("implementationBaseline")
+    if isinstance(current, dict) and current.get("stepId") == step_id:
+        return current
+
+    historical = _latest_implementation_baseline(status, step_id)
+    try:
+        task_status = read_task(root, step_id)["frontmatter"].get("status")
+    except (OSError, ValueError, FileNotFoundError):
+        task_status = None
+
+    if operation in {"REVIEW", "FIX"}:
+        # Historical baseline относится к текущей implementation lifecycle
+        # только пока canonical STEP действительно in_progress. Planned/new
+        # lifecycle не должна случайно унаследовать proof завершённой работы.
+        if task_status == "in_progress" and historical is not None:
+            execution["implementationBaseline"] = historical
+            return historical
+        return None
+
+    # IMPLEMENT: reuse the original lifecycle baseline once product mutation has
+    # moved STEP to in_progress. Planned STEP means product mutation has not yet
+    # been established, so a fresh capture is safe and exact.
+    if task_status == "in_progress" and historical is not None:
+        execution["implementationBaseline"] = historical
+        return historical
+
+    git_head = _git_head(root)
+    if git_head is None:
+        return None
+    baseline = {
+        "stepId": step_id,
+        "gitHead": git_head,
+        "capturedAt": utc_now(),
+        "sourceExecutionId": execution["executionId"],
+    }
+    execution["implementationBaseline"] = baseline
+    return baseline
+
+
 # Собрать минимальный context, нужный только для crash recovery конкретных commands; не превращать его в копию project state.
-def _command_context(root: Path, command: str) -> dict[str, Any]:
+def _command_context(
+    root: Path,
+    command: str,
+    implementation_baseline: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     parsed = normalize_single_command(root, command)
     context: dict[str, Any] = {}
 
@@ -428,6 +546,11 @@ def _command_context(root: Path, command: str) -> dict[str, Any]:
                 context["planBasisAtStart"] = contract_basis(root, step_id)
             except (OSError, ValueError, FileNotFoundError):
                 pass
+        if (
+            isinstance(implementation_baseline, dict)
+            and implementation_baseline.get("stepId") == step_id
+        ):
+            context["implementationBaseline"] = dict(implementation_baseline)
         if parsed.get("operation") == "REVIEW":
             review = latest_review(root, step_id)
             context["reviewReportBefore"] = review["path"] if review else None
@@ -478,6 +601,11 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
 
     now = utc_now()
     first_command = normalized["sequence"][0]
+    current_command = (
+        first_command
+        if normalized["mode"] != "orchestration"
+        else normalized["rootCommand"]
+    )
     execution = {
         "executionId": "exec-" + uuid4().hex,
         "mode": normalized["mode"],
@@ -487,16 +615,13 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
         "currentIndex": 0 if normalized["mode"] in {"single", "chain"} else None,
         "status": "running",
         "current": {
-            "command": first_command if normalized["mode"] != "orchestration" else normalized["rootCommand"],
+            "command": current_command,
             "status": "running",
             "result": None,
             "attempt": 1,
             "startedAt": now,
             "completedAt": None,
-            "context": _command_context(
-                root,
-                first_command if normalized["mode"] != "orchestration" else normalized["rootCommand"],
-            ),
+            "context": {},
         },
         "notExecuted": [],
         "fixReviewCycles": 0,
@@ -504,6 +629,17 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
         "completedAt": None,
         "updatedAt": now,
     }
+    baseline = _baseline_for_new_command(
+        root,
+        status,
+        execution,
+        current_command,
+    )
+    execution["current"]["context"] = _command_context(
+        root,
+        current_command,
+        baseline,
+    )
     status["executions"].append(execution)
     save_status(root, status)
     return execution
@@ -859,7 +995,12 @@ def begin_command(
     if current.get("command") == normalized_command and current.get("status") == "running":
         current["attempt"] = int(current.get("attempt", 1)) + 1
         current["startedAt"] = utc_now()
-        current["context"] = _command_context(root, normalized_command)
+        baseline = execution.get("implementationBaseline")
+        current["context"] = _command_context(
+            root,
+            normalized_command,
+            baseline if isinstance(baseline, dict) else None,
+        )
         execution["updatedAt"] = utc_now()
         save_status(root, status)
         return execution
@@ -934,6 +1075,12 @@ def begin_command(
     ):
         execution["fixReviewCycles"] = int(execution.get("fixReviewCycles", 0)) + 1
 
+    baseline = _baseline_for_new_command(
+        root,
+        status,
+        execution,
+        normalized_command,
+    )
     execution["current"] = {
         "command": normalized_command,
         "status": "running",
@@ -941,7 +1088,7 @@ def begin_command(
         "attempt": 1,
         "startedAt": utc_now(),
         "completedAt": None,
-        "context": _command_context(root, normalized_command),
+        "context": _command_context(root, normalized_command, baseline),
     }
     execution["updatedAt"] = utc_now()
     save_status(root, status)
@@ -1399,6 +1546,47 @@ def resolve_execution(
 
     raise ValueError(f"unsupported execution mode: {execution['mode']}")
 
+
+
+@execution_state_mutation
+def implementation_baseline_for_step(
+    root: Path,
+    step_id: str,
+) -> dict[str, Any] | None:
+    """Вернуть baseline актуальной STEP invocation, затем historical fallback.
+
+    Writer вызывается внутри running STEP REVIEW и поэтому сначала ищет baseline
+    именно этой active invocation. Historical scan нужен для direct tooling и
+    recovery, когда REVIEW/FIX запускается отдельной root command.
+    """
+    status = load_status(root)
+    for execution in reversed(status.get("executions", [])):
+        current = execution.get("current")
+        if (
+            execution.get("status") != "running"
+            or not isinstance(current, dict)
+            or current.get("status") != "running"
+        ):
+            continue
+        try:
+            parsed = normalize_single_command(
+                root,
+                str(current.get("command") or ""),
+            )
+        except ValueError:
+            continue
+        if parsed.get("domain") != "STEP" or parsed.get("target") != step_id:
+            continue
+
+        # Exact active invocation имеет приоритет даже при отсутствии baseline:
+        # это явное доказательство новой/legacy lifecycle, и старый historical
+        # proof не должен просачиваться в writer через fallback scan.
+        baseline = execution.get("implementationBaseline")
+        if isinstance(baseline, dict) and baseline.get("stepId") == step_id:
+            return dict(baseline)
+        return None
+
+    return _latest_implementation_baseline(status, step_id)
 
 
 # Найти самую новую invocation конкретного root command и разрешить именно её состояние.

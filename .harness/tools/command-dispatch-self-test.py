@@ -297,7 +297,7 @@ def main() -> int:
             "lifecycleStatus": "planned",
             "command": f"STEP PLAN {step_id}",
         }
-        command_dispatch_module.build_step_context = lambda _root, _step, _phase: {
+        command_dispatch_module.build_step_context = lambda _root, _step, _phase, **_kwargs: {
             "status": "PASS",
             "readPaths": [],
             "deterministic": {},

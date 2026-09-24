@@ -252,7 +252,15 @@ def _semantic_handoff(
                 "CONTEXT_TARGET_MISSING",
                 f"{command}: contextPhase requires STEP target",
             )
-        context = build_step_context(root, target, str(context_phase))
+        baseline = execution.get("implementationBaseline")
+        context = build_step_context(
+            root,
+            target,
+            str(context_phase),
+            implementation_baseline=(
+                baseline if isinstance(baseline, dict) else None
+            ),
+        )
         if context.get("status") != "PASS":
             raise DispatchError(
                 "STEP_CONTEXT_BLOCKED",
