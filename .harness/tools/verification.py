@@ -260,8 +260,10 @@ def _run_command(
         timed_out = True
     finally:
         # Verification не оставляет фоновых процессов ни после timeout, ни
-        # после нормального завершения lead process.
-        _kill_group(proc)
+        # после нормального завершения lead process. На Windows завершённый
+        # PID мог быть переиспользован, поэтому taskkill — только по timeout.
+        if os.name == "posix" or timed_out:
+            _kill_group(proc)
         proc.wait()
         stdout.finish()
         stderr.finish()
