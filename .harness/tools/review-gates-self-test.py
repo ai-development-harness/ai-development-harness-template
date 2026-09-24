@@ -286,6 +286,33 @@ def main() -> int:
         assert "security" in staged_rename_gate["required"], staged_rename_gate
         git(root, "commit", "-qm", "commit staged sensitive rename")
 
+        # Copy из sensitive source в нейтральный destination тоже обязан
+        # сохранить source path в classification surface. Для unmodified source
+        # нужен --find-copies-harder, иначе Git показывает только added target.
+        copy_source = root / "src/auth/copy_secret.py"
+        write(copy_source, "export const copySecret = true;\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "add sensitive copy source")
+        copy_baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        copy_destination = root / "src/core/copied_state.py"
+        write(copy_destination, copy_source.read_text(encoding="utf-8"))
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "copy sensitive source to neutral path")
+        copy_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=copy_baseline,
+        )
+        assert "src/auth/copy_secret.py" in copy_gate["changedPaths"], copy_gate
+        assert "src/core/copied_state.py" in copy_gate["changedPaths"], copy_gate
+        assert "security" in copy_gate["required"], copy_gate
+
         # Committed baseline surface объединяется с текущим dirty product diff,
         # но operational state/report artifacts в него не попадают.
         dirty_product = root / "src/runtime.ts"
