@@ -46,9 +46,9 @@ Engine читает routing metadata из configured `source.update_manifest` н
    - untracked non-ignored collision блокирует update;
    - binary/non-UTF-8 managed path блокирует update;
    - lock продвигается только после PASS target validator.
-4. Если результат `UPDATER_RELOAD_REQUIRED`, остановись. Не продолжай route текущим runtime. После reload повтори ту же UPDATE-команду: новый lock задаст текущую точку маршрута.
-5. Если результат `UPDATED`, покажи report/diff и follow-up.
-6. Если target protocol оставил project schema migration pending, до `GIT COMMIT` выполни `PROJECT RECONCILE`.
+4. Если результат `UPDATER_RELOAD_REQUIRED`, остановись. Не продолжай route текущим runtime. После reload повтори ту же UPDATE-команду: новый lock задаст текущую точку маршрута. До INIT повторный APPLY может завершить только доказанный old-release template alignment; custom template drift не перезаписывается.
+5. Если результат `UPDATED`, покажи report/diff и follow-up. Если `NO_UPDATE` содержит `repositoryMutated=true`, это deferred pre-INIT alignment: follow-up обязан идти через `GIT CHECK`, несмотря на отсутствие нового release hop.
+6. Если target protocol оставил project schema migration pending уже после INIT, до `GIT COMMIT` выполни `PROJECT RECONCILE`.
 
 Не делай commit/push/PR автоматически.
 

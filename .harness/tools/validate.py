@@ -74,6 +74,7 @@ from harness_config import (
 )
 from project_integrity import validate_project_integrity
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending
+from template_contract import preinit_template_alignment_state
 from reasoning_boundaries import projection_drift_errors
 
 
@@ -504,11 +505,39 @@ def validate_project_surface(
                 "active project schema migration required or partially migrated; "
                 "run PROJECT RECONCILE before continuing"
             )
+
+    # Pre-INIT project templates остаются project-owned и потому не входят в
+    # updater ownership. Во время target postcondition manual validator может
+    # временно пропустить только такой old-release template drift, который
+    # доказан как exact additive alignment. Commit/CI остаются strict, а после
+    # обязательного reload новый updater выполняет alignment и снова требует
+    # exact baseline.
+    allow_preinit_release_alignment = False
+    initialized = bool(get(load_manifest(root), "project.initialized", False))
+    if mode == "manual" and not initialized:
+        try:
+            template_pending, template_blockers = preinit_template_alignment_state(root)
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            errors.append(f"pre-init project template alignment check failed: {exc}")
+        else:
+            if template_blockers:
+                errors.extend(
+                    f"pre-init project template alignment blocked: {item}"
+                    for item in template_blockers
+                )
+            elif template_pending:
+                allow_preinit_release_alignment = True
+                warnings.append(
+                    "pre-init project template release alignment pending; "
+                    "reload runtime and repeat exact HARNESS UPDATE APPLY"
+                )
+
     errors.extend(
         validate_project_integrity(
             root,
             warnings=warnings,
             allow_legacy=allow_legacy,
+            allow_preinit_release_alignment=allow_preinit_release_alignment,
             ci_mode=mode == "ci",
         )
     )

@@ -454,6 +454,42 @@ def main() -> int:
         assert update_done["result"]["engineStatus"] == "NO_UPDATE", update_done
         assert update_done["result"]["nextAction"] is None, update_done
 
+        # После reload NO_UPDATE может всё же выполнить deferred alignment
+        # project-owned pre-INIT templates. Это repository mutation и поэтому
+        # deterministic nextAction обязан идти через обычный Git gate.
+        command_dispatch_module.check_update = lambda _root, target=None: {
+            "status": "PASS",
+            "current": lock_ref,
+            "resolvedTarget": target or lock_ref,
+            "route": [lock_ref],
+            "checkedThrough": lock_ref,
+        }
+        command_dispatch_module.apply_update = lambda _root, target=None: {
+            "status": "NO_UPDATE",
+            "current": lock_ref,
+            "resolvedTarget": target or lock_ref,
+            "route": [lock_ref],
+            "repositoryMutated": True,
+            "projectTemplateAlignment": {
+                "changed": ["planning/reviews/TEMPLATE.md"],
+            },
+        }
+        try:
+            aligned_update = start_dispatch(
+                root,
+                f"HARNESS UPDATE CHECK TO {lock_ref} > APPLY",
+            )
+        finally:
+            command_dispatch_module.check_update = original_check_update
+            command_dispatch_module.apply_update = original_apply_update
+        assert aligned_update["status"] == "DONE", aligned_update
+        assert aligned_update["result"]["engineStatus"] == "NO_UPDATE", aligned_update
+        assert aligned_update["result"]["repositoryMutated"] is True, aligned_update
+        assert aligned_update["result"]["nextAction"] == {
+            "kind": "command",
+            "command": "GIT CHECK",
+        }, aligned_update
+
         # HARNESS RESUME не создаёт отдельную root execution и возвращает
         # semantic handoff существующей interrupted command.
         interrupted = start_dispatch(root, "PROJECT QUICK FIX: resume test")

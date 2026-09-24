@@ -31,6 +31,10 @@ from harness_config import (
     update_lock_path,
     update_report_directory,
 )
+from template_contract import (
+    align_preinit_project_templates,
+    preinit_template_alignment_state,
+)
 
 
 MISSING = object()
@@ -1005,6 +1009,49 @@ def _bullet_list(items: list[str]) -> str:
     return "\n".join(f"- `{item}`" for item in items) if items else "- none"
 
 
+def _align_preinit_templates_after_reload(
+    root: Path,
+    tree: WorkingTree,
+) -> list[str]:
+    """Довести project-owned pre-INIT templates после reload boundary.
+
+    Первый hop не имеет права захватывать templates updater ownership-ом.
+    Target manual validator пропускает только exact-additive old-release drift.
+    После reload current updater повторно доказывает тот же state, делает exact
+    alignment и откатывает templates при любой write/postcondition failure.
+    """
+    if bool(get(load_manifest(root), "project.initialized", False)):
+        return []
+
+    pending, blockers = preinit_template_alignment_state(root)
+    if blockers:
+        raise UpdateError(
+            "PREINIT_TEMPLATE_ALIGNMENT_BLOCKED",
+            "; ".join(blockers),
+        )
+    if not pending:
+        return []
+
+    backup = {
+        rel: (tree.read_bytes(rel), tree.mode(rel))
+        for rel in pending
+    }
+    try:
+        changed = align_preinit_project_templates(root)
+        if sorted(changed) != sorted(pending):
+            raise UpdateError(
+                "PREINIT_TEMPLATE_ALIGNMENT_INCOMPLETE",
+                "pre-init template alignment changed an unexpected path set",
+            )
+        # После alignment temporary migration allowance исчезает: validator
+        # снова обязан доказать exact pre-INIT baseline.
+        _run_validator(root, phase="postcondition")
+    except Exception:
+        _restore_paths(tree, backup)
+        raise
+    return changed
+
+
 def apply_update(root: Path, *, target: str | None = None, source_url: str | None = None) -> dict[str, Any]:
     policy = load_update_policy(root)
     repository = get(policy, "source.repository")
@@ -1022,12 +1069,17 @@ def apply_update(root: Path, *, target: str | None = None, source_url: str | Non
         _run_validator(root, phase="preflight")
         current_state = verify_current_release_state(root, source, lock)
         if not route:
+            aligned_templates = _align_preinit_templates_after_reload(root, tree)
             return {
                 "status": "NO_UPDATE",
                 "current": initial,
                 "resolvedTarget": resolved_target,
                 "route": [initial],
                 "currentReleaseState": current_state,
+                "repositoryMutated": bool(aligned_templates),
+                "projectTemplateAlignment": {
+                    "changed": aligned_templates,
+                },
             }
 
         # Read-only preflight до первой mutation. Если updater/reload boundary
