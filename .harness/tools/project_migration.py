@@ -34,6 +34,7 @@ from projection_contract import write_projections
 from review_contract import current_legacy_review_snapshots, legacy_review_pins
 from template_contract import (
     migrate_project_templates,
+    project_template_migration_blockers,
     project_template_migration_pending,
 )
 
@@ -389,11 +390,16 @@ def _document_family_state(paths: list[Path]) -> str:
 
 
 def legacy_manual_bypass_allowed(root: Path) -> bool:
-    """Разрешить post-update manual bypass только для цельного legacy layout.
+    """Разрешить post-update manual bypass только для цельного migratable state.
 
-    PROJECT RECONCILE умеет чинить mixed state, но validator не должен считать
-    частично мигрированный repository безопасным Harness postcondition.
+    Non-additive template conflicts никогда не попадают под migration warning:
+    validator обязан оставить их hard blocker-ом до явного решения.
     """
+    try:
+        if project_template_migration_blockers(root):
+            return False
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
     if not legacy_schema_pending(root):
         return False
 
