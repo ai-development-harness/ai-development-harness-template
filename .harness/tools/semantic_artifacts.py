@@ -21,7 +21,11 @@ from document_contract import (
     markdown_headings,
     render_document,
 )
-from execution_status import implementation_baseline_for_step, stamp_plan
+from execution_status import (
+    implementation_baseline_for_step,
+    review_expectation_for_step,
+    stamp_plan,
+)
 from harness_config import planning_review_directory, review_directory
 from planning_contract import (
     plan_content_hash,
@@ -546,9 +550,28 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         step_id,
         implementation_baseline=baseline_sha,
     )
+    revision = repository_revision(root)
+    try:
+        expectation = review_expectation_for_step(root, step_id)
+    except ValueError as exc:
+        raise SemanticArtifactError(
+            "STEP REVIEW expectation is ambiguous or missing: " + str(exc)
+        ) from exc
+
+    if expectation is not None:
+        expected_revision = expectation.get("repositoryRevision")
+        expected_gate_basis = expectation.get("gateBasis")
+        if revision != expected_revision:
+            raise SemanticArtifactError(
+                "STEP REVIEW repository revision changed after semantic handoff"
+            )
+        if gate["basis"] != expected_gate_basis:
+            raise SemanticArtifactError(
+                "STEP REVIEW gate basis changed after semantic handoff"
+            )
+
     specialized = _specialized_meta(gate, data["specializedReviews"])
     _validate_specialized_verdict(data["verdict"], specialized)
-    revision = repository_revision(root)
     directory = review_directory(root) / step_id
 
     def content_factory(created_at: str) -> str:

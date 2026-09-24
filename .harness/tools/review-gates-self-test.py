@@ -219,6 +219,100 @@ def main() -> int:
         assert "docs/implementation-note.md" in baseline_gate["changedPaths"], baseline_gate
         assert {"security", "tests"}.issubset(set(baseline_gate["required"])), baseline_gate
 
+        # Regression #80: committed rename security-path -> neutral-path должен
+        # оставлять в exact surface обе стороны rename. Иначе --name-only
+        # скрывает source path и preselector может пропустить security reviewer.
+        rename_source = root / "src/auth/legacy_session.py"
+        write(rename_source, "export const legacySession = true;\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "add sensitive rename source")
+        rename_baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+
+        rename_destination = root / "src/core/state.py"
+        rename_destination.parent.mkdir(parents=True, exist_ok=True)
+        git(
+            root,
+            "mv",
+            rename_source.relative_to(root).as_posix(),
+            rename_destination.relative_to(root).as_posix(),
+        )
+        git(root, "commit", "-qm", "rename sensitive path to neutral path")
+        rename_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=rename_baseline,
+        )
+        assert "src/auth/legacy_session.py" in rename_gate["changedPaths"], rename_gate
+        assert "src/core/state.py" in rename_gate["changedPaths"], rename_gate
+        assert "security" in rename_gate["required"], rename_gate
+
+        # Тот же invariant нужен до commit: staged rename не должен терять
+        # source security path в worktree component baseline surface.
+        staged_source = root / "src/auth/staged_secret.py"
+        write(staged_source, "export const stagedSecret = true;\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "add staged rename source")
+        staged_baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        staged_destination = root / "src/core/staged_state.py"
+        git(
+            root,
+            "mv",
+            staged_source.relative_to(root).as_posix(),
+            staged_destination.relative_to(root).as_posix(),
+        )
+        staged_rename_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=staged_baseline,
+        )
+        assert "src/auth/staged_secret.py" in staged_rename_gate["changedPaths"], (
+            staged_rename_gate
+        )
+        assert "src/core/staged_state.py" in staged_rename_gate["changedPaths"], (
+            staged_rename_gate
+        )
+        assert "security" in staged_rename_gate["required"], staged_rename_gate
+        git(root, "commit", "-qm", "commit staged sensitive rename")
+
+        # Copy из sensitive source в нейтральный destination тоже обязан
+        # сохранить source path в classification surface. Для unmodified source
+        # нужен --find-copies-harder, иначе Git показывает только added target.
+        copy_source = root / "src/auth/copy_secret.py"
+        write(copy_source, "export const copySecret = true;\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "add sensitive copy source")
+        copy_baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        copy_destination = root / "src/core/copied_state.py"
+        write(copy_destination, copy_source.read_text(encoding="utf-8"))
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "copy sensitive source to neutral path")
+        copy_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=copy_baseline,
+        )
+        assert "src/auth/copy_secret.py" in copy_gate["changedPaths"], copy_gate
+        assert "src/core/copied_state.py" in copy_gate["changedPaths"], copy_gate
+        assert "security" in copy_gate["required"], copy_gate
+
         # Committed baseline surface объединяется с текущим dirty product diff,
         # но operational state/report artifacts в него не попадают.
         dirty_product = root / "src/runtime.ts"

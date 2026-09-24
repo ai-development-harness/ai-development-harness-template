@@ -208,7 +208,7 @@ Updater **не переписывает project-owned active documents**.
 - ADR → schema v1 с сохранением Accepted decision/status;
 - monolithic Open Questions → canonical OQ files;
 - legacy Ready plan без durable semantic review → draft;
-- project-owned templates → current protocol definitions;
+- project-owned templates → additive structural migration к current protocol definitions с сохранением existing project values/prose; non-additive conflict остаётся blocker;
 - projections → regenerate;
 - historical immutable reports → не переписываются; legacy implementation review reports hash-pin-ятся в migration report как immutable compatibility proof.
 
@@ -221,6 +221,15 @@ Manual validation может разрешить строго распознан�
 Colocated templates намеренно не входят в updater ownership.
 
 Canonical current definitions поставляются Harness control plane, а синхронизацию project copy выполняет PROJECT RECONCILE.
+
+Для initialized project действует общий migration invariant:
+
+- missing template создаётся из current protocol default;
+- missing frontmatter mapping keys и missing structural sections добавляются additive способом;
+- существующие project values, unknown keys и prose не заменяются protocol defaults;
+- изменение `schema`, `kind` или mapping/non-mapping shape считается non-additive и блокирует автоматическую миграцию;
+- `legacy_schema_pending()` обязан обнаруживать structural drift до commit/CI;
+- любое будущее изменение обязательной template shape должно иметь regression `old valid project → update/reconcile → current validation PASS`.
 
 Так existing project не получает silent overwrite во время update, но schema действительно мигрирует после явного reconciliation.
 

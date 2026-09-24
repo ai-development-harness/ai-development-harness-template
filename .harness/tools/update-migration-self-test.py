@@ -20,7 +20,7 @@ from harness_config import (
 from planning_contract import step_completion_proof
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending, migrate_project
 from review_contract import legacy_review_pins, validate_all_review_reports
-from template_contract import validate_project_templates
+from template_contract import REVIEW_TEMPLATE, validate_project_templates
 
 
 def run(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -452,6 +452,33 @@ def test_project_owned_migration() -> None:
         legacy_review_path.parent.mkdir(parents=True)
         legacy_review_path.write_text(legacy_review(), encoding="utf-8")
         legacy_review_before = legacy_review_path.read_text(encoding="utf-8")
+
+        # Regression #82: simulated old-but-valid project-owned REVIEW template.
+        # Current protocol adds surface proof keys + one required section. RECONCILE
+        # must migrate shape without overwriting project values/unknown keys/prose.
+        old_review_template = REVIEW_TEMPLATE
+        for line in (
+            "  implementation_baseline: null\n",
+            "  surface_mode: clean-tree-fallback\n",
+            "  changed_paths_hash: sha256:...\n",
+            "  baseline_status: missing\n",
+            "  baseline_reason: implementation baseline is missing\n",
+        ):
+            old_review_template = old_review_template.replace(line, "")
+        old_review_template = old_review_template.replace(
+            "verdict: pass\n",
+            "verdict: blocked\nproject_note: keep-me\n",
+            1,
+        )
+        old_review_template = old_review_template.replace(
+            "\n## Verdict rationale\n\nКратко объяснить, почему verdict следует из findings и evidence.\n",
+            "",
+            1,
+        )
+        old_review_template += "\n## Project notes\n\nПользовательский текст должен сохраниться.\n"
+        review_template_path = root / "planning/reviews/TEMPLATE.md"
+        review_template_path.parent.mkdir(parents=True, exist_ok=True)
+        review_template_path.write_text(old_review_template, encoding="utf-8")
         (root / "docs/adr").mkdir(parents=True)
         (root / "docs/adr/ADR-001-legacy.md").write_text(legacy_adr(), encoding="utf-8")
         (root / "docs/OPEN_QUESTIONS.md").write_text(
@@ -484,6 +511,30 @@ def test_project_owned_migration() -> None:
         first = migrate_project(root)
         require(first["status"] == "MIGRATED", first)
         require(not legacy_schema_pending(root), "migration left active legacy schema")
+
+        migrated_review_template = parse_document(review_template_path)
+        review_meta = migrated_review_template["frontmatter"]
+        specialized = review_meta["specialized_reviews"]
+        for key in (
+            "implementation_baseline",
+            "surface_mode",
+            "changed_paths_hash",
+            "baseline_status",
+            "baseline_reason",
+        ):
+            require(key in specialized, f"review template migration missed {key}")
+        require(review_meta["verdict"] == "blocked", "project-owned template value overwritten")
+        require(review_meta["project_note"] == "keep-me", "unknown project key was lost")
+        require(
+            "Project notes" in migrated_review_template["sections"]
+            and "Пользовательский текст" in migrated_review_template["sections"]["Project notes"],
+            "custom project template prose was lost",
+        )
+        require(
+            "Verdict rationale" in migrated_review_template["sections"],
+            "missing structural section was not added",
+        )
+        require(not validate_project_templates(root), validate_project_templates(root))
 
         step = parse_document(root / "planning/tasks/STEP-001.md")
         require(step["frontmatter"]["schema"] == 1, "STEP schema not migrated")
@@ -594,15 +645,58 @@ def test_project_owned_migration() -> None:
         require(reports_before == reports_after, "idempotent reconcile created an extra migration report")
         require(not validate_project_templates(root), validate_project_templates(root))
 
-        # Custom prose разрешён, но устаревшая structural schema — blocker.
+        # Additive structural drift теперь является migration pending, а не
+        # тупиком validator-а. Missing key восстанавливается protocol default-ом,
+        # но existing project prose остаётся нетронутым.
         stale_template = custom_template.replace("risk_flags:\n  - none\n", "")
         task_template.write_text(stale_template, encoding="utf-8")
-        template_errors = validate_project_templates(root)
         require(
-            any("missing structural key frontmatter.risk_flags" in item for item in template_errors),
-            template_errors,
+            legacy_schema_pending(root),
+            "missing template structural key was not detected as migration pending",
         )
-        task_template.write_text(custom_template, encoding="utf-8")
+        repaired = migrate_project(root)
+        require(repaired["status"] == "MIGRATED", repaired)
+        repaired_task_template = task_template.read_text(encoding="utf-8")
+        require("risk_flags:\n  - none\n" in repaired_task_template, repaired_task_template)
+        require(
+            "<!-- project customization -->" in repaired_task_template,
+            "additive template migration lost project prose",
+        )
+        require(not validate_project_templates(root), validate_project_templates(root))
+        require(not legacy_schema_pending(root), "additive template migration did not converge")
+
+        # Non-additive identity conflict не угадывается и не overwrite-ится.
+        review_template_before_conflict = review_template_path.read_text(encoding="utf-8")
+        review_template_path.write_text(
+            review_template_before_conflict.replace(
+                "kind: step_review",
+                "kind: audit",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        require(
+            not legacy_schema_pending(root),
+            "non-additive template conflict masqueraded as migratable legacy state",
+        )
+        require(
+            not legacy_manual_bypass_allowed(root),
+            "non-additive template conflict received manual migration bypass",
+        )
+        conflict_errors = validate_project_templates(root)
+        require(
+            any("frontmatter.kind must be step_review" in item for item in conflict_errors),
+            conflict_errors,
+        )
+        try:
+            migrate_project(root)
+        except ValueError as exc:
+            require("non-additive project template drift" in str(exc), str(exc))
+            require("frontmatter.kind must be step_review" in str(exc), str(exc))
+        else:
+            raise AssertionError("non-additive project template conflict was overwritten")
+        review_template_path.write_text(review_template_before_conflict, encoding="utf-8")
+        require(not legacy_schema_pending(root), "restored template still marked pending")
 
         # После pinning historical report становится immutable contract:
         # mutation должна обнаруживаться, а RECONCILE не имеет права re-pin её.

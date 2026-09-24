@@ -1589,6 +1589,112 @@ def implementation_baseline_for_step(
     return _latest_implementation_baseline(status, step_id)
 
 
+@execution_state_mutation
+def stamp_review_expectation(
+    root: Path,
+    execution_id: str,
+    step_id: str,
+    repository_revision: dict[str, Any],
+    gate_basis: str,
+) -> dict[str, Any]:
+    """Зафиксировать exact deterministic REVIEW context до semantic reasoning.
+
+    Expectation хранится в active execution, а не приходит обратно от модели.
+    Повторный handoff на неизменённом state идемпотентен; попытка заменить уже
+    выданную reviewer revision/gate fail-closed.
+    """
+    if not isinstance(repository_revision, dict):
+        raise ValueError("review repository revision must be an object")
+    if (
+        not isinstance(gate_basis, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", gate_basis) is None
+    ):
+        raise ValueError("review gate basis must be sha256")
+
+    status = load_status(root)
+    execution = _latest_execution(status, execution_id=execution_id)
+    if execution is None:
+        raise ValueError(f"execution not found: {execution_id}")
+    if execution.get("status") != "running":
+        raise ValueError("review expectation requires running execution")
+
+    current = execution.get("current")
+    if not isinstance(current, dict) or current.get("status") != "running":
+        raise ValueError("review expectation requires running current command")
+    parsed = normalize_single_command(root, str(current.get("command") or ""))
+    if (
+        parsed.get("domain") != "STEP"
+        or parsed.get("operation") != "REVIEW"
+        or parsed.get("target") != step_id
+    ):
+        raise ValueError("review expectation does not match current STEP REVIEW")
+
+    expectation = {
+        "stepId": step_id,
+        "repositoryRevision": dict(repository_revision),
+        "gateBasis": gate_basis,
+    }
+    context = current.get("context")
+    if not isinstance(context, dict):
+        context = {}
+        current["context"] = context
+    existing = context.get("reviewExpectation")
+    if existing is not None and existing != expectation:
+        raise ValueError(
+            "review expectation already stamped for a different revision/gate"
+        )
+    context["reviewExpectation"] = expectation
+    execution["updatedAt"] = utc_now()
+    save_status(root, status)
+    return dict(expectation)
+
+
+@execution_state_mutation
+def review_expectation_for_step(
+    root: Path,
+    step_id: str,
+) -> dict[str, Any] | None:
+    """Вернуть expectation единственного active STEP REVIEW.
+
+    Если active REVIEW существует, но dispatcher не успел/не смог зафиксировать
+    expectation, writer не имеет права молча считать текущий state тем, что
+    проверяла модель. Несколько concurrent REVIEW одного STEP также ambiguous.
+    """
+    status = load_status(root)
+    matches: list[dict[str, Any]] = []
+    for execution in status.get("executions", []):
+        if execution.get("status") != "running":
+            continue
+        current = execution.get("current")
+        if not isinstance(current, dict) or current.get("status") != "running":
+            continue
+        try:
+            parsed = normalize_single_command(root, str(current.get("command") or ""))
+        except ValueError:
+            continue
+        if (
+            parsed.get("domain") != "STEP"
+            or parsed.get("operation") != "REVIEW"
+            or parsed.get("target") != step_id
+        ):
+            continue
+        context = current.get("context")
+        expectation = (
+            context.get("reviewExpectation")
+            if isinstance(context, dict)
+            else None
+        )
+        if not isinstance(expectation, dict):
+            raise ValueError(
+                f"active STEP REVIEW {execution.get('executionId')} has no stamped expectation"
+            )
+        matches.append(expectation)
+
+    if len(matches) > 1:
+        raise ValueError(f"multiple active STEP REVIEW executions for {step_id}")
+    return dict(matches[0]) if matches else None
+
+
 # Найти самую новую invocation конкретного root command и разрешить именно её состояние.
 # Статус старой записи не имеет приоритета над более новым запуском того же root:
 # иначе historical blocked execution может затенить running/complete successor.

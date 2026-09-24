@@ -7,14 +7,16 @@ import shutil
 import subprocess
 import tempfile
 
+from command_dispatch import start_dispatch
 from execution_status import (
     complete_command,
     implementation_baseline_for_step,
     resolve_root,
+    review_expectation_for_step,
     start_execution,
 )
 from planning_contract import read_task, validate_planning_review_report
-from review_contract import validate_review_report
+from review_contract import repository_revision, validate_review_report
 from review_gates import required_reviewers
 from semantic_artifacts import (
     SemanticArtifactError,
@@ -328,18 +330,16 @@ def main() -> int:
         )
 
         # Отдельная REVIEW invocation после restart/session boundary наследует
-        # durable baseline завершённого IMPLEMENT.
-        review_execution = start_execution(root, "STEP REVIEW STEP-001")
-        assert review_execution["status"] == "running", review_execution
-        assert review_execution["implementationBaseline"]["gitHead"] == baseline_head
+        # durable baseline завершённого IMPLEMENT. Используем canonical dispatcher,
+        # чтобы regression #83 проверял реальный stamp expectation до handoff.
+        review_handoff = start_dispatch(root, "STEP REVIEW STEP-001")
+        assert review_handoff["status"] == "SEMANTIC", review_handoff
+        deterministic = review_handoff["context"]["deterministic"]
+        assert deterministic["implementationBaseline"]["gitHead"] == baseline_head
         restored_baseline = implementation_baseline_for_step(root, "STEP-001")
         assert restored_baseline and restored_baseline["gitHead"] == baseline_head
 
-        clean_gate = required_reviewers(
-            root,
-            "STEP-001",
-            implementation_baseline=baseline_head,
-        )
+        clean_gate = deterministic["specializedReviewGate"]
         assert clean_gate["surfaceMode"] == "implementation-baseline", clean_gate
         assert clean_gate["baselineStatus"] == "valid", clean_gate
         assert clean_gate["implementationBaseline"] == baseline_head, clean_gate
@@ -348,25 +348,66 @@ def main() -> int:
         assert "docs/implementation-note.md" in clean_gate["changedPaths"], clean_gate
         assert clean_gate["required"] == ["security", "tests"], clean_gate
 
+        review_revision = deterministic["repositoryRevision"]
+        assert review_revision == repository_revision(root)
+        stamped_expectation = review_expectation_for_step(root, "STEP-001")
+        assert stamped_expectation == {
+            "stepId": "STEP-001",
+            "repositoryRevision": review_revision,
+            "gateBasis": clean_gate["basis"],
+        }, stamped_expectation
+        pass_review_payload = {
+            "verdict": "pass",
+            "findings": [],
+            "verificationObservations": "Generated Evidence и test command проверены.",
+            "rationale": "Material defects не обнаружены.",
+            "specializedReviews": {
+                "security": {
+                    "status": "pass",
+                    "evidence": "Security reviewer подтвердил отсутствие material risks.",
+                },
+                "tests": {
+                    "status": "pass",
+                    "evidence": "Test reviewer подтвердил достаточность coverage.",
+                },
+            },
+        }
+
+        # Regression #83: reviewer видел exact R1. Изменение bytes того же path
+        # после handoff не меняет path-set, но обязано invalid-нуть expectation
+        # по repositoryRevision; stale verdict не должен породить report.
+        before_stale = set(
+            (root / "planning/reviews/STEP-001").glob("REVIEW-*.md")
+        )
+        note_before = note_path.read_text(encoding="utf-8")
+        note_path.write_text(
+            note_before + "\nmutation after semantic handoff\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        try:
+            write_step_review(
+                root,
+                "STEP-001",
+                pass_review_payload,
+            )
+        except SemanticArtifactError as exc:
+            assert "repository revision changed" in str(exc), str(exc)
+        else:
+            raise AssertionError("stale STEP REVIEW verdict was accepted")
+        after_stale = set(
+            (root / "planning/reviews/STEP-001").glob("REVIEW-*.md")
+        )
+        assert after_stale == before_stale, (before_stale, after_stale)
+
+        # После exact restore R1 тот же stamped expectation снова применим.
+        note_path.write_text(note_before, encoding="utf-8", newline="\n")
+        assert repository_revision(root) == review_revision
+
         step_review = write_step_review(
             root,
             "STEP-001",
-            {
-                "verdict": "pass",
-                "findings": [],
-                "verificationObservations": "Generated Evidence и test command проверены.",
-                "rationale": "Material defects не обнаружены.",
-                "specializedReviews": {
-                    "security": {
-                        "status": "pass",
-                        "evidence": "Security reviewer подтвердил отсутствие material risks.",
-                    },
-                    "tests": {
-                        "status": "pass",
-                        "evidence": "Test reviewer подтвердил достаточность coverage.",
-                    },
-                },
-            },
+            pass_review_payload,
         )
         assert step_review["status"] == "PASS", step_review
         assert step_review["completionResult"] == "PASS", step_review
