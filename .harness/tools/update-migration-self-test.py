@@ -676,8 +676,17 @@ def test_project_owned_migration() -> None:
             encoding="utf-8",
         )
         require(
-            legacy_schema_pending(root),
-            "non-additive template conflict was not detected",
+            not legacy_schema_pending(root),
+            "non-additive template conflict masqueraded as migratable legacy state",
+        )
+        require(
+            not legacy_manual_bypass_allowed(root),
+            "non-additive template conflict received manual migration bypass",
+        )
+        conflict_errors = validate_project_templates(root)
+        require(
+            any("frontmatter.kind must be step_review" in item for item in conflict_errors),
+            conflict_errors,
         )
         try:
             migrate_project(root)
