@@ -269,6 +269,40 @@ def main() -> int:
         assert invalid_gate["baselineStatus"] == "invalid", invalid_gate
         assert {"security", "tests"}.issubset(set(invalid_gate["required"])), invalid_gate
 
+        # Existing commit, который не является ancestor текущего HEAD, также
+        # недопустим как baseline. Создаём detached root commit без изменения
+        # HEAD/worktree, чтобы отдельно покрыть ancestor proof.
+        tree = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        non_ancestor = subprocess.run(
+            ["git", "commit-tree", tree, "-m", "detached baseline fixture"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+        non_ancestor_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=non_ancestor,
+        )
+        assert (
+            non_ancestor_gate["surfaceMode"] == "clean-tree-fallback"
+        ), non_ancestor_gate
+        assert non_ancestor_gate["baselineStatus"] == "invalid", non_ancestor_gate
+        assert "not an ancestor" in str(non_ancestor_gate["baselineReason"]), (
+            non_ancestor_gate
+        )
+        assert {"security", "tests"}.issubset(
+            set(non_ancestor_gate["required"])
+        ), non_ancestor_gate
+
         missing_gate = required_reviewers(
             root,
             "STEP-001",
