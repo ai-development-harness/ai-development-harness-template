@@ -139,6 +139,12 @@ def expect_code(code: str, fn) -> Exception:
 
 HOOK_ADDS_FILE = "#!/bin/sh\necho hooked > hook-added.txt\ngit add hook-added.txt\n"
 HOOK_REWRITES_MESSAGE = "#!/bin/sh\nprintf 'rewritten by hook\\n\\nTicket: X-1\\n' > \"$1\"\n"
+HOOK_SWITCHES_BRANCH = (
+    "#!/bin/sh\n"
+    "git switch -q hook-target || exit 1\n"
+    "echo hooked > hook-added.txt\n"
+    "git add hook-added.txt\n"
+)
 
 
 def _hook_repo(base: Path, name: str, *, with_head: bool, commit_msg_hook: bool = False) -> Path:
@@ -210,6 +216,30 @@ def hook_scenarios(base: Path) -> None:
         else:
             assert head.returncode != 0, "initial unvalidated commit left as HEAD"
         assert run(repo, "git", "write-tree") == validated_tree
+
+    # Hook переключает branch до primary commit. Marker должен быть найден в
+    # фактически обновлённом ref, а не только в validated branch (#131).
+    repo = _hook_repo(base, "hook-branch-switch", with_head=True)
+    before = run(repo, "git", "rev-parse", "HEAD")
+    run(repo, "git", "branch", "hook-target", before)
+    switch_hook = repo / ".git/hooks/pre-commit"
+    switch_hook.write_text(HOOK_SWITCHES_BRANCH, encoding="utf-8")
+    switch_hook.chmod(0o755)
+    exc = expect_code(
+        "COMMIT_POSTCONDITION_FAILED",
+        lambda: execute_commit(
+            repo,
+            commit_type="feat",
+            slug="hooked",
+            message_file=repo / ".harness/local/git/msg.txt",
+        ),
+    )
+    assert exc.details["compensation"]["status"] == "reverted", exc.details
+    assert exc.details["compensation"]["revertedRef"] == "refs/heads/hook-target", exc.details
+    assert run(repo, "git", "branch", "--show-current") == "hook-target"
+    assert run(repo, "git", "rev-parse", "HEAD") == before, "unvalidated commit left on switched branch"
+    staged = set(filter(None, run(repo, "git", "diff", "--cached", "--name-only").splitlines()))
+    assert {"change.txt", "hook-added.txt"} <= staged, staged
 
     # Первый commit: branch возвращается в unborn состояние, index = validated tree.
     repo = _hook_repo(base, "hook-initial", with_head=False)
