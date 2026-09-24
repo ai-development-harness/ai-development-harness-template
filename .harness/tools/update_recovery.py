@@ -20,14 +20,17 @@ recovery не имеет права импортировать другие Harn
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import argparse
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import socket
+import stat
 import sys
 from typing import Any, Iterable
 
@@ -35,6 +38,8 @@ from typing import Any, Iterable
 JOURNAL_DIR = ".harness/local/update-journal"
 JOURNAL_FILE = "journal.json"
 JOURNAL_SCHEMA = 1
+EXECUTION_LOCK_PATH = ".harness/local/execution/execution-status.lock"
+UPDATE_TRANSACTION_ENV = "HARNESS_UPDATE_TRANSACTION"
 
 # Local runtime state не принадлежит updater-у, но target code (validator)
 # может мигрировать его во время hop. Backup участвует в той же byte-exact
@@ -114,7 +119,44 @@ def atomic_write_bytes(target: Path, content: bytes, *, mode: int) -> None:
 
 
 def _file_mode(path: Path) -> int:
-    return 0o755 if path.stat().st_mode & 0o111 else 0o644
+    """Вернуть exact permission bits, а не Git-normalized 0644/0755."""
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+@contextmanager
+def execution_state_lock(root: Path):
+    """Совместимый с execution_status.py cross-process lock local state.
+
+    Update берёт его только на atomic snapshot/rollback boundary. После создания
+    journal остальные canonical sessions видят pending transaction и не имеют
+    права писать execution state до commit/rollback.
+    """
+    path = root / EXECUTION_LOCK_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = path.open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            if fh.seek(0, os.SEEK_END) == 0:
+                fh.write(b"\0")
+                fh.flush()
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
 
 
 def prune_empty_parents(path: Path, root: Path) -> None:
@@ -189,60 +231,67 @@ def begin_journal(
     target: str | None,
     paths: Iterable[str],
 ) -> dict[str, Any]:
-    """Сохранить backup всех затрагиваемых paths до первой mutation."""
-    directory = journal_dir(root)
-    try:
-        directory.parent.mkdir(parents=True, exist_ok=True)
-        directory.mkdir()
-    except FileExistsError as exc:
-        raise JournalError(
-            "UPDATE_JOURNAL_PENDING",
-            "another Harness update transaction is pending; run HARNESS UPDATE APPLY "
-            "or python3 .harness/tools/harness-update.py recover",
-        ) from exc
-    blobs = directory / "blobs"
-    blobs.mkdir()
+    """Сохранить backup всех затрагиваемых paths до первой mutation.
 
-    entries: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    ordered = [safe_relative_path(item) for item in paths]
-    ordered += [item for item in LOCAL_STATE_PATHS]
-    for index, rel in enumerate(ordered):
-        if rel in seen:
-            continue
-        seen.add(rel)
-        target_path = ensure_no_symlink_parents(root, rel)
-        entry: dict[str, Any] = {
-            "path": rel,
-            "kind": "local-state" if rel in LOCAL_STATE_PATHS else "managed",
-        }
-        if target_path.is_symlink() or (target_path.exists() and not target_path.is_file()):
-            raise JournalError("UNSAFE_LOCAL_PATH", f"journaled path must be a regular file: {rel}")
-        if target_path.is_file():
-            blob_name = f"{index:06d}"
-            data = target_path.read_bytes()
-            with open(blobs / blob_name, "wb") as fh:
-                fh.write(data)
-                fh.flush()
-                os.fsync(fh.fileno())
-            entry.update(existed=True, mode=_file_mode(target_path), backup=blob_name)
-            if entry["kind"] == "local-state":
-                entry["schemaVersion"] = _schema_version(data)
-        else:
-            entry.update(existed=False, mode=None, backup=None)
-        entries.append(entry)
-    _fsync_dir(blobs)
+    Создание journal и snapshot execution-status сериализованы тем же advisory
+    lock, что canonical execution layer: session либо успевает записать state
+    до snapshot, либо после появления journal уже блокируется.
+    """
+    with execution_state_lock(root):
+        directory = journal_dir(root)
+        try:
+            directory.parent.mkdir(parents=True, exist_ok=True)
+            directory.mkdir()
+        except FileExistsError as exc:
+            raise JournalError(
+                "UPDATE_JOURNAL_PENDING",
+                "another Harness update transaction is pending; run HARNESS UPDATE APPLY "
+                "or python3 .harness/tools/harness-update.py recover",
+            ) from exc
+        blobs = directory / "blobs"
+        blobs.mkdir()
 
-    journal = {
-        "schemaVersion": JOURNAL_SCHEMA,
-        "state": "applying",
-        "operation": operation,
-        "source": source,
-        "target": target,
-        "createdAt": _now(),
-        "owner": {"pid": os.getpid(), "host": socket.gethostname()},
-        "entries": entries,
-        "createdReports": [],
+        entries: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        ordered = [safe_relative_path(item) for item in paths]
+        ordered += [item for item in LOCAL_STATE_PATHS]
+        for index, rel in enumerate(ordered):
+            if rel in seen:
+                continue
+            seen.add(rel)
+            target_path = ensure_no_symlink_parents(root, rel)
+            entry: dict[str, Any] = {
+                "path": rel,
+                "kind": "local-state" if rel in LOCAL_STATE_PATHS else "managed",
+            }
+            if target_path.is_symlink() or (target_path.exists() and not target_path.is_file()):
+                raise JournalError("UNSAFE_LOCAL_PATH", f"journaled path must be a regular file: {rel}")
+            if target_path.is_file():
+                blob_name = f"{index:06d}"
+                data = target_path.read_bytes()
+                with open(blobs / blob_name, "wb") as fh:
+                    fh.write(data)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                entry.update(existed=True, mode=_file_mode(target_path), backup=blob_name)
+                if entry["kind"] == "local-state":
+                    entry["schemaVersion"] = _schema_version(data)
+            else:
+                entry.update(existed=False, mode=None, backup=None)
+            entries.append(entry)
+        _fsync_dir(blobs)
+
+        journal = {
+            "schemaVersion": JOURNAL_SCHEMA,
+            "state": "applying",
+            "operation": operation,
+            "source": source,
+            "target": target,
+            "createdAt": _now(),
+            "transactionId": secrets.token_hex(16),
+            "owner": {"pid": os.getpid(), "host": socket.gethostname()},
+            "entries": entries,
+            "createdReports": [],
     }
     _write_journal(root, journal)
     _fsync_dir(directory.parent)
