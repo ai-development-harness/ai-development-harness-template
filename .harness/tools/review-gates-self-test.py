@@ -179,6 +179,104 @@ def main() -> int:
             fallback_gate,
             after_report_gate,
         )
+        report_path.unlink()
+
+        # Regression #80: durable baseline восстанавливает полный multi-commit
+        # surface. Security path намеренно не находится в последнем commit.
+        baseline = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            check=True,
+        ).stdout.strip()
+
+        auth_path = root / "src/auth/session.py"
+        write(auth_path, "export const secureSession = true;\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "baseline security change")
+
+        tests_path = root / "tests/session.test.ts"
+        write(tests_path, "export const tested = true;\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "baseline test change")
+
+        docs_path = root / "docs/implementation-note.md"
+        write(docs_path, "implementation note\n")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "baseline docs change")
+
+        baseline_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=baseline,
+        )
+        assert baseline_gate["surfaceMode"] == "implementation-baseline", baseline_gate
+        assert baseline_gate["baselineStatus"] == "valid", baseline_gate
+        assert baseline_gate["implementationBaseline"] == baseline, baseline_gate
+        assert "src/auth/session.py" in baseline_gate["changedPaths"], baseline_gate
+        assert "tests/session.test.ts" in baseline_gate["changedPaths"], baseline_gate
+        assert "docs/implementation-note.md" in baseline_gate["changedPaths"], baseline_gate
+        assert {"security", "tests"}.issubset(set(baseline_gate["required"])), baseline_gate
+
+        # Committed baseline surface объединяется с текущим dirty product diff,
+        # но operational state/report artifacts в него не попадают.
+        dirty_product = root / "src/runtime.ts"
+        write(dirty_product, "export const runtime = 1;\n")
+        write(
+            root / ".harness/local/execution/execution-status.json",
+            '{"schemaVersion":1,"executions":[]}\n',
+        )
+        dirty_baseline_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=baseline,
+        )
+        assert dirty_baseline_gate["surfaceMode"] == "implementation-baseline", (
+            dirty_baseline_gate
+        )
+        assert "src/runtime.ts" in dirty_baseline_gate["changedPaths"], dirty_baseline_gate
+        assert not any(
+            path.startswith(".harness/local/")
+            for path in dirty_baseline_gate["changedPaths"]
+        ), dirty_baseline_gate
+
+        stable_report = root / "planning/reviews/STEP-001/REVIEW-20990102T000000Z.md"
+        write(stable_report, "reserved report fixture\n")
+        after_baseline_report = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=baseline,
+        )
+        assert after_baseline_report["basis"] == dirty_baseline_gate["basis"], (
+            dirty_baseline_gate,
+            after_baseline_report,
+        )
+        assert (
+            after_baseline_report["changedPathsHash"]
+            == dirty_baseline_gate["changedPathsHash"]
+        ), (dirty_baseline_gate, after_baseline_report)
+        stable_report.unlink()
+
+        # Invalid/missing proof не угадывает committed STEP diff и явно
+        # переключается в conservative fallback.
+        invalid_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline="0" * 40,
+        )
+        assert invalid_gate["surfaceMode"] == "clean-tree-fallback", invalid_gate
+        assert invalid_gate["baselineStatus"] == "invalid", invalid_gate
+        assert {"security", "tests"}.issubset(set(invalid_gate["required"])), invalid_gate
+
+        missing_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=None,
+        )
+        assert missing_gate["surfaceMode"] == "clean-tree-fallback", missing_gate
+        assert missing_gate["baselineStatus"] == "missing", missing_gate
+        assert {"security", "tests"}.issubset(set(missing_gate["required"])), missing_gate
 
     print("REVIEW GATES SELF-TEST: PASS")
     return 0
