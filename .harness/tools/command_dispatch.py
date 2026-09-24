@@ -34,6 +34,7 @@ from execution_status import (
     load_status,
     resolve_execution,
     resolve_root,
+    stamp_review_expectation,
     start_execution,
 )
 from git_action import GitActionError, execute_pr_finish, execute_push, execute_sync
@@ -266,6 +267,34 @@ def _semantic_handoff(
                 "STEP_CONTEXT_BLOCKED",
                 f"{command}: deterministic STEP context is not PASS",
             )
+
+        # STEP REVIEW semantic reasoning must be bound to the exact deterministic
+        # revision/gate that was handed to the reviewer. Persist this proof in
+        # execution state before returning the handoff; the model never supplies
+        # or rewrites it in semantic payload.
+        if str(context_phase) == "review":
+            deterministic = context.get("deterministic")
+            if not isinstance(deterministic, dict):
+                raise DispatchError(
+                    "REVIEW_EXPECTATION_INVALID",
+                    f"{command}: deterministic review context is missing",
+                )
+            revision = deterministic.get("repositoryRevision")
+            gate = deterministic.get("specializedReviewGate")
+            gate_basis = gate.get("basis") if isinstance(gate, dict) else None
+            try:
+                stamp_review_expectation(
+                    root,
+                    str(execution.get("executionId") or ""),
+                    target,
+                    revision if isinstance(revision, dict) else {},
+                    str(gate_basis or ""),
+                )
+            except ValueError as exc:
+                raise DispatchError(
+                    "REVIEW_EXPECTATION_INVALID",
+                    f"{command}: {exc}",
+                ) from exc
 
     result: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
