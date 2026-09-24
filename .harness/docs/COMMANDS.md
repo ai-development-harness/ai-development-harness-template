@@ -158,6 +158,8 @@ python3 .harness/tools/harness-ux.py step-show --step STEP-024 --json
 
 Независимая проверка exact repository revision. Перед reasoning deterministic preselector вычисляет обязательные security/test reviewers. Reviewer возвращает structured verdict/findings/observations; `semantic-writer.py` сам фиксирует exact revision/gate basis и создаёт immutable report. При PASS writer дополнительно переводит STEP в `completed` только если type-specific completion proof полностью доказан, затем синхронизирует projections; иначе report остаётся PASS, но execution получает BLOCKED и STEP не закрывается. Crash recovery принимает либо exact current-revision report, либо строгий post-review proof `new PASS report + completed STEP + completion proof`.
 
+`STEP REVIEW` поддерживает и post-commit сценарий с чистым worktree — например, когда Verification требует CI уже открытого PR. При отсутствии durable implementation baseline preselector использует `clean-tree-fallback`, рассматривает последний commit только как diagnostic surface и fail-closed требует `security` + `tests`. Служебные `.harness/local/**` и новый `REVIEW-*.md` исключаются до определения `surfaceMode`, поэтому создание отчёта не меняет `required`/`basis` собственного gate.
+
 <a id="command-step-fix"></a>
 ## `STEP FIX STEP-NNN`
 
