@@ -1,5 +1,21 @@
 # Поддержка Harness
 
+## Lifecycle local operational state
+
+`.harness/local/**` не входит в Git, но это не означает «можно удалять всё».
+
+Для каждого нового persistent local artifact при review должны быть определены одновременно:
+
+- deterministic owner/tool;
+- recovery semantics;
+- условие, при котором данные доказанно больше не нужны;
+- schema/version migration strategy;
+- concurrency boundary, если файл мутируется несколькими sessions.
+
+Для temporary transport действует более узкое правило: consumer принимает только доказанный owned lexical path без symlink traversal и удаляет именно тот file identity, который был consumed, только после успешного postcondition. Failure сохраняет input для retry. Ошибка secondary cleanup не меняет уже доказанный primary SUCCESS. Lock files cleanup-механизм не удаляет. Неизвестный local path без зарегистрированного lifecycle fail-safe не трогается.
+
+Изменение формата persistent local state без migration regression считается незавершённым protocol change.
+
 ## Что относится к control plane Harness
 
 Основное правило: internal implementation и human-readable core documentation собраны под `.harness/**`, но сам namespace не является единой ownership class. `.harness/docs/**` и `.harness/tools/**` относятся к core, `.harness/manifest.yaml` и `.harness/git-policy.toml` являются shared, а `.harness/local/**` — local-only operational state.

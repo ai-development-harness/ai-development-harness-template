@@ -206,19 +206,26 @@ def main() -> int:
         assert repeated["reasonCode"] == "EXECUTION_COMPLETE_BLOCKED", repeated
         assert "already complete" in repeated["message"], repeated
 
-        shadow_records = [
+        shadow_state = load_status(root)
+        shadow_active = [
             item
-            for item in load_status(root)["executions"]
+            for item in shadow_state["executions"]
             if item["rootCommand"] == shadow_root
         ]
-        assert [item["status"] for item in shadow_records[-2:]] == [
+        assert not shadow_active, shadow_active
+        shadow_terminals = [
+            item
+            for item in shadow_state["recentTerminals"]
+            if item["rootCommand"] == shadow_root
+        ]
+        assert [item["status"] for item in shadow_terminals[-2:]] == [
             "blocked",
             "complete",
-        ], shadow_records
+        ], shadow_terminals
 
-        # Historical blocked запись остаётся в audit history, но после более
-        # новой invocation не является unresolved и не должна попадать ни в
-        # HARNESS STATUS, ни в HARNESS RESUME.
+        # Historical blocked сохраняется только как bounded terminal tombstone.
+        # После более новой invocation он не является unresolved и не должен
+        # попадать ни в HARNESS STATUS, ни в HARNESS RESUME.
         shadow_status = command_dispatch_module.harness_status(root)
         assert not any(
             item.get("rootCommand") == shadow_root

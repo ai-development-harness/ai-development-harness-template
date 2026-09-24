@@ -907,6 +907,8 @@ python3 .harness/tools/verify-step.py STEP-NNN --manual-json '[{"check":"...","s
 
 Writer принимает payload через stdin (`--payload-file -`) либо regular JSON file только под `.harness/local/**`. Неожиданные keys, multiline structural fields и inconsistent verdict/findings блокируются fail-closed.
 
+Для одноразового semantic transport предпочтителен stdin. Если используется local payload-файл, `semantic-writer.py` принимает только regular lexical path под `.harness/local/**` без symlink-компонентов. После нормального завершения writer удаляется только тот же неизменённый file identity; parsing/validation/write failure сохраняет payload для retry. Если secondary cleanup невозможен или path успел измениться, primary PASS/FAIL не откатывается — writer возвращает cleanup warning и оставляет файл.
+
 ## Trust chain
 
 - timestamp/name резервируются через `O_CREAT|O_EXCL`;
@@ -1093,6 +1095,9 @@ Project templates принадлежат проекту после INIT, поэ�
 Прямого validator CLI нет.
 
 ## Что проверяет `validate_status()`
+
+Current execution state использует schema v2. Validator проверяет active execution records, monotonic ordinals, bounded `recentTerminals`, `stepRecovery` baseline shape и `nextOrdinal`. Legacy schema v1 остаётся только входом deterministic migration: сначала валидируется v1, затем строится/валидируется v2 и только после этого выполняется atomic replace. Повреждённый legacy state не превращается в empty state.
+
 
 - `schemaVersion`;
 - массив executions;

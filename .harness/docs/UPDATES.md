@@ -183,6 +183,24 @@ OURS scope строится из:
 
 Проверка binary/non-UTF-8 применяется только к реально управляемому Git-пути.
 
+## Local runtime state migration
+
+Project-owned schema migration и local operational state migration — разные boundaries.
+
+`.harness/local/**` не обновляется HARNESS UPDATE и не мигрируется PROJECT RECONCILE. Persistent local format обязан мигрировать deterministic owner-ом при чтении/записи под собственным concurrency lock.
+
+Для `execution-status.json` current execution layer поддерживает `schemaVersion: 1 → 2`:
+
+- legacy bytes сначала полностью валидируются;
+- v2 строится in-memory;
+- active recovery и STEP baseline сохраняются;
+- terminal history компактируется;
+- v2 повторно валидируется;
+- только затем выполняется fsync + atomic replace;
+- migration failure не уничтожает исходный v1.
+
+Будущее изменение persistent local format без backward reader/migration + old-state regression не считается готовым к release.
+
 ## Project document schema migration
 
 HARNESS UPDATE и project schema migration разделены намеренно.

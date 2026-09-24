@@ -50,6 +50,7 @@ Read-only deterministic preflight без model call: dispatcher напрямую
 - вызывает `git-action.py commit --commit-type ... --slug ... --message-file ...`;
 - executor повторяет preflight, при protected `auto-create` создаёт только exact required branch;
 - только после PASS создаёт **локальный commit** и проверяет новый HEAD.
+- после доказанного commit SUCCESS пытается удалить только exact validated `.harness/local/git/commit-message.txt`; symlink path запрещён, при failure message сохраняется для retry, а secondary cleanup failure возвращается warning и не отменяет уже созданный commit.
 
 Message строится по `.gitmessage`:
 
@@ -115,7 +116,7 @@ after_push = "never"
 
 ### `GIT PR`
 
-`GIT PR` можно вызвать отдельно. Модель формирует только semantic body (и title, если `title_from_commit=false`) в `.harness/local/git/**`, затем вызывает `git-action.py pr`. Executor повторяет preflight, ищет exact open head/base PR через configured provider, переиспользует его по policy либо создаёт новый, проверяет provider `headRefOid` против exact published HEAD и сам сохраняет `.harness/local/git/pr-state.json`. Default body template — `.github/pull_request_template.md`.
+`GIT PR` можно вызвать отдельно. Модель формирует только semantic body (и title, если `title_from_commit=false`) в `.harness/local/git/**`, затем вызывает `git-action.py pr`. Executor повторяет preflight, ищет exact open head/base PR через configured provider, переиспользует его по policy либо создаёт новый, проверяет provider `headRefOid` против exact published HEAD и сам сохраняет `.harness/local/git/pr-state.json`. Только после этих postconditions executor пытается удалить exact validated `pr-body.md` / `pr-title.txt`; symlink paths запрещены, changed/undeletable inputs сохраняются с cleanup warning. Secondary cleanup failure не превращает уже созданный/reused PR в BLOCKED. `pr-state.json` остаётся recovery state до успешного `GIT PR FINISH`. Default body template — `.github/pull_request_template.md`.
 
 ### `GIT PR FINISH`
 
