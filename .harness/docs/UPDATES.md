@@ -104,14 +104,14 @@ Engine перед первой записью сам повторно прове
 
 Route применяется hop-by-hop, и каждый hop — отдельная транзакция с журналом `.harness/local/update-journal/`:
 
-1. backup всех затрагиваемых managed paths, lock и local runtime state (`.harness/local/execution/execution-status.json`) сохраняется до первой записи;
+1. backup всех затрагиваемых managed paths, lock и local runtime state (`.harness/local/execution/execution-status.json`) сохраняется до первой записи. Snapshot execution state и создание journal выполняются под тем же advisory lock, что canonical execution layer; после появления journal другие canonical sessions не могут менять execution state до commit/rollback;
 2. files пишутся атомарно (temp + fsync + rename); код engine (`harness_update.py`, `harness-update.py`, `update_recovery.py`) пишется последним;
 3. lock этого hop пишется внутри транзакции;
 4. target validator запускается отдельным процессом;
 5. только после его PASS создаётся durable report. Журнал до записи на диск резервирует path, уникальный staging path и sha256 содержимого. Полный report пишется в staging и публикуется `os.link` (атомарно, без overwrite); затем журнал фиксирует inode. Окна с незарегистрированным `UPDATE-*.md` нет, а rollback удаляет report только при доказанном владении (тот же inode, что у staging, или записанный inode + sha256): чужой report, занявший то же имя, не удаляется никогда;
 6. затем журнал удаляется — это commit point hop.
 
-Любой failure, включая `KeyboardInterrupt`, откатывает hop byte-for-byte: восстанавливаются files и modes, удаляются введённые paths и report, journaled local state (`execution-status.json`) восстанавливается до pre-hop bytes, а созданный hop-ом отсутствовавший файл удаляется — независимо от `schemaVersion`. Если процесс был убит, журнал остаётся на диске: `HARNESS UPDATE CHECK` возвращает `UPDATE_JOURNAL_PENDING`, а следующий `HARNESS UPDATE APPLY` сначала откатывает прерванный hop (`recoveredInterruptedUpdate` в результате) и затем выполняет update заново. Ручной recovery без остальных Harness-модулей:
+Любой failure, включая `KeyboardInterrupt`, откатывает hop byte-for-byte: восстанавливаются files и **exact permission bits**, удаляются введённые paths и report, journaled local state (`execution-status.json`) восстанавливается до pre-hop bytes, а созданный hop-ом отсутствовавший файл удаляется — независимо от `schemaVersion`. Rollback local state также выполняется под execution-status lock, поэтому параллельная canonical session не может потерять свою запись: она либо завершилась до snapshot, либо блокируется pending update transaction. Если процесс был убит, журнал остаётся на диске: `HARNESS UPDATE CHECK` возвращает `UPDATE_JOURNAL_PENDING`, а следующий `HARNESS UPDATE APPLY` сначала откатывает прерванный hop (`recoveredInterruptedUpdate` в результате) и затем выполняет update заново. Ручной recovery без остальных Harness-модулей:
 
 ```bash
 python3 .harness/tools/harness-update.py recover --json
