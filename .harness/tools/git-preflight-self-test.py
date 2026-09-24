@@ -138,9 +138,10 @@ def expect_code(code: str, fn) -> Exception:
 
 
 HOOK_ADDS_FILE = "#!/bin/sh\necho hooked > hook-added.txt\ngit add hook-added.txt\n"
+HOOK_REWRITES_MESSAGE = "#!/bin/sh\nprintf 'rewritten by hook\\n\\nTicket: X-1\\n' > \"$1\"\n"
 
 
-def _hook_repo(base: Path, name: str, *, with_head: bool) -> Path:
+def _hook_repo(base: Path, name: str, *, with_head: bool, commit_msg_hook: bool = False) -> Path:
     repo = base / name
     repo.mkdir()
     run(repo, "git", "init", "-q", "-b", "main")
@@ -160,6 +161,10 @@ def _hook_repo(base: Path, name: str, *, with_head: bool) -> Path:
     hook.parent.mkdir(parents=True, exist_ok=True)
     hook.write_text(HOOK_ADDS_FILE, encoding="utf-8")
     hook.chmod(0o755)
+    if commit_msg_hook:
+        msg_hook = repo / ".git/hooks/commit-msg"
+        msg_hook.write_text(HOOK_REWRITES_MESSAGE, encoding="utf-8")
+        msg_hook.chmod(0o755)
     write(repo, ".harness/local/git/msg.txt", "feat: hooked\n\nContext:\n- hook regression\n")
     return repo
 
@@ -183,6 +188,24 @@ def hook_scenarios(base: Path) -> None:
     assert run(repo, "git", "write-tree") == validated_tree, "index not restored to validated tree"
     assert (repo / "hook-added.txt").read_text() == "hooked\n", "hook change destroyed"
 
+    # pre-commit меняет index, commit-msg меняет message: владение commit-ом
+    # доказывается reflog marker-ом, а не текстом message (#131 review).
+    for with_head in (True, False):
+        repo = _hook_repo(base, f"hook-message-{with_head}", with_head=with_head, commit_msg_hook=True)
+        validated_tree = run(repo, "git", "write-tree")
+        exc = expect_code(
+            "COMMIT_POSTCONDITION_FAILED",
+            lambda: execute_commit(repo, commit_type="feat", slug="hooked", message_file=repo / ".harness/local/git/msg.txt"),
+        )
+        assert exc.details["compensation"]["status"] == "reverted", exc.details
+        head = subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD^{tree}"], cwd=repo, capture_output=True, text=True)
+        if with_head:
+            assert head.stdout.strip() != exc.details["tree"], "branch points to unvalidated tree"
+            assert run(repo, "git", "log", "-1", "--pretty=%s") == "initial"
+        else:
+            assert head.returncode != 0, "initial unvalidated commit left as HEAD"
+        assert run(repo, "git", "write-tree") == validated_tree
+
     # Первый commit: branch возвращается в unborn состояние, index = validated tree.
     repo = _hook_repo(base, "hook-initial", with_head=False)
     validated_tree = run(repo, "git", "write-tree")
@@ -200,9 +223,9 @@ def hook_scenarios(base: Path) -> None:
     before = run(repo, "git", "rev-parse", "HEAD")
     original_run = git_action_module._run
 
-    def racing_run(action_root, argv, *, input_text=None):
-        result = original_run(action_root, argv, input_text=input_text)
-        if argv[:2] == ["git", "commit"]:
+    def racing_run(action_root, argv, *, input_text=None, env=None):
+        result = original_run(action_root, argv, input_text=input_text, env=env)
+        if "commit" in argv:
             other = run(repo, "git", "commit-tree", "-p", before, "-m", "concurrent", run(repo, "git", "write-tree"))
             run(repo, "git", "update-ref", "refs/heads/feature/hooked", other)
         return result
@@ -293,8 +316,9 @@ def main() -> int:
             argv: list[str],
             *,
             input_text: str | None = None,
+            env: dict[str, str] | None = None,
         ):
-            if argv[:2] == ["git", "commit"]:
+            if "commit" in argv:
                 snapshot_message.write_text(
                     "fix: raced message\n\nContext:\n- must not be committed\n",
                     encoding="utf-8",
@@ -304,6 +328,7 @@ def main() -> int:
                 action_root,
                 argv,
                 input_text=input_text,
+                env=env,
             )
 
         git_action_module._run = racing_commit_run

@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from typing import Any, Callable, Iterable
+from typing import Any, Iterable
 
 from document_contract import create_durable_report
 from harness_config import (
@@ -47,7 +47,7 @@ from update_recovery import (
     finish_journal,
     load_journal,
     prune_empty_parents,
-    record_created_report,
+    ReportLedger,
     recover_pending,
     rollback_journal,
     safe_relative_path,
@@ -1138,12 +1138,12 @@ def _write_report(
     plan: HopPlan,
     requested: str,
     reload_required: bool,
-    reserve: Callable[[str], None] | None = None,
+    ledger: ReportLedger | None = None,
 ) -> str:
     """Durable report одного hop; пишется внутри транзакции hop после PASS validator.
 
-    `reserve` получает путь до создания файла (journal registration), поэтому
-    нет окна, в котором незарегистрированный `UPDATE-*.md` уже существует.
+    `ledger` регистрирует report в journal до появления файла и хранит
+    доказательство владения: rollback удаляет только report этого hop (#130).
     """
     directory = update_report_directory(root)
     route = [plan.hop.source, plan.hop.target]
@@ -1197,7 +1197,7 @@ Reclassified:
         "UPDATE-",
         directory=directory,
         content_factory=report_content,
-        reserve=(lambda candidate: reserve(candidate.relative_to(root).as_posix())) if reserve else None,
+        ledger=ledger,
     )
     return path.relative_to(root).as_posix()
 
@@ -1313,14 +1313,14 @@ def _apply_hop(
         update_journal(root, journal, state="verifying")
         _run_validator(root, phase="postcondition")
         # Report утверждает validator PASS, поэтому создаётся только после
-        # фактического PASS; путь резервируется в journal до создания файла,
-        # чтобы rollback/recovery гарантированно удалил его (#130).
+        # фактического PASS; journal резервирует его до создания файла и
+        # хранит доказательство владения для rollback/recovery (#130).
         report = _write_report(
             root,
             plan=plan,
             requested=requested,
             reload_required=plan.reload_required,
-            reserve=lambda rel: record_created_report(root, journal, rel),
+            ledger=ReportLedger(root, journal),
         )
     except BaseException:
         # BaseException: KeyboardInterrupt/SystemExit тоже откатываются.

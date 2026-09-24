@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from typing import Any
 
 from harness_update import UpdateError, adopt_legacy, apply_update, check_update
 
@@ -493,12 +494,12 @@ def test_update_report_only_after_validator_pass(tmp: Path) -> None:
     reserve_fail = tmp / "reserve"
     reserve_fail.mkdir()
     source, project = synthetic_pair(reserve_fail, base={}, target={})
-    original_record = harness_update.record_created_report
+    original_reserve = update_recovery.ReportLedger.reserve
 
-    def failing_record(root, journal, rel):
+    def failing_reserve(self, path, staging, digest):
         raise RuntimeError("journal write failed while registering report")
 
-    harness_update.record_created_report = failing_record
+    update_recovery.ReportLedger.reserve = failing_reserve
     try:
         try:
             apply_update(project, source_url=str(source))
@@ -507,7 +508,7 @@ def test_update_report_only_after_validator_pass(tmp: Path) -> None:
         else:
             raise AssertionError("fixture did not fail")
     finally:
-        harness_update.record_created_report = original_record
+        update_recovery.ReportLedger.reserve = original_reserve
     assert _update_reports(project) == [], "orphan report after failed registration"
     assert not (project / JOURNAL).exists()
 
@@ -538,6 +539,109 @@ def test_update_report_only_after_validator_pass(tmp: Path) -> None:
     source, project = synthetic_pair(good, base={}, target={})
     assert apply_update(project, source_url=str(source))["status"] == "UPDATED"
     assert len(_update_reports(project)) == 1
+
+
+def _report_artifacts(project: Path) -> list[str]:
+    directory = project / "reports"
+    return sorted(p.name for p in directory.iterdir()) if directory.is_dir() else []
+
+
+def _crash_hop(project: Path, source: Path, patches: dict[str, Any]) -> None:
+    """apply_update с подменёнными методами ReportLedger и crash до commit point."""
+    import harness_update
+    import update_recovery
+
+    originals = {name: getattr(update_recovery.ReportLedger, name) for name in patches}
+    original_finish = harness_update.finish_journal
+
+    def crashing_finish(root):
+        raise KeyboardInterrupt("simulated crash before commit point")
+
+    for name, factory in patches.items():
+        setattr(update_recovery.ReportLedger, name, factory(originals[name]))
+    harness_update.finish_journal = crashing_finish
+    try:
+        try:
+            apply_update(project, source_url=str(source))
+        except KeyboardInterrupt:
+            pass
+    finally:
+        for name, original in originals.items():
+            setattr(update_recovery.ReportLedger, name, original)
+        harness_update.finish_journal = original_finish
+    # Crash внутри транзакции откатывает сам apply; crash на commit point
+    # оставляет journal, который откатывает recovery.
+    if (project / JOURNAL).exists():
+        assert update_recovery.recover_pending(project, force=True)["rolledBack"] is True
+    assert not (project / JOURNAL).exists()
+
+
+def test_report_rollback_never_removes_foreign_report(tmp: Path) -> None:
+    """#130 review: rollback удаляет только report, владение которым доказано."""
+    foreign_text = "foreign report\n"
+
+    def foreign_after_reserve(original):
+        state = {"done": False}
+
+        def reserve(self, path, staging, digest):
+            original(self, path, staging, digest)
+            if not state["done"]:
+                # Другой writer выигрывает O_EXCL/link на то же имя после reserve.
+                state["done"] = True
+                path.write_text(foreign_text)
+        return reserve
+
+    # Гонка за имя: первый writer уходит на следующий second, rollback
+    # удаляет только свой report и не трогает чужой.
+    race = tmp / "race"
+    race.mkdir()
+    source, project = synthetic_pair(race, base={}, target={})
+    _crash_hop(project, source, {"reserve": foreign_after_reserve})
+    artifacts = _report_artifacts(project)
+    assert len(artifacts) == 1, artifacts
+    assert (project / "reports" / artifacts[0]).read_text() == foreign_text
+
+    # Crash сразу после reserve, пока имя занято чужим файлом.
+    def crash_after_reserve(original):
+        def reserve(self, path, staging, digest):
+            original(self, path, staging, digest)
+            path.write_text(foreign_text)
+            raise KeyboardInterrupt("crash after reserve")
+        return reserve
+
+    early = tmp / "early"
+    early.mkdir()
+    source, project = synthetic_pair(early, base={}, target={})
+    _crash_hop(project, source, {"reserve": crash_after_reserve})
+    artifacts = _report_artifacts(project)
+    assert len(artifacts) == 1 and (project / "reports" / artifacts[0]).read_text() == foreign_text, artifacts
+
+    # Crash после публикации, до confirm: staging доказывает владение.
+    def crash_before_confirm(original):
+        def confirm(self, path, stat):
+            raise KeyboardInterrupt("crash before confirm")
+        return confirm
+
+    linked = tmp / "linked"
+    linked.mkdir()
+    source, project = synthetic_pair(linked, base={}, target={})
+    _crash_hop(project, source, {"confirm": crash_before_confirm})
+    assert _report_artifacts(project) == [], "own report or staging survived rollback"
+
+    # Report подменён после confirm (тот же путь, другой файл) — не наш.
+    def replace_after_confirm(original):
+        def confirm(self, path, stat):
+            original(self, path, stat)
+            path.unlink()
+            path.write_text(foreign_text)
+        return confirm
+
+    replaced = tmp / "replaced"
+    replaced.mkdir()
+    source, project = synthetic_pair(replaced, base={}, target={})
+    _crash_hop(project, source, {"confirm": replace_after_confirm})
+    artifacts = _report_artifacts(project)
+    assert len(artifacts) == 1 and (project / "reports" / artifacts[0]).read_text() == foreign_text, artifacts
 
 
 STATE_DEPENDENT_VALIDATOR = (
@@ -782,6 +886,7 @@ CASES = [
     test_graph_connectivity,
     test_local_state_rollback_is_byte_exact,
     test_update_report_only_after_validator_pass,
+    test_report_rollback_never_removes_foreign_report,
     test_adopt_requires_postcondition,
 ]
 

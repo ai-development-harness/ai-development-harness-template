@@ -23,6 +23,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -253,10 +254,45 @@ def update_journal(root: Path, journal: dict[str, Any], **changes: Any) -> None:
     _write_journal(root, journal)
 
 
-def record_created_report(root: Path, journal: dict[str, Any], rel: str) -> None:
-    reports = list(journal.get("createdReports") or [])
-    reports.append(safe_relative_path(rel))
-    update_journal(root, journal, createdReports=reports)
+class ReportLedger:
+    """Journal-backed доказательство владения report, созданным внутри hop (#130).
+
+    Протокол вызывает `document_contract._create_owned_report`: reserve до
+    записи на диск, release при проигранной гонке за имя, confirm с inode
+    после публикации. Rollback удаляет report только если владение доказано
+    (см. `_owned_report`), поэтому чужой файл с тем же именем не удаляется.
+    """
+
+    def __init__(self, root: Path, journal: dict[str, Any]) -> None:
+        self.root = root
+        self.journal = journal
+
+    def _rel(self, path: Path) -> str:
+        return safe_relative_path(path.relative_to(self.root).as_posix())
+
+    def _save(self, reports: list[Any]) -> None:
+        update_journal(self.root, self.journal, createdReports=reports)
+
+    def reserve(self, path: Path, staging: Path, digest: str) -> None:
+        reports = list(self.journal.get("createdReports") or [])
+        reports.append({"path": self._rel(path), "staging": self._rel(staging), "sha256": digest})
+        self._save(reports)
+
+    def release(self, path: Path) -> None:
+        rel = self._rel(path)
+        self._save([
+            item for item in self.journal.get("createdReports") or []
+            if not (isinstance(item, dict) and item.get("path") == rel)
+        ])
+
+    def confirm(self, path: Path, stat: os.stat_result) -> None:
+        rel = self._rel(path)
+        reports = []
+        for item in self.journal.get("createdReports") or []:
+            if isinstance(item, dict) and item.get("path") == rel:
+                item = {**item, "inode": [stat.st_dev, stat.st_ino]}
+            reports.append(item)
+        self._save(reports)
 
 
 def finish_journal(root: Path) -> None:
@@ -316,11 +352,18 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
             prune_empty_parents(target_path.parent, root)
             removed.append(rel)
 
-    for rel in journal.get("createdReports") or []:
-        report = ensure_no_symlink_parents(root, safe_relative_path(str(rel)))
+    for item in journal.get("createdReports") or []:
+        if isinstance(item, dict):
+            rel = _rollback_owned_report(root, item)
+            if rel is not None:
+                removed.append(rel)
+            continue
+        # Journal engine-а до ReportLedger: путь записывался только после
+        # создания report этим hop-ом.
+        report = ensure_no_symlink_parents(root, safe_relative_path(str(item)))
         if report.is_file() and not report.is_symlink():
             report.unlink()
-            removed.append(str(rel))
+            removed.append(str(item))
 
     shutil.rmtree(directory)
     _fsync_dir(directory.parent)
@@ -333,6 +376,34 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
         "restoredPaths": restored,
         "removedPaths": removed,
     }
+
+
+def _rollback_owned_report(root: Path, item: dict[str, Any]) -> str | None:
+    """Удалить report, только если journal доказывает, что его создал этот hop."""
+    rel = safe_relative_path(str(item.get("path")))
+    report = ensure_no_symlink_parents(root, rel)
+    staging_value = item.get("staging")
+    staging = ensure_no_symlink_parents(root, safe_relative_path(str(staging_value))) if staging_value else None
+    report_is_file = report.is_file() and not report.is_symlink()
+    owned = False
+    if staging is not None and staging.is_file() and not staging.is_symlink():
+        # До confirm/cleanup: report наш, только если это тот же inode (link).
+        owned = report_is_file and os.path.samefile(staging, report)
+        staging.unlink()
+    elif report_is_file and isinstance(item.get("inode"), list):
+        stat = report.stat()
+        owned = (
+            [stat.st_dev, stat.st_ino] == item["inode"]
+            and _sha256_file(report) == item.get("sha256")
+        )
+    if not owned:
+        return None
+    report.unlink()
+    return rel
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def recover_pending(root: Path, *, force: bool = False) -> dict[str, Any] | None:

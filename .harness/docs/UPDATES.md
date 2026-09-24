@@ -108,7 +108,7 @@ Route применяется hop-by-hop, и каждый hop — отдельн�
 2. files пишутся атомарно (temp + fsync + rename); код engine (`harness_update.py`, `harness-update.py`, `update_recovery.py`) пишется последним;
 3. lock этого hop пишется внутри транзакции;
 4. target validator запускается отдельным процессом;
-5. только после его PASS создаётся durable report; путь report-а регистрируется в журнале до создания файла, поэтому окна с незарегистрированным `UPDATE-*.md` нет;
+5. только после его PASS создаётся durable report. Журнал до записи на диск резервирует path, уникальный staging path и sha256 содержимого. Полный report пишется в staging и публикуется `os.link` (атомарно, без overwrite); затем журнал фиксирует inode. Окна с незарегистрированным `UPDATE-*.md` нет, а rollback удаляет report только при доказанном владении (тот же inode, что у staging, или записанный inode + sha256): чужой report, занявший то же имя, не удаляется никогда;
 6. затем журнал удаляется — это commit point hop.
 
 Любой failure, включая `KeyboardInterrupt`, откатывает hop byte-for-byte: восстанавливаются files и modes, удаляются введённые paths и report, journaled local state (`execution-status.json`) восстанавливается до pre-hop bytes, а созданный hop-ом отсутствовавший файл удаляется — независимо от `schemaVersion`. Если процесс был убит, журнал остаётся на диске: `HARNESS UPDATE CHECK` возвращает `UPDATE_JOURNAL_PENDING`, а следующий `HARNESS UPDATE APPLY` сначала откатывает прерванный hop (`recoveredInterruptedUpdate` в результате) и затем выполняет update заново. Ручной recovery без остальных Harness-модулей:
