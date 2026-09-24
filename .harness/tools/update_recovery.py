@@ -20,7 +20,7 @@ recovery не имеет права импортировать другие Harn
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 import argparse
@@ -237,17 +237,25 @@ def begin_journal(
     lock, что canonical execution layer: session либо успевает записать state
     до snapshot, либо после появления journal уже блокируется.
     """
-    with execution_state_lock(root):
-        directory = journal_dir(root)
-        try:
-            directory.parent.mkdir(parents=True, exist_ok=True)
-            directory.mkdir()
-        except FileExistsError as exc:
-            raise JournalError(
-                "UPDATE_JOURNAL_PENDING",
-                "another Harness update transaction is pending; run HARNESS UPDATE APPLY "
-                "or python3 .harness/tools/harness-update.py recover",
-            ) from exc
+    directory = journal_dir(root)
+    try:
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        directory.mkdir()
+    except FileExistsError as exc:
+        raise JournalError(
+            "UPDATE_JOURNAL_PENDING",
+            "another Harness update transaction is pending; run HARNESS UPDATE APPLY "
+            "or python3 .harness/tools/harness-update.py recover",
+        ) from exc
+
+    # Сам факт существования journal directory — gate для новых execution-state
+    # transactions. Updater не создаёт execution-status.lock сам: если lock уже
+    # существовал, ждём текущего owner и snapshot-им под ним; если lock не было,
+    # новые sessions увидят journal до открытия lock, а повторная проверка после
+    # acquire закрывает TOCTOU.
+    execution_lock_existed = (root / EXECUTION_LOCK_PATH).is_file()
+    lock_context = execution_state_lock(root) if execution_lock_existed else nullcontext()
+    with lock_context:
         blobs = directory / "blobs"
         blobs.mkdir()
 
@@ -289,6 +297,7 @@ def begin_journal(
             "target": target,
             "createdAt": _now(),
             "transactionId": secrets.token_hex(16),
+            "executionLockExisted": execution_lock_existed,
             "owner": {"pid": os.getpid(), "host": socket.gethostname()},
             "entries": entries,
             "createdReports": [],
@@ -362,18 +371,28 @@ def _schema_version(data: bytes) -> Any:
 def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[str, Any]:
     """Byte-for-byte восстановить состояние до hop и удалить журнал.
 
-    Rollback сериализуется execution-status lock-ом: canonical session не может
-    одновременно записать local state между проверкой pending journal и restore.
+    Journal directory уже блокирует новые canonical execution transactions.
+    Если execution lock существовал до hop, rollback ждёт его и восстанавливает
+    state под тем же lock. Если lock отсутствовал, updater не создаёт новый
+    persistent artifact только ради recovery.
     """
-    with execution_state_lock(root):
-        return _rollback_journal_locked(root, journal)
-
-
-def _rollback_journal_locked(root: Path, journal: dict[str, Any] | None = None) -> dict[str, Any]:
     if journal is None:
         journal = load_journal(root)
     if journal is None:
         return {"rolledBack": False}
+
+    recorded = journal.get("executionLockExisted")
+    if isinstance(recorded, bool):
+        needs_lock = recorded
+    else:
+        # Backward compatibility для schema-1 journal старого engine.
+        needs_lock = (root / EXECUTION_LOCK_PATH).is_file()
+    lock_context = execution_state_lock(root) if needs_lock else nullcontext()
+    with lock_context:
+        return _rollback_journal_locked(root, journal)
+
+
+def _rollback_journal_locked(root: Path, journal: dict[str, Any]) -> dict[str, Any]:
     directory = journal_dir(root)
     blobs = directory / "blobs"
     restored: list[str] = []
