@@ -65,7 +65,13 @@ def _unique_paths(values: list[str]) -> list[str]:
     return result
 
 
-def build_step_context(root: Path, step_id: str, phase: str) -> dict[str, Any]:
+def build_step_context(
+    root: Path,
+    step_id: str,
+    phase: str,
+    *,
+    implementation_baseline: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Собрать exact context manifest без semantic summarization."""
     if phase not in PHASES:
         raise ValueError(f"phase must be one of {sorted(PHASES)}")
@@ -172,11 +178,22 @@ def build_step_context(root: Path, step_id: str, phase: str) -> dict[str, Any]:
             "implementPrerequisites": {
                 "status": "PASS" if not failures else "BLOCKED",
                 "failures": failures,
-            }
+            },
+            "implementationBaseline": implementation_baseline,
         }
     else:
+        baseline_sha = (
+            implementation_baseline.get("gitHead")
+            if isinstance(implementation_baseline, dict)
+            else None
+        )
         result["deterministic"] = {
-            "specializedReviewGate": required_reviewers(root, step_id),
+            "implementationBaseline": implementation_baseline,
+            "specializedReviewGate": required_reviewers(
+                root,
+                step_id,
+                implementation_baseline=baseline_sha,
+            ),
             "repositoryRevision": repository_revision(root),
         }
 
