@@ -10,10 +10,12 @@ import tempfile
 
 from command_dispatch import start_dispatch
 from execution_status import (
+    block_execution,
     complete_command,
     implementation_baseline_for_step,
     resolve_root,
     review_expectation_for_step,
+    stamp_review_expectation,
     start_execution,
 )
 from planning_contract import read_task, validate_planning_review_report
@@ -378,31 +380,60 @@ def main() -> int:
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
 
-        # Semantic PASS alone cannot close a STEP without durable Evidence.
-        incomplete_review = write_step_review(
-            root,
-            "STEP-001",
-            {
-                "verdict": "pass",
-                "findings": [],
-                "verificationObservations": "Semantic review itself passed.",
-                "rationale": "Material implementation defects не обнаружены.",
-                "specializedReviews": {
-                    "security": {
-                        "status": "pass",
-                        "evidence": "Security reviewer подтвердил conservative fallback.",
-                    },
-                    "tests": {
-                        "status": "pass",
-                        "evidence": "Test reviewer подтвердил coverage.",
-                    },
+        incomplete_payload = {
+            "verdict": "pass",
+            "findings": [],
+            "verificationObservations": "Semantic review itself passed.",
+            "rationale": "Material implementation defects не обнаружены.",
+            "specializedReviews": {
+                "security": {
+                    "status": "pass",
+                    "evidence": "Security reviewer подтвердил conservative fallback.",
+                },
+                "tests": {
+                    "status": "pass",
+                    "evidence": "Test reviewer подтвердил coverage.",
                 },
             },
+        }
+
+        # Regression #112: verdict вне active STEP REVIEW не имеет stamped
+        # expectation и не должен породить durable report/completion.
+        reviews_dir = root / "planning/reviews/STEP-001"
+        before_orphan = set(reviews_dir.glob("REVIEW-*.md"))
+        try:
+            write_step_review(root, "STEP-001", incomplete_payload)
+        except SemanticArtifactError as exc:
+            assert "requires an active STEP REVIEW" in str(exc), str(exc)
+        else:
+            raise AssertionError("STEP REVIEW verdict without active REVIEW was accepted")
+        assert set(reviews_dir.glob("REVIEW-*.md")) == before_orphan
+        assert read_task(root, "STEP-001")["frontmatter"]["status"] == "planned"
+
+        # Semantic PASS alone cannot close a STEP without durable Evidence.
+        # Expectation stamp-ится так же, как это делает dispatcher перед handoff.
+        orphan_review = start_execution(root, "STEP REVIEW STEP-001")
+        orphan_baseline = implementation_baseline_for_step(root, "STEP-001")
+        orphan_gate = required_reviewers(
+            root,
+            "STEP-001",
+            implementation_baseline=(
+                orphan_baseline.get("gitHead") if orphan_baseline else None
+            ),
         )
+        stamp_review_expectation(
+            root,
+            orphan_review["executionId"],
+            "STEP-001",
+            repository_revision(root),
+            orphan_gate["basis"],
+        )
+        incomplete_review = write_step_review(root, "STEP-001", incomplete_payload)
         assert incomplete_review["status"] == "PASS", incomplete_review
         assert incomplete_review["completionResult"] == "BLOCKED", incomplete_review
         assert incomplete_review["reasonCode"] == "STEP_COMPLETION_PROOF_INCOMPLETE"
         assert read_task(root, "STEP-001")["frontmatter"]["status"] == "planned"
+        block_execution(root, "STEP REVIEW STEP-001")
 
         # Зафиксировать Ready planning state до implementation lifecycle.
         # Baseline должен быть HEAD непосредственно перед первой product mutation.

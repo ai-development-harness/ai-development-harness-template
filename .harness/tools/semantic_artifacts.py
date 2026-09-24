@@ -558,17 +558,24 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "STEP REVIEW expectation is ambiguous or missing: " + str(exc)
         ) from exc
 
-    if expectation is not None:
-        expected_revision = expectation.get("repositoryRevision")
-        expected_gate_basis = expectation.get("gateBasis")
-        if revision != expected_revision:
-            raise SemanticArtifactError(
-                "STEP REVIEW repository revision changed after semantic handoff"
-            )
-        if gate["basis"] != expected_gate_basis:
-            raise SemanticArtifactError(
-                "STEP REVIEW gate basis changed after semantic handoff"
-            )
+    # Verdict принимается только внутри active STEP REVIEW, чья expectation
+    # зафиксирована dispatcher-ом до semantic handoff. Без неё writer не может
+    # доказать, что reviewer видел именно текущую revision (#112).
+    if expectation is None:
+        raise SemanticArtifactError(
+            f"STEP REVIEW verdict requires an active STEP REVIEW {step_id} "
+            "execution with stamped expectation; start it through harness-dispatch.py"
+        )
+    expected_revision = expectation.get("repositoryRevision")
+    expected_gate_basis = expectation.get("gateBasis")
+    if revision != expected_revision:
+        raise SemanticArtifactError(
+            "STEP REVIEW repository revision changed after semantic handoff"
+        )
+    if gate["basis"] != expected_gate_basis:
+        raise SemanticArtifactError(
+            "STEP REVIEW gate basis changed after semantic handoff"
+        )
 
     specialized = _specialized_meta(gate, data["specializedReviews"])
     _validate_specialized_verdict(data["verdict"], specialized)
