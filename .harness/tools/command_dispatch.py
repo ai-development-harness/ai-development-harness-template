@@ -33,7 +33,9 @@ from execution_status import (
     git_commit_completion_proven,
     load_status,
     resolve_execution,
+    normalize_single_command,
     resolve_root,
+    running_command_for,
     stamp_review_expectation,
     start_execution,
 )
@@ -120,6 +122,41 @@ def _active_execution(root: Path, root_command: str) -> dict[str, Any] | None:
         ):
             return execution
     return None
+
+
+def _step_run_completion_gate(
+    root: Path,
+    root_command: str,
+    command: str,
+    result: str,
+) -> dict[str, Any] | None:
+    """STEP RUN SUCCESS допустим только с type-specific completion proof.
+
+    Non-coding types (research/adr/audit/…) завершаются semantic handoff-ом;
+    без этой проверки их RUN закрывался бы одним словом модели (#113).
+    """
+    if result != "SUCCESS":
+        return None
+    route = route_command(root, command)
+    if route.get("domain") != "STEP" or route.get("operation") != "RUN":
+        return None
+    step_id = route.get("target")
+    if not isinstance(step_id, str) or not step_id:
+        return None
+    try:
+        proof = step_completion_proof(root, step_id)
+    except (OSError, ValueError) as exc:
+        proof = {"complete": False, "reasons": [str(exc)]}
+    if proof.get("complete") is True:
+        return None
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "status": "BLOCKED",
+        "rootCommand": root_command,
+        "command": command,
+        "reasonCode": "STEP_COMPLETION_PROOF_FAILED",
+        "details": {"reasons": proof.get("reasons", [])},
+    }
 
 
 def _verification_before_completion(
@@ -804,6 +841,30 @@ def complete_dispatch(
             }
 
     try:
+        # Completion принимается только для текущей running команды. Проверка
+        # идёт до Verification: чужая команда не должна запускать commands и
+        # переписывать Evidence другого STEP (#113).
+        normalized_command = normalize_single_command(root, command)["normalized"]
+        running = running_command_for(root, root_command)
+        if running is None:
+            # Нет running команды: complete_command гарантированно отклонит
+            # completion с точной причиной (already complete/blocked/not found).
+            complete_command(root, root_command, command, result, details=details)
+            raise ValueError("execution has no running command")
+        if running != normalized_command:
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                "rootCommand": root_command,
+                "command": command,
+                "reasonCode": "COMMAND_NOT_CURRENT",
+                "message": f"current running command is {running!r}, not {normalized_command!r}",
+            }
+
+        early = _step_run_completion_gate(root, root_command, command, result)
+        if early is not None:
+            return early
+
         early, completion_details = _verification_before_completion(
             root,
             root_command,

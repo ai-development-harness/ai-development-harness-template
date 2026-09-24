@@ -1650,6 +1650,22 @@ def begin_command(
 
 
 
+def running_command_for(root: Path, root_command: str) -> str | None:
+    """Вернуть текущую running команду active execution root или None."""
+    normalized_root = _normalize_root(root, root_command)["rootCommand"]
+    latest = _latest_invocation(load_status(root), root_command=normalized_root)
+    if latest is None or latest[0] != "active":
+        return None
+    execution = latest[1]
+    current = execution.get("current")
+    if execution.get("status") != "running" or not isinstance(current, dict):
+        return None
+    if current.get("status") != "running":
+        return None
+    command = current.get("command")
+    return command if isinstance(command, str) else None
+
+
 def _fix_review_limit(
     root: Path,
     execution: dict[str, Any],

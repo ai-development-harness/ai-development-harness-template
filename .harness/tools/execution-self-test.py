@@ -25,7 +25,7 @@ from execution_status import (
     unresolved_executions,
 )
 from document_contract import content_hash
-from planning_contract import plan_content_hash, planning_context_basis
+from planning_contract import plan_content_hash, planning_context_basis, step_completion_proof
 from review_contract import (
     latest_trusted_review,
     repository_revision,
@@ -471,6 +471,21 @@ def main() -> int:
         # существующий Ready basis остаётся свежим и IMPLEMENT сразу разрешается.
         dependency_path = root / "planning/tasks/STEP-002.md"
         dependency_text = dependency_path.read_text(encoding="utf-8")
+
+        # Regression #113: generated Verification block со Status FAIL не
+        # является доказательством completion, даже если Evidence не пуст.
+        write(
+            dependency_path,
+            dependency_text.replace("status: planned", "status: completed").replace(
+                "## Evidence\n\n—",
+                "## Evidence\n\n<!-- VERIFICATION-EVIDENCE:START -->\n"
+                "- Verification run: 2026-09-21T00:00:00+00:00\n- Status: FAIL\n"
+                "<!-- VERIFICATION-EVIDENCE:END -->",
+            ),
+        )
+        failed_proof = step_completion_proof(root, "STEP-002")
+        assert failed_proof["complete"] is False, failed_proof
+        assert any("status is FAIL" in item for item in failed_proof["reasons"]), failed_proof
         write(
             dependency_path,
             dependency_text.replace("status: planned", "status: completed").replace(
