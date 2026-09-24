@@ -166,6 +166,56 @@ def main() -> int:
         assert done["status"] == "DONE", done
 
 
+        # Regression #76: старый blocked execution того же rootCommand не должен
+        # затенять более новую successful invocation. Повторный complete обязан
+        # увидеть именно новый уже завершённый execution, а не старый blocked.
+        shadow_root = "PROJECT QUICK FIX: blocked shadow regression"
+        first_shadow = start_dispatch(root, shadow_root)
+        assert first_shadow["status"] == "SEMANTIC", first_shadow
+        first_blocked = complete_dispatch(
+            root,
+            first_shadow["rootCommand"],
+            first_shadow["command"],
+            "BLOCKED",
+        )
+        assert first_blocked["status"] == "BLOCKED", first_blocked
+
+        second_shadow = start_dispatch(root, shadow_root)
+        assert second_shadow["status"] == "SEMANTIC", second_shadow
+        assert second_shadow["executionId"] != first_shadow["executionId"], (
+            first_shadow,
+            second_shadow,
+        )
+        second_done = complete_dispatch(
+            root,
+            second_shadow["rootCommand"],
+            second_shadow["command"],
+            "SUCCESS",
+        )
+        assert second_done["status"] == "DONE", second_done
+        assert second_done["executionId"] == second_shadow["executionId"], second_done
+        assert second_done["reasonCode"] == "EXECUTION_COMPLETE", second_done
+
+        repeated = complete_dispatch(
+            root,
+            second_shadow["rootCommand"],
+            second_shadow["command"],
+            "SUCCESS",
+        )
+        assert repeated["status"] == "BLOCKED", repeated
+        assert repeated["reasonCode"] == "EXECUTION_COMPLETE_BLOCKED", repeated
+        assert "already complete" in repeated["message"], repeated
+
+        shadow_records = [
+            item
+            for item in load_status(root)["executions"]
+            if item["rootCommand"] == shadow_root
+        ]
+        assert [item["status"] for item in shadow_records[-2:]] == [
+            "blocked",
+            "complete",
+        ], shadow_records
+
         # Normal coding STEP RUN skips the root run-step model turn and hands
         # the exact child command directly to its semantic skill. Special types
         # keep the semantic run-step fallback.
