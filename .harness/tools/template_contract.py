@@ -500,6 +500,7 @@ def _expected_template_document(expected: str) -> dict[str, Any]:
         )
     return {
         "frontmatter": expected_frontmatter,
+        "body": expected_body,
         "sections": expected_sections,
     }
 
@@ -577,17 +578,20 @@ def _template_migration_state(
     return changed_meta or changed_sections, blockers
 
 
-def _migrate_template_shape(path: Path, expected: str) -> bool:
-    """Idempotent additive migration одного project-owned template.
+def _additive_template_candidate(
+    path: Path,
+    expected: str,
+) -> tuple[str | None, list[str]]:
+    """Построить additive candidate без repository mutation.
 
-    Existing values, unknown frontmatter keys и existing Markdown sections
-    сохраняются. Missing mapping keys/sections получают protocol defaults.
-    Non-additive conflicts fail closed и не переписываются.
+    None означает отсутствие structural изменений. Existing values/prose
+    сохраняются; blockers описывают drift, который additive migration не может
+    интерпретировать безопасно.
     """
     try:
         actual_doc = parse_document(path)
     except (DocumentError, OSError, UnicodeDecodeError) as exc:
-        raise ValueError(f"{path}: cannot migrate template: {exc}") from exc
+        return None, [f"cannot parse template: {exc}"]
 
     expected_doc = _expected_template_document(expected)
     expected_meta = expected_doc["frontmatter"]
@@ -615,9 +619,7 @@ def _migrate_template_shape(path: Path, expected: str) -> bool:
     )
     blockers.extend(mapping_blockers)
     if blockers:
-        raise ValueError(
-            f"{path}: non-additive project template drift: " + "; ".join(blockers)
-        )
+        return None, blockers
 
     body = actual_doc["body"].rstrip()
     changed_sections = False
@@ -630,10 +632,156 @@ def _migrate_template_shape(path: Path, expected: str) -> bool:
         changed_sections = True
 
     if not (changed_meta or changed_sections):
-        return False
+        return None, []
+    return render_document(actual_meta, body), []
 
-    atomic_write_text(path, render_document(actual_meta, body))
+
+def _migrate_template_shape(path: Path, expected: str) -> bool:
+    """Idempotent additive migration одного project-owned template.
+
+    Existing values, unknown frontmatter keys и existing Markdown sections
+    сохраняются. Missing mapping keys/sections получают protocol defaults.
+    Non-additive conflicts fail closed и не переписываются.
+    """
+    candidate, blockers = _additive_template_candidate(path, expected)
+    if blockers:
+        raise ValueError(
+            f"{path}: non-additive project template drift: " + "; ".join(blockers)
+        )
+    if candidate is None:
+        return False
+    atomic_write_text(path, candidate)
     return True
+
+
+def _preinit_subset_errors(
+    actual: Any,
+    expected: Any,
+    *,
+    prefix: str,
+) -> list[str]:
+    """Require actual release baseline values to be an exact subset of target."""
+    if isinstance(actual, dict):
+        if not isinstance(expected, dict):
+            return [f"{prefix} changed type"]
+        errors: list[str] = []
+        for key, actual_value in actual.items():
+            child = f"{prefix}.{key}" if prefix else key
+            if key not in expected:
+                errors.append(f"{child} is not part of target template")
+                continue
+            errors.extend(
+                _preinit_subset_errors(
+                    actual_value,
+                    expected[key],
+                    prefix=child,
+                )
+            )
+        return errors
+    if actual != expected:
+        return [f"{prefix} differs from target template value"]
+    return []
+
+
+def _template_body_preamble(body: str) -> str:
+    """Text before first level-2 structural section, normalized only at edges."""
+    lines: list[str] = []
+    for line in body.replace("\r\n", "\n").splitlines():
+        if line.startswith("## "):
+            break
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def preinit_template_alignment_state(root: Path) -> tuple[list[str], list[str]]:
+    """Вернуть (pending, blockers) для безопасного pre-INIT release alignment.
+
+    До INIT project templates обязаны быть exact protocol baseline. Safe upgrade
+    допускает old-release template только когда его semantic content является
+    точным subset current target: existing keys/values, H1/preamble и existing
+    sections совпадают, отсутствовать могут только новые target keys/sections.
+    Unknown/custom prose/value drift блокируется и никогда не затирается.
+    """
+    if bool(get(load_manifest(root), "project.initialized", False)):
+        return [], []
+
+    pending: list[str] = []
+    blockers: list[str] = []
+    for path, expected in template_targets(root).items():
+        rel = path.relative_to(root).as_posix()
+        if not path.is_file():
+            pending.append(rel)
+            continue
+
+        try:
+            actual_text = path.read_text(encoding="utf-8")
+            actual_doc = parse_document(path)
+            expected_doc = _expected_template_document(expected)
+        except (DocumentError, OSError, UnicodeDecodeError, ValueError) as exc:
+            blockers.append(f"{rel}: cannot parse template: {exc}")
+            continue
+        if actual_text == expected:
+            continue
+
+        path_errors: list[str] = []
+        if actual_doc["duplicate_sections"]:
+            path_errors.extend(
+                f"duplicate structural section '## {name}'"
+                for name in actual_doc["duplicate_sections"]
+            )
+        path_errors.extend(
+            _preinit_subset_errors(
+                actual_doc["frontmatter"],
+                expected_doc["frontmatter"],
+                prefix="frontmatter",
+            )
+        )
+        if _template_body_preamble(actual_doc["body"]) != _template_body_preamble(
+            expected_doc["body"]
+        ):
+            path_errors.append("document preamble/H1 differs from target template")
+
+        actual_sections = actual_doc["sections"]
+        expected_sections = expected_doc["sections"]
+        for name, actual_content in actual_sections.items():
+            if name not in expected_sections:
+                path_errors.append(
+                    f"section '## {name}' is not part of target template"
+                )
+                continue
+            if actual_content != expected_sections[name]:
+                path_errors.append(
+                    f"section '## {name}' content differs from target template"
+                )
+
+        if path_errors:
+            blockers.extend(f"{rel}: {item}" for item in path_errors)
+            continue
+        pending.append(rel)
+    return pending, blockers
+
+
+def align_preinit_project_templates(root: Path) -> list[str]:
+    """Exact-align pre-INIT templates только после safe additive proof."""
+    pending, blockers = preinit_template_alignment_state(root)
+    if blockers:
+        raise ValueError(
+            "pre-init project template alignment blocked: " + "; ".join(blockers)
+        )
+    if not pending:
+        return []
+
+    targets = template_targets(root)
+    changed: list[str] = []
+    pending_set = set(pending)
+    for path, expected in targets.items():
+        rel = path.relative_to(root).as_posix()
+        if rel not in pending_set:
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path, expected)
+        changed.append(rel)
+    return changed
 
 
 def project_template_migration_pending(root: Path) -> bool:
@@ -739,20 +887,42 @@ def _validate_template_shape(path: Path, expected: str) -> list[str]:
     return errors
 
 
-def validate_project_templates(root: Path) -> list[str]:
+def validate_project_templates(
+    root: Path,
+    *,
+    allow_preinit_release_alignment: bool = False,
+) -> list[str]:
     """Проверить phase-dependent ownership contract templates.
 
-    До INIT: exact protocol baseline.
-    После INIT: compatible schema/sections, custom content разрешён.
+    До INIT normal validation требует exact protocol baseline. Единственное
+    исключение — manual target-validator внутри reload-required update: он может
+    временно принять только safe additive old-release drift, доказанный через
+    preinit_template_alignment_state(). После reload updater обязан выполнить
+    exact alignment и повторная validation снова становится строгой.
+
+    После INIT template project-owned: проверяется compatible schema/sections,
+    custom content разрешён.
     """
     errors: list[str] = []
     initialized = bool(get(load_manifest(root), "project.initialized", False))
+    safe_pending: set[str] = set()
+    if not initialized and allow_preinit_release_alignment:
+        pending, blockers = preinit_template_alignment_state(root)
+        safe_pending = set(pending)
+        errors.extend(
+            f"project template incompatible: {item}"
+            for item in blockers
+        )
+
     for path, expected in template_targets(root).items():
+        rel = path.relative_to(root).as_posix()
         if not path.is_file():
+            if rel in safe_pending:
+                continue
             errors.append(f"project template missing: {path.relative_to(root)}")
             continue
         if not initialized:
-            if path.read_text(encoding="utf-8") != expected:
+            if path.read_text(encoding="utf-8") != expected and rel not in safe_pending:
                 errors.append(f"template baseline drift before PROJECT INIT: {path.relative_to(root)}")
             continue
         for issue in _validate_template_shape(path, expected):

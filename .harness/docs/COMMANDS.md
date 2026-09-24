@@ -231,7 +231,7 @@ Maintenance mutation protocol layer без STEP и без model call. Dispatcher
 
 Команда применяет заранее проверенную цепочку строго hop-by-hop. Каждый hop использует immutable release tags и обычные ownership/3-way rules. Lock обновляется только после postcondition соответствующего hop. Если edge помечен `reloadRequired`, текущий запуск останавливается на достигнутом bridge с `UPDATER_RELOAD_REQUIRED`; после reload повторяется та же команда до исходного конечного target.
 
-Команда разрешена до `PROJECT INIT`. Pre-init update обновляет только protocol layer/lock, не выполняет bootstrap проекта и не переводит `project.initialized` в `true`.
+Команда разрешена до `PROJECT INIT`. Pre-init update не выполняет bootstrap проекта и не переводит `project.initialized` в `true`. При reload-required изменении template contract первый APPLY обновляет protocol layer/lock и останавливается; после reload повтор exact APPLY может детерминированно выровнять только доказанный old-release pre-INIT template baseline. Пользовательская prose/value/schema drift блокирует alignment и не перезаписывается.
 
 Пример конечного target:
 
@@ -239,7 +239,7 @@ Maintenance mutation protocol layer без STEP и без model call. Dispatcher
 HARNESS UPDATE APPLY TO vX.X.X
 ```
 
-Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Deterministic result содержит `nextAction`: `UPDATED → GIT CHECK`, `UPDATER_RELOAD_REQUIRED → reload-and-repeat exact APPLY`, `NO_UPDATE → null`. Если GIT gate показывает pending project schema migration, её выполняет `PROJECT RECONCILE` до commit.
+Updater не выполняет executable migration/install/bootstrap actions из configured update graph или target release, не делает commit/push/PR. Deterministic result содержит `nextAction`: `UPDATED → GIT CHECK`, `UPDATER_RELOAD_REQUIRED → reload-and-repeat exact APPLY`. Stable `NO_UPDATE → null`; если `NO_UPDATE` завершил deferred pre-INIT template alignment и вернул `repositoryMutated=true`, dispatcher направляет в `GIT CHECK`. Если GIT gate показывает pending schema migration уже инициализированного проекта, её выполняет `PROJECT RECONCILE` до commit.
 
 <a id="command-git-check"></a>
 ## `GIT CHECK`

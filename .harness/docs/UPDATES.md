@@ -51,10 +51,11 @@ python3 .harness/tools/harness-update.py adopt --from vX.Y.Z --json
 
 Pre-INIT update:
 
-- меняет только Harness protocol layer/lock;
-- не выполняет INIT;
-- не создаёт product knowledge;
-- сохраняет `project.initialized=false`.
+- меняет Harness protocol layer/lock и сохраняет `project.initialized=false`;
+- не выполняет INIT и не создаёт product knowledge;
+- colocated project templates не становятся обычными updater-owned paths;
+- если target release меняет template contract через `reloadRequired=true`, первый hop может оставить доказанный old-release template baseline до обязательного reload;
+- после reload повтор exact APPLY выравнивает **только** безопасный pre-INIT release drift до exact current baseline; custom prose/value/schema drift блокируется и не перезаписывается.
 
 ## Immutable source model
 
@@ -106,7 +107,7 @@ Engine перед первой записью сам повторно прове
 3. current updater прекращает route с `UPDATER_RELOAD_REQUIRED`;
 4. после reload повторяется та же APPLY-команда к исходному final target.
 
-APPLY не запускает target scripts/install/bootstrap actions и не делает commit/push/PR. Dispatcher добавляет к factual engine result deterministic `nextAction`: после `UPDATED` — `GIT CHECK`; при `UPDATER_RELOAD_REQUIRED` — reload и повтор exact APPLY; при `NO_UPDATE` — `null`. Если последующий Git gate обнаруживает project schema migration pending, до commit выполняется `PROJECT RECONCILE`.
+APPLY не запускает target scripts/install/bootstrap actions и не делает commit/push/PR. Dispatcher добавляет к factual engine result deterministic `nextAction`: после `UPDATED` — `GIT CHECK`; при `UPDATER_RELOAD_REQUIRED` — reload и повтор exact APPLY. Обычно `NO_UPDATE → null`, но после reload pre-INIT template alignment может вернуть `NO_UPDATE` вместе с `repositoryMutated=true`; тогда `nextAction = GIT CHECK`, потому что release уже current, а project baseline только что детерминированно изменился. Если последующий Git gate обнаруживает migration pending уже **инициализированного** project schema, до commit выполняется `PROJECT RECONCILE`.
 
 После update:
 
@@ -144,7 +145,7 @@ Shared files с project-owned generated blocks, например README/AGENTS. 
 
 Updater не меняет их.
 
-В частности active REQ/ADR/STEP/OQ, project architecture/code/tests и colocated project templates не становятся updater-owned только из-за schema release.
+В частности active REQ/ADR/STEP/OQ, project architecture/code/tests и colocated project templates не становятся updater-owned только из-за schema release. Узкое исключение существует только **до PROJECT INIT** после reload-required update: exact old-release template baseline может быть выровнен до current baseline, если semantic subset proof доказывает отсутствие project customization. Это bootstrap convergence, а не передача template path в обычный updater ownership.
 
 `.agents/skills/` — общий runtime-neutral каталог, **не blanket Harness-owned namespace**. Update policy перечисляет core skills конкретными paths. Project-native/third-party `.agents/skills/<slug>/` остаются project-owned. Если новый release впервые объявляет core path, уже занятый project skill, update блокируется как `NEW_MANAGED_PATH_COLLISION`.
 

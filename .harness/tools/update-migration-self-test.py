@@ -17,10 +17,21 @@ from harness_config import (
     update_manifest_path,
     update_report_directory,
 )
+from harness_update import (
+    UpdateError,
+    WorkingTree,
+    _align_preinit_templates_after_reload,
+)
 from planning_contract import step_completion_proof
 from project_migration import legacy_manual_bypass_allowed, legacy_schema_pending, migrate_project
 from review_contract import legacy_review_pins, validate_all_review_reports
-from template_contract import REVIEW_TEMPLATE, validate_project_templates
+from template_contract import (
+    REVIEW_TEMPLATE,
+    align_preinit_project_templates,
+    preinit_template_alignment_state,
+    template_targets,
+    validate_project_templates,
+)
 
 
 def run(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -407,6 +418,147 @@ None.
 - REQ: REQ-001
 - STEP: STEP-001
 """
+
+
+def test_preinit_release_template_alignment() -> None:
+    """Safe old-release drift aligns after reload; user drift never overwrites."""
+    with tempfile.TemporaryDirectory(prefix="harness-preinit-template-alignment-") as tmp:
+        root = Path(tmp)
+        source = repo_root()
+
+        manifest_path = root / ".harness/manifest.yaml"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
+            (source / ".harness/manifest.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        targets = template_targets(root)
+        for path, expected in targets.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(expected, encoding="utf-8")
+
+        review_path = root / "planning/reviews/TEMPLATE.md"
+        old_release_review = REVIEW_TEMPLATE
+        for line in (
+            "  implementation_baseline: null\n",
+            "  surface_mode: clean-tree-fallback\n",
+            "  changed_paths_hash: sha256:...\n",
+            "  baseline_status: missing\n",
+            "  baseline_reason: implementation baseline is missing\n",
+        ):
+            old_release_review = old_release_review.replace(line, "")
+        old_release_review = old_release_review.replace(
+            "\n## Verdict rationale\n\n"
+            "Кратко объяснить, почему verdict следует из findings и evidence.\n",
+            "",
+            1,
+        )
+        require(old_release_review != REVIEW_TEMPLATE, "old-release fixture did not drift")
+        review_path.write_text(old_release_review, encoding="utf-8")
+        old_bytes = review_path.read_bytes()
+
+        strict_errors = validate_project_templates(root)
+        require(
+            any("template baseline drift before PROJECT INIT" in item for item in strict_errors),
+            strict_errors,
+        )
+
+        pending, blockers = preinit_template_alignment_state(root)
+        require(not blockers, blockers)
+        require("planning/reviews/TEMPLATE.md" in pending, pending)
+        relaxed_errors = validate_project_templates(
+            root,
+            allow_preinit_release_alignment=True,
+        )
+        require(not relaxed_errors, relaxed_errors)
+
+        changed = align_preinit_project_templates(root)
+        require("planning/reviews/TEMPLATE.md" in changed, changed)
+        require(review_path.read_text(encoding="utf-8") == REVIEW_TEMPLATE, changed)
+        require(not validate_project_templates(root), validate_project_templates(root))
+
+        custom = (
+            old_release_review.rstrip()
+            + "\n\nПользовательская pre-init заметка: не перезаписывать.\n"
+        )
+        review_path.write_text(custom, encoding="utf-8")
+        custom_bytes = review_path.read_bytes()
+        pending, blockers = preinit_template_alignment_state(root)
+        require(blockers, "custom pre-init template drift was classified as safe")
+        require("planning/reviews/TEMPLATE.md" not in pending, pending)
+        allowed_errors = validate_project_templates(
+            root,
+            allow_preinit_release_alignment=True,
+        )
+        require(allowed_errors, "custom drift bypassed target validator")
+        try:
+            align_preinit_project_templates(root)
+        except ValueError as exc:
+            require("alignment blocked" in str(exc), str(exc))
+        else:
+            raise AssertionError("custom pre-init template drift was overwritten")
+        require(
+            review_path.read_bytes() == custom_bytes,
+            "blocked pre-init alignment changed custom template bytes",
+        )
+
+        manifest_text = manifest_path.read_text(encoding="utf-8").replace(
+            "  initialized: false",
+            "  initialized: true",
+            1,
+        )
+        manifest_path.write_text(manifest_text, encoding="utf-8")
+        review_path.write_bytes(old_bytes)
+        pending, blockers = preinit_template_alignment_state(root)
+        require(not pending and not blockers, (pending, blockers))
+        require(
+            align_preinit_project_templates(root) == [],
+            "initialized project template was aligned by updater",
+        )
+
+        # Updater-specific deferred alignment is transactional around target
+        # validator: successful postcondition keeps exact baseline, failure
+        # restores the old release template byte-for-byte.
+        manifest_path.write_text(
+            (source / ".harness/manifest.yaml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        review_path.write_text(old_release_review, encoding="utf-8")
+        validator_path = root / ".harness/tools/validate.py"
+        validator_path.parent.mkdir(parents=True, exist_ok=True)
+        validator_path.write_text(
+            "#!/usr/bin/env python3\nraise SystemExit(0)\n",
+            encoding="utf-8",
+        )
+        aligned = _align_preinit_templates_after_reload(
+            root,
+            WorkingTree(root),
+        )
+        require("planning/reviews/TEMPLATE.md" in aligned, aligned)
+        require(review_path.read_text(encoding="utf-8") == REVIEW_TEMPLATE, aligned)
+
+        review_path.write_text(old_release_review, encoding="utf-8")
+        before_failed_postcondition = review_path.read_bytes()
+        validator_path.write_text(
+            "#!/usr/bin/env python3\n"
+            "print('synthetic target postcondition failure')\n"
+            "raise SystemExit(1)\n",
+            encoding="utf-8",
+        )
+        try:
+            _align_preinit_templates_after_reload(
+                root,
+                WorkingTree(root),
+            )
+        except UpdateError as exc:
+            require(exc.code == "POSTCONDITION_FAILED", (exc.code, exc))
+        else:
+            raise AssertionError("failed target validator did not rollback alignment")
+        require(
+            review_path.read_bytes() == before_failed_postcondition,
+            "failed deferred alignment did not restore old template bytes",
+        )
 
 
 def test_project_owned_migration() -> None:
@@ -825,6 +977,7 @@ def main() -> int:
         ("policy-driven update paths", lambda: test_policy_driven_paths(root)),
         ("routing/reload", lambda: test_routing(root)),
         ("ownership boundary", lambda: test_ownership_contract(root)),
+        ("pre-init release template alignment", test_preinit_release_template_alignment),
         ("project-owned schema migration", test_project_owned_migration),
         ("release metadata", lambda: test_release_metadata(root)),
     ]

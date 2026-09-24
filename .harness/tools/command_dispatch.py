@@ -583,7 +583,10 @@ def _deterministic_handler(
                 "kind": "reload-and-repeat",
                 "command": route["command"],
             }
-        elif engine_status == "UPDATED":
+        elif engine_status == "UPDATED" or bool(raw.get("repositoryMutated")):
+            # NO_UPDATE может всё же завершить deferred pre-INIT project-owned
+            # template alignment после обязательного reload. Release ref при
+            # этом уже current, но repository diff требует обычный Git gate.
             result["nextAction"] = {
                 "kind": "command",
                 "command": "GIT CHECK",
