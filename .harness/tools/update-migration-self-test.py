@@ -45,6 +45,16 @@ def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def snapshot_project_files(root: Path) -> dict[str, bytes]:
+    """Byte snapshot tracked/project fixture без internal .git storage."""
+    result: dict[str, bytes] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or ".git" in path.relative_to(root).parts:
+            continue
+        result[path.relative_to(root).as_posix()] = path.read_bytes()
+    return result
+
+
 def matches_any(path: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
 
@@ -503,6 +513,80 @@ def test_project_owned_migration() -> None:
         run(root, "git", "add", ".")
         run(root, "git", "commit", "-qm", "legacy fixture")
 
+        # Regression #92: поздний hard conflict не имеет права оставлять
+        # partial migration ранних REQ/STEP/ADR/OQ/templates.
+        valid_review_template = review_template_path.read_text(encoding="utf-8")
+        review_template_path.write_text(
+            valid_review_template.replace(
+                "kind: step_review",
+                "kind: audit",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        before_template_block = snapshot_project_files(root)
+        try:
+            migrate_project(root)
+        except ValueError as exc:
+            require("project migration preflight blocked" in str(exc), str(exc))
+            require("frontmatter.kind must be step_review" in str(exc), str(exc))
+        else:
+            raise AssertionError("template hard conflict was migrated partially")
+        require(
+            snapshot_project_files(root) == before_template_block,
+            "failed template preflight mutated project tree",
+        )
+        review_template_path.write_text(valid_review_template, encoding="utf-8")
+
+        # Invalid later-family legacy identity также обнаруживается до первого
+        # write (в частности до split monolithic REQ).
+        adr_path = root / "docs/adr/ADR-001-legacy.md"
+        valid_adr = adr_path.read_text(encoding="utf-8")
+        adr_path.write_text(
+            valid_adr.replace(
+                "# ADR-001 — Legacy accepted decision",
+                "# ADR-999 — Legacy accepted decision",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        before_adr_block = snapshot_project_files(root)
+        try:
+            migrate_project(root)
+        except ValueError as exc:
+            require("project migration preflight blocked" in str(exc), str(exc))
+            require("does not match filename id ADR-001" in str(exc), str(exc))
+        else:
+            raise AssertionError("invalid legacy ADR identity was migrated partially")
+        require(
+            snapshot_project_files(root) == before_adr_block,
+            "failed ADR preflight mutated project tree",
+        )
+        adr_path.write_text(valid_adr, encoding="utf-8")
+
+        # Duplicate monolithic IDs would otherwise create ambiguous canonical
+        # artifacts; они тоже block до mutation.
+        spec_path = req / "SPEC.md"
+        valid_spec = spec_path.read_text(encoding="utf-8")
+        spec_path.write_text(
+            valid_spec
+            + "\n### REQ-001 — Duplicate legacy requirement\n\n"
+            + "#### Requirement\n\nDuplicate.\n",
+            encoding="utf-8",
+        )
+        before_spec_block = snapshot_project_files(root)
+        try:
+            migrate_project(root)
+        except ValueError as exc:
+            require("duplicate monolithic REQ id REQ-001" in str(exc), str(exc))
+        else:
+            raise AssertionError("duplicate monolithic REQ was migrated")
+        require(
+            snapshot_project_files(root) == before_spec_block,
+            "failed SPEC preflight mutated project tree",
+        )
+        spec_path.write_text(valid_spec, encoding="utf-8")
+
         require(legacy_schema_pending(root), "legacy schema not detected")
         require(
             not legacy_manual_bypass_allowed(root),
@@ -691,7 +775,7 @@ def test_project_owned_migration() -> None:
         try:
             migrate_project(root)
         except ValueError as exc:
-            require("non-additive project template drift" in str(exc), str(exc))
+            require("project migration preflight blocked" in str(exc), str(exc))
             require("frontmatter.kind must be step_review" in str(exc), str(exc))
         else:
             raise AssertionError("non-additive project template conflict was overwritten")

@@ -201,6 +201,22 @@ Project-owned schema migration и local operational state migration — разн
 
 Будущее изменение persistent local format без backward reader/migration + old-state regression не считается готовым к release.
 
+## PROJECT RECONCILE migration preflight
+
+Active project schema migration использует two-phase safety boundary:
+
+```text
+read-only preflight
+→ deterministic blockers = none
+→ mutations
+→ projections
+→ immutable migration report
+```
+
+Preflight выполняется до первой repository write и проверяет как минимум immutable legacy review pins, parse/identity active STEP/REQ/ADR, duplicate IDs monolithic SPEC/OQ и non-additive project-owned template conflicts. Если blocker заранее обнаружим, RECONCILE завершается без partial migration: уже существующие project bytes остаются прежними, новые canonical artifacts/reports не создаются.
+
+Filesystem I/O failure, возникший уже во время mutation и не предсказуемый read-only preflight, по-прежнему fail-closed; preflight не выдаётся за filesystem transaction/rollback.
+
 ## Project document schema migration
 
 HARNESS UPDATE и project schema migration разделены намеренно.
