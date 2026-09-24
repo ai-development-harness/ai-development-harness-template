@@ -215,6 +215,17 @@ def main() -> int:
             assert reused["reused"] is True, reused
             assert reused["pr"] == 17, reused
 
+            # Regression #110: pr-state не object — BLOCKED, а не AttributeError.
+            valid_state = state_path.read_bytes()
+            state_path.write_text("[]\n", encoding="utf-8")
+            try:
+                execute_pr(root)
+            except GitActionError as exc:
+                assert exc.code == "INVALID_PR_STATE", exc.code
+            else:
+                raise AssertionError("non-object pr-state was accepted")
+            state_path.write_bytes(valid_state)
+
             # Regression #85: semantic input symlink не должен позволять cleanup
             # удалить durable pr-state target после успешного reuse.
             state_before_symlink = state_path.read_bytes()
