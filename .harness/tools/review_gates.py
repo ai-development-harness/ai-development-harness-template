@@ -195,7 +195,7 @@ def _review_surface(
             "surfaceMode": "clean-tree-fallback",
             "implementationBaseline": None,
             "baselineStatus": "legacy-auto",
-            "baselineReason": "clean tree has no explicit implementation baseline",
+            "baselineReason": "clean tree has no exact implementation baseline",
             "changedPathsHash": stable_hash({"paths": paths}),
         }
 
