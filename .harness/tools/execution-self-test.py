@@ -15,6 +15,7 @@ from execution_status import (
     begin_command,
     block_execution,
     complete_command,
+    implementation_baseline_for_step,
     load_status,
     resolve_root,
     stamp_plan,
@@ -515,15 +516,47 @@ def main() -> int:
             "SUCCESS",
         )
 
-        # REVIEW отдельной invocation наследует baseline завершённого IMPLEMENT,
-        # а не захватывает текущий HEAD заново.
+        # Planned/new lifecycle не имеет права случайно унаследовать historical
+        # baseline уже завершённого IMPLEMENT. Active REVIEW без proof подавляет
+        # fallback к старой записи.
+        planned_review = start_execution(root, "STEP REVIEW STEP-001")
+        assert "implementationBaseline" not in planned_review, planned_review
+        assert implementation_baseline_for_step(root, "STEP-001") is None
+        complete_command(
+            root,
+            planned_review["rootCommand"],
+            "STEP REVIEW STEP-001",
+            "PASS",
+        )
+
+        # После фактического перехода STEP в in_progress отдельный REVIEW
+        # наследует baseline активной implementation lifecycle и не захватывает
+        # текущий HEAD заново.
+        direct_task_path = root / "planning/tasks/STEP-001.md"
+        direct_task_text = direct_task_path.read_text(encoding="utf-8")
+        write(
+            direct_task_path,
+            direct_task_text.replace("status: planned", "status: in_progress", 1),
+        )
         direct_review = start_execution(root, "STEP REVIEW STEP-001")
         assert direct_review["implementationBaseline"] == direct_baseline, direct_review
+        assert (
+            implementation_baseline_for_step(root, "STEP-001")
+            == direct_baseline
+        )
         complete_command(
             root,
             direct_review["rootCommand"],
             "STEP REVIEW STEP-001",
             "PASS",
+        )
+        write(
+            direct_task_path,
+            direct_task_path.read_text(encoding="utf-8").replace(
+                "status: in_progress",
+                "status: planned",
+                1,
+            ),
         )
 
         # Independent commands coexist and invalid reverse chains never create state.
