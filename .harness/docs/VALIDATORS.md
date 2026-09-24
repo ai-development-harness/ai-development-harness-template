@@ -702,7 +702,7 @@ python3 .harness/tools/git-action.py sync --json
 python3 .harness/tools/git-action.py pr-finish --json
 ```
 
-Executor повторяет canonical preflight непосредственно перед mutation.
+Executor повторяет canonical preflight непосредственно перед mutation. Semantic commit/PR inputs сначала читаются и проверяются Harness-ом как exact snapshot; primary `git`/`gh` consumer получает captured text через stdin (`git commit -F -`, `gh pr create --body-file -`) и не переоткрывает mutable source path. Original local input после postcondition очищается отдельно по identity-safe lifecycle.
 
 - COMMIT создаёт только exact `requiredBranch`, если protected-branch preflight потребовал его; message file разрешён только под `.harness/local/git/`; postcondition — новый HEAD.
 - PUSH исполняет только returned non-force argv; postcondition — configured remote branch совпадает с local HEAD.

@@ -12,7 +12,7 @@
 - schema/version migration strategy;
 - concurrency boundary, если файл мутируется несколькими sessions.
 
-Для temporary transport действует более узкое правило: consumer принимает только доказанный owned lexical path без symlink traversal и удаляет именно тот file identity, который был consumed, только после успешного postcondition. Failure сохраняет input для retry. Ошибка secondary cleanup не меняет уже доказанный primary SUCCESS. Lock files cleanup-механизм не удаляет. Неизвестный local path без зарегистрированного lifecycle fail-safe не трогается.
+Для temporary transport действует более узкое правило: Harness принимает только доказанный owned lexical path без symlink traversal, фиксирует exact content/identity и передаёт primary consumer-у captured snapshot, а не mutable path. После успешного postcondition удаляется только тот же unchanged file identity. Failure сохраняет input для retry. Ошибка secondary cleanup не меняет уже доказанный primary SUCCESS. Lock files cleanup-механизм не удаляет. Неизвестный local path без зарегистрированного lifecycle fail-safe не трогается.
 
 Изменение формата persistent local state без migration regression считается незавершённым protocol change.
 

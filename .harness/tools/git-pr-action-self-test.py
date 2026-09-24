@@ -62,6 +62,16 @@ if args[:2] == ["pr", "create"]:
     def value(flag):
         return args[args.index(flag) + 1]
 
+    mutate_path = os.environ.get("FAKE_MUTATE_BODY_PATH")
+    if mutate_path:
+        Path(mutate_path).write_text(
+            "## Raced body\\n\\nThis must not reach the provider.\\n",
+            encoding="utf-8",
+        )
+
+    body_file = value("--body-file")
+    body = sys.stdin.read() if body_file == "-" else Path(body_file).read_text()
+
     item = {
         "number": 17,
         "url": "https://example.invalid/pr/17",
@@ -71,6 +81,8 @@ if args[:2] == ["pr", "create"]:
         "baseRefName": value("--base"),
         "isDraft": "--draft" in args,
         "title": value("--title"),
+        "body": body,
+        "bodyFile": body_file,
     }
     state_path.write_text(json.dumps(item))
     print(item["url"])
@@ -130,6 +142,7 @@ def main() -> int:
         old_path = os.environ.get("PATH", "")
         old_state = os.environ.get("FAKE_GH_STATE")
         old_oid = os.environ.get("FAKE_HEAD_OID")
+        old_mutate = os.environ.get("FAKE_MUTATE_BODY_PATH")
         os.environ["PATH"] = str(fake_bin) + os.pathsep + old_path
         os.environ["FAKE_GH_STATE"] = str(provider_state)
         os.environ["FAKE_HEAD_OID"] = run(root, "git", "rev-parse", "HEAD")
@@ -143,21 +156,47 @@ def main() -> int:
                 "unused while title_from_commit=true\n",
                 encoding="utf-8",
             )
+            expected_body = body.read_text(encoding="utf-8")
+            os.environ["FAKE_MUTATE_BODY_PATH"] = str(body)
             created = execute_pr(
                 root,
                 title_file=title_input,
                 body_file=body,
             )
+            os.environ.pop("FAKE_MUTATE_BODY_PATH", None)
+
             assert created["status"] == "SUCCESS", created
             assert created["reused"] is False, created
             assert created["pr"] == 17, created
             assert created["branch"] == "feature/pr-action", created
             assert created["base"] == "main", created
-            assert not body.exists(), "successful PR action left semantic body file"
-            assert not title_input.exists(), "successful PR action left semantic title file"
+            assert created.get("cleanupWarnings"), created
+            assert body.is_file(), "raced source body was unexpectedly deleted"
+            assert "Raced body" in body.read_text(encoding="utf-8")
+            assert not title_input.exists(), "successful PR action left unchanged title file"
 
             provider = json.loads(provider_state.read_text(encoding="utf-8"))
             assert provider["title"] == "feat: deterministic provider PR", provider
+            assert provider["bodyFile"] == "-", provider
+            assert provider["body"] == expected_body, provider
+
+            # Unchanged inputs on an idempotent successful PR action are still
+            # one-shot transport and are cleaned normally.
+            reuse_body = root / ".harness/local/git/pr-body-reuse.md"
+            reuse_title = root / ".harness/local/git/pr-title-reuse.md"
+            reuse_body.write_text("reuse body\n", encoding="utf-8")
+            reuse_title.write_text("reuse title\n", encoding="utf-8")
+            reused_with_inputs = execute_pr(
+                root,
+                body_file=reuse_body,
+                title_file=reuse_title,
+            )
+            assert reused_with_inputs["status"] == "SUCCESS", reused_with_inputs
+            assert reused_with_inputs["reused"] is True, reused_with_inputs
+            assert not reuse_body.exists(), reuse_body
+            assert not reuse_title.exists(), reuse_title
+
+            body.unlink()
 
             state_path = root / ".harness/local/git/pr-state.json"
             state = json.loads(state_path.read_text(encoding="utf-8"))
@@ -259,6 +298,10 @@ def main() -> int:
                 os.environ.pop("FAKE_HEAD_OID", None)
             else:
                 os.environ["FAKE_HEAD_OID"] = old_oid
+            if old_mutate is None:
+                os.environ.pop("FAKE_MUTATE_BODY_PATH", None)
+            else:
+                os.environ["FAKE_MUTATE_BODY_PATH"] = old_mutate
 
     print("GIT PR ACTION SELF-TEST: PASS")
     return 0
