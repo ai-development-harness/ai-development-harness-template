@@ -641,6 +641,41 @@ def test_release_metadata(root: Path) -> None:
         )
 
 
+# Releases до v0.8.1 поставляют update engine без журнала и с defects
+# #98–#103. Проект на таком release выполняет следующий hop своим старым
+# engine, поэтому единственный допустимый выход из v0.8.0 — минимальный
+# bridge v0.8.1, который устанавливает транзакционный engine (#119).
+BRIDGE_FROM = "v0.8.0"
+BRIDGE_TO = "v0.8.1"
+
+
+def bridge_edge_errors(graph: dict) -> list[str]:
+    edges = [edge for edge in graph.get("transitions", []) if edge.get("from") == BRIDGE_FROM]
+    errors: list[str] = []
+    for edge in edges:
+        if edge.get("to") != BRIDGE_TO:
+            errors.append(f"{BRIDGE_FROM} may only route to bridge {BRIDGE_TO}, got {edge.get('to')}")
+        if edge.get("kind") != "bridge" or edge.get("reloadRequired") is not True:
+            errors.append(f"{BRIDGE_FROM} -> {edge.get('to')} must be kind=bridge with reloadRequired=true")
+        if not str(edge.get("reason") or "").strip():
+            errors.append(f"{BRIDGE_FROM} -> {edge.get('to')} bridge requires reason")
+    return errors
+
+
+def test_bridge_release_gate(root: Path) -> None:
+    graph = load_json(update_manifest_path(root))
+    errors = bridge_edge_errors(graph)
+    require(not errors, "; ".join(errors))
+
+    # Negative cases: прямой переход из v0.8.0 мимо bridge и non-reload bridge.
+    skipped = {"transitions": [{"from": BRIDGE_FROM, "to": "v0.9.0", "kind": "bridge", "reloadRequired": True, "reason": "x"}]}
+    require(bridge_edge_errors(skipped), "gate accepted v0.8.0 edge that skips v0.8.1")
+    standard = {"transitions": [{"from": BRIDGE_FROM, "to": BRIDGE_TO, "kind": "standard", "reloadRequired": False}]}
+    require(bridge_edge_errors(standard), "gate accepted non-bridge v0.8.0 -> v0.8.1 edge")
+    good = {"transitions": [{"from": BRIDGE_FROM, "to": BRIDGE_TO, "kind": "bridge", "reloadRequired": True, "reason": "journaled engine"}]}
+    require(not bridge_edge_errors(good), "gate rejected valid bridge edge")
+
+
 def main() -> int:
     root = repo_root()
     tests = [
@@ -649,6 +684,7 @@ def main() -> int:
         ("ownership boundary", lambda: test_ownership_contract(root)),
         ("project-owned schema migration", test_project_owned_migration),
         ("release metadata", lambda: test_release_metadata(root)),
+        ("v0.8.0 bridge release gate", lambda: test_bridge_release_gate(root)),
     ]
     for name, test in tests:
         test()

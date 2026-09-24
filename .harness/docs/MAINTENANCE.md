@@ -1,5 +1,7 @@
 # Поддержка Harness
 
+Зарегистрированный persistent artifact: `.harness/local/update-journal/` — owner `harness_update.py`/`update_recovery.py`; существует только во время hop; recovery — rollback по журналу (APPLY или `harness-update.py recover`); удаляется в commit point hop или после rollback; формат `schemaVersion: 1` обязан читаться любым будущим engine; concurrency boundary — эксклюзивное создание каталога и проверка живого владельца.
+
 ## Что относится к control plane Harness
 
 Основное правило: internal implementation и human-readable core documentation собраны под `.harness/**`, но сам namespace не является единой ownership class. `.harness/docs/**` и `.harness/tools/**` относятся к core, `.harness/manifest.yaml` и `.harness/git-policy.toml` являются shared, а `.harness/local/**` — local-only operational state.
