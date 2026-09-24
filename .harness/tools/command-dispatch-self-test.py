@@ -166,6 +166,125 @@ def main() -> int:
         assert done["status"] == "DONE", done
 
 
+        # Regression #76: старый blocked execution того же rootCommand не должен
+        # затенять более новую successful invocation. Повторный complete обязан
+        # увидеть именно новый уже завершённый execution, а не старый blocked.
+        shadow_root = "PROJECT QUICK FIX: blocked shadow regression"
+        first_shadow = start_dispatch(root, shadow_root)
+        assert first_shadow["status"] == "SEMANTIC", first_shadow
+        first_blocked = complete_dispatch(
+            root,
+            first_shadow["rootCommand"],
+            first_shadow["command"],
+            "BLOCKED",
+        )
+        assert first_blocked["status"] == "BLOCKED", first_blocked
+
+        second_shadow = start_dispatch(root, shadow_root)
+        assert second_shadow["status"] == "SEMANTIC", second_shadow
+        assert second_shadow["executionId"] != first_shadow["executionId"], (
+            first_shadow,
+            second_shadow,
+        )
+        second_done = complete_dispatch(
+            root,
+            second_shadow["rootCommand"],
+            second_shadow["command"],
+            "SUCCESS",
+        )
+        assert second_done["status"] == "DONE", second_done
+        assert second_done["executionId"] == second_shadow["executionId"], second_done
+        assert second_done["reasonCode"] == "EXECUTION_COMPLETE", second_done
+
+        repeated = complete_dispatch(
+            root,
+            second_shadow["rootCommand"],
+            second_shadow["command"],
+            "SUCCESS",
+        )
+        assert repeated["status"] == "BLOCKED", repeated
+        assert repeated["reasonCode"] == "EXECUTION_COMPLETE_BLOCKED", repeated
+        assert "already complete" in repeated["message"], repeated
+
+        shadow_records = [
+            item
+            for item in load_status(root)["executions"]
+            if item["rootCommand"] == shadow_root
+        ]
+        assert [item["status"] for item in shadow_records[-2:]] == [
+            "blocked",
+            "complete",
+        ], shadow_records
+
+        # Historical blocked запись остаётся в audit history, но после более
+        # новой invocation не является unresolved и не должна попадать ни в
+        # HARNESS STATUS, ни в HARNESS RESUME.
+        shadow_status = command_dispatch_module.harness_status(root)
+        assert not any(
+            item.get("rootCommand") == shadow_root
+            for item in shadow_status["executions"]
+        ), shadow_status
+        shadow_resume = command_dispatch_module.harness_resume(root)
+        assert shadow_resume["reasonCode"] == "NO_RESUMABLE_EXECUTION", shadow_resume
+        assert not any(
+            item.get("rootCommand") == shadow_root
+            for item in shadow_resume["executions"]
+        ), shadow_resume
+
+        # Regression #76 для chain: historical blocked того же root не должен
+        # перехватить NEXT-переход новой invocation. PUSH здесь исполняется
+        # deterministic fast-path, поэтому DONE доказывает, что NEXT был начат.
+        chain_root = "GIT CHECK > COMMIT > PUSH"
+        first_chain = start_dispatch(root, chain_root)
+        assert first_chain["status"] == "SEMANTIC", first_chain
+        assert first_chain["command"] == "GIT COMMIT", first_chain
+        first_chain_blocked = complete_dispatch(
+            root,
+            first_chain["rootCommand"],
+            first_chain["command"],
+            "BLOCKED",
+        )
+        assert first_chain_blocked["status"] == "BLOCKED", first_chain_blocked
+
+        original_shadow_push = command_dispatch_module.execute_push
+        original_shadow_proof = command_dispatch_module.git_commit_completion_proven
+        command_dispatch_module.execute_push = lambda _root: {
+            "status": "SUCCESS",
+            "action": "push",
+            "branch": "test",
+            "head": "deadbeef",
+            "afterPush": "never",
+        }
+        command_dispatch_module.git_commit_completion_proven = (
+            lambda _root, _execution: True
+        )
+        try:
+            second_chain = start_dispatch(root, chain_root)
+            assert second_chain["status"] == "SEMANTIC", second_chain
+            assert second_chain["command"] == "GIT COMMIT", second_chain
+            assert second_chain["executionId"] != first_chain["executionId"], (
+                first_chain,
+                second_chain,
+            )
+            chain_after_shadow = complete_dispatch(
+                root,
+                second_chain["rootCommand"],
+                second_chain["command"],
+                "SUCCESS",
+            )
+        finally:
+            command_dispatch_module.execute_push = original_shadow_push
+            command_dispatch_module.git_commit_completion_proven = original_shadow_proof
+
+        assert chain_after_shadow["status"] == "DONE", chain_after_shadow
+        assert chain_after_shadow["executionId"] == second_chain["executionId"], (
+            second_chain,
+            chain_after_shadow,
+        )
+        assert chain_after_shadow["result"]["fastPath"] == "after-canonical-commit", (
+            chain_after_shadow
+        )
+
         # Normal coding STEP RUN skips the root run-step model turn and hands
         # the exact child command directly to its semantic skill. Special types
         # keep the semantic run-step fallback.

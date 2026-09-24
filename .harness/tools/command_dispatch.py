@@ -32,6 +32,7 @@ from execution_status import (
     complete_command,
     git_commit_completion_proven,
     load_status,
+    resolve_execution,
     resolve_root,
     start_execution,
 )
@@ -328,7 +329,7 @@ def _finish_machine_result(
         str(status),
         details=_machine_completion_details(handler=handler, result=result),
     )
-    resolved = resolve_root(root, str(execution["rootCommand"]))
+    resolved = resolve_execution(root, completed)
 
     if resolved.get("status") == "NEXT" and resolved.get("command"):
         next_command = str(resolved["command"])
@@ -778,7 +779,7 @@ def complete_dispatch(
             result,
             details=completion_details,
         )
-        resolved = resolve_root(root, root_command)
+        resolved = resolve_execution(root, execution)
     except (OSError, ValueError) as exc:
         return {
             "schemaVersion": SCHEMA_VERSION,
