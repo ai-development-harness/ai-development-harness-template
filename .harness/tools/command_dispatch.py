@@ -134,7 +134,9 @@ def _verification_before_completion(
     Первый элемент tuple — early dispatcher response. None означает, что
     completion разрешён. Второй — compact details для durable execution state.
     """
-    if result != "SUCCESS":
+    # PASS для IMPLEMENT/FIX не имеет CTS edge, но всё равно завершает команду;
+    # он не должен становиться обходом Verification (#113).
+    if result not in {"SUCCESS", "PASS"}:
         return None, details
 
     route = route_command(root, command)

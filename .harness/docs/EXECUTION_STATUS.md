@@ -268,14 +268,16 @@ python3 .harness/tools/execution-state.py begin \
   --command 'STEP IMPLEMENT STEP-001'
 ```
 
-После завершения:
+После завершения результат передаётся dispatcher-у, который для `STEP IMPLEMENT/FIX` сначала выполняет deterministic `## Verification`:
 
 ```bash
-python3 .harness/tools/execution-state.py complete \
+python3 .harness/tools/harness-dispatch.py complete \
   --root 'STEP RUN STEP-001' \
   --command 'STEP IMPLEMENT STEP-001' \
   --result SUCCESS
 ```
+
+Низкоуровневый `execution-state.py complete` для `STEP IMPLEMENT/FIX` с `SUCCESS` возвращает `BLOCKED/VERIFICATION_REQUIRES_DISPATCH`: он не является обходным путём мимо Verification.
 
 Следующая command определяется resolver/CTS, а не chat history.
 
