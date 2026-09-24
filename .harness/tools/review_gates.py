@@ -99,28 +99,6 @@ def _git_changed_paths(root: Path) -> tuple[list[str], str]:
     except OSError:
         pass
 
-    # STEP REVIEW обычно идёт до Git publication. Если worktree clean, exact
-    # implementation baseline уже не доказуем из одного HEAD: последний commit
-    # — только diagnostic fallback, а не полный STEP surface.
-    surface_mode = "worktree"
-    if not paths:
-        surface_mode = "clean-tree-fallback"
-        try:
-            paths.update(
-                _git_paths_z(
-                    root,
-                    "diff-tree",
-                    "--no-commit-id",
-                    "--name-only",
-                    "-r",
-                    "-z",
-                    "HEAD",
-                    "--",
-                )
-            )
-        except OSError:
-            pass
-
     try:
         review_root = review_directory(root).relative_to(root.resolve()).as_posix().rstrip("/")
     except ValueError:
@@ -155,7 +133,38 @@ def _git_changed_paths(root: Path) -> tuple[list[str], str]:
             return True
         return re.fullmatch(r"STEP-\d{3,}/REVIEW-.+\.md", review_rel) is None
 
-    return sorted(path for path in paths if included(path)), surface_mode
+    # Сначала убираем Harness-owned runtime/report artifacts и только после
+    # этого определяем фактический surface mode. Иначе резервирование нового
+    # REVIEW-файла само переключает clean-tree-fallback в worktree и меняет
+    # required reviewers/basis между writer и canonical validator.
+    filtered_paths = {path for path in paths if included(path)}
+    surface_mode = "worktree"
+    if not filtered_paths:
+        # Если после фильтрации product surface пуст, exact implementation
+        # baseline уже не доказуем из текущего worktree. Последний commit
+        # используется только как diagnostic fallback.
+        surface_mode = "clean-tree-fallback"
+        fallback_paths: set[str] = set()
+        try:
+            fallback_paths.update(
+                _git_paths_z(
+                    root,
+                    "diff-tree",
+                    "--no-commit-id",
+                    "--name-only",
+                    "-r",
+                    "-z",
+                    "HEAD",
+                    "--",
+                )
+            )
+        except OSError:
+            pass
+        filtered_paths.update(
+            path for path in fallback_paths if included(path)
+        )
+
+    return sorted(filtered_paths), surface_mode
 
 
 # ---------------------------------------------------------------------------
@@ -179,10 +188,10 @@ def required_reviewers(root: Path, step_id: str) -> dict[str, Any]:
     security_policy = review_policy(root, "security")
     tests_policy = review_policy(root, "tests")
 
-    # Чистый post-commit review — исключительный путь вне canonical
-    # REVIEW-before-GIT workflow. Без durable implementation baseline нельзя
-    # доказать, что последний commit содержит весь STEP diff, поэтому auto
-    # policy fail-closed требует обе specialized проверки.
+    # Post-commit REVIEW поддерживается: он нужен, например, когда manual
+    # Verification зависит от CI в уже открытом PR. Без durable implementation
+    # baseline clean tree не доказывает полный STEP diff, поэтому auto policy
+    # fail-closed требует обе specialized проверки.
     if surface_mode == "clean-tree-fallback":
         required.update({"security", "tests"})
         reasons["security"].append("clean tree has no exact implementation baseline")
