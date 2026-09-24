@@ -1401,7 +1401,9 @@ def resolve_execution(
 
 
 
-# Найти последнюю relevant execution для конкретного root command и разрешить её текущее состояние.
+# Найти самую новую invocation конкретного root command и разрешить именно её состояние.
+# Статус старой записи не имеет приоритета над более новым запуском того же root:
+# иначе historical blocked execution может затенить running/complete successor.
 @execution_state_mutation
 def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
@@ -1409,16 +1411,8 @@ def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
     execution = _latest_execution(
         status,
         root_command=normalized_root,
-        statuses={"running", "blocked"},
     )
     if execution is None:
-        completed = _latest_execution(
-            status,
-            root_command=normalized_root,
-            statuses={"complete"},
-        )
-        if completed is not None:
-            return resolve_execution(root, completed)
         return {
             "status": "NOT_FOUND",
             "rootCommand": normalized_root,
@@ -1429,14 +1423,31 @@ def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
 
 
 
-# Вернуть все running/blocked executions проекта. Это позволяет новой session увидеть несколько независимых незавершённых работ.
+# Вернуть только актуальные unresolved executions: historical blocked record
+# перестаёт быть actionable, как только существует более новая invocation того
+# же rootCommand. mutate=False используется read-only HARNESS STATUS.
 @execution_state_mutation
-def unresolved_executions(root: Path) -> list[dict[str, Any]]:
+def unresolved_executions(
+    root: Path,
+    *,
+    mutate: bool = True,
+) -> list[dict[str, Any]]:
     status = load_status(root)
+    executions = status.get("executions", [])
+    latest_by_root: dict[str, str] = {}
+    for execution in executions:
+        root_command = execution.get("rootCommand")
+        execution_id = execution.get("executionId")
+        if isinstance(root_command, str) and isinstance(execution_id, str):
+            latest_by_root[root_command] = execution_id
+
     values: list[dict[str, Any]] = []
-    for execution in status.get("executions", []):
+    for execution in executions:
+        root_command = execution.get("rootCommand")
+        if latest_by_root.get(root_command) != execution.get("executionId"):
+            continue
         if execution.get("status") in {"running", "blocked"}:
-            resolved = resolve_execution(root, execution)
+            resolved = resolve_execution(root, execution, mutate=mutate)
             resolved["mode"] = execution["mode"]
             resolved["updatedAt"] = execution["updatedAt"]
             values.append(resolved)
