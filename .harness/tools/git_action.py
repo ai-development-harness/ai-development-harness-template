@@ -38,11 +38,18 @@ class GitActionError(RuntimeError):
         self.details = details
 
 
-def _run(root: Path, argv: list[str]) -> subprocess.CompletedProcess[str]:
+def _run(
+    root: Path,
+    argv: list[str],
+    *,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Выполнить deterministic mutation, передавая captured semantic input по stdin."""
     proc = subprocess.run(
         argv,
         cwd=root,
         text=True,
+        input=input_text,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -233,8 +240,11 @@ def execute_commit(
         argv.append("-S")
     if gate.get("allowEmpty") and not gate.get("staged"):
         argv.append("--allow-empty")
-    argv.extend(["-F", str(path)])
-    _run(root, argv)
+    # Git должен потребить ровно ту строку, которую Harness уже прочитал и
+    # провалидировал. Повторное чтение mutable path через "-F <file>" создаёт
+    # TOCTOU между validation и primary side effect при concurrent sessions.
+    argv.extend(["-F", "-"])
+    _run(root, argv, input_text=message)
     after = Repo(root).head()
     if not after or after == before:
         raise GitActionError("COMMIT_POSTCONDITION_FAILED", "Git HEAD did not advance")
@@ -510,7 +520,13 @@ def execute_pr(
                 "creating a PR requires --body-file",
             )
         assert body_path is not None
-        if not body_path.read_text(encoding="utf-8").strip():
+        body = body_path.read_text(encoding="utf-8")
+        if _input_identity(body_path) != body_identity:
+            raise GitActionError(
+                "PR_BODY_CHANGED",
+                "PR body file changed while being read",
+            )
+        if not body.strip():
             raise GitActionError("PR_BODY_INVALID", "PR body must not be empty")
 
         if gate.get("titleFromCommit"):
@@ -523,6 +539,11 @@ def execute_pr(
                 )
             assert title_path is not None
             title = title_path.read_text(encoding="utf-8").strip()
+            if _input_identity(title_path) != title_identity:
+                raise GitActionError(
+                    "PR_TITLE_CHANGED",
+                    "PR title file changed while being read",
+                )
         if not title or "\n" in title or "\r" in title:
             raise GitActionError("PR_TITLE_INVALID", "PR title must be one non-empty line")
 
@@ -537,11 +558,13 @@ def execute_pr(
             "--title",
             title,
             "--body-file",
-            str(body_path),
+            "-",
         ]
         if gate.get("draft"):
             argv.append("--draft")
-        _run(root, argv)
+        # GitHub CLI поддерживает --body-file -; provider получает captured
+        # body через stdin и больше не переоткрывает mutable semantic input.
+        _run(root, argv, input_text=body)
 
         existing = _open_prs(root, gate)
         if len(existing) != 1:
