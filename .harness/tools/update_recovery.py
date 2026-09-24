@@ -10,8 +10,8 @@ recovery не имеет права импортировать другие Harn
 
 1. до первой записи сохраняются backup всех затрагиваемых paths (включая lock
    и local runtime state) и `journal.json` со state `applying`;
-2. hop пишет файлы, lock и report;
-3. после PASS target validator журнал удаляется — это commit point;
+2. hop пишет managed files и lock, затем выполняет target validator;
+3. только после PASS validator публикуется durable report и журнал удаляется — это commit point;
 4. если процесс прерван, следующий APPLY (или `harness-update.py recover`)
    откатывает hop byte-for-byte по журналу.
 
@@ -37,8 +37,8 @@ JOURNAL_FILE = "journal.json"
 JOURNAL_SCHEMA = 1
 
 # Local runtime state не принадлежит updater-у, но target code (validator)
-# может мигрировать его во время hop. Такой файл сохраняется в журнал и
-# восстанавливается только если его schemaVersion изменилась.
+# может мигрировать его во время hop. Backup участвует в той же byte-exact
+# rollback semantics, что и managed files.
 LOCAL_STATE_PATHS = (".harness/local/execution/execution-status.json",)
 
 
