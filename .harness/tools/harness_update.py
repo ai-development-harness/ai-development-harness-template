@@ -52,6 +52,7 @@ from update_recovery import (
     rollback_journal,
     safe_relative_path,
     update_journal,
+    UPDATE_TRANSACTION_ENV,
 )
 
 
@@ -1116,6 +1117,15 @@ def _run_validator(root: Path, *, phase: str) -> None:
     if not validator.is_file():
         raise UpdateError("VALIDATOR_UNAVAILABLE", f"Harness validator missing during {phase}")
     code = "CURRENT_HARNESS_INVALID" if phase == "preflight" else "POSTCONDITION_FAILED"
+    env = os.environ.copy()
+    # Future/current target validator may legitimately read/migrate execution
+    # state inside this transaction. transactionId grants only that subprocess
+    # access; unrelated canonical sessions remain blocked by execution_status.
+    journal = load_journal(root)
+    if isinstance(journal, dict):
+        transaction_id = journal.get("transactionId")
+        if isinstance(transaction_id, str) and transaction_id:
+            env[UPDATE_TRANSACTION_ENV] = transaction_id
     try:
         proc = subprocess.run(
             [sys.executable, str(validator), "--mode", "manual"],
@@ -1124,6 +1134,7 @@ def _run_validator(root: Path, *, phase: str) -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=VALIDATOR_TIMEOUT_SECONDS,
+            env=env,
         )
     except subprocess.TimeoutExpired as exc:
         raise UpdateError(code, f"Harness validation timed out during {phase}") from exc
