@@ -11,10 +11,18 @@ template customizations, одновременно сохраняя обязат�
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from document_contract import atomic_write_text, DocumentError, parse_document, parse_sections, split_frontmatter
+from document_contract import (
+    atomic_write_text,
+    DocumentError,
+    parse_document,
+    parse_sections,
+    render_document,
+    split_frontmatter,
+)
 from harness_config import (
     adr_directory,
     architecture_path,
@@ -479,6 +487,139 @@ def refresh_project_templates(root: Path) -> list[str]:
     return changed
 
 
+def _expected_template_document(expected: str) -> dict[str, Any]:
+    """Разобрать protocol template definition для validation и migration."""
+    expected_frontmatter, expected_body = split_frontmatter(expected)
+    if expected_frontmatter is None:
+        raise ValueError("protocol template definition has no frontmatter")
+    expected_sections, expected_duplicates = parse_sections(expected_body)
+    if expected_duplicates:
+        raise ValueError(
+            "protocol template definition has duplicate sections: "
+            + ", ".join(expected_duplicates)
+        )
+    return {
+        "frontmatter": expected_frontmatter,
+        "sections": expected_sections,
+    }
+
+
+def _merge_missing_mapping_keys(
+    expected: Any,
+    actual: Any,
+    *,
+    prefix: str,
+) -> tuple[bool, list[str]]:
+    """Добавить только missing structural keys, не заменяя project values."""
+    if not isinstance(expected, dict):
+        return False, []
+    if not isinstance(actual, dict):
+        return False, [f"{prefix} must be a mapping"]
+
+    changed = False
+    blockers: list[str] = []
+    for key, expected_value in expected.items():
+        child = f"{prefix}.{key}" if prefix else key
+        if key not in actual:
+            actual[key] = deepcopy(expected_value)
+            changed = True
+            continue
+        if isinstance(expected_value, dict):
+            child_changed, child_blockers = _merge_missing_mapping_keys(
+                expected_value,
+                actual[key],
+                prefix=child,
+            )
+            changed = changed or child_changed
+            blockers.extend(child_blockers)
+    return changed, blockers
+
+
+def _migrate_template_shape(path: Path, expected: str) -> bool:
+    """Idempotent additive migration одного project-owned template.
+
+    Existing values, unknown frontmatter keys и existing Markdown sections
+    сохраняются. Missing mapping keys/sections получают protocol defaults.
+    Non-additive conflicts fail closed и не переписываются.
+    """
+    try:
+        actual_doc = parse_document(path)
+    except (DocumentError, OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"{path}: cannot migrate template: {exc}") from exc
+
+    expected_doc = _expected_template_document(expected)
+    expected_meta = expected_doc["frontmatter"]
+    actual_meta = deepcopy(actual_doc["frontmatter"])
+
+    blockers: list[str] = []
+    if actual_doc["duplicate_sections"]:
+        blockers.extend(
+            f"duplicate structural section '## {name}'"
+            for name in actual_doc["duplicate_sections"]
+        )
+    if actual_meta.get("schema") != expected_meta.get("schema"):
+        blockers.append(
+            "frontmatter.schema differs from current template schema "
+            f"{expected_meta.get('schema')}"
+        )
+    expected_kind = expected_meta.get("kind")
+    if expected_kind is not None and actual_meta.get("kind") != expected_kind:
+        blockers.append(f"frontmatter.kind must be {expected_kind}")
+
+    changed_meta, mapping_blockers = _merge_missing_mapping_keys(
+        expected_meta,
+        actual_meta,
+        prefix="frontmatter",
+    )
+    blockers.extend(mapping_blockers)
+    if blockers:
+        raise ValueError(
+            f"{path}: non-additive project template drift: " + "; ".join(blockers)
+        )
+
+    body = actual_doc["body"].rstrip()
+    changed_sections = False
+    for name, default_content in expected_doc["sections"].items():
+        if name in actual_doc["sections"]:
+            continue
+        body += f"\n\n## {name}"
+        if default_content:
+            body += f"\n\n{default_content}"
+        changed_sections = True
+
+    if not (changed_meta or changed_sections):
+        return False
+
+    atomic_write_text(path, render_document(actual_meta, body))
+    return True
+
+
+def project_template_migration_pending(root: Path) -> bool:
+    """Есть ли structural template drift, который должен обработать RECONCILE."""
+    if not bool(get(load_manifest(root), "project.initialized", False)):
+        return False
+    for path, expected in template_targets(root).items():
+        if not path.is_file():
+            return True
+        if _validate_template_shape(path, expected):
+            return True
+    return False
+
+
+def migrate_project_templates(root: Path) -> list[str]:
+    """Мигрировать все project-owned templates additive способом."""
+    changed: list[str] = []
+    for path, expected in template_targets(root).items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.is_file():
+            atomic_write_text(path, expected)
+            changed.append(path.relative_to(root).as_posix())
+            continue
+        if _migrate_template_shape(path, expected):
+            changed.append(path.relative_to(root).as_posix())
+    return changed
+
+
 def _required_mapping_shape(expected: Any, actual: Any, *, prefix: str) -> list[str]:
     """Рекурсивно потребовать structural keys без equality project-owned values."""
     errors: list[str] = []
@@ -513,21 +654,9 @@ def _validate_template_shape(path: Path, expected: str) -> list[str]:
     except (DocumentError, OSError, UnicodeDecodeError) as exc:
         return [str(exc)]
 
-    # Expected definitions — protocol-owned constants этого release. Разбираем
-    # их in-memory: validator не должен создавать даже временные repository files.
-    expected_frontmatter, expected_body = split_frontmatter(expected)
-    if expected_frontmatter is None:
-        raise ValueError("protocol template definition has no frontmatter")
-    expected_sections, expected_duplicates = parse_sections(expected_body)
-    if expected_duplicates:
-        raise ValueError(
-            "protocol template definition has duplicate sections: "
-            + ", ".join(expected_duplicates)
-        )
-    expected_doc = {
-        "frontmatter": expected_frontmatter,
-        "sections": expected_sections,
-    }
+    # Expected definitions — protocol-owned constants этого release.
+    # Разбираем их in-memory тем же parser-ом, без repository mutations.
+    expected_doc = _expected_template_document(expected)
 
     for duplicate in actual_doc["duplicate_sections"]:
         errors.append(f"duplicate structural section '## {duplicate}'")
