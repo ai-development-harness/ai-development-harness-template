@@ -107,6 +107,38 @@ def main() -> int:
             "handler": "harness-update-apply",
         }
 
+        # #132 follow-up: stale update journal восстанавливается до создания
+        # новой APPLY execution, иначе execution-status rollback удалил бы её.
+        pending = root / ".harness/local/update-journal"
+        pending.mkdir(parents=True)
+        original_recover = command_dispatch_module.recover_pending
+        original_apply = command_dispatch_module.apply_update
+
+        def fake_recover(_root):
+            shutil.rmtree(pending)
+            return {"rolledBack": True, "operation": "hop", "state": "verifying"}
+
+        def fake_apply(_root, *, target=None):
+            return {
+                "status": "NO_UPDATE",
+                "current": "v0.8.5",
+                "resolvedTarget": target or "v0.8.5",
+                "route": ["v0.8.5"],
+                "repositoryMutated": False,
+            }
+
+        command_dispatch_module.recover_pending = fake_recover
+        command_dispatch_module.apply_update = fake_apply
+        try:
+            recovered_apply = start_dispatch(root, "HARNESS UPDATE APPLY")
+        finally:
+            command_dispatch_module.recover_pending = original_recover
+            command_dispatch_module.apply_update = original_apply
+        assert recovered_apply["status"] == "DONE", recovered_apply
+        assert recovered_apply["result"]["status"] == "SUCCESS", recovered_apply
+        assert recovered_apply["result"]["recoveredInterruptedUpdate"]["rolledBack"] is True, recovered_apply
+        assert not pending.exists(), "pending journal survived pre-dispatch recovery"
+
         # Mutating deterministic handler may return SUCCESS rather than PASS.
         # Dispatcher must persist exact SUCCESS and finish without semantic handoff.
         original_sync = command_dispatch_module.execute_sync
