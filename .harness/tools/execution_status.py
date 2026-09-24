@@ -74,6 +74,7 @@ _LOCK_LOCAL = threading.local()
 STATUS_SCHEMA_VERSION = 2
 LEGACY_STATUS_SCHEMA_VERSION = 1
 RECENT_TERMINAL_LIMIT = 100
+MAX_DETAILS_BYTES = 16 * 1024
 
 EXECUTION_MODES = {"single", "chain", "orchestration"}
 EXECUTION_STATUSES = {"running", "complete", "blocked"}
@@ -234,6 +235,50 @@ def _validate_baseline(value: Any, prefix: str) -> list[str]:
     return errors
 
 
+def _details_size_bytes(value: dict[str, Any]) -> int:
+    """Размер durable details в точном compact UTF-8 JSON transport."""
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return len(encoded)
+
+
+def _details_errors(
+    value: Any,
+    *,
+    prefix: str,
+    enforce_budget: bool,
+) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        return [f"{prefix} must be an object"]
+    if enforce_budget:
+        try:
+            size = _details_size_bytes(value)
+        except (TypeError, ValueError) as exc:
+            return [f"{prefix} must be JSON-serializable: {exc}"]
+        if size > MAX_DETAILS_BYTES:
+            return [
+                f"{prefix} exceeds {MAX_DETAILS_BYTES} UTF-8 JSON bytes: {size}"
+            ]
+    return []
+
+
+def _require_details_budget(value: dict[str, Any] | None) -> None:
+    """Reject oversized durable handoff metadata before execution mutation."""
+    errors = _details_errors(
+        value,
+        prefix="current.details",
+        enforce_budget=True,
+    )
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
 def _validate_execution_record(
     execution: Any,
     *,
@@ -241,6 +286,7 @@ def _validate_execution_record(
     allowed_statuses: set[str],
     require_ordinal: bool,
     require_nonempty_sequence: bool = True,
+    enforce_details_budget: bool = True,
 ) -> list[str]:
     errors: list[str] = []
     if not isinstance(execution, dict):
@@ -286,9 +332,13 @@ def _validate_execution_record(
     result = current.get("result")
     if result is not None and result not in RESULTS:
         errors.append(f"{prefix}: invalid current.result")
-    details = current.get("details")
-    if details is not None and not isinstance(details, dict):
-        errors.append(f"{prefix}: current.details must be an object")
+    errors.extend(
+        _details_errors(
+            current.get("details"),
+            prefix=f"{prefix}: current.details",
+            enforce_budget=enforce_details_budget,
+        )
+    )
     attempt = current.get("attempt")
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
         errors.append(f"{prefix}: current.attempt must be >= 1")
@@ -333,9 +383,13 @@ def _validate_terminal_record(value: Any, prefix: str) -> list[str]:
         result = current.get("result")
         if result is not None and result not in RESULTS:
             errors.append(f"{prefix}: invalid current.result")
-        details = current.get("details")
-        if details is not None and not isinstance(details, dict):
-            errors.append(f"{prefix}: current.details must be an object")
+        errors.extend(
+            _details_errors(
+                current.get("details"),
+                prefix=f"{prefix}: current.details",
+                enforce_budget=True,
+            )
+        )
     return errors
 
 
@@ -356,6 +410,7 @@ def _validate_v1_status(value: dict[str, Any]) -> list[str]:
                 allowed_statuses=EXECUTION_STATUSES,
                 require_ordinal=False,
                 require_nonempty_sequence=False,
+                enforce_details_budget=False,
             )
         )
         if isinstance(execution, dict):
@@ -1359,6 +1414,7 @@ def complete_command(
 ) -> dict[str, Any]:
     if result not in RESULTS:
         raise ValueError(f"result must be one of {sorted(RESULTS)}")
+    _require_details_budget(details)
 
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     normalized_command = normalize_single_command(root, command)["normalized"]

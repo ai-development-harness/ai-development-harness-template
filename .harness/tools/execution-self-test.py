@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 
 from execution_status import (
+    MAX_DETAILS_BYTES,
     begin_command,
     block_execution,
     complete_command,
@@ -1372,16 +1373,65 @@ def main() -> int:
         unknown_local = migration_root / ".harness/local/unknown-owner.json"
         unknown_local.write_text('{"keep":true}\n', encoding="utf-8")
 
-        # Stress: terminal history не растёт бесконечно. 250 новых invocations
-        # оставляют только hard-bounded recent window и ни одного full completed
-        # record в executions.
-        for _index in range(250):
+        # Regression #91: oversized durable details блокируются ДО mutation.
+        # Running execution должна остаться running и затем корректно завершиться
+        # с допустимым handoff.
+        oversized_execution = start_execution(migration_root, "PROJECT STATUS")
+        state_before_oversized = migration_state_path.read_bytes()
+        oversized_details = {"blob": "я" * MAX_DETAILS_BYTES}
+        try:
+            complete_command(
+                migration_root,
+                oversized_execution["rootCommand"],
+                "PROJECT STATUS",
+                "SUCCESS",
+                details=oversized_details,
+            )
+        except ValueError as exc:
+            assert "exceeds" in str(exc) and "UTF-8 JSON bytes" in str(exc), exc
+        else:
+            raise AssertionError("oversized execution details were accepted")
+        assert migration_state_path.read_bytes() == state_before_oversized
+        still_running = resolve_root(migration_root, "PROJECT STATUS")
+        assert still_running["status"] == "RESUME", still_running
+        complete_command(
+            migration_root,
+            oversized_execution["rootCommand"],
+            "PROJECT STATUS",
+            "SUCCESS",
+        )
+
+        # Сформировать details максимально близко к byte-budget, не используя
+        # character-count approximation: Unicode/JSON escaping не должны менять
+        # contract.
+        payload_len = MAX_DETAILS_BYTES
+        while payload_len > 0:
+            near_limit_details = {"blob": "x" * payload_len}
+            encoded_size = len(
+                json.dumps(
+                    near_limit_details,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
+            if encoded_size <= MAX_DETAILS_BYTES:
+                break
+            payload_len -= 1
+        assert encoded_size <= MAX_DETAILS_BYTES
+        assert encoded_size > MAX_DETAILS_BYTES - 64, encoded_size
+
+        # Stress: terminal history bounded одновременно по count и per-record
+        # bytes. 120 near-limit completions оставляют ровно 100 tombstones и
+        # serialized state порядка <= 100 * budget + structural overhead.
+        for _index in range(120):
             stress = start_execution(migration_root, "PROJECT STATUS")
             complete_command(
                 migration_root,
                 stress["rootCommand"],
                 "PROJECT STATUS",
                 "SUCCESS",
+                details=near_limit_details,
             )
         stressed = load_status(migration_root)
         assert len(stressed["recentTerminals"]) == 100, len(
@@ -1391,7 +1441,8 @@ def main() -> int:
             item["status"] in {"running", "blocked"}
             for item in stressed["executions"]
         ), stressed["executions"]
-        assert migration_state_path.stat().st_size < 150_000, (
+        # 100 * 16KiB details плюс tombstone/active/recovery overhead.
+        assert migration_state_path.stat().st_size < 1_900_000, (
             migration_state_path.stat().st_size
         )
         assert implementation_baseline_for_step(
@@ -1472,6 +1523,71 @@ def main() -> int:
         else:
             raise AssertionError("mismatched stepRecovery identity was accepted")
         assert migration_state_path.read_bytes() == mismatched_bytes
+
+        # Legacy v1 может содержать historical details, появившиеся до
+        # byte-budget. Migration не имеет права молча truncate-ить proof:
+        # oversized v1 fail-closed и сохраняет исходные bytes.
+        oversized_v1 = {
+            "schemaVersion": 1,
+            "executions": [
+                legacy_record(
+                    "exec-v1-oversized",
+                    "PROJECT STATUS",
+                    status="complete",
+                    command_status="complete",
+                    result="SUCCESS",
+                    details={"blob": "x" * (MAX_DETAILS_BYTES + 1024)},
+                )
+            ],
+        }
+        oversized_v1_bytes = (
+            json.dumps(oversized_v1, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
+        migration_state_path.write_bytes(oversized_v1_bytes)
+        try:
+            load_status(migration_root)
+        except ValueError as exc:
+            assert "exceeds" in str(exc), exc
+        else:
+            raise AssertionError("oversized v1 details were migrated")
+        assert migration_state_path.read_bytes() == oversized_v1_bytes
+
+        # Current v2 oversized details также invalid и не переписываются.
+        oversized_v2 = {
+            "schemaVersion": 2,
+            "executions": [],
+            "stepRecovery": {},
+            "recentTerminals": [
+                {
+                    "executionId": "exec-v2-oversized",
+                    "ordinal": 1,
+                    "rootCommand": "PROJECT STATUS",
+                    "mode": "single",
+                    "status": "complete",
+                    "current": {
+                        "command": "PROJECT STATUS",
+                        "status": "complete",
+                        "result": "SUCCESS",
+                        "completedAt": timestamp,
+                        "details": {"blob": "x" * (MAX_DETAILS_BYTES + 1024)},
+                    },
+                    "completedAt": timestamp,
+                    "updatedAt": timestamp,
+                }
+            ],
+            "nextOrdinal": 2,
+        }
+        oversized_v2_bytes = (
+            json.dumps(oversized_v2, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
+        migration_state_path.write_bytes(oversized_v2_bytes)
+        try:
+            load_status(migration_root)
+        except ValueError as exc:
+            assert "exceeds" in str(exc), exc
+        else:
+            raise AssertionError("oversized v2 details were accepted")
+        assert migration_state_path.read_bytes() == oversized_v2_bytes
 
         unsupported = {
             "schemaVersion": 999,
