@@ -15,6 +15,7 @@ from execution_status import (
     begin_command,
     block_execution,
     complete_command,
+    find_completed,
     implementation_baseline_for_step,
     load_status,
     resolve_root,
@@ -1162,6 +1163,7 @@ def main() -> int:
             command_status: str,
             result: str | None,
             implementation_baseline: dict | None = None,
+            details: dict | None = None,
         ) -> dict:
             item = {
                 "executionId": execution_id,
@@ -1192,6 +1194,8 @@ def main() -> int:
             }
             if implementation_baseline is not None:
                 item["implementationBaseline"] = implementation_baseline
+            if details is not None:
+                item["current"]["details"] = details
             return item
 
         legacy_state = {
@@ -1220,6 +1224,18 @@ def main() -> int:
                     result="SUCCESS",
                 ),
                 legacy_record(
+                    "exec-v1-update-check",
+                    "HARNESS UPDATE CHECK",
+                    status="complete",
+                    command_status="complete",
+                    result="PASS",
+                    details={
+                        "resolvedTarget": "v9.9.9",
+                        "route": ["v9.9.8", "v9.9.9"],
+                        "lockRef": "v9.9.8",
+                    },
+                ),
+                legacy_record(
                     "exec-v1-running",
                     "HARNESS CONFIG",
                     status="running",
@@ -1246,11 +1262,11 @@ def main() -> int:
 
         migrated = load_status(migration_root)
         assert migrated["schemaVersion"] == 2, migrated
-        assert migrated["nextOrdinal"] == 6, migrated
+        assert migrated["nextOrdinal"] == 7, migrated
         assert {
             item["executionId"] for item in migrated["executions"]
         } == {"exec-v1-running", "exec-v1-current-blocked"}, migrated
-        assert len(migrated["recentTerminals"]) == 3, migrated
+        assert len(migrated["recentTerminals"]) == 4, migrated
         assert (
             migrated["stepRecovery"]["STEP-001"]["implementationBaseline"]
             == baseline
@@ -1259,6 +1275,19 @@ def main() -> int:
             migration_root,
             "STEP-001",
         ) == baseline
+
+        migrated_handoff = find_completed(
+            migration_root,
+            "HARNESS UPDATE CHECK",
+            result="PASS",
+        )
+        assert migrated_handoff is not None, migrated
+        assert migrated_handoff["current"]["details"] == {
+            "resolvedTarget": "v9.9.9",
+            "route": ["v9.9.8", "v9.9.9"],
+            "lockRef": "v9.9.8",
+        }, migrated_handoff
+
         assert resolve_root(migration_root, "PROJECT STATUS")["status"] == "DONE"
         unresolved_roots = {
             item["rootCommand"]: item["status"]
@@ -1272,6 +1301,27 @@ def main() -> int:
         initial_migrated_bytes = migration_state_path.read_bytes()
         assert load_status(migration_root) == migrated
         assert migration_state_path.read_bytes() == initial_migrated_bytes
+
+        # Normal schema-v2 completion тоже сохраняет command-specific durable
+        # handoff metadata после compaction full execution -> tombstone.
+        v2_handoff_execution = start_execution(migration_root, "PROJECT STATUS")
+        complete_command(
+            migration_root,
+            v2_handoff_execution["rootCommand"],
+            "PROJECT STATUS",
+            "SUCCESS",
+            details={"handoff": {"token": "exact-v2"}},
+        )
+        v2_handoff = find_completed(
+            migration_root,
+            "PROJECT STATUS",
+            result="SUCCESS",
+            latest_only=True,
+        )
+        assert v2_handoff is not None, load_status(migration_root)
+        assert v2_handoff["current"]["details"] == {
+            "handoff": {"token": "exact-v2"}
+        }, v2_handoff
 
         # REVIEW/FIX отдельными invocations получают тот же recovery baseline
         # после migration, не завися от compact completed IMPLEMENT tombstone.
@@ -1393,6 +1443,35 @@ def main() -> int:
         else:
             raise AssertionError("corrupt v1 execution state was migrated")
         assert migration_state_path.read_bytes() == corrupted_bytes
+
+        mismatched_recovery = {
+            "schemaVersion": 2,
+            "executions": [],
+            "stepRecovery": {
+                "STEP-001": {
+                    "implementationBaseline": {
+                        "stepId": "STEP-002",
+                        "gitHead": "b" * 40,
+                        "capturedAt": timestamp,
+                        "sourceExecutionId": "exec-mismatched",
+                    },
+                    "updatedAt": timestamp,
+                }
+            },
+            "recentTerminals": [],
+            "nextOrdinal": 1,
+        }
+        mismatched_bytes = (
+            json.dumps(mismatched_recovery, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
+        migration_state_path.write_bytes(mismatched_bytes)
+        try:
+            load_status(migration_root)
+        except ValueError as exc:
+            assert "must match recovery key STEP-001" in str(exc), exc
+        else:
+            raise AssertionError("mismatched stepRecovery identity was accepted")
+        assert migration_state_path.read_bytes() == mismatched_bytes
 
         unsupported = {
             "schemaVersion": 999,
