@@ -535,6 +535,48 @@ def _merge_missing_mapping_keys(
     return changed, blockers
 
 
+def _template_migration_state(
+    path: Path,
+    expected: str,
+) -> tuple[bool, list[str]]:
+    """Вернуть (additive_pending, blockers) без repository mutation."""
+    try:
+        actual_doc = parse_document(path)
+    except (DocumentError, OSError, UnicodeDecodeError) as exc:
+        return False, [f"cannot parse template: {exc}"]
+
+    expected_doc = _expected_template_document(expected)
+    expected_meta = expected_doc["frontmatter"]
+    actual_meta = deepcopy(actual_doc["frontmatter"])
+
+    blockers: list[str] = []
+    if actual_doc["duplicate_sections"]:
+        blockers.extend(
+            f"duplicate structural section '## {name}'"
+            for name in actual_doc["duplicate_sections"]
+        )
+    if actual_meta.get("schema") != expected_meta.get("schema"):
+        blockers.append(
+            "frontmatter.schema differs from current template schema "
+            f"{expected_meta.get('schema')}"
+        )
+    expected_kind = expected_meta.get("kind")
+    if expected_kind is not None and actual_meta.get("kind") != expected_kind:
+        blockers.append(f"frontmatter.kind must be {expected_kind}")
+
+    changed_meta, mapping_blockers = _merge_missing_mapping_keys(
+        expected_meta,
+        actual_meta,
+        prefix="frontmatter",
+    )
+    blockers.extend(mapping_blockers)
+    changed_sections = any(
+        name not in actual_doc["sections"]
+        for name in expected_doc["sections"]
+    )
+    return changed_meta or changed_sections, blockers
+
+
 def _migrate_template_shape(path: Path, expected: str) -> bool:
     """Idempotent additive migration одного project-owned template.
 
@@ -595,15 +637,30 @@ def _migrate_template_shape(path: Path, expected: str) -> bool:
 
 
 def project_template_migration_pending(root: Path) -> bool:
-    """Есть ли structural template drift, который должен обработать RECONCILE."""
+    """Есть ли именно additive structural drift, доступный RECONCILE."""
     if not bool(get(load_manifest(root), "project.initialized", False)):
         return False
     for path, expected in template_targets(root).items():
         if not path.is_file():
             return True
-        if _validate_template_shape(path, expected):
+        pending, blockers = _template_migration_state(path, expected)
+        if pending and not blockers:
             return True
     return False
+
+
+def project_template_migration_blockers(root: Path) -> list[str]:
+    """Вернуть non-additive template conflicts, которые нельзя bypass/migrate."""
+    blockers: list[str] = []
+    if not bool(get(load_manifest(root), "project.initialized", False)):
+        return blockers
+    for path, expected in template_targets(root).items():
+        if not path.is_file():
+            continue
+        _pending, path_blockers = _template_migration_state(path, expected)
+        rel = path.relative_to(root).as_posix()
+        blockers.extend(f"{rel}: {item}" for item in path_blockers)
+    return blockers
 
 
 def migrate_project_templates(root: Path) -> list[str]:
