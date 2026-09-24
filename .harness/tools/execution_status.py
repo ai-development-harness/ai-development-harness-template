@@ -66,6 +66,9 @@ from review_contract import latest_review as latest_valid_review
 # STEP, Git, Harness update и остальные namespaces.
 STATUS_PATH = ".harness/local/execution/execution-status.json"
 LOCK_PATH = ".harness/local/execution/execution-status.lock"
+UPDATE_JOURNAL_PATH = ".harness/local/update-journal/journal.json"
+UPDATE_JOURNAL_DIR = ".harness/local/update-journal"
+UPDATE_TRANSACTION_ENV = "HARNESS_UPDATE_TRANSACTION"
 _PROCESS_LOCKS: dict[str, threading.RLock] = {}
 _PROCESS_LOCKS_GUARD = threading.Lock()
 _LOCK_LOCAL = threading.local()
@@ -178,6 +181,7 @@ def execution_state_lock(root: Path):
                 fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
             held[key] = 1
             try:
+                _require_update_transaction_access(root)
                 yield
             finally:
                 held.pop(key, None)
@@ -192,6 +196,39 @@ def execution_state_lock(root: Path):
                     fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
         finally:
             fh.close()
+
+
+def _require_update_transaction_access(root: Path) -> None:
+    """Не допустить lost update execution state во время Harness update.
+
+    begin_journal() создаёт journal и snapshot под тем же advisory lock. После
+    этого другие canonical sessions должны остановиться до commit/rollback.
+    Внутренний target validator может получить transactionId через environment,
+    если будущая версия validator действительно использует execution layer.
+    """
+    directory = root / UPDATE_JOURNAL_DIR
+    if not directory.exists() and not directory.is_symlink():
+        return
+    if directory.is_symlink() or not directory.is_dir():
+        raise ValueError("UPDATE_IN_PROGRESS: update journal boundary is invalid")
+    path = root / UPDATE_JOURNAL_PATH
+    if not path.is_file():
+        raise ValueError("UPDATE_IN_PROGRESS: Harness update transaction is preparing")
+    try:
+        journal = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"UPDATE_IN_PROGRESS: cannot read update journal: {exc}") from exc
+    transaction_id = journal.get("transactionId") if isinstance(journal, dict) else None
+    if (
+        isinstance(transaction_id, str)
+        and transaction_id
+        and os.environ.get(UPDATE_TRANSACTION_ENV) == transaction_id
+    ):
+        return
+    raise ValueError(
+        "UPDATE_IN_PROGRESS: execution state is locked by HARNESS UPDATE APPLY; "
+        "finish or recover the update before starting another canonical command"
+    )
 
 
 def execution_state_mutation(func):
