@@ -212,67 +212,77 @@ def _commit_marker() -> str:
     return f"harness-commit {secrets.token_hex(8)}"
 
 
-def _commit_created_by(repo: Repo, branch: str | None, marker: str) -> str | None:
-    """OID commit-а, созданного `git commit` с данным marker, или None."""
-    if not branch:
+def _commit_created_by(repo: Repo, marker: str) -> dict[str, str] | None:
+    """Exact local branch ref + OID, созданные этим `git commit`.
+
+    Hook может переключить branch до primary commit, поэтому искать marker
+    только в validated branch недостаточно. Сканируем reflog всех local branch
+    refs и принимаем ownership только при единственной паре (ref, OID).
+    """
+    refs = [
+        item.strip()
+        for item in repo.git("for-each-ref", "--format=%(refname)", "refs/heads").stdout.splitlines()
+        if item.strip()
+    ]
+    matches: set[tuple[str, str]] = set()
+    for ref in refs:
+        log = repo.git(
+            "log", "-g", "-n", str(REFLOG_SCAN_LIMIT), "--format=%H%x00%gs",
+            ref, check=False,
+        )
+        for line in log.stdout.splitlines():
+            oid, _, subject = line.partition("\0")
+            if subject.startswith(marker + ":"):
+                matches.add((ref, oid))
+    # Несколько разных refs/OID означают, что hook выполнил дополнительные
+    # ref/commit mutations с унаследованным marker: ownership неоднозначен.
+    if len(matches) != 1:
         return None
-    log = repo.git(
-        "log", "-g", "-n", str(REFLOG_SCAN_LIMIT), "--format=%H%x00%gs",
-        f"refs/heads/{branch}", check=False,
-    )
-    matches = []
-    for line in log.stdout.splitlines():
-        oid, _, subject = line.partition("\0")
-        if subject.startswith(marker + ":"):
-            matches.append(oid)
-    # Несколько записей (hook сам вызвал commit с унаследованным env) — не
-    # доказательство; fail-closed.
-    return matches[0] if len(matches) == 1 else None
+    ref, oid = next(iter(matches))
+    return {"ref": ref, "oid": oid}
 
 
 def _compensate_unvalidated_commit(
     root: Path,
     snapshot: dict[str, str | None],
-    created: str | None,
+    created: dict[str, str] | None,
     parents: list[str],
     current_branch: str | None,
 ) -> dict[str, Any]:
-    """Не оставить active branch на commit, tree которого не проходил validation (#131).
+    """Удалить только доказанный primary commit с фактически обновлённого ref.
 
-    Hooks выполняются как обычно; если hook изменил index и Git создал commit
-    из другого tree, ref возвращается на validated HEAD compare-and-swap-ом
-    (`update-ref <ref> <validated> <created>`), index — к validated tree.
-    `created` — commit, принадлежность которому этому вызову доказана reflog
-    marker-ом; CAS гарантирует, что откатывается только он, даже если ref
-    параллельно сдвигают. Working tree не трогается: изменения hook-а остаются
-    unstaged. Если владение не доказано или commit построен не на validated
-    HEAD, компенсация не выполняется (fail-closed, без reset).
+    Hook вправе переключить branch до commit. Поэтому CAS выполняется не по
+    validated branch, а по exact ref из reflog marker. Ref возвращается к
+    первому parent primary commit (или удаляется для root commit). Working tree
+    не трогаем. Index возвращаем к validated tree только если commit произошёл
+    на той же branch, которую валидировал Harness.
     """
     repo = Repo(root)
-    branch = snapshot["branch"]
-    before = snapshot["head"]
-    ref = f"refs/heads/{branch}"
     if created is None:
         return {
             "status": "not_compensated",
-            "message": "commit created by this action not found in branch reflog; ref left as is for manual review",
+            "message": "commit created by this action is not uniquely identified in local branch reflogs",
         }
-    if parents != ([before] if before else []):
-        return {
-            "status": "not_compensated",
-            "message": f"{created} is not built on validated HEAD; ref left as is for manual review",
-        }
-    after = created
-    if before:
-        moved = repo.git("update-ref", "-m", "harness: revert unvalidated commit", ref, before, after, check=False)
+    after = created["oid"]
+    ref = created["ref"]
+    created_branch = ref.removeprefix("refs/heads/")
+    if parents:
+        target = parents[0]
+        moved = repo.git(
+            "update-ref", "-m", "harness: revert unvalidated commit",
+            ref, target, after, check=False,
+        )
     else:
+        target = None
         moved = repo.git("update-ref", "-d", ref, after, check=False)
     if moved.returncode:
         return {
             "status": "not_compensated",
             "message": f"{ref} moved concurrently; not reverted: {moved.stderr.strip()}",
         }
-    if current_branch == branch:
+
+    validated_branch = str(snapshot["branch"])
+    if current_branch == created_branch == validated_branch:
         index = repo.git("read-tree", str(snapshot["tree"]), check=False)
         restored_index = index.returncode == 0
         index_note = (
@@ -280,16 +290,21 @@ def _compensate_unvalidated_commit(
             if restored_index else "index restore failed: " + index.stderr.strip()
         )
     else:
-        # Hook переключил branch: index принадлежит другой ветке, не трогаем.
+        # При branch-switch index относится уже к другому checkout. Его
+        # destructive restore к tree исходной ветки был бы потерей hook/user state.
         restored_index = False
-        index_note = f"index not restored: current branch is {current_branch or '(detached)'}"
+        index_note = (
+            "index not restored because hook changed branch; "
+            f"current branch is {current_branch or '(detached)'}"
+        )
     return {
         "status": "reverted",
         "message": (
-            f"{branch} returned to validated HEAD {before or '(unborn)'}; "
+            f"{ref} returned to {target or '(unborn)'} by CAS; "
             f"unvalidated commit {after} is reachable only via reflog; " + index_note
         ),
         "revertedCommit": after,
+        "revertedRef": ref,
         "indexRestored": restored_index,
     }
 
@@ -379,7 +394,8 @@ def execute_commit(
     marker = _commit_marker()
     _run(root, argv, input_text=message, env={"GIT_REFLOG_ACTION": marker})
     repo = Repo(root)
-    created = _commit_created_by(repo, snapshot["branch"], marker)
+    created_identity = _commit_created_by(repo, marker)
+    created = created_identity["oid"] if created_identity is not None else None
     after = repo.head()
     if not after or after == before:
         raise GitActionError("COMMIT_POSTCONDITION_FAILED", "Git HEAD did not advance")
@@ -399,15 +415,12 @@ def execute_commit(
         or parents != ([before] if before else [])
         or committed_tree != snapshot["tree"]
     ):
-        if created is not None and committed_tree == snapshot["tree"]:
-            # Наш commit содержит validated tree; расходится только окружение
-            # (ref сдвинут дальше, branch/parent изменены) — откатывать нечего.
-            compensation = {
-                "status": "not_compensated",
-                "message": f"created commit {created} has the validated tree; ref left as is for manual review",
-            }
-        else:
-            compensation = _compensate_unvalidated_commit(root, snapshot, created, parents, current_branch)
+        # Любой failed postcondition компенсируем, если reflog marker uniquely
+        # доказывает primary commit/ref. Это включает branch-switch hooks:
+        # validated tree на неверной branch тоже не считается SUCCESS.
+        compensation = _compensate_unvalidated_commit(
+            root, snapshot, created_identity, parents, current_branch
+        )
         raise GitActionError(
             "COMMIT_POSTCONDITION_FAILED",
             "created commit does not match validated branch/parent/tree "
