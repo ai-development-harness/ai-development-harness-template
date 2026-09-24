@@ -1561,24 +1561,31 @@ def implementation_baseline_for_step(
     """
     status = load_status(root)
     for execution in reversed(status.get("executions", [])):
-        baseline = execution.get("implementationBaseline")
-        if not isinstance(baseline, dict) or baseline.get("stepId") != step_id:
-            continue
         current = execution.get("current")
         if (
-            execution.get("status") == "running"
-            and isinstance(current, dict)
-            and current.get("status") == "running"
+            execution.get("status") != "running"
+            or not isinstance(current, dict)
+            or current.get("status") != "running"
         ):
-            try:
-                parsed = normalize_single_command(
-                    root,
-                    str(current.get("command") or ""),
-                )
-            except ValueError:
-                continue
-            if parsed.get("domain") == "STEP" and parsed.get("target") == step_id:
-                return dict(baseline)
+            continue
+        try:
+            parsed = normalize_single_command(
+                root,
+                str(current.get("command") or ""),
+            )
+        except ValueError:
+            continue
+        if parsed.get("domain") != "STEP" or parsed.get("target") != step_id:
+            continue
+
+        # Exact active invocation имеет приоритет даже при отсутствии baseline:
+        # это явное доказательство новой/legacy lifecycle, и старый historical
+        # proof не должен просачиваться в writer через fallback scan.
+        baseline = execution.get("implementationBaseline")
+        if isinstance(baseline, dict) and baseline.get("stepId") == step_id:
+            return dict(baseline)
+        return None
+
     return _latest_implementation_baseline(status, step_id)
 
 
