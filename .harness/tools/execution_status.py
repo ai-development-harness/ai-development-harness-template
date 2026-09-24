@@ -147,7 +147,6 @@ def execution_state_lock(root: Path):
     уже открытой transaction.
     """
     lock_path = root / LOCK_PATH
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
     key = str(lock_path.resolve())
     process_lock = _process_lock(key)
 
@@ -158,6 +157,8 @@ def execution_state_lock(root: Path):
             _LOCK_LOCAL.held = held
         depth = int(held.get(key, 0))
         if depth > 0:
+            # Outer owner уже прошёл gate до начала update. Updater увидит
+            # существующий lock и дождётся завершения всей reentrant transaction.
             held[key] = depth + 1
             try:
                 yield
@@ -165,6 +166,11 @@ def execution_state_lock(root: Path):
                 held[key] -= 1
             return
 
+        # Double-check protocol: сначала не создаём новый lock-file при pending
+        # update, затем после OS acquire повторяем проверку на случай гонки,
+        # когда journal появился между первой проверкой и flock/locking.
+        _require_update_transaction_access(root)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         fh = lock_path.open("a+b")
         try:
             if os.name == "nt":
@@ -179,9 +185,9 @@ def execution_state_lock(root: Path):
                 import fcntl
 
                 fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            _require_update_transaction_access(root)
             held[key] = 1
             try:
-                _require_update_transaction_access(root)
                 yield
             finally:
                 held.pop(key, None)
