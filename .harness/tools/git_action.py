@@ -405,6 +405,17 @@ def _provider_json(root: Path, argv: list[str]) -> Any:
         ) from exc
 
 
+def _repo_selector(gate: dict[str, Any]) -> str:
+    """Явный GitHub repository из push remote; без него gh угадывает сам (#109)."""
+    selector = gate.get("repoSelector")
+    if not isinstance(selector, str) or not selector:
+        raise GitActionError(
+            "PR_REPO_UNRESOLVED",
+            f"cannot resolve GitHub repository from remote {gate.get('remote')} URL",
+        )
+    return selector
+
+
 def _open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
     """Query exact open head/base PRs through configured provider tool."""
     tool = str(gate["preferredTool"])
@@ -419,6 +430,8 @@ def _open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
             tool,
             "pr",
             "list",
+            "--repo",
+            _repo_selector(gate),
             "--head",
             str(gate["branch"]),
             "--base",
@@ -629,6 +642,8 @@ def execute_pr(
             str(gate["preferredTool"]),
             "pr",
             "create",
+            "--repo",
+            _repo_selector(gate),
             "--head",
             str(gate["branch"]),
             "--base",
