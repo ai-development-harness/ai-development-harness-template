@@ -645,15 +645,49 @@ def test_project_owned_migration() -> None:
         require(reports_before == reports_after, "idempotent reconcile created an extra migration report")
         require(not validate_project_templates(root), validate_project_templates(root))
 
-        # Custom prose разрешён, но устаревшая structural schema — blocker.
+        # Additive structural drift теперь является migration pending, а не
+        # тупиком validator-а. Missing key восстанавливается protocol default-ом,
+        # но existing project prose остаётся нетронутым.
         stale_template = custom_template.replace("risk_flags:\n  - none\n", "")
         task_template.write_text(stale_template, encoding="utf-8")
-        template_errors = validate_project_templates(root)
         require(
-            any("missing structural key frontmatter.risk_flags" in item for item in template_errors),
-            template_errors,
+            legacy_schema_pending(root),
+            "missing template structural key was not detected as migration pending",
         )
-        task_template.write_text(custom_template, encoding="utf-8")
+        repaired = migrate_project(root)
+        require(repaired["status"] == "MIGRATED", repaired)
+        repaired_task_template = task_template.read_text(encoding="utf-8")
+        require("risk_flags:\n  - none\n" in repaired_task_template, repaired_task_template)
+        require(
+            "<!-- project customization -->" in repaired_task_template,
+            "additive template migration lost project prose",
+        )
+        require(not validate_project_templates(root), validate_project_templates(root))
+        require(not legacy_schema_pending(root), "additive template migration did not converge")
+
+        # Non-additive identity conflict не угадывается и не overwrite-ится.
+        review_template_before_conflict = review_template_path.read_text(encoding="utf-8")
+        review_template_path.write_text(
+            review_template_before_conflict.replace(
+                "kind: step_review",
+                "kind: audit",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        require(
+            legacy_schema_pending(root),
+            "non-additive template conflict was not detected",
+        )
+        try:
+            migrate_project(root)
+        except ValueError as exc:
+            require("non-additive project template drift" in str(exc), str(exc))
+            require("frontmatter.kind must be step_review" in str(exc), str(exc))
+        else:
+            raise AssertionError("non-additive project template conflict was overwritten")
+        review_template_path.write_text(review_template_before_conflict, encoding="utf-8")
+        require(not legacy_schema_pending(root), "restored template still marked pending")
 
         # После pinning historical report становится immutable contract:
         # mutation должна обнаруживаться, а RECONCILE не имеет права re-pin её.
