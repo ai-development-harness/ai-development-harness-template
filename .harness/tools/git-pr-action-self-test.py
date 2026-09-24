@@ -136,13 +136,25 @@ def main() -> int:
 
         try:
             # Create path derives title from exact commit subject and persists
-            # local lifecycle state mechanically.
-            created = execute_pr(root, body_file=body)
+            # local lifecycle state mechanically. Optional semantic title input
+            # тоже является one-shot transport и удаляется после SUCCESS.
+            title_input = root / ".harness/local/git/pr-title.md"
+            title_input.write_text(
+                "unused while title_from_commit=true\n",
+                encoding="utf-8",
+            )
+            created = execute_pr(
+                root,
+                title_file=title_input,
+                body_file=body,
+            )
             assert created["status"] == "SUCCESS", created
             assert created["reused"] is False, created
             assert created["pr"] == 17, created
             assert created["branch"] == "feature/pr-action", created
             assert created["base"] == "main", created
+            assert not body.exists(), "successful PR action left semantic body file"
+            assert not title_input.exists(), "successful PR action left semantic title file"
 
             provider = json.loads(provider_state.read_text(encoding="utf-8"))
             assert provider["title"] == "feat: deterministic provider PR", provider
@@ -164,17 +176,60 @@ def main() -> int:
             assert reused["reused"] is True, reused
             assert reused["pr"] == 17, reused
 
+            # Regression #85: semantic input symlink не должен позволять cleanup
+            # удалить durable pr-state target после успешного reuse.
+            state_before_symlink = state_path.read_bytes()
+            body_link = root / ".harness/local/git/pr-body-link.md"
+            body_link.symlink_to("pr-state.json")
+            try:
+                execute_pr(root, body_file=body_link)
+            except GitActionError as exc:
+                assert exc.code == "PR_INPUT_PATH_BLOCKED", exc.code
+            else:
+                raise AssertionError("PR body symlink was accepted")
+            assert body_link.is_symlink(), body_link
+            assert state_path.read_bytes() == state_before_symlink
+
+            # Parent symlink запрещён так же, как leaf symlink.
+            actual_dir = root / ".harness/local/git-input-target"
+            actual_dir.mkdir(parents=True)
+            parent_body = actual_dir / "body.md"
+            parent_body.write_text("keep target\n", encoding="utf-8")
+            alias_dir = root / ".harness/local/git/alias"
+            alias_dir.symlink_to(actual_dir, target_is_directory=True)
+            try:
+                execute_pr(root, body_file=alias_dir / "body.md")
+            except GitActionError as exc:
+                assert exc.code == "PR_INPUT_PATH_BLOCKED", exc.code
+            else:
+                raise AssertionError("PR body parent symlink was accepted")
+            assert alias_dir.is_symlink(), alias_dir
+            assert parent_body.read_text(encoding="utf-8") == "keep target\n"
+
             # Exact provider head OID is a postcondition, not trusted prose.
             original = json.loads(provider_state.read_text(encoding="utf-8"))
             broken = dict(original)
             broken["headRefOid"] = "0" * 40
             provider_state.write_text(json.dumps(broken), encoding="utf-8")
+            retry_body = root / ".harness/local/git/pr-body-retry.md"
+            retry_body.write_text(
+                "## Retry\n\nKeep me when provider validation fails.\n",
+                encoding="utf-8",
+            )
+            retry_title = root / ".harness/local/git/pr-title-retry.md"
+            retry_title.write_text("keep retry title\n", encoding="utf-8")
             try:
-                execute_pr(root)
+                execute_pr(
+                    root,
+                    title_file=retry_title,
+                    body_file=retry_body,
+                )
             except GitActionError as exc:
                 assert exc.code == "PR_POSTCONDITION_FAILED", exc.code
             else:
                 raise AssertionError("provider head OID mismatch was accepted")
+            assert retry_body.is_file(), "failed PR action deleted retry body"
+            assert retry_title.is_file(), "failed PR action deleted retry title"
             provider_state.write_text(json.dumps(original), encoding="utf-8")
 
             # reuse_existing=false never creates a duplicate silently.

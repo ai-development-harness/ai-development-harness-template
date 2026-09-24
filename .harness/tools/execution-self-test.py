@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression self-test crash-safe Execution Status on schema-v1 contracts."""
+"""Regression self-test crash-safe bounded Execution Status + v1 migration."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -1129,6 +1129,287 @@ def main() -> int:
             concurrent_command,
             "SUCCESS",
         )
+
+        # Regression #85: реальный legacy schema-v1 state мигрируется локально,
+        # атомарно и без PROJECT RECONCILE. Full completed history исчезает из
+        # active executions, baseline переносится в stepRecovery, а recent
+        # terminals остаются bounded.
+        migration_root = root / ".local-state-v2-fixture"
+        migration_root.mkdir(parents=True, exist_ok=True)
+        write(migration_root / ".harness/manifest.yaml", manifest())
+        source_transitions = root / ".harness/command-transitions.json"
+        target_transitions = migration_root / ".harness/command-transitions.json"
+        target_transitions.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_transitions, target_transitions)
+        write(
+            migration_root / "planning/tasks/STEP-001.md",
+            task().replace("status: planned", "status: in_progress", 1),
+        )
+
+        timestamp = "2026-09-24T00:00:00+00:00"
+        baseline = {
+            "stepId": "STEP-001",
+            "gitHead": "a" * 40,
+            "capturedAt": timestamp,
+            "sourceExecutionId": "exec-v1-implement",
+        }
+
+        def legacy_record(
+            execution_id: str,
+            root_command: str,
+            *,
+            status: str,
+            command_status: str,
+            result: str | None,
+            implementation_baseline: dict | None = None,
+        ) -> dict:
+            item = {
+                "executionId": execution_id,
+                "mode": "single",
+                "requestedCommand": root_command,
+                "rootCommand": root_command,
+                "sequence": [root_command],
+                "currentIndex": 0,
+                "status": status,
+                "current": {
+                    "command": root_command,
+                    "status": command_status,
+                    "result": result,
+                    "attempt": 1,
+                    "startedAt": timestamp,
+                    "completedAt": (
+                        None if command_status == "running" else timestamp
+                    ),
+                    "context": {},
+                },
+                "notExecuted": [],
+                "fixReviewCycles": 0,
+                "startedAt": timestamp,
+                "completedAt": (
+                    None if status == "running" else timestamp
+                ),
+                "updatedAt": timestamp,
+            }
+            if implementation_baseline is not None:
+                item["implementationBaseline"] = implementation_baseline
+            return item
+
+        legacy_state = {
+            "schemaVersion": 1,
+            "executions": [
+                legacy_record(
+                    "exec-v1-implement",
+                    "STEP IMPLEMENT STEP-001",
+                    status="complete",
+                    command_status="complete",
+                    result="SUCCESS",
+                    implementation_baseline=baseline,
+                ),
+                legacy_record(
+                    "exec-v1-blocked",
+                    "PROJECT STATUS",
+                    status="blocked",
+                    command_status="blocked",
+                    result="BLOCKED",
+                ),
+                legacy_record(
+                    "exec-v1-successor",
+                    "PROJECT STATUS",
+                    status="complete",
+                    command_status="complete",
+                    result="SUCCESS",
+                ),
+                legacy_record(
+                    "exec-v1-running",
+                    "HARNESS CONFIG",
+                    status="running",
+                    command_status="running",
+                    result=None,
+                ),
+                legacy_record(
+                    "exec-v1-current-blocked",
+                    "HARNESS HELP",
+                    status="blocked",
+                    command_status="blocked",
+                    result="BLOCKED",
+                ),
+            ],
+        }
+        migration_state_path = (
+            migration_root
+            / ".harness/local/execution/execution-status.json"
+        )
+        write(
+            migration_state_path,
+            json.dumps(legacy_state, ensure_ascii=False, indent=2) + "\n",
+        )
+
+        migrated = load_status(migration_root)
+        assert migrated["schemaVersion"] == 2, migrated
+        assert migrated["nextOrdinal"] == 6, migrated
+        assert {
+            item["executionId"] for item in migrated["executions"]
+        } == {"exec-v1-running", "exec-v1-current-blocked"}, migrated
+        assert len(migrated["recentTerminals"]) == 3, migrated
+        assert (
+            migrated["stepRecovery"]["STEP-001"]["implementationBaseline"]
+            == baseline
+        ), migrated
+        assert implementation_baseline_for_step(
+            migration_root,
+            "STEP-001",
+        ) == baseline
+        assert resolve_root(migration_root, "PROJECT STATUS")["status"] == "DONE"
+        unresolved_roots = {
+            item["rootCommand"]: item["status"]
+            for item in unresolved_executions(migration_root)
+        }
+        assert unresolved_roots == {
+            "HARNESS CONFIG": "RESUME",
+            "HARNESS HELP": "BLOCKED",
+        }, unresolved_roots
+
+        initial_migrated_bytes = migration_state_path.read_bytes()
+        assert load_status(migration_root) == migrated
+        assert migration_state_path.read_bytes() == initial_migrated_bytes
+
+        # REVIEW/FIX отдельными invocations получают тот же recovery baseline
+        # после migration, не завися от compact completed IMPLEMENT tombstone.
+        review_after_migration = start_execution(
+            migration_root,
+            "STEP REVIEW STEP-001",
+        )
+        assert (
+            review_after_migration["implementationBaseline"] == baseline
+        ), review_after_migration
+        complete_command(
+            migration_root,
+            review_after_migration["rootCommand"],
+            "STEP REVIEW STEP-001",
+            "PASS",
+        )
+
+        fix_after_migration = start_execution(
+            migration_root,
+            "STEP FIX STEP-001",
+        )
+        assert (
+            fix_after_migration["implementationBaseline"] == baseline
+        ), fix_after_migration
+        complete_command(
+            migration_root,
+            fix_after_migration["rootCommand"],
+            "STEP FIX STEP-001",
+            "SUCCESS",
+        )
+
+        # Repeated complete после migration по-прежнему видит latest terminal,
+        # а не resurrect-ит stale blocked (#76).
+        try:
+            complete_command(
+                migration_root,
+                "PROJECT STATUS",
+                "PROJECT STATUS",
+                "SUCCESS",
+            )
+        except ValueError as exc:
+            assert "already complete" in str(exc), exc
+        else:
+            raise AssertionError("v2 terminal tombstone lost repeated-complete proof")
+
+        # Unknown local artifacts и lock infrastructure не являются cleanup
+        # targets execution compactor-а.
+        unknown_local = migration_root / ".harness/local/unknown-owner.json"
+        unknown_local.write_text('{"keep":true}\n', encoding="utf-8")
+
+        # Stress: terminal history не растёт бесконечно. 250 новых invocations
+        # оставляют только hard-bounded recent window и ни одного full completed
+        # record в executions.
+        for _index in range(250):
+            stress = start_execution(migration_root, "PROJECT STATUS")
+            complete_command(
+                migration_root,
+                stress["rootCommand"],
+                "PROJECT STATUS",
+                "SUCCESS",
+            )
+        stressed = load_status(migration_root)
+        assert len(stressed["recentTerminals"]) == 100, len(
+            stressed["recentTerminals"]
+        )
+        assert all(
+            item["status"] in {"running", "blocked"}
+            for item in stressed["executions"]
+        ), stressed["executions"]
+        assert migration_state_path.stat().st_size < 150_000, (
+            migration_state_path.stat().st_size
+        )
+        assert implementation_baseline_for_step(
+            migration_root,
+            "STEP-001",
+        ) == baseline
+        assert unknown_local.read_text(encoding="utf-8") == '{"keep":true}\n'
+        assert (
+            migration_root
+            / ".harness/local/execution/execution-status.lock"
+        ).is_file()
+
+        # Доказанный terminal lifecycle STEP позволяет удалить recovery proof.
+        migration_task = migration_root / "planning/tasks/STEP-001.md"
+        write(
+            migration_task,
+            migration_task.read_text(encoding="utf-8").replace(
+                "status: in_progress",
+                "status: completed",
+                1,
+            ),
+        )
+        trigger = start_execution(migration_root, "PROJECT STATUS")
+        complete_command(
+            migration_root,
+            trigger["rootCommand"],
+            "PROJECT STATUS",
+            "SUCCESS",
+        )
+        after_terminal_step = load_status(migration_root)
+        assert "STEP-001" not in after_terminal_step["stepRecovery"], (
+            after_terminal_step
+        )
+
+        # Corrupted legacy input fail-closed: migration не заменяет исходный
+        # файл пустым/частичным v2.
+        corrupted = {
+            "schemaVersion": 1,
+            "executions": [{"changed": True}],
+        }
+        corrupted_bytes = (
+            json.dumps(corrupted, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
+        migration_state_path.write_bytes(corrupted_bytes)
+        try:
+            load_status(migration_root)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("corrupt v1 execution state was migrated")
+        assert migration_state_path.read_bytes() == corrupted_bytes
+
+        unsupported = {
+            "schemaVersion": 999,
+            "executions": [],
+        }
+        unsupported_bytes = (
+            json.dumps(unsupported, ensure_ascii=False, indent=2) + "\n"
+        ).encode("utf-8")
+        migration_state_path.write_bytes(unsupported_bytes)
+        try:
+            load_status(migration_root)
+        except ValueError as exc:
+            assert "schemaVersion" in str(exc), exc
+        else:
+            raise AssertionError("unsupported execution schema was accepted")
+        assert migration_state_path.read_bytes() == unsupported_bytes
+
     print("EXECUTION STATUS SELF-TEST: PASS")
     return 0
 

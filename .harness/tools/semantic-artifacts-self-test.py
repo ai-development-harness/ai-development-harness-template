@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import shutil
 import subprocess
 import tempfile
@@ -193,6 +194,132 @@ def main() -> int:
         assert "**Files:**" in planned["sections"]["Implementation plan"]
         assert ".harness/tools/semantic_artifacts.py" in planned["sections"]["Implementation plan"]
         assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
+
+        # Regression #85: file payload — одноразовый transport. Нормально
+        # завершившийся writer удаляет его, validation/parsing failure оставляет
+        # файл для retry.
+        cleanup_step = root / "planning/tasks/STEP-999.md"
+        cleanup_step.write_text(
+            task().replace("STEP-001", "STEP-999"),
+            encoding="utf-8",
+            newline="\n",
+        )
+        cleanup_payload = root / ".harness/local/semantic/plan-999.json"
+        cleanup_payload.parent.mkdir(parents=True, exist_ok=True)
+        cleanup_payload.write_text(
+            json.dumps(
+                {
+                    "implementationPlan": [
+                        {
+                            "title": "Проверить cleanup",
+                            "actions": ["Создать валидный draft."],
+                        }
+                    ],
+                    "verification": [
+                        {"kind": "command", "value": "python3 -V"}
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        cleanup_proc = subprocess.run(
+            [
+                "python3",
+                ".harness/tools/semantic-writer.py",
+                "plan-draft",
+                "STEP-999",
+                "--payload-file",
+                ".harness/local/semantic/plan-999.json",
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert cleanup_proc.returncode == 0, (
+            cleanup_proc.stdout,
+            cleanup_proc.stderr,
+        )
+        assert not cleanup_payload.exists(), cleanup_payload
+
+        failed_payload = root / ".harness/local/semantic/invalid-999.json"
+        failed_payload.write_text("{invalid json", encoding="utf-8")
+        failed_proc = subprocess.run(
+            [
+                "python3",
+                ".harness/tools/semantic-writer.py",
+                "plan-draft",
+                "STEP-999",
+                "--payload-file",
+                ".harness/local/semantic/invalid-999.json",
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert failed_proc.returncode == 1, failed_proc.stdout
+        assert failed_payload.is_file(), failed_payload
+
+        # Cleanup не имеет права следовать symlink и удалять target. До #85
+        # Path.resolve() скрывал symlink до проверки, поэтому unlink удалял
+        # фактический recovery/unknown target вместо transport path.
+        preserved_payload_target = root / ".harness/local/preserved-payload.json"
+        preserved_payload_target.write_text(
+            json.dumps({"doNotDelete": True}),
+            encoding="utf-8",
+        )
+        payload_symlink = root / ".harness/local/semantic/payload-link.json"
+        payload_symlink.symlink_to("../preserved-payload.json")
+        symlink_proc = subprocess.run(
+            [
+                "python3",
+                ".harness/tools/semantic-writer.py",
+                "plan-draft",
+                "STEP-999",
+                "--payload-file",
+                ".harness/local/semantic/payload-link.json",
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert symlink_proc.returncode == 1, symlink_proc.stdout
+        assert payload_symlink.is_symlink(), payload_symlink
+        assert preserved_payload_target.is_file(), preserved_payload_target
+
+        parent_target = root / ".harness/local/semantic-parent"
+        parent_target.mkdir()
+        parent_payload = parent_target / "parent.json"
+        parent_payload.write_text(
+            json.dumps({"doNotDelete": True}),
+            encoding="utf-8",
+        )
+        parent_link = root / ".harness/local/semantic-alias"
+        parent_link.symlink_to(parent_target.name, target_is_directory=True)
+        parent_proc = subprocess.run(
+            [
+                "python3",
+                ".harness/tools/semantic-writer.py",
+                "plan-draft",
+                "STEP-999",
+                "--payload-file",
+                ".harness/local/semantic-alias/parent.json",
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert parent_proc.returncode == 1, parent_proc.stdout
+        assert parent_link.is_symlink(), parent_link
+        assert parent_payload.is_file(), parent_payload
 
         try:
             write_plan_draft(

@@ -31,6 +31,47 @@ Per-STEP файлы запрещены.
 
 Все read-modify-write операции сериализуются advisory lock-файлом `.harness/local/execution/execution-status.lock`. На Unix используется `flock`, на Windows — `msvcrt.locking`; lock освобождается ОС при завершении процесса. Atomic `os.replace` сохраняет целостность JSON, а lock отдельно предотвращает lost update между параллельными sessions/subagents.
 
+## Schema v2 и bounded state
+
+Текущий local format — `schemaVersion: 2`. Он намеренно разделяет три разные семантики:
+
+```json
+{
+  "schemaVersion": 2,
+  "executions": [],
+  "stepRecovery": {},
+  "recentTerminals": [],
+  "nextOrdinal": 1
+}
+```
+
+- `executions` — только full active/recoverable records (`running` и актуальный `blocked`);
+- `stepRecovery` — минимальные STEP recovery proofs, прежде всего durable implementation baseline;
+- `recentTerminals` — compact terminal tombstones, hard limit **100**;
+- `nextOrdinal` — monotonic invocation order, чтобы latest semantics не зависела от timestamp collision.
+
+Completed execution не хранится в полном виде бесконечно. При terminal checkpoint full record превращается в tombstone. Historical blocked также перестаёт быть full operational state, когда появляется более новая invocation того же `rootCommand`.
+
+Compaction выполняется автоматически при каждой записи под тем же execution lock. Нормальная работа не требует отдельной команды очистки.
+
+### Migration schema v1 → v2
+
+Legacy `schemaVersion: 1` читается самим execution layer:
+
+```text
+read v1
+→ validate v1
+→ build v2 in memory
+→ compact
+→ validate v2
+→ fsync temporary file
+→ atomic replace
+```
+
+`PROJECT RECONCILE` в этой миграции **не участвует**: это local runtime state, а не project-owned document schema.
+
+Migration сохраняет running state, latest operational blocked state и implementation baseline. Superseded historical blocked/completed records превращаются в bounded tombstones. Повреждённый или неизвестный old schema fail-closed: исходный файл не заменяется пустым state.
+
 ## Execution record
 
 Каждый явный запуск пользователя создаёт независимую execution record.
@@ -58,20 +99,25 @@ Per-STEP файлы запрещены.
 
 Файл может одновременно хранить несколько execution records. Поэтому запуск новой независимой команды не уничтожает сведения об interrupted execution.
 
-Для STEP implementation lifecycle execution record может дополнительно содержать durable baseline:
+Для STEP implementation lifecycle active execution может содержать `implementationBaseline`, но durable ownership baseline не зависит от lifetime полного execution record. После terminal compaction proof сохраняется отдельно:
 
 ```json
 {
-  "implementationBaseline": {
-    "stepId": "STEP-001",
-    "gitHead": "<HEAD до первой product mutation>",
-    "capturedAt": "<UTC>",
-    "sourceExecutionId": "exec-..."
+  "stepRecovery": {
+    "STEP-001": {
+      "implementationBaseline": {
+        "stepId": "STEP-001",
+        "gitHead": "<HEAD до первой product mutation>",
+        "capturedAt": "<UTC>",
+        "sourceExecutionId": "exec-..."
+      },
+      "updatedAt": "<UTC>"
+    }
   }
 }
 ```
 
-Поле optional: historical schema-v1 state без него остаётся валидным. Новый `STEP IMPLEMENT` фиксирует baseline до semantic handoff; если STEP уже `in_progress`, повторный независимый IMPLEMENT наследует baseline активной lifecycle вместо его сдвига. `REVIEW` и `FIX` наследуют тот же proof, в том числе при запуске отдельной root execution. После restart baseline читается из того же local state и не восстанавливается по chat history.
+Новый `STEP IMPLEMENT` фиксирует baseline до semantic handoff; `REVIEW` и `FIX` получают его из active execution или `stepRecovery`, а не из бесконечной completed history. Recovery удаляется автоматически только при доказанном terminal lifecycle STEP (`completed | cancelled | deferred`). Ошибка чтения task или промежуточный `planned/blocked/in_progress` не являются основанием забыть proof.
 
 ## Internal modes
 
@@ -441,11 +487,15 @@ STEP RUN STEP-001
 
 Blocked/completed root при явном новом запуске создаёт новую execution.
 
-## История
+## Bounded terminal history
 
-Файл хранит completed records вместе с unresolved records. Это позволяет использовать безопасные cross-session handoff checks, например UPDATE CHECK → APPLY.
+Execution Status не является audit log или product source of truth.
 
-Execution Status не является audit log или product source of truth. Его можно удалить, если пользователь сознательно отказывается от local recovery/history. После удаления Harness обязан опираться на canonical artifacts и безопасно повторять недоказанные команды.
+Полная completed history поэтому не хранится. `recentTerminals` содержит только последние 100 compact tombstones, достаточные для ближайших retry/idempotency checks вроде повторного `complete` и UPDATE handoff. Более старая terminal history намеренно забывается; долгоживущие доказательства должны находиться в canonical artifacts/reports.
+
+`running` автоматически не удаляется. Latest actionable `blocked` также сохраняется full record-ом. Когда более новая invocation того же root делает старый blocked историческим, старый record компактируется.
+
+Удаление всего execution-status вручную означает сознательный отказ от local recovery. После этого Harness обязан опираться на canonical artifacts и безопасно повторять недоказанные side effects, а не реконструировать local history догадками.
 
 ## Главный принцип
 

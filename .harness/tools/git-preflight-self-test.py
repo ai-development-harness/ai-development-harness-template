@@ -180,6 +180,56 @@ def main() -> int:
         assert run(project, "git", "branch", "--show-current") == "feature/user-search-api"
         assert not message_file.exists()
 
+        # Regression #85: commit input cleanup удаляет только exact validated
+        # lexical transport path и не следует symlink к другому local state.
+        write(project, "symlink-commit.txt", "staged\n")
+        run(project, "git", "add", "symlink-commit.txt")
+
+        failed_message = project / ".harness/local/git/commit-message-invalid.txt"
+        write(
+            project,
+            ".harness/local/git/commit-message-invalid.txt",
+            "not-a-conventional-subject\n",
+        )
+        try:
+            execute_commit(
+                project,
+                commit_type="feat",
+                slug="Failed Message",
+                message_file=failed_message,
+            )
+        except Exception as exc:
+            assert getattr(exc, "code", None) == "COMMIT_MESSAGE_INVALID", exc
+        else:
+            raise AssertionError("invalid commit message was accepted")
+        assert failed_message.is_file(), "failed commit deleted retry message"
+        failed_message.unlink()
+
+        message_target = project / ".harness/local/git/keep-message.txt"
+        write(
+            project,
+            ".harness/local/git/keep-message.txt",
+            "feat: protected target\n\nContext:\n- must survive\n",
+        )
+        message_link = project / ".harness/local/git/commit-message-link.txt"
+        message_link.symlink_to("keep-message.txt")
+        try:
+            execute_commit(
+                project,
+                commit_type="feat",
+                slug="Symlink Guard",
+                message_file=message_link,
+            )
+        except Exception as exc:
+            assert getattr(exc, "code", None) == "COMMIT_MESSAGE_PATH_BLOCKED", exc
+        else:
+            raise AssertionError("commit message symlink was accepted")
+        assert message_link.is_symlink(), message_link
+        assert message_target.is_file(), message_target
+        run(project, "git", "reset", "--hard", "HEAD")
+        message_link.unlink()
+        message_target.unlink()
+
         # Existing protected branch cannot be pushed after bootstrap.
         run(project, "git", "switch", "main")
         expect_blocked("PROTECTED_BRANCH_PUSH_BLOCKED", lambda: push_preflight(project))
