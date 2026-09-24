@@ -744,13 +744,23 @@ def complete_command(
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     normalized_command = normalize_single_command(root, command)["normalized"]
     status = load_status(root)
+    # Completion относится к самой новой invocation этого root command.
+    # Иначе старый blocked execution может затенить более новый successful
+    # execution после его завершения и исказить повторный complete.
     execution = _latest_execution(
         status,
         root_command=normalized_root,
-        statuses={"running", "blocked"},
     )
     if execution is None:
-        raise ValueError(f"active execution not found for {normalized_root}")
+        raise ValueError(f"execution not found for {normalized_root}")
+    if execution.get("status") == "complete":
+        raise ValueError(f"execution is already complete for {normalized_root}")
+    if execution.get("status") == "blocked":
+        raise ValueError(f"execution is blocked for {normalized_root}")
+    if execution.get("status") != "running":
+        raise ValueError(
+            f"execution has unsupported status {execution.get('status')!r} for {normalized_root}"
+        )
 
     current = execution["current"]
     if current.get("command") != normalized_command:
