@@ -32,7 +32,10 @@ from harness_config import (
 )
 from projection_contract import write_projections
 from review_contract import current_legacy_review_snapshots, legacy_review_pins
-from template_contract import refresh_project_templates
+from template_contract import (
+    migrate_project_templates,
+    project_template_migration_pending,
+)
 
 
 STATUS_MAP = {
@@ -494,6 +497,11 @@ def legacy_schema_pending(root: Path) -> bool:
             return True
     except ValueError:
         return True
+    try:
+        if project_template_migration_pending(root):
+            return True
+    except (OSError, UnicodeDecodeError, ValueError):
+        return True
     return False
 
 
@@ -520,8 +528,10 @@ def migrate_project(root: Path) -> dict[str, Any]:
     )
 
     # Project-owned templates не обновляются HARNESS UPDATE. RECONCILE
-    # синхронизирует их из protocol-owned definitions и затем projections.
-    changed.extend(refresh_project_templates(root))
+    # применяет только additive structural migration: missing keys/sections
+    # добавляются из current protocol defaults, project values/prose сохраняются.
+    # Non-additive conflicts остаются blocker и не перезаписываются.
+    changed.extend(migrate_project_templates(root))
     # Pending legacy review pins участвуют в final projection calculation
     # в этом же migration run. После этого тот же exact pin set публикуется
     # в immutable migration report, поэтому второй RECONCILE — настоящий no-op.
