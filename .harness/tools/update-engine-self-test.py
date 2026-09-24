@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -445,8 +446,17 @@ def test_local_state_rollback_is_byte_exact(tmp: Path) -> None:
     )
     original = '{"schemaVersion": 1, "x": 1}\n'
     write(project, STATE, original)
+    if os.name == "posix":
+        os.chmod(project / STATE, 0o600)
+        original_mode = stat.S_IMODE((project / STATE).stat().st_mode)
+    else:
+        original_mode = None
     expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
     assert (project / STATE).read_text() == original
+    if original_mode is not None:
+        assert stat.S_IMODE((project / STATE).stat().st_mode) == original_mode, (
+            "rollback changed execution-status permissions"
+        )
 
     # Файла не было — созданный hop-ом файл удаляется.
     created = tmp / "created"
@@ -469,6 +479,30 @@ def test_local_state_rollback_is_byte_exact(tmp: Path) -> None:
     write(project, STATE, original)
     assert apply_update(project, source_url=str(source))["status"] == "UPDATED"
     assert json.loads((project / STATE).read_text())["schemaVersion"] == 2
+
+
+def test_update_blocks_concurrent_execution_state(tmp: Path) -> None:
+    """#132: pending update journal блокирует canonical execution-state writers."""
+    import execution_status
+    import update_recovery
+
+    source, project = synthetic_pair(tmp, base={}, target={})
+    write(project, STATE, '{"schemaVersion": 2, "executions": [], "stepRecovery": {}, "recentTerminals": [], "nextOrdinal": 1}\n')
+    journal = update_recovery.begin_journal(
+        project,
+        operation="concurrency-test",
+        source="v1.0.0",
+        target="v1.1.0",
+        paths=[],
+    )
+    try:
+        try:
+            with execution_status.execution_state_lock(project):
+                raise AssertionError("foreign execution state lock unexpectedly acquired")
+        except ValueError as exc:
+            assert "UPDATE_IN_PROGRESS" in str(exc), exc
+    finally:
+        update_recovery.rollback_journal(project, journal)
 
 
 def _update_reports(project: Path) -> list[str]:
