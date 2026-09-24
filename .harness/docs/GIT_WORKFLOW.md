@@ -50,7 +50,10 @@ Read-only deterministic preflight без model call: dispatcher напрямую
 - вызывает `git-action.py commit --commit-type ... --slug ... --message-file ...`;
 - executor повторяет preflight, при protected `auto-create` создаёт только exact required branch;
 - message читается и валидируется один раз Harness-ом, затем exact captured text передаётся `git commit -F -` через stdin; Git не переоткрывает mutable input path;
-- только после PASS создаёт **локальный commit** и проверяет новый HEAD.
+- только после PASS создаёт **локальный commit** и проверяет новый HEAD;
+- до validator фиксируется snapshot `{branch, HEAD, index tree}`, перед `git commit` он сверяется повторно (`COMMIT_INPUT_CHANGED`), после — commit обязан иметь validated parent и tree.
+
+Git hooks (`pre-commit`, `prepare-commit-msg`, `commit-msg` …) выполняются как обычно. Если hook изменил index и Git создал commit из tree, которое не проходило validation, executor возвращает `COMMIT_POSTCONDITION_FAILED` и компенсирует мутацию: ветка compare-and-swap-ом (`git update-ref <ref> <validated-head> <created>`; для первого commit — CAS-удаление ref) возвращается на validated HEAD, index — к validated tree. Working tree не трогается: изменения hook-а остаются unstaged, непроверенный commit доступен только через reflog. Если ref уже сдвинут, commit построен не на validated HEAD или его message не совпадает с переданным (например, изменён `commit-msg` hook-ом), компенсация не выполняется — результат содержит `compensation.status = not_compensated` для ручной проверки; `reset --hard` не используется никогда.
 - после доказанного commit SUCCESS пытается удалить только exact validated `.harness/local/git/commit-message.txt`; symlink path запрещён, при failure message сохраняется для retry, а secondary cleanup failure возвращается warning и не отменяет уже созданный commit.
 
 Message строится по `.gitmessage`:

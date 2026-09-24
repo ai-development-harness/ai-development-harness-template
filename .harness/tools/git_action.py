@@ -199,6 +199,73 @@ def _commit_snapshot(root: Path) -> dict[str, str | None]:
     }
 
 
+def _normalized_message(text: str) -> str:
+    lines = [line.rstrip() for line in text.replace("\r\n", "\n").split("\n")]
+    return "\n".join(lines).strip("\n")
+
+
+def _compensate_unvalidated_commit(
+    root: Path,
+    snapshot: dict[str, str | None],
+    after: str,
+    parents: list[str],
+    message: str,
+) -> dict[str, Any]:
+    """Не оставить active branch на commit, tree которого не проходил validation (#131).
+
+    Hooks выполняются как обычно; если hook изменил index и Git создал commit
+    из другого tree, ref возвращается на validated HEAD compare-and-swap-ом
+    (`update-ref <ref> <old> <new>`), index — к validated tree. Working tree не
+    трогается: изменения hook-а остаются unstaged. Если ref уже сдвинут,
+    branch сменился или commit построен не на validated HEAD, компенсация не
+    выполняется (fail-closed, без reset).
+    """
+    repo = Repo(root)
+    branch = snapshot["branch"]
+    before = snapshot["head"]
+    ref = f"refs/heads/{branch}"
+    try:
+        current_branch = repo.branch()
+    except GitPreflightError:
+        current_branch = None
+    if current_branch != branch or parents != ([before] if before else []):
+        return {
+            "status": "not_compensated",
+            "message": "branch/parent differ from validated snapshot; ref left as is for manual review",
+        }
+    # HEAD читается после `git commit`: ref мог уже сдвинуть кто-то другой.
+    # Откатываем только commit, чьё сообщение — ровно наше (hook commit-msg,
+    # изменивший текст, тоже даёт fail-closed без компенсации).
+    body = repo.git("log", "-1", "--format=%B", after, check=False).stdout
+    if _normalized_message(body) != _normalized_message(message):
+        return {
+            "status": "not_compensated",
+            "message": f"{after} is not the commit created by this action; ref left as is for manual review",
+        }
+    if before:
+        moved = repo.git("update-ref", "-m", "harness: revert unvalidated commit", ref, before, after, check=False)
+    else:
+        moved = repo.git("update-ref", "-d", ref, after, check=False)
+    if moved.returncode:
+        return {
+            "status": "not_compensated",
+            "message": f"{ref} moved concurrently; not reverted: {moved.stderr.strip()}",
+        }
+    index = repo.git("read-tree", str(snapshot["tree"]), check=False)
+    restored_index = index.returncode == 0
+    return {
+        "status": "reverted",
+        "message": (
+            f"{branch} returned to validated HEAD {before or '(unborn)'}; "
+            f"unvalidated commit {after} is reachable only via reflog; "
+            + ("index restored to validated tree, hook changes left unstaged in working tree"
+               if restored_index else "index restore failed: " + index.stderr.strip())
+        ),
+        "revertedCommit": after,
+        "indexRestored": restored_index,
+    }
+
+
 def execute_commit(
     root: Path,
     *,
@@ -292,13 +359,16 @@ def execute_commit(
         or parents != ([before] if before else [])
         or committed_tree != snapshot["tree"]
     ):
+        compensation = _compensate_unvalidated_commit(root, snapshot, after, parents, message)
         raise GitActionError(
             "COMMIT_POSTCONDITION_FAILED",
-            "created commit does not match validated branch/parent/tree",
+            "created commit does not match validated branch/parent/tree "
+            "(e.g. a Git hook changed the index); " + compensation["message"],
             head=after,
             validated=snapshot,
             parents=parents,
             tree=committed_tree,
+            compensation=compensation,
         )
 
     cleanup_warning = _cleanup_consumed_input(path, message_identity)
