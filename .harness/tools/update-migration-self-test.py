@@ -971,24 +971,32 @@ def test_release_metadata(root: Path) -> None:
         )
 
 
-# Releases до v0.8.1 поставляют update engine без журнала и с defects
-# #98–#103. Проект на таком release выполняет следующий hop своим старым
-# engine, поэтому единственный допустимый выход из v0.8.0 — минимальный
-# bridge v0.8.1, который устанавливает транзакционный engine (#119).
-BRIDGE_FROM = "v0.8.0"
-BRIDGE_TO = "v0.8.1"
+# Releases до v0.8.2 поставляют update engine без журнала и с defects
+# #98–#103: проект на таком release выполняет следующий hop своим старым
+# engine. Опубликованный v0.8.1 вышел из main без нового engine, поэтому
+# транзакционный engine устанавливает минимальный bridge v0.8.2 (#119).
+# Для каждого release из таблицы единственный допустимый выход — указанный
+# bridge (kind=bridge, reloadRequired=true, reason).
+REQUIRED_BRIDGES = {
+    "v0.8.0": "v0.8.1",
+    "v0.8.1": "v0.8.2",
+}
 
 
 def bridge_edge_errors(graph: dict) -> list[str]:
-    edges = [edge for edge in graph.get("transitions", []) if edge.get("from") == BRIDGE_FROM]
     errors: list[str] = []
-    for edge in edges:
-        if edge.get("to") != BRIDGE_TO:
-            errors.append(f"{BRIDGE_FROM} may only route to bridge {BRIDGE_TO}, got {edge.get('to')}")
+    for edge in graph.get("transitions", []):
+        source = edge.get("from")
+        expected = REQUIRED_BRIDGES.get(source)
+        if expected is None:
+            continue
+        target = edge.get("to")
+        if target != expected:
+            errors.append(f"{source} may only route to bridge {expected}, got {target}")
         if edge.get("kind") != "bridge" or edge.get("reloadRequired") is not True:
-            errors.append(f"{BRIDGE_FROM} -> {edge.get('to')} must be kind=bridge with reloadRequired=true")
+            errors.append(f"{source} -> {target} must be kind=bridge with reloadRequired=true")
         if not str(edge.get("reason") or "").strip():
-            errors.append(f"{BRIDGE_FROM} -> {edge.get('to')} bridge requires reason")
+            errors.append(f"{source} -> {target} bridge requires reason")
     return errors
 
 
@@ -997,13 +1005,14 @@ def test_bridge_release_gate(root: Path) -> None:
     errors = bridge_edge_errors(graph)
     require(not errors, "; ".join(errors))
 
-    # Negative cases: прямой переход из v0.8.0 мимо bridge и non-reload bridge.
-    skipped = {"transitions": [{"from": BRIDGE_FROM, "to": "v0.9.0", "kind": "bridge", "reloadRequired": True, "reason": "x"}]}
-    require(bridge_edge_errors(skipped), "gate accepted v0.8.0 edge that skips v0.8.1")
-    standard = {"transitions": [{"from": BRIDGE_FROM, "to": BRIDGE_TO, "kind": "standard", "reloadRequired": False}]}
-    require(bridge_edge_errors(standard), "gate accepted non-bridge v0.8.0 -> v0.8.1 edge")
-    good = {"transitions": [{"from": BRIDGE_FROM, "to": BRIDGE_TO, "kind": "bridge", "reloadRequired": True, "reason": "journaled engine"}]}
-    require(not bridge_edge_errors(good), "gate rejected valid bridge edge")
+    def edge(source: str, target: str, *, kind: str = "bridge", reload: bool = True) -> dict:
+        return {"transitions": [{"from": source, "to": target, "kind": kind, "reloadRequired": reload, "reason": "journaled engine"}]}
+
+    # Negative cases: переход мимо bridge и non-reload/standard bridge.
+    require(bridge_edge_errors(edge("v0.8.1", "v0.9.0")), "gate accepted v0.8.1 edge that skips v0.8.2")
+    require(bridge_edge_errors(edge("v0.8.1", "v0.8.2", kind="standard", reload=False)), "gate accepted non-bridge v0.8.1 -> v0.8.2 edge")
+    require(bridge_edge_errors(edge("v0.8.0", "v0.9.0")), "gate accepted v0.8.0 edge that skips v0.8.1")
+    require(not bridge_edge_errors(edge("v0.8.1", "v0.8.2")), "gate rejected valid v0.8.2 bridge edge")
 
 
 def main() -> int:
@@ -1015,7 +1024,7 @@ def main() -> int:
         ("pre-init release template alignment", test_preinit_release_template_alignment),
         ("project-owned schema migration", test_project_owned_migration),
         ("release metadata", lambda: test_release_metadata(root)),
-        ("v0.8.0 bridge release gate", lambda: test_bridge_release_gate(root)),
+        ("journaled-engine bridge release gate", lambda: test_bridge_release_gate(root)),
     ]
     for name, test in tests:
         test()

@@ -404,11 +404,11 @@ Remote routing/policy/content рассматриваются как **данны
 
 Source repository и его release tags — доверенный поставщик Harness-кода; target validator исполняется внутри журналированной транзакции hop (см. [`THREAT_MODEL.md`](THREAT_MODEL.md)).
 
-## Bridge v0.8.1 для проектов на v0.8.0
+## Bridge v0.8.2 для проектов на v0.8.0 и v0.8.1
 
-Releases до v0.8.1 поставляют engine без журнала. Проект на `v0.8.0` выполняет следующий hop **своим** engine, поэтому единственный допустимый выход из `v0.8.0` — минимальный bridge `v0.8.1` (`kind: bridge`, `reloadRequired: true`), который устанавливает транзакционный engine и не меняет template definitions, marker blocks, ownership policy и формат local state. Последующие hops выполняет уже новый engine. `update-migration-self-test.py` блокирует любое другое ребро из `v0.8.0`.
+Releases до v0.8.2 поставляют engine без журнала. Проект выполняет следующий hop **своим** engine, поэтому транзакционный engine должен прийти минимальным bridge-релизом, который старый engine применяет безопасно.
 
-После APPLY пользователь/агент сначала инспектирует diff и проходит обычный Git/Harness validation flow.
+Опубликованный `v0.8.1` вышел из `main` без нового engine. Поэтому bridge — `v0.8.2` (`v0.8.1` + только update engine, tests и docs; `kind: bridge`, `reloadRequired: true`): он не меняет template definitions, marker blocks, ownership policy и формат local state. Маршрут проекта на v0.8.0 — `v0.8.0 → v0.8.1 → v0.8.2`; все последующие hops выполняет уже транзакционный engine. `update-migration-self-test.py` (`REQUIRED_BRIDGES`) блокирует любое другое ребро из `v0.8.0` и `v0.8.1`.
 
 ## Regression check
 

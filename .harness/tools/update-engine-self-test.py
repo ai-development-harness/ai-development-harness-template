@@ -507,7 +507,7 @@ def test_preinit_template_change(tmp: Path) -> None:
     """#101: pre-INIT project после template change проходит commit validation."""
     import template_contract
 
-    # Bridge release v0.8.1 не поставляет alignment API и не меняет templates:
+    # Release без alignment API (например, v0.8.0) не меняет templates этим путём:
     # сценарий относится только к releases, которые реально меняют их.
     if not hasattr(template_contract, "preinit_template_alignment_state"):
         print("SKIP: test_preinit_template_change (release has no pre-INIT alignment API)")
