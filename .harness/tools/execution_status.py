@@ -284,7 +284,7 @@ def validate_status(value: dict[str, Any]) -> list[str]:
                 source_execution_id = baseline.get("sourceExecutionId")
                 if (
                     not isinstance(step_id, str)
-                    or re.fullmatch(r"STEP-\\d{3,}", step_id) is None
+                    or re.fullmatch(r"STEP-\d{3,}", step_id) is None
                 ):
                     errors.append(
                         f"{prefix}: implementationBaseline.stepId must be STEP-NNN"
