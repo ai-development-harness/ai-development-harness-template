@@ -418,14 +418,42 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
         return {"rolledBack": False}
 
     recorded = journal.get("executionLockExisted")
+    lock_path = root / EXECUTION_LOCK_PATH
+    if lock_path.is_symlink():
+        raise JournalError(
+            "UNSAFE_LOCAL_PATH",
+            f"execution state lock must not be a symlink: {EXECUTION_LOCK_PATH}",
+        )
     if isinstance(recorded, bool):
-        needs_lock = recorded
+        transaction_created_lock = not recorded and lock_path.is_file()
+        # Parent updater мог погибнуть, пока target validator ещё держит lock.
+        # В этом случае recovery обязан дождаться validator-а до restore.
+        needs_lock = recorded or transaction_created_lock
     else:
-        # Backward compatibility для schema-1 journal старого engine.
-        needs_lock = (root / EXECUTION_LOCK_PATH).is_file()
+        # Backward compatibility для schema-1 journal старого engine:
+        # неизвестное происхождение существующего lock сохраняем.
+        transaction_created_lock = False
+        needs_lock = lock_path.is_file()
+
     lock_context = execution_state_lock(root) if needs_lock else nullcontext()
     with lock_context:
-        return _rollback_journal_locked(root, journal)
+        result = _rollback_journal_locked(root, journal)
+
+    # Journal gate всё ещё существует, поэтому после release lock-а foreign
+    # canonical sessions не успеют открыть новую state transaction. Удаляем
+    # только lock, которого доказанно не было до hop.
+    if transaction_created_lock:
+        if lock_path.exists():
+            if not lock_path.is_file():
+                raise JournalError(
+                    "UNSAFE_LOCAL_PATH",
+                    f"transaction-created lock must remain a regular file: {EXECUTION_LOCK_PATH}",
+                )
+            lock_path.unlink()
+            result["removedPaths"].append(EXECUTION_LOCK_PATH)
+
+    _retire_journal_dir(root)
+    return result
 
 
 def _rollback_journal_locked(root: Path, journal: dict[str, Any]) -> dict[str, Any]:
@@ -491,15 +519,6 @@ def _rollback_journal_locked(root: Path, journal: dict[str, Any]) -> dict[str, A
             report.unlink()
             removed.append(str(item))
 
-    # Lock-файл, созданный внутри hop (например target validator-ом через
-    # execution layer), удаляется, пока journal ещё блокирует foreign sessions.
-    if journal.get("executionLockExisted") is False:
-        lock = root / EXECUTION_LOCK_PATH
-        if lock.is_file() and not lock.is_symlink():
-            lock.unlink()
-            removed.append(EXECUTION_LOCK_PATH)
-
-    _retire_journal_dir(root)
     return {
         "rolledBack": True,
         "operation": journal.get("operation"),
