@@ -417,6 +417,13 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
     if journal is None:
         return {"rolledBack": False}
 
+    # Recovery сначала отзывает transaction capability target-validator-а.
+    # После durable state=recovering execution layer больше не разрешает новые
+    # state transactions с прежним HARNESS_UPDATE_TRANSACTION; затем recovery
+    # может безопасно дождаться уже удерживаемого lock и восстановить baseline.
+    if journal.get("state") != "recovering":
+        update_journal(root, journal, state="recovering")
+
     recorded = journal.get("executionLockExisted")
     lock_path = root / EXECUTION_LOCK_PATH
     if lock_path.is_symlink():
