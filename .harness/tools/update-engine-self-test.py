@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 import json
 import os
@@ -771,7 +772,9 @@ def test_journal_commit_point_is_crash_atomic(tmp: Path) -> None:
 
 
 def test_rollback_removes_lock_created_inside_hop(tmp: Path) -> None:
-    """Final review P2: lock-файл, созданный target validator-ом, не переживает rollback."""
+    """Final review P2: validator-created lock ждётся и не переживает rollback."""
+    import update_recovery
+
     lock = ".harness/local/execution/execution-status.lock"
     validator = (
         "from pathlib import Path\n"
@@ -781,7 +784,23 @@ def test_rollback_removes_lock_created_inside_hop(tmp: Path) -> None:
     )
     source, project = synthetic_pair(tmp, base={}, target={".harness/tools/validate.py": validator})
     assert not (project / lock).exists()
-    expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
+
+    original_lock = update_recovery.execution_state_lock
+    entered = {"value": False}
+
+    @contextmanager
+    def tracking_lock(root):
+        entered["value"] = True
+        with original_lock(root):
+            yield
+
+    update_recovery.execution_state_lock = tracking_lock
+    try:
+        expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
+    finally:
+        update_recovery.execution_state_lock = original_lock
+
+    assert entered["value"], "rollback did not serialize against validator-created execution lock"
     assert not (project / lock).exists(), "execution lock created inside failed hop survived rollback"
 
 
