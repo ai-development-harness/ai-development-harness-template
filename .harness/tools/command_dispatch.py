@@ -42,7 +42,7 @@ from execution_status import (
 from git_action import GitActionError, execute_pr_finish, execute_push, execute_sync
 from git_preflight import GitPreflightError, check as git_check
 from harness_help import help_catalog
-from harness_update import UpdateError, apply_update, check_update
+from harness_update import UpdateError, apply_update, check_update, require_no_pending_journal
 from update_recovery import JournalError, recover_pending
 from harness_ux import (
     harness_config,
@@ -790,6 +790,24 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
                 "status": "BLOCKED",
                 "reasonCode": exc.code,
                 "message": exc.message,
+            }
+
+    # CHECK не восстанавливает journal, но обязан сообщить updater-specific
+    # UPDATE_JOURNAL_PENDING: pending journal иначе заблокировал бы уже запись
+    # execution record и вернул бы общий EXECUTION_START_BLOCKED.
+    if (
+        normalized
+        and isinstance(normalized[0], str)
+        and normalized[0].startswith("HARNESS UPDATE CHECK")
+    ):
+        try:
+            require_no_pending_journal(root)
+        except UpdateError as exc:
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                "reasonCode": exc.code,
+                "message": str(exc),
             }
 
     try:

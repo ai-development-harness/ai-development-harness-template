@@ -678,6 +678,113 @@ def test_report_rollback_never_removes_foreign_report(tmp: Path) -> None:
     assert len(artifacts) == 1 and (project / "reports" / artifacts[0]).read_text() == foreign_text, artifacts
 
 
+def _interrupting_rmtree(original, *, match: str):
+    """rmtree, который удаляет один файл внутри каталога и «падает» (crash в cleanup)."""
+    state = {"fired": False}
+
+    def rmtree(path, *args, **kwargs):
+        if not state["fired"] and match in Path(path).name:
+            state["fired"] = True
+            victims = sorted(p for p in Path(path).rglob("*") if p.is_file())
+            if victims:
+                victims[0].unlink()
+            raise KeyboardInterrupt("simulated crash inside journal cleanup")
+        return original(path, *args, **kwargs)
+
+    return rmtree
+
+
+def test_journal_commit_point_is_crash_atomic(tmp: Path) -> None:
+    """Final review P1: crash внутри cleanup журнала не превращается в pending rollback."""
+    import update_recovery
+
+    original_rmtree = update_recovery.shutil.rmtree
+
+    # (1) Crash внутри cleanup после commit point: hop остаётся применённым,
+    # pending journal нет, tombstone удаляется следующей транзакцией.
+    committed = tmp / "committed"
+    committed.mkdir()
+    source, project = synthetic_pair(committed, base={}, target={})
+    update_recovery.shutil.rmtree = _interrupting_rmtree(original_rmtree, match=update_recovery.TOMBSTONE_PREFIX)
+    try:
+        try:
+            apply_update(project, source_url=str(source))
+        except KeyboardInterrupt:
+            pass
+        else:
+            raise AssertionError("fixture did not interrupt cleanup")
+    finally:
+        update_recovery.shutil.rmtree = original_rmtree
+    assert update_recovery.load_journal(project) is None, "committed hop looks pending after cleanup crash"
+    assert update_recovery.recover_pending(project) is None
+    assert apply_update(project, source_url=str(source))["status"] == "NO_UPDATE"
+    assert not list((project / JOURNAL).parent.glob(update_recovery.TOMBSTONE_PREFIX + "*"))
+
+    # (2) Crash внутри cleanup после rollback: state уже восстановлен, повторного
+    # rollback по неполному journal нет.
+    rolled = tmp / "rolled"
+    rolled.mkdir()
+    source, project = synthetic_pair(rolled, base={}, target={".harness/tools/validate.py": "raise SystemExit(1)\n"})
+    before = snapshot(project)
+    update_recovery.shutil.rmtree = _interrupting_rmtree(original_rmtree, match=update_recovery.TOMBSTONE_PREFIX)
+    try:
+        try:
+            apply_update(project, source_url=str(source))
+        except (KeyboardInterrupt, UpdateError):
+            pass
+    finally:
+        update_recovery.shutil.rmtree = original_rmtree
+    assert update_recovery.load_journal(project) is None
+    update_recovery.discard_retired_journals(project)
+    assert snapshot(project) == before, sorted(set(snapshot(project)) ^ set(before))
+
+    # (3) Неполный journal (backup blob пропал): rollback fail-closed и ничего
+    # не восстанавливает частично.
+    partial = tmp / "partial"
+    partial.mkdir()
+    source, project = synthetic_pair(partial, base={}, target={})
+    import harness_update
+    original_finish = harness_update.finish_journal
+
+    def crashing_finish(root):
+        raise KeyboardInterrupt("simulated crash before commit point")
+
+    harness_update.finish_journal = crashing_finish
+    try:
+        try:
+            apply_update(project, source_url=str(source))
+        except KeyboardInterrupt:
+            pass
+    finally:
+        harness_update.finish_journal = original_finish
+    blobs = sorted((project / JOURNAL / "blobs").iterdir())
+    assert len(blobs) >= 2, blobs
+    blobs[-1].unlink()
+    applied = snapshot(project)
+    try:
+        update_recovery.recover_pending(project, force=True)
+    except update_recovery.JournalError as exc:
+        assert exc.code == "UPDATE_JOURNAL_INVALID", exc.code
+    else:
+        raise AssertionError("incomplete journal was rolled back")
+    assert snapshot(project) == applied, "partial rollback from incomplete journal"
+
+
+def test_rollback_removes_lock_created_inside_hop(tmp: Path) -> None:
+    """Final review P2: lock-файл, созданный target validator-ом, не переживает rollback."""
+    lock = ".harness/local/execution/execution-status.lock"
+    validator = (
+        "from pathlib import Path\n"
+        f"Path({lock!r}).parent.mkdir(parents=True, exist_ok=True)\n"
+        f"Path({lock!r}).touch()\n"
+        "raise SystemExit(1)\n"
+    )
+    source, project = synthetic_pair(tmp, base={}, target={".harness/tools/validate.py": validator})
+    assert not (project / lock).exists()
+    expect_error("POSTCONDITION_FAILED", apply_update, project, source_url=str(source))
+    assert not (project / lock).exists(), "execution lock created inside failed hop survived rollback"
+
+
 STATE_DEPENDENT_VALIDATOR = (
     "from pathlib import Path\n"
     "import sys\n"
@@ -922,6 +1029,8 @@ CASES = [
     test_update_report_only_after_validator_pass,
     test_report_rollback_never_removes_foreign_report,
     test_adopt_requires_postcondition,
+    test_journal_commit_point_is_crash_atomic,
+    test_rollback_removes_lock_created_inside_hop,
 ]
 
 

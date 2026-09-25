@@ -1052,7 +1052,7 @@ def _preflight_route(root: Path, route: list[Hop], source: GitSource) -> list[Ho
     return plans
 
 
-def _require_no_pending_journal(root: Path) -> None:
+def require_no_pending_journal(root: Path) -> None:
     try:
         journal = load_journal(root)
     except JournalError as exc:
@@ -1066,7 +1066,7 @@ def _require_no_pending_journal(root: Path) -> None:
 
 
 def check_update(root: Path, *, target: str | None = None, source_url: str | None = None) -> dict[str, Any]:
-    _require_no_pending_journal(root)
+    require_no_pending_journal(root)
     policy = load_update_policy(root)
     repository = get(policy, "source.repository")
     if not isinstance(repository, str) or not repository:
@@ -1432,7 +1432,7 @@ def apply_update(root: Path, *, target: str | None = None, source_url: str | Non
 
 def adopt_legacy(root: Path, *, baseline: str, source_url: str | None = None) -> dict[str, Any]:
     """Создать первый pinned lock только для явно указанного immutable baseline."""
-    _require_no_pending_journal(root)
+    require_no_pending_journal(root)
     policy = load_update_policy(root)
     repository = get(policy, "source.repository")
     tag_pattern = get(policy, "source.tag_pattern")

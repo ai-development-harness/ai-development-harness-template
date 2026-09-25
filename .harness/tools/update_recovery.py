@@ -173,6 +173,39 @@ def journal_dir(root: Path) -> Path:
     return root / JOURNAL_DIR
 
 
+# Commit point и конец rollback — атомарный rename journal directory в
+# tombstone: после него pending journal больше не существует, а удаление
+# tombstone (многооперационный rmtree) уже не участвует в решении
+# commit/rollback. Crash внутри cleanup оставляет только tombstone, который
+# следующая транзакция/recovery просто удаляет.
+TOMBSTONE_PREFIX = "update-journal.discarded-"
+
+
+def _retire_journal_dir(root: Path) -> None:
+    directory = journal_dir(root)
+    tombstone = directory.with_name(TOMBSTONE_PREFIX + secrets.token_hex(8))
+    os.replace(directory, tombstone)
+    _fsync_dir(directory.parent)
+    shutil.rmtree(tombstone)
+    _fsync_dir(directory.parent)
+
+
+def discard_retired_journals(root: Path) -> list[str]:
+    """Удалить tombstones, оставшиеся после crash внутри cleanup."""
+    parent = journal_dir(root).parent
+    removed: list[str] = []
+    if not parent.is_dir():
+        return removed
+    for candidate in sorted(parent.glob(TOMBSTONE_PREFIX + "*")):
+        if candidate.is_symlink() or not candidate.is_dir():
+            continue
+        shutil.rmtree(candidate)
+        removed.append(candidate.name)
+    if removed:
+        _fsync_dir(parent)
+    return removed
+
+
 def load_journal(root: Path) -> dict[str, Any] | None:
     """Вернуть pending journal или None. Повреждённый журнал — fail-closed."""
     directory = journal_dir(root)
@@ -238,6 +271,7 @@ def begin_journal(
     до snapshot, либо после появления journal уже блокируется.
     """
     directory = journal_dir(root)
+    discard_retired_journals(root)
     try:
         directory.parent.mkdir(parents=True, exist_ok=True)
         directory.mkdir()
@@ -354,10 +388,12 @@ class ReportLedger:
 
 
 def finish_journal(root: Path) -> None:
-    """Commit point: hop признан успешным, backup больше не нужен."""
-    directory = journal_dir(root)
-    shutil.rmtree(directory)
-    _fsync_dir(directory.parent)
+    """Commit point: hop признан успешным, backup больше не нужен.
+
+    Решение принимает атомарный rename journal → tombstone; см.
+    `_retire_journal_dir`.
+    """
+    _retire_journal_dir(root)
 
 
 def _schema_version(data: bytes) -> Any:
@@ -397,6 +433,19 @@ def _rollback_journal_locked(root: Path, journal: dict[str, Any]) -> dict[str, A
     blobs = directory / "blobs"
     restored: list[str] = []
     removed: list[str] = []
+
+    # Все backup blobs проверяются до первой записи: неполный journal
+    # (например, от engine, чей cleanup не был атомарным) даёт fail-closed
+    # ошибку без частичного rollback.
+    for entry in journal.get("entries", []):
+        if isinstance(entry, dict) and entry.get("existed") is True:
+            blob = blobs / str(entry.get("backup"))
+            if blob.is_symlink() or not blob.is_file():
+                raise JournalError(
+                    "UPDATE_JOURNAL_INVALID",
+                    f"backup for {entry.get('path')} is missing; journal is incomplete, "
+                    "rollback not started",
+                )
 
     for entry in journal.get("entries", []):
         if not isinstance(entry, dict):
@@ -442,8 +491,15 @@ def _rollback_journal_locked(root: Path, journal: dict[str, Any]) -> dict[str, A
             report.unlink()
             removed.append(str(item))
 
-    shutil.rmtree(directory)
-    _fsync_dir(directory.parent)
+    # Lock-файл, созданный внутри hop (например target validator-ом через
+    # execution layer), удаляется, пока journal ещё блокирует foreign sessions.
+    if journal.get("executionLockExisted") is False:
+        lock = root / EXECUTION_LOCK_PATH
+        if lock.is_file() and not lock.is_symlink():
+            lock.unlink()
+            removed.append(EXECUTION_LOCK_PATH)
+
+    _retire_journal_dir(root)
     return {
         "rolledBack": True,
         "operation": journal.get("operation"),
@@ -485,6 +541,7 @@ def _sha256_file(path: Path) -> str:
 
 def recover_pending(root: Path, *, force: bool = False) -> dict[str, Any] | None:
     """Откатить прерванный hop, если его владелец больше не работает."""
+    discard_retired_journals(root)
     journal = load_journal(root)
     if journal is None:
         return None

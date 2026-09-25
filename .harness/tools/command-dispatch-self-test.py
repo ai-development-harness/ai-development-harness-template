@@ -111,6 +111,17 @@ def main() -> int:
         # новой APPLY execution, иначе execution-status rollback удалил бы её.
         pending = root / ".harness/local/update-journal"
         pending.mkdir(parents=True)
+
+        # Final review P2: CHECK при pending journal сохраняет updater-specific
+        # reasonCode и не создаёт execution record.
+        status_file = root / ".harness/local/execution/execution-status.json"
+        status_before = status_file.read_bytes() if status_file.exists() else None
+        pending_check = start_dispatch(root, "HARNESS UPDATE CHECK")
+        assert pending_check["status"] == "BLOCKED", pending_check
+        assert pending_check["reasonCode"] == "UPDATE_JOURNAL_PENDING", pending_check
+        assert (status_file.read_bytes() if status_file.exists() else None) == status_before
+        assert pending.exists(), "CHECK must not recover the journal"
+
         original_recover = command_dispatch_module.recover_pending
         original_apply = command_dispatch_module.apply_update
 
