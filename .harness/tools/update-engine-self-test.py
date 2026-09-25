@@ -502,6 +502,27 @@ def test_update_blocks_concurrent_execution_state(tmp: Path) -> None:
                 raise AssertionError("foreign execution state lock unexpectedly acquired")
         except ValueError as exc:
             assert "UPDATE_IN_PROGRESS" in str(exc), exc
+
+        # Target validator с exact transactionId может использовать execution
+        # layer только пока hop active. Recovery durable-отзывает capability
+        # state=recovering до ожидания lock, чтобы surviving child не смог
+        # reacquire lock после restore.
+        old_token = os.environ.get(update_recovery.UPDATE_TRANSACTION_ENV)
+        os.environ[update_recovery.UPDATE_TRANSACTION_ENV] = journal["transactionId"]
+        try:
+            with execution_status.execution_state_lock(project):
+                pass
+            update_recovery.update_journal(project, journal, state="recovering")
+            try:
+                with execution_status.execution_state_lock(project):
+                    raise AssertionError("recovering transaction unexpectedly retained validator access")
+            except ValueError as exc:
+                assert "UPDATE_IN_PROGRESS" in str(exc), exc
+        finally:
+            if old_token is None:
+                os.environ.pop(update_recovery.UPDATE_TRANSACTION_ENV, None)
+            else:
+                os.environ[update_recovery.UPDATE_TRANSACTION_ENV] = old_token
     finally:
         update_recovery.rollback_journal(project, journal)
 
