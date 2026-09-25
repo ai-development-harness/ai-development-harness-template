@@ -404,6 +404,33 @@ def _schema_version(data: bytes) -> Any:
     return value.get("schemaVersion") if isinstance(value, dict) else None
 
 
+def _validate_rollback_backups(root: Path, journal: dict[str, Any]) -> None:
+    """Доказать полноту rollback input до любой recovery mutation."""
+    blobs = journal_dir(root) / "blobs"
+    for entry in journal.get("entries", []):
+        if not isinstance(entry, dict):
+            raise JournalError("UPDATE_JOURNAL_INVALID", "journal entry must be an object")
+        if entry.get("existed") is not True:
+            continue
+        backup_name = entry.get("backup")
+        if (
+            not isinstance(backup_name, str)
+            or not backup_name
+            or Path(backup_name).name != backup_name
+        ):
+            raise JournalError(
+                "UPDATE_JOURNAL_INVALID",
+                f"invalid backup identity for {entry.get('path')}",
+            )
+        blob = blobs / backup_name
+        if blob.is_symlink() or not blob.is_file():
+            raise JournalError(
+                "UPDATE_JOURNAL_INVALID",
+                f"backup for {entry.get('path')} is missing; journal is incomplete, "
+                "rollback not started",
+            )
+
+
 def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[str, Any]:
     """Byte-for-byte восстановить состояние до hop и удалить журнал.
 
@@ -416,6 +443,10 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
         journal = load_journal(root)
     if journal is None:
         return {"rolledBack": False}
+
+    # Повреждённый journal не мутируем вообще: сначала доказываем наличие всех
+    # backup blobs, и только после этого отзываем validator capability.
+    _validate_rollback_backups(root, journal)
 
     # Recovery сначала отзывает transaction capability target-validator-а.
     # После durable state=recovering execution layer больше не разрешает новые
@@ -472,19 +503,6 @@ def _rollback_journal_locked(root: Path, journal: dict[str, Any]) -> dict[str, A
     blobs = directory / "blobs"
     restored: list[str] = []
     removed: list[str] = []
-
-    # Все backup blobs проверяются до первой записи: неполный journal
-    # (например, от engine, чей cleanup не был атомарным) даёт fail-closed
-    # ошибку без частичного rollback.
-    for entry in journal.get("entries", []):
-        if isinstance(entry, dict) and entry.get("existed") is True:
-            blob = blobs / str(entry.get("backup"))
-            if blob.is_symlink() or not blob.is_file():
-                raise JournalError(
-                    "UPDATE_JOURNAL_INVALID",
-                    f"backup for {entry.get('path')} is missing; journal is incomplete, "
-                    "rollback not started",
-                )
 
     for entry in journal.get("entries", []):
         if not isinstance(entry, dict):
