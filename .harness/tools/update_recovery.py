@@ -422,7 +422,11 @@ def rollback_journal(root: Path, journal: dict[str, Any] | None = None) -> dict[
     # state transactions с прежним HARNESS_UPDATE_TRANSACTION; затем recovery
     # может безопасно дождаться уже удерживаемого lock и восстановить baseline.
     if journal.get("state") != "recovering":
+        previous_state = journal.get("state")
         update_journal(root, journal, state="recovering")
+        # На диске capability уже отозвана, но diagnostic result сохраняет
+        # фазу, в которой исходная transaction была прервана.
+        journal["state"] = previous_state
 
     recorded = journal.get("executionLockExisted")
     lock_path = root / EXECUTION_LOCK_PATH
