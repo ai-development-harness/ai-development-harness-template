@@ -225,9 +225,11 @@ def _require_update_transaction_access(root: Path) -> None:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"UPDATE_IN_PROGRESS: cannot read update journal: {exc}") from exc
     transaction_id = journal.get("transactionId") if isinstance(journal, dict) else None
+    transaction_state = journal.get("state") if isinstance(journal, dict) else None
     if (
         isinstance(transaction_id, str)
         and transaction_id
+        and transaction_state in {"applying", "verifying"}
         and os.environ.get(UPDATE_TRANSACTION_ENV) == transaction_id
     ):
         return
