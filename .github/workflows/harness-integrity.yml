@@ -255,3 +255,57 @@ jobs:
           python .harness/tools/execution-self-test.py
           python .harness/tools/verification-self-test.py
           python .harness/tools/update-engine-self-test.py
+
+  # Проверить нижнюю документированную границу Python отдельно от основного 3.13 job.
+  # Пример: использование API, появившегося только в 3.12+, должно ломать этот job.
+  validate-python-minimum:
+    # Человекочитаемое имя compatibility gate.
+    # Пример: "Validate Python 3.11 compatibility".
+    name: Validate Python 3.11 compatibility
+    # Linux runner совпадает с основным job, чтобы различалась только версия Python.
+    # Пример: ubuntu-24.04.
+    runs-on: ubuntu-24.04
+    # Полный synthetic suite обычно укладывается существенно быстрее.
+    # Пример: 5 минут защищают от regression/hang.
+    timeout-minutes: 5
+
+    # Последовательность minimum-version validation.
+    # Пример: checkout → Python 3.11 → validator → discoverable self-tests.
+    steps:
+      # Получить exact commit и полную Git history для immutable report checks.
+      # Пример: checkout текущего PR commit.
+      - name: Checkout repository
+        # Официальный pinned checkout action.
+        # Пример: actions/checkout@v7.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Параметры read-only checkout.
+        # Пример: credentials=false, full history.
+        with:
+          # Compatibility job не публикует изменения.
+          # Пример: false.
+          persist-credentials: false
+          # Validator/review regressions используют commit ancestry.
+          # Пример: 0.
+          fetch-depth: 0
+
+      # Установить минимальную поддерживаемую версию из DEPENDENCIES.md.
+      # Пример: Python 3.11.
+      - name: Setup minimum Python
+        # Официальный pinned setup-python action.
+        # Пример: actions/setup-python@v7.
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        # Параметры minimum runtime.
+        # Пример: python-version=3.11.
+        with:
+          # Нижняя граница compatibility contract.
+          # Пример: "3.11".
+          python-version: "3.11"
+
+      # Проверить dependency-free deterministic surface на minimum runtime.
+      # Пример: validator + все discoverable synthetic self-tests.
+      - name: Validate minimum Python compatibility
+        # Выполнить тот же validator и regression runner на Python 3.11.
+        # Пример: обе команды должны завершиться с exit code 0.
+        run: |
+          python3 .harness/tools/validate.py --mode ci
+          python3 .harness/tools/run-self-tests.py
