@@ -404,15 +404,32 @@ class WorkingTree:
         atomic_write_bytes(target, content, mode=mode if mode is not None else 0o644)
 
 
+def _normalize_managed_text(value: bytes) -> bytes:
+    """Canonicalize Git checkout EOL without weakening substantive comparison."""
+    return value.replace(b"\r\n", b"\n")
+
+
+def _managed_content_equal(left: bytes | object, right: bytes | object) -> bool:
+    """Compare managed UTF-8 text independent of CRLF/LF checkout conversion."""
+    if left is MISSING or right is MISSING:
+        return left is right
+    if not isinstance(left, bytes) or not isinstance(right, bytes):
+        return False
+    return _normalize_managed_text(left) == _normalize_managed_text(right)
+
+
 def _run_merge_file(ours: bytes, base: bytes, theirs: bytes, *, path: str) -> bytes:
     with tempfile.TemporaryDirectory(prefix="harness-3way-") as tmp:
         tmp_root = Path(tmp)
         ours_path = tmp_root / "ours"
         base_path = tmp_root / "base"
         theirs_path = tmp_root / "theirs"
-        ours_path.write_bytes(ours)
-        base_path.write_bytes(base)
-        theirs_path.write_bytes(theirs)
+        # Git for Windows legitimately materializes text as CRLF while release
+        # blobs remain LF. Three-way merge must operate on canonical text,
+        # otherwise every line looks locally modified.
+        ours_path.write_bytes(_normalize_managed_text(ours))
+        base_path.write_bytes(_normalize_managed_text(base))
+        theirs_path.write_bytes(_normalize_managed_text(theirs))
         proc = _run_git(
             ["git", "merge-file", "-p", str(ours_path), str(base_path), str(theirs_path)],
             error_code="MERGE_CONFLICT",
@@ -432,20 +449,20 @@ def _three_way(ours: bytes | object, base: bytes | object, theirs: bytes | objec
             return None if theirs is MISSING else _as_bytes(theirs)
         if theirs is MISSING:
             return _as_bytes(ours)
-        if ours == theirs:
+        if _managed_content_equal(ours, theirs):
             return _as_bytes(ours)
         raise UpdateError("MANAGED_PATH_COLLISION", f"both project and target added managed path: {path}")
     if ours is MISSING:
-        if theirs == base:
+        if _managed_content_equal(theirs, base):
             return None
         raise UpdateError("MERGE_CONFLICT", f"project deleted path changed by target: {path}")
     if theirs is MISSING:
-        if ours == base:
+        if _managed_content_equal(ours, base):
             return None
         raise UpdateError("MERGE_CONFLICT", f"target deleted locally changed path: {path}")
-    if ours == base:
+    if _managed_content_equal(ours, base):
         return _as_bytes(theirs)
-    if theirs == base or ours == theirs:
+    if _managed_content_equal(theirs, base) or _managed_content_equal(ours, theirs):
         return _as_bytes(ours)
     return _run_merge_file(_as_bytes(ours), _as_bytes(base), _as_bytes(theirs), path=path)
 
@@ -570,9 +587,13 @@ def _preserve_markers(
     """
     if ours is MISSING or theirs is MISSING or not blocks:
         return theirs
-    ours_text = _as_bytes(ours).decode("utf-8")
-    base_text = _as_bytes(base).decode("utf-8") if base is not MISSING else ""
-    target_text = _as_bytes(theirs).decode("utf-8")
+    ours_text = _normalize_managed_text(_as_bytes(ours)).decode("utf-8")
+    base_text = (
+        _normalize_managed_text(_as_bytes(base)).decode("utf-8")
+        if base is not MISSING
+        else ""
+    )
+    target_text = _normalize_managed_text(_as_bytes(theirs)).decode("utf-8")
     for block in blocks:
         if _marker_count(ours_text, block) == (0, 0) and _marker_count(base_text, block) == (0, 0):
             if _marker_count(target_text, block) != (1, 1):
@@ -779,7 +800,7 @@ def _harness_owned_drift(
             drift.append(f"{path}: tracked Harness-owned path absent from pinned release")
         elif base is not MISSING and ours is MISSING:
             drift.append(f"{path}: pinned Harness-owned path is missing locally")
-        elif base != ours:
+        elif not _managed_content_equal(base, ours):
             drift.append(f"{path}: content differs from pinned release")
         elif compare_modes and base_mode != ours_mode:
             drift.append(
@@ -803,8 +824,9 @@ def verify_current_release_state(
     """Доказать, что Harness-owned OURS соответствует immutable release из lock.
 
     Shared/marker_merge paths специально не сравниваются byte-for-byte: они
-    могут содержать разрешённые project modifications. Но Harness-owned слой
-    обязан быть exact BASE, иначе lock больше не описывает текущий protocol.
+    могут содержать разрешённые project modifications. Harness-owned слой
+    обязан соответствовать BASE по Git text semantics: CRLF/LF checkout
+    conversion не является drift, любое содержательное отличие — является.
     """
     current = lock["source"]["ref"]
     base_policy = _load_toml_text(
@@ -869,14 +891,14 @@ def _path_plan(
 
     if target_class is None:
         if base_class == "harness_owned" and base is not MISSING:
-            if ours is not MISSING and ours != base:
+            if ours is not MISSING and not _managed_content_equal(ours, base):
                 raise UpdateError("LOCAL_HARNESS_MODIFICATION", f"locally modified retired Harness path: {path}")
             if handover is MISSING:
                 return PathPlan(path, base_class, None, "delete", None, None, "retired Harness path")
             # Path остаётся в target tree, но выходит из ownership: это
             # передача проекту (#99). Последнее managed-содержимое берётся из
             # target, дальше файл принадлежит проекту.
-            if ours is not MISSING and ours == handover:
+            if ours is not MISSING and _managed_content_equal(ours, handover):
                 return PathPlan(path, base_class, None, "preserve", None, None, "handed over to project ownership")
             return PathPlan(
                 path,
@@ -896,11 +918,11 @@ def _path_plan(
             return PathPlan(path, None, target_class, "preserve", None, None)
         return PathPlan(path, None, target_class, "write", _as_bytes(theirs), target_mode, "new managed path")
 
-    if base_class != target_class and ours != base:
+    if base_class != target_class and not _managed_content_equal(ours, base):
         raise UpdateError("OWNERSHIP_CLASS_CHANGE", f"locally changed path changes ownership class: {path}: {base_class} -> {target_class}")
 
     if target_class == "harness_owned":
-        if ours != base:
+        if not _managed_content_equal(ours, base):
             raise UpdateError("LOCAL_HARNESS_MODIFICATION", f"Harness-owned path differs from immutable BASE: {path}")
         if theirs is MISSING:
             return PathPlan(path, base_class, target_class, "delete", None, None)

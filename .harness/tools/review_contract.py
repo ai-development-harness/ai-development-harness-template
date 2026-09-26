@@ -986,8 +986,8 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
     errors: list[str] = []
     directories = [
         _repo_relative(root, review_directory(root)),
-        planning__repo_relative(root, review_directory(root)),
-        init__repo_relative(root, review_directory(root)),
+        _repo_relative(root, planning_review_directory(root)),
+        _repo_relative(root, init_review_directory(root)),
         _repo_relative(root, audit_directory(root)),
         _repo_relative(root, release_directory(root)),
         _repo_relative(root, skill_search_directory(root)),
