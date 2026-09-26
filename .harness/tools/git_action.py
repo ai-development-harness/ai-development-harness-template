@@ -18,6 +18,9 @@ import secrets
 import subprocess
 from typing import Any
 
+GIT_MUTATION_TIMEOUT_SECONDS = 120
+PR_PROVIDER_TIMEOUT_SECONDS = 60
+
 from document_contract import atomic_write_text
 from harness_config import ConfigError
 from git_preflight import (
@@ -49,18 +52,27 @@ def _run(
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Выполнить deterministic mutation, передавая captured semantic input по stdin."""
-    proc = subprocess.run(
-        argv,
-        cwd=root,
-        env={**os.environ, **env} if env else None,
-        text=True,
-        encoding="utf-8",
-        errors="surrogateescape",
-        input=input_text,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            argv,
+            cwd=root,
+            env={**os.environ, **env} if env else None,
+            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
+            input=input_text,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=GIT_MUTATION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitActionError(
+            "MUTATION_TIMEOUT",
+            f"Git mutation timed out after {GIT_MUTATION_TIMEOUT_SECONDS}s",
+            argv=argv,
+            timeoutSeconds=GIT_MUTATION_TIMEOUT_SECONDS,
+        ) from exc
     if proc.returncode:
         raise GitActionError(
             "MUTATION_FAILED",
@@ -531,14 +543,23 @@ def _pr_input_path(root: Path, value: Path, *, label: str) -> Path:
 
 
 def _provider_json(root: Path, argv: list[str]) -> Any:
-    proc = subprocess.run(
-        argv,
-        cwd=root,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            argv,
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=PR_PROVIDER_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitActionError(
+            "PR_PROVIDER_TIMEOUT",
+            f"PR provider timed out after {PR_PROVIDER_TIMEOUT_SECONDS}s",
+            argv=argv,
+            timeoutSeconds=PR_PROVIDER_TIMEOUT_SECONDS,
+        ) from exc
     if proc.returncode:
         raise GitActionError(
             "PR_PROVIDER_FAILED",
