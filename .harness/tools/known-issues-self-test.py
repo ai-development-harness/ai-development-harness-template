@@ -95,7 +95,11 @@ def main() -> int:
             "regression suite and remove it and its release freeze from known-issues-self-test.py"
         )
 
-    print(f"KNOWN ISSUES SELF-TEST: {'FAIL' if failed else 'PASS'}")
+    count = len(KNOWN_ISSUES)
+    print(
+        f"KNOWN ISSUES SELF-TEST: {'FAIL' if failed else 'PASS'} "
+        f"({count} known issue{'s' if count != 1 else ''})"
+    )
     return 1 if failed else 0
 
 
