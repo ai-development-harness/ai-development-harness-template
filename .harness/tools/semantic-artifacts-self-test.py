@@ -30,6 +30,9 @@ from semantic_artifacts import (
 )
 
 
+from self_test_fixture import isolate_project_artifacts
+
+
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -156,6 +159,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-semantic-writers-") as tmp:
         root = Path(tmp)
         copy_tracked(root)
+        isolate_project_artifacts(root)
         step_path = root / "planning/tasks/STEP-001.md"
         step_path.parent.mkdir(parents=True, exist_ok=True)
         step_path.write_text(task(), encoding="utf-8", newline="\n")

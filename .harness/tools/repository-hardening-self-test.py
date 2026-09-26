@@ -8,6 +8,9 @@ import subprocess
 import tempfile
 
 
+from self_test_fixture import isolate_project_artifacts
+
+
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -46,6 +49,7 @@ def copy_tracked(target: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
+    isolate_project_artifacts(target)
     run(target, "git", "init", "-q", "-b", "main")
     run(target, "git", "config", "user.email", "hardening@example.invalid")
     run(target, "git", "config", "user.name", "Hardening Test")

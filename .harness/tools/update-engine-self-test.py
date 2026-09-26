@@ -30,6 +30,9 @@ from typing import Any
 from harness_update import UpdateError, adopt_legacy, apply_update, check_update
 
 
+from self_test_fixture import isolate_project_artifacts
+
+
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = Path(__file__).resolve().parent
 JOURNAL = ".harness/local/update-journal"
@@ -976,6 +979,7 @@ def test_preinit_template_change(tmp: Path) -> None:
     source = tmp / "source"
     source.mkdir()
     copy_tracked(source)
+    isolate_project_artifacts(source)
     git_init(source)
     set_release(source, first, (current, f"v{first}"))
     commit_all(source, f"v{first}")
