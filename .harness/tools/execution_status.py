@@ -1792,6 +1792,11 @@ def block_execution(
 
 
 
+def _repo_relative(root: Path, path: Path) -> str:
+    """Canonical repository-relative path, устойчивый к Windows 8.3 aliases."""
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
 # Разрешить STEP id через manifest-driven config layer.
 def task_path(root: Path, step_id: str) -> Path:
     return configured_task_path(root, step_id)
@@ -1827,7 +1832,7 @@ def plan_info(root: Path, step_id: str) -> dict[str, Any]:
     current_content = plan_content_hash(root, step_id)
     matched = latest_matching_planning_review(root, step_id)
     report_path = (
-        matched["path"].relative_to(root).as_posix()
+        _repo_relative(root, matched["path"])
         if matched is not None
         else None
     )
@@ -1872,7 +1877,7 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
 
     basis = planning_context_basis(root, step_id)
     content = plan_content_hash(root, step_id)
-    report_path = review["path"].relative_to(root).as_posix()
+    report_path = _repo_relative(root, review["path"])
     meta["plan"] = {
         "status": "ready",
         "revision": revision + 1,
@@ -1915,7 +1920,7 @@ def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
     values: list[dict[str, Any]] = []
     for item in valid_reports(root, step_id):
         values.append({
-            "path": item["path"].relative_to(root).as_posix(),
+            "path": _repo_relative(root, item["path"]),
             "verdict": item["verdict"],
         })
     return values
@@ -1930,7 +1935,7 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
     if item is None:
         return None
     return {
-        "path": item["path"].relative_to(root).as_posix(),
+        "path": _repo_relative(root, item["path"]),
         "verdict": item["verdict"],
     }
 

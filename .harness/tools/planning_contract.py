@@ -103,12 +103,17 @@ ADR_SECTIONS = (
 )
 
 
+def _repo_relative(root: Path, path: Path) -> str:
+    """Canonical repository-relative path, устойчивый к Windows 8.3 aliases."""
+    return path.resolve().relative_to(root.resolve()).as_posix()
+
+
 def task_path(root: Path, step_id: str) -> Path:
     if STEP_ID_RE.fullmatch(step_id) is None:
         raise ValueError(f"invalid STEP id: {step_id}")
     path = task_directory(root) / f"{step_id}.md"
     if not path.is_file():
-        raise FileNotFoundError(f"task file not found: {path.relative_to(root)}")
+        raise FileNotFoundError(f"task file not found: {_repo_relative(root, path)}")
     return path
 
 
@@ -415,7 +420,7 @@ def step_completion_proof(
         elif trusted.get("verdict") != "PASS":
             reasons.append("latest trusted review verdict is not PASS")
         else:
-            review_path = trusted["path"].relative_to(root).as_posix()
+            review_path = _repo_relative(root, trusted["path"])
             review_snapshot = {
                 "path": review_path,
                 "verdict": trusted["verdict"],
@@ -537,7 +542,7 @@ def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
             if matched is None:
                 failures.append("matching-planning-review-pass-is-missing")
             else:
-                report = matched["path"].relative_to(root).as_posix()
+                report = _repo_relative(root, matched["path"])
                 if plan.get("reviewed_report") != report:
                     failures.append("reviewed-report-does-not-match-pass")
         else:
@@ -756,14 +761,14 @@ def _validate_semantic_review_reports(root: Path, errors: list[str]) -> None:
                 expected_step_id=expected,
             ):
                 errors.append(
-                    f"planning-review: {path.relative_to(root)}: {issue}"
+                    f"planning-review: {_repo_relative(root, path)}: {issue}"
                 )
 
     init_root = init_review_directory(root)
     if init_root.is_dir():
         for path in sorted(init_root.glob("INIT-REVIEW-*.md")):
             for issue in validate_init_review_report(root, path):
-                errors.append(f"init-review: {path.relative_to(root)}: {issue}")
+                errors.append(f"init-review: {_repo_relative(root, path)}: {issue}")
 
 
 # ---------------------------------------------------------------------------
@@ -911,7 +916,7 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
                     f"{prefix}: ready plan has no PASS planning-review for stored basis/content"
                 )
             else:
-                actual = matched["path"].relative_to(root).as_posix()
+                actual = _repo_relative(root, matched["path"])
                 if plan.get("reviewed_report") != actual:
                     errors.append(
                         f"{prefix}: plan.reviewed_report does not point to matching PASS report"
@@ -955,7 +960,7 @@ def _validate_open_questions(root: Path, errors: list[str]) -> None:
         document = item["document"]
         meta = document["frontmatter"]
         oq_id = meta.get("id")
-        prefix = f"planning: {path.relative_to(root)}"
+        prefix = f"planning: {_repo_relative(root, path)}"
         for issue in require_schema(document):
             errors.append(f"{prefix}: {issue}")
         if not isinstance(oq_id, str) or OQ_ID_RE.fullmatch(oq_id) is None:
@@ -1016,16 +1021,16 @@ def validate_planning_contracts(
     tasks: dict[str, dict[str, Any]] = {}
     for path in sorted(directory.glob("STEP-*.md")):
         if STEP_ID_RE.fullmatch(path.stem) is None:
-            errors.append(f"planning: invalid STEP filename: {path.relative_to(root)}")
+            errors.append(f"planning: invalid STEP filename: {_repo_relative(root, path)}")
             continue
         try:
             task = parse_document(path)
         except DocumentError as exc:
             if allow_legacy and "legacy document" in str(exc):
                 if warnings is not None:
-                    warnings.append(f"planning: legacy active STEP pending PROJECT RECONCILE: {path.relative_to(root)}")
+                    warnings.append(f"planning: legacy active STEP pending PROJECT RECONCILE: {_repo_relative(root, path)}")
                 continue
-            errors.append(f"planning: {path.relative_to(root)}: {exc}")
+            errors.append(f"planning: {_repo_relative(root, path)}: {exc}")
             continue
         tasks[path.stem] = task
         _validate_task(root, path.stem, task, errors, warnings)

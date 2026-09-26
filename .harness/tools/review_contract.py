@@ -148,7 +148,7 @@ def legacy_review_pins(root: Path) -> dict[str, str]:
         issues = validate_migration_report(root, report)
         if issues:
             raise ValueError(
-                f"{report.relative_to(root)}: " + "; ".join(issues)
+                f"{_repo_relative(root, report)}: " + "; ".join(issues)
             )
         document = parse_document(report)
         meta = document["frontmatter"]
@@ -156,16 +156,16 @@ def legacy_review_pins(root: Path) -> dict[str, str]:
         for token in values:
             digest, sep, rel = token.partition(" ")
             if not sep or not _valid_sha256(digest) or not rel:
-                raise ValueError(f"{report.relative_to(root)}: invalid legacy review pin {token!r}")
+                raise ValueError(f"{_repo_relative(root, report)}: invalid legacy review pin {token!r}")
             candidate = root / rel
             review_root_rel = _configured_rel(root, review_directory(root))
             if _under_git_path(rel, review_root_rel) is None:
                 raise ValueError(
-                    f"{report.relative_to(root)}: legacy review pin escapes configured review directory: {rel}"
+                    f"{_repo_relative(root, report)}: legacy review pin escapes configured review directory: {rel}"
                 )
             if candidate.is_symlink():
                 raise ValueError(
-                    f"{report.relative_to(root)}: legacy review pin must not reference a symlink: {rel}"
+                    f"{_repo_relative(root, report)}: legacy review pin must not reference a symlink: {rel}"
                 )
             previous = pins.get(rel)
             if previous is not None and previous != digest:
@@ -201,10 +201,10 @@ def legacy_completed_steps(root: Path) -> dict[str, str]:
         for report in sorted(directory.glob("MIGRATION-*.md")):
             issues = validate_migration_report(root, report)
             if issues:
-                raise ValueError(f"{report.relative_to(root)}: " + "; ".join(issues))
+                raise ValueError(f"{_repo_relative(root, report)}: " + "; ".join(issues))
             values = parse_document(report)["frontmatter"].get("legacy_completed_steps", [])
             for step_id in values:
-                result.setdefault(step_id, report.relative_to(root).as_posix())
+                result.setdefault(step_id, _repo_relative(root, report))
     for step_id in _PENDING_LEGACY_COMPLETIONS.get():
         result.setdefault(step_id, "pending migration report")
     return result
@@ -225,7 +225,7 @@ def current_legacy_review_snapshots(root: Path) -> dict[str, str]:
         except (OSError, UnicodeDecodeError, DocumentError):
             continue
         if frontmatter is None:
-            snapshots[path.relative_to(root).as_posix()] = content_hash(text)
+            snapshots[_repo_relative(root, path)] = content_hash(text)
     return snapshots
 
 
@@ -271,7 +271,7 @@ def trusted_review_reports(
         for path in sorted(directory.glob("REVIEW-*.md")):
             if path.is_symlink():
                 continue
-            rel = path.relative_to(root).as_posix()
+            rel = _repo_relative(root, path)
             expected = pins.get(rel)
             if expected is None:
                 continue
@@ -329,6 +329,11 @@ def _git(root: Path, *args: str) -> tuple[int, bytes]:
     except OSError:
         return 127, b""
     return proc.returncode, proc.stdout
+
+
+def _repo_relative(root: Path, path: Path) -> str:
+    """Canonical repository-relative path, устойчивый к Windows 8.3 aliases."""
+    return path.resolve().relative_to(root.resolve()).as_posix()
 
 
 def _configured_rel(root: Path, directory: Path) -> str:
@@ -975,15 +980,18 @@ def validate_review_immutability(root: Path, *, ci_mode: bool = False) -> list[s
     HEAD. В CI сравниваем итоговый commit с первым родителем: PR merge commit
     тем самым проверяется относительно base, обычный push — относительно parent.
     """
+    # Config accessors canonicalize paths через Path.resolve(); root обязан
+    # использовать тот же representation (важно для Windows 8.3 aliases).
+    root = root.resolve()
     errors: list[str] = []
     directories = [
-        review_directory(root).relative_to(root).as_posix(),
-        planning_review_directory(root).relative_to(root).as_posix(),
-        init_review_directory(root).relative_to(root).as_posix(),
-        audit_directory(root).relative_to(root).as_posix(),
-        release_directory(root).relative_to(root).as_posix(),
-        skill_search_directory(root).relative_to(root).as_posix(),
-        update_report_directory(root).relative_to(root).as_posix(),
+        _repo_relative(root, review_directory(root)),
+        planning__repo_relative(root, review_directory(root)),
+        init__repo_relative(root, review_directory(root)),
+        _repo_relative(root, audit_directory(root)),
+        _repo_relative(root, release_directory(root)),
+        _repo_relative(root, skill_search_directory(root)),
+        _repo_relative(root, update_report_directory(root)),
     ]
 
     probes: list[tuple[str, tuple[str, ...]]] = [
@@ -1076,7 +1084,7 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
             errors.append(f"review: pinned legacy report changed: {rel}")
 
     for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
-        rel = path.relative_to(root).as_posix()
+        rel = _repo_relative(root, path)
         expected_step_id = path.parent.name
         if path.is_symlink():
             errors.append(f"review: {rel}: durable review report must not be a symlink")
@@ -1140,7 +1148,7 @@ def main() -> int:
         directory = review_directory(root) / args.step
         for path in sorted(directory.glob("REVIEW-*.md")) if directory.is_dir() else []:
             errors.extend(
-                f"{path.relative_to(root)}: {item}"
+                f"{_repo_relative(root, path)}: {item}"
                 for item in validate_review_report(root, path)
             )
     else:

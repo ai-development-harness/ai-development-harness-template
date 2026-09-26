@@ -239,22 +239,67 @@ class GitSource:
         cached = self._trees.get(oid)
         if cached is not None:
             return cached
-        proc = self._git("ls-tree", "-r", "-z", "--full-tree", oid)
         result: dict[str, tuple[str, str]] = {}
-        for raw in proc.stdout.split(b"\0"):
-            if not raw:
-                continue
-            header, sep, raw_path = raw.partition(b"\t")
-            parts = header.split()
-            if not sep or len(parts) < 3:
-                raise UpdateError("SOURCE_TREE_ERROR", f"cannot parse source tree entry for {ref}")
-            mode = parts[0].decode("ascii", errors="strict")
-            blob = parts[2].decode("ascii", errors="strict")
-            try:
-                path = raw_path.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise UpdateError("UNSAFE_SOURCE_PATH", f"{ref}: non-UTF-8 path in source tree") from exc
-            result[_validated_source_path(path, ref=ref)] = (mode, blob)
+        format_proc = self._git("rev-parse", "--show-object-format")
+        object_format = format_proc.stdout.decode("ascii", errors="strict").strip()
+        oid_bytes = {"sha1": 20, "sha256": 32}.get(object_format)
+        if oid_bytes is None:
+            raise UpdateError(
+                "SOURCE_TREE_ERROR",
+                f"unsupported Git object format: {object_format}",
+            )
+        root_tree = self._git("rev-parse", f"{oid}^{{tree}}").stdout.decode(
+            "ascii", errors="strict"
+        ).strip()
+
+        def walk(tree_oid: str, prefix: str = "") -> None:
+            # Читаем raw tree object, а не `ls-tree -r`: malformed component
+            # должен попасть в Harness validation до platform-specific path
+            # flattening/normalization самим Git client.
+            raw_tree = self._git("cat-file", "tree", tree_oid).stdout
+            offset = 0
+            while offset < len(raw_tree):
+                nul = raw_tree.find(b"\0", offset)
+                if nul < 0:
+                    raise UpdateError(
+                        "SOURCE_TREE_ERROR",
+                        f"unterminated source tree entry for {ref}",
+                    )
+                header = raw_tree[offset:nul]
+                space = header.find(b" ")
+                if space <= 0:
+                    raise UpdateError(
+                        "SOURCE_TREE_ERROR",
+                        f"cannot parse source tree entry for {ref}",
+                    )
+                mode_raw = header[:space]
+                name_raw = header[space + 1 :]
+                oid_start = nul + 1
+                oid_end = oid_start + oid_bytes
+                if oid_end > len(raw_tree):
+                    raise UpdateError(
+                        "SOURCE_TREE_ERROR",
+                        f"truncated source tree object id for {ref}",
+                    )
+                object_id = raw_tree[oid_start:oid_end].hex()
+                offset = oid_end
+
+                try:
+                    mode = mode_raw.decode("ascii", errors="strict")
+                    name = name_raw.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise UpdateError(
+                        "UNSAFE_SOURCE_PATH",
+                        f"{ref}: non-UTF-8 path in source tree",
+                    ) from exc
+                candidate = f"{prefix}/{name}" if prefix else name
+                path = _validated_source_path(candidate, ref=ref)
+                if mode in {"40000", "040000"}:
+                    walk(object_id, path)
+                else:
+                    result[path] = (mode, object_id)
+
+        walk(root_tree)
         self._trees[oid] = result
         return result
 
@@ -1066,6 +1111,7 @@ def require_no_pending_journal(root: Path) -> None:
 
 
 def check_update(root: Path, *, target: str | None = None, source_url: str | None = None) -> dict[str, Any]:
+    root = root.resolve()
     require_no_pending_journal(root)
     policy = load_update_policy(root)
     repository = get(policy, "source.repository")
@@ -1349,6 +1395,7 @@ def _recover_before_apply(root: Path) -> dict[str, Any] | None:
 
 
 def apply_update(root: Path, *, target: str | None = None, source_url: str | None = None) -> dict[str, Any]:
+    root = root.resolve()
     # Прерванный предыдущий hop откатывается до любых новых решений: дальнейшая
     # проверка должна видеть согласованное состояние BASE.
     recovered = _recover_before_apply(root)
@@ -1431,6 +1478,7 @@ def apply_update(root: Path, *, target: str | None = None, source_url: str | Non
 
 
 def adopt_legacy(root: Path, *, baseline: str, source_url: str | None = None) -> dict[str, Any]:
+    root = root.resolve()
     """Создать первый pinned lock только для явно указанного immutable baseline."""
     require_no_pending_journal(root)
     policy = load_update_policy(root)
