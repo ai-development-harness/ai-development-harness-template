@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 
 import git_action as git_action_module
+import git_preflight as git_preflight_module
 from git_action import (
     execute_commit,
     execute_pr_finish,
@@ -17,6 +18,7 @@ from git_action import (
 )
 from git_preflight import (
     GitPreflightError,
+    Repo,
     _planned_branch,
     commit_preflight,
     policy as load_policy,
@@ -303,11 +305,31 @@ def hook_scenarios(base: Path) -> None:
     assert run(repo, "git", "log", "-1", "--pretty=%s") == "concurrent", "concurrent ref was overwritten"
 
 
+def subprocess_timeout_regression(root: Path) -> None:
+    original_run = git_preflight_module.subprocess.run
+
+    def timeout_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout"))
+
+    git_preflight_module.subprocess.run = timeout_run
+    try:
+        try:
+            Repo(root).git("status")
+        except GitPreflightError as exc:
+            assert exc.code == "GIT_TIMEOUT", exc.code
+        else:
+            raise AssertionError("Git timeout must fail closed")
+    finally:
+        git_preflight_module.subprocess.run = original_run
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-git-preflight-") as tmp:
         base = Path(tmp)
         remote = base / "remote.git"
         run(base, "git", "init", "--bare", "-q", str(remote))
+
+        subprocess_timeout_regression(base)
 
         project = base / "project"
         project.mkdir()

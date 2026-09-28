@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 
+import git_action as git_action_module
 from git_action import GitActionError, execute_pr
 
 
@@ -137,11 +138,30 @@ def prepare(root: Path) -> tuple[Path, Path]:
     return remote, body
 
 
+def provider_timeout_regression(root: Path) -> None:
+    original_run = git_action_module.subprocess.run
+
+    def timeout_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout"))
+
+    git_action_module.subprocess.run = timeout_run
+    try:
+        try:
+            git_action_module._provider_json(root, ["gh", "pr", "list"])
+        except GitActionError as exc:
+            assert exc.code == "PR_PROVIDER_TIMEOUT", exc.code
+        else:
+            raise AssertionError("provider timeout must fail closed")
+    finally:
+        git_action_module.subprocess.run = original_run
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-pr-action-") as tmp:
         root = Path(tmp) / "work"
         root.mkdir()
         _remote, body = prepare(root)
+        provider_timeout_regression(root)
 
         fake_bin = root / ".fake-bin"
         fake = fake_bin / "gh"

@@ -28,7 +28,13 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from typing import Any
+
+LOCAL_GIT_TIMEOUT_SECONDS = 15
+NETWORK_GIT_TIMEOUT_SECONDS = 60
+VALIDATOR_TIMEOUT_SECONDS = 120
+PR_PROVIDER_TIMEOUT_SECONDS = 60
 
 from harness_config import ConfigError, load_git_policy
 
@@ -68,17 +74,35 @@ class Repo:
     def __init__(self, root: Path):
         self.root = root.resolve()
 
-    def git(self, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-        proc = subprocess.run(
-            ["git", *args],
-            cwd=self.root,
-            text=True,
-            # Non-UTF-8 имена файлов не должны превращаться в traceback (#110).
-            encoding="utf-8",
-            errors="surrogateescape",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+    def git(
+        self,
+        *args: str,
+        check: bool = True,
+        timeout: int = LOCAL_GIT_TIMEOUT_SECONDS,
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            proc = subprocess.run(
+                ["git", *args],
+                cwd=self.root,
+                text=True,
+                # Non-UTF-8 имена файлов не должны превращаться в traceback (#110).
+                encoding="utf-8",
+                errors="surrogateescape",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise GitPreflightError(
+                "GIT_TIMEOUT",
+                f"git {args[0] if args else '<command>'} timed out after {timeout}s",
+                timeoutSeconds=timeout,
+            ) from exc
+        except OSError as exc:
+            raise GitPreflightError(
+                "GIT_UNAVAILABLE",
+                f"cannot run git: {exc}",
+            ) from exc
         if check and proc.returncode:
             raise GitPreflightError(
                 "GIT_ERROR",
@@ -134,7 +158,7 @@ class Repo:
 
     def fetch(self, remote: str) -> None:
         """Обновить remote-tracking refs; это единственный сетевой side effect preflight."""
-        proc = self.git("fetch", "--prune", remote, check=False)
+        proc = self.git("fetch", "--prune", remote, check=False, timeout=NETWORK_GIT_TIMEOUT_SECONDS)
         if proc.returncode:
             raise GitPreflightError(
                 "FETCH_FAILED",
@@ -352,13 +376,21 @@ def _validator(root: Path) -> None:
     validator = root / ".harness/tools/validate.py"
     if not validator.is_file():
         raise GitPreflightError("HARNESS_VALIDATOR_MISSING", "missing .harness/tools/validate.py")
-    proc = subprocess.run(
-        ["python3", str(validator), "--mode", "commit"],
-        cwd=root,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(validator), "--mode", "commit"],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=VALIDATOR_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitPreflightError(
+            "HARNESS_VALIDATION_TIMEOUT",
+            f"Harness validation timed out after {VALIDATOR_TIMEOUT_SECONDS}s",
+            timeoutSeconds=VALIDATOR_TIMEOUT_SECONDS,
+        ) from exc
     if proc.returncode:
         raise GitPreflightError(
             "HARNESS_VALIDATION_FAILED",
@@ -402,12 +434,20 @@ def _planned_branch(config: dict[str, Any], commit_type: str | None, slug: str |
             f"branch.name_pattern supports only {{prefix}} and {{slug}}: {exc}",
         ) from exc
     _require_safe_branch_name(candidate)
-    proc = subprocess.run(
-        ["git", "check-ref-format", "--branch", candidate],
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "check-ref-format", "--branch", candidate],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=LOCAL_GIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitPreflightError(
+            "GIT_TIMEOUT",
+            f"git check-ref-format timed out after {LOCAL_GIT_TIMEOUT_SECONDS}s",
+            timeoutSeconds=LOCAL_GIT_TIMEOUT_SECONDS,
+        ) from exc
     if proc.returncode:
         raise GitPreflightError(
             "INVALID_BRANCH_NAME",
@@ -810,16 +850,24 @@ def _github_pr_view(root: Path, config: dict[str, Any], selector: str | int) -> 
             "PR_REPO_UNRESOLVED",
             f"cannot resolve GitHub repository from remote {remote} URL",
         )
-    proc = subprocess.run(
-        [
-            tool, "pr", "view", str(selector), "--repo", repo_selector,
-            "--json", "number,state,mergedAt,headRefName,headRefOid,baseRefName,url",
-        ],
-        cwd=root,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                tool, "pr", "view", str(selector), "--repo", repo_selector,
+                "--json", "number,state,mergedAt,headRefName,headRefOid,baseRefName,url",
+            ],
+            cwd=root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=PR_PROVIDER_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitPreflightError(
+            "PR_PROVIDER_TIMEOUT",
+            f"PR provider timed out after {PR_PROVIDER_TIMEOUT_SECONDS}s",
+            timeoutSeconds=PR_PROVIDER_TIMEOUT_SECONDS,
+        ) from exc
     if proc.returncode:
         raise GitPreflightError(
             "PR_NOT_FOUND",

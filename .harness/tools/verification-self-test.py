@@ -15,6 +15,9 @@ import time
 from verification import CAPTURE_TAIL_BYTES, EVIDENCE_START, _run_command, run_step_verification
 
 
+from self_test_fixture import isolate_project_artifacts
+
+
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -144,6 +147,7 @@ Synthetic.
 
 def prepare(root: Path) -> None:
     copy_tracked(root)
+    isolate_project_artifacts(root)
     path = root / "planning/tasks/STEP-001.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

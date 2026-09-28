@@ -9,8 +9,10 @@ import tempfile
 
 from command_dispatch import start_dispatch
 from execution_status import complete_command, start_execution
-from harness_config import open_questions_directory
 from step_next import resolve_step_action, resolve_step_next
+
+
+from self_test_fixture import isolate_project_artifacts
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -158,19 +160,12 @@ def reset_steps(root: Path) -> None:
         path.unlink()
 
 
-def reset_open_questions(root: Path) -> None:
-    """Remove project OQ artifacts from the synthetic STEP NEXT fixture."""
-    directory = open_questions_directory(root)
-    for path in directory.glob("OQ-*.md"):
-        path.unlink()
-
-
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-step-next-") as tmp:
         root = Path(tmp)
         copy_tracked(root)
+        isolate_project_artifacts(root)
         reset_steps(root)
-        reset_open_questions(root)
 
         run(root, "git", "init", "-q", "-b", "main")
         run(root, "git", "config", "user.email", "next@example.invalid")

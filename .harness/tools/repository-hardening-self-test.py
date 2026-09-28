@@ -8,6 +8,9 @@ import subprocess
 import tempfile
 
 
+from self_test_fixture import isolate_project_artifacts
+
+
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -46,6 +49,7 @@ def copy_tracked(target: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
+    isolate_project_artifacts(target)
     run(target, "git", "init", "-q", "-b", "main")
     run(target, "git", "config", "user.email", "hardening@example.invalid")
     run(target, "git", "config", "user.name", "Hardening Test")
@@ -161,22 +165,23 @@ def main() -> int:
         assert doc_result.returncode == 0, doc_result.stdout + doc_result.stderr
         run(root, "git", "rm", "-q", "-f", "docs/aws-example.md")
 
-        # Комментарий с текстом ignore pattern не является действующим правилом.
+        # Проверки ignore semantics используют собственный deterministic fixture:
+        # project .gitignore может законно выражать те же правила другим glob-ом.
         gitignore_path = root / ".gitignore"
         original_ignore = gitignore_path.read_text(encoding="utf-8")
-        assert "AGENTS.local.md" in original_ignore
-        gitignore_path.write_text(
-            original_ignore.replace("AGENTS.local.md", "# AGENTS.local.md", 1),
-            encoding="utf-8",
+
+        # Последнее negation-rule гарантированно снимает любой inherited ignore
+        # для AGENTS.local.md независимо от исходных project glob patterns.
+        unignored_fixture = (
+            original_ignore.rstrip("\n")
+            + "\n!AGENTS.local.md\n# AGENTS.local.md\n"
         )
+        gitignore_path.write_text(unignored_fixture, encoding="utf-8")
         require_failure(validate(root), ".gitignore must ignore AGENTS.local.md")
 
-        # Эквивалентный glob должен приниматься: проверяется Git semantics, а не substring.
-        semantic_ignore = original_ignore
-        semantic_ignore = semantic_ignore.replace("AGENTS.local.md\n", "", 1)
-        semantic_ignore = semantic_ignore.replace("CLAUDE.local.md\n", "", 1)
-        semantic_ignore = semantic_ignore.replace("PROJECT_BRIEF.local.md\n", "", 1)
-        semantic_ignore += "\n*.local.md\n"
+        # Более поздний эквивалентный glob снова игнорирует все *.local.md:
+        # validator проверяет Git semantics, а не literal substring.
+        semantic_ignore = unignored_fixture + "*.local.md\n"
         gitignore_path.write_text(semantic_ignore, encoding="utf-8")
         semantic = validate(root)
         assert semantic.returncode == 0, semantic.stdout + semantic.stderr
