@@ -76,6 +76,7 @@ Validator проверяет protocol/repository invariants, но **не зам�
 - tracked files через реальный Git index;
 - update graph и release metadata consistency;
 - обязательные protocol files, skills, agents и commands;
+- для каждого `required_skills` — соседний `UPSTREAM.md` с `Source: project-native`, чтобы core workflow не терял provenance;
 - active project document model;
 - CTS graph и command surface;
 - deprecated command references;
