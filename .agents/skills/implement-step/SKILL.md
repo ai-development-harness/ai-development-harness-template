@@ -1,6 +1,6 @@
 ---
 name: implement-step
-description: Implement a planned STEP within its scope, update tests, run verification, and record evidence without self-approving completion.
+description: Implement a planned STEP within its scope, update tests, satisfy canonical verification, and record evidence without self-approving completion.
 ---
 # implement-step
 
@@ -12,9 +12,12 @@ Execution Status ведёт global wrapper.
 - До product mutation запусти обычную deterministic validation проекта/Harness согласно workflow; не дублируй prerequisite reasoning.
 - Если execution-status показывает resume этой же команды, сначала изучи существующий diff/Evidence и продолжи недостающее; не переделывай готовое.
 - При первой фактической product mutation canonical `status → in_progress`.
-- Используй `implementer` или `mechanic` по сложности.
+- Выбирай write-role по характеру работы:
+  - `mechanic` — только механическая/локальная трансформация с уже однозначно заданным результатом, без нового behavior/semantic design;
+  - `implementer` — изменение behavior, нескольких взаимодействующих компонентов либо работа, где остаются инженерные решения внутри утверждённого STEP contract.
+  При сомнении используй `implementer`; `mechanic` не является способом удешевить reasoning там, где решение ещё нужно принять.
 - Соблюдай mutation policy/out-of-scope и Accepted ADR.
-- Добавь необходимые tests.
+- Добавь необходимые tests, которые доказывают затронутое Acceptance/regression.
 - Verification commands вручную не запускай только ради completion: при result `SUCCESS` dispatcher сам запускает canonical Verification и пишет generated Evidence.
 - `VERIFICATION_FAIL` возвращает factual command failure — исправь его и повтори completion. `VERIFICATION_MANUAL_REQUIRED` означает выполнить только перечисленные manual checks и передать exact `manualVerification` observations через dispatcher details.
 - `VERIFICATION_BLOCKED` не обходи reasoning-ом: invalid/mutating verification требует исправления contract/workflow.
