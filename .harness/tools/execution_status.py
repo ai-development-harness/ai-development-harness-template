@@ -1049,7 +1049,6 @@ def read_side_effect_checkpoint(
     return deepcopy(value)
 
 
-@execution_state_mutation
 def write_side_effect_checkpoint(
     root: Path,
     command: str,
@@ -1067,35 +1066,40 @@ def write_side_effect_checkpoint(
     """
     if not status_path(root).is_file():
         return None
-    normalized = command.strip()
-    status = load_status(root)
-    execution = _active_execution_for_command(status, normalized)
-    if execution is None:
-        return None
-    current = execution["current"]
-    context = current.setdefault("context", {})
-    if not isinstance(context, dict):
-        raise ValueError("current.context must be an object")
-    previous = context.get("sideEffect")
-    # phase после restart может подтверждать side effect предыдущей попытки:
-    # current.attempt уже увеличен dispatcher-ом, но identity самого side effect
-    # остаётся у исходного attempt. Новый attempt начинается только с prepared.
-    checkpoint_attempt = int(current.get("attempt", 1))
-    if isinstance(previous, dict) and phase != "prepared":
-        previous_attempt = previous.get("attempt")
-        if isinstance(previous_attempt, int) and not isinstance(previous_attempt, bool):
-            checkpoint_attempt = previous_attempt
-    value = build_side_effect_checkpoint(
-        kind=kind,
-        phase=phase,
-        attempt=checkpoint_attempt,
-        proof=proof,
-        previous=previous if isinstance(previous, dict) else None,
-    )
-    context["sideEffect"] = value
-    execution["updatedAt"] = utc_now()
-    save_status(root, status)
-    return deepcopy(value)
+    with execution_state_lock(root):
+        # Повторяем проверку уже под lock: другой process мог завершить/удалить
+        # active state между cheap precheck и acquire.
+        if not status_path(root).is_file():
+            return None
+        normalized = command.strip()
+        status = load_status(root)
+        execution = _active_execution_for_command(status, normalized)
+        if execution is None:
+            return None
+        current = execution["current"]
+        context = current.setdefault("context", {})
+        if not isinstance(context, dict):
+            raise ValueError("current.context must be an object")
+        previous = context.get("sideEffect")
+        # phase после restart может подтверждать side effect предыдущей попытки:
+        # current.attempt уже увеличен dispatcher-ом, но identity самого side effect
+        # остаётся у исходного attempt. Новый attempt начинается только с prepared.
+        checkpoint_attempt = int(current.get("attempt", 1))
+        if isinstance(previous, dict) and phase != "prepared":
+            previous_attempt = previous.get("attempt")
+            if isinstance(previous_attempt, int) and not isinstance(previous_attempt, bool):
+                checkpoint_attempt = previous_attempt
+        value = build_side_effect_checkpoint(
+            kind=kind,
+            phase=phase,
+            attempt=checkpoint_attempt,
+            proof=proof,
+            previous=previous if isinstance(previous, dict) else None,
+        )
+        context["sideEffect"] = value
+        execution["updatedAt"] = utc_now()
+        save_status(root, status)
+        return deepcopy(value)
 
 
 def git_commit_completion_proven(
