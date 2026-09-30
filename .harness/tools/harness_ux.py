@@ -136,6 +136,7 @@ def _pr_capability(root: Path) -> dict[str, Any]:
 
 def harness_status(root: Path) -> dict[str, Any]:
     manifest = load_manifest(root)
+    pr_capability = _pr_capability(root)
     return {
         "status": "PASS",
         "harness": {
@@ -149,9 +150,9 @@ def harness_status(root: Path) -> dict[str, Any]:
         "git": _git_snapshot(root),
         "executions": _resolved_unfinished(root),
         "capabilities": {
-            "pullRequests": _pr_capability(root),
+            "pullRequests": pr_capability,
             # Backward-compatible alias for clients that still read the old key.
-            "githubPullRequests": _pr_capability(root),
+            "githubPullRequests": pr_capability,
         },
     }
 
