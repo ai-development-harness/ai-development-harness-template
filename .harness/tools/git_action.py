@@ -595,7 +595,13 @@ def _repo_selector(gate: dict[str, Any]) -> str:
 
 def _open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
     """Query exact open head/base PRs through the configured provider adapter."""
-    return provider_open_prs(root, gate)
+    try:
+        return provider_open_prs(root, gate)
+    except ProviderError as exc:
+        # git_action.py owns the public mutation error contract. Provider
+        # internals are normalized here so existing callers never need to know
+        # which adapter produced the blocker.
+        raise GitActionError(exc.code, str(exc), **exc.details) from exc
 
 
 def _validate_provider_pr(gate: dict[str, Any], item: dict[str, Any]) -> None:
@@ -783,7 +789,10 @@ def execute_pr(
         # Provider adapter consumes captured semantic body via stdin and owns
         # provider/tool/host/login mechanics. Mutable source path is never
         # reopened by gh/tea.
-        provider_create_pr(root, gate, title=title, body=body)
+        try:
+            provider_create_pr(root, gate, title=title, body=body)
+        except ProviderError as exc:
+            raise GitActionError(exc.code, str(exc), **exc.details) from exc
 
         existing = _open_prs(root, gate)
         if len(existing) != 1:
