@@ -43,6 +43,12 @@ from review_contract import (
     repository_revision,
     validate_review_report,
 )
+from review_findings import (
+    FINDING_CONTRACT_VERSION,
+    FindingContractError,
+    normalize_finding,
+    render_machine_findings,
+)
 from projection_contract import ProjectionDerivationError, write_projections
 from review_gates import required_reviewers
 from verification import render_verification_entries, validate_verification_entries
@@ -317,24 +323,17 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
     return result
 
 
-def _finding(value: Any, index: int) -> dict[str, str]:
-    item = _require_object(value, f"findings[{index}]")
-    allowed = {
-        "title", "severity", "category", "location", "scenario",
-        "impact", "fixDirection",
-    }
-    _exact_keys(item, allowed, f"findings[{index}]")
-    result = {key: _text(item.get(key), f"findings[{index}].{key}") for key in allowed}
-    if result["severity"] not in SEVERITIES:
-        raise SemanticArtifactError(
-            f"findings[{index}].severity must be one of {sorted(SEVERITIES)}"
-        )
-    if result["category"] not in CATEGORIES:
-        raise SemanticArtifactError(
-            f"findings[{index}].category must be one of {sorted(CATEGORIES)}"
-        )
-    return result
+def _finding(value: Any, index: int) -> dict[str, Any]:
+    """Нормализовать semantic finding в Review Contract v2.
 
+    Старый compact payload остаётся допустимым transport-форматом для
+    совместимости existing agents/tests, но durable report всегда содержит
+    полный v2 object + deterministic fingerprint.
+    """
+    try:
+        return normalize_finding(value, index)
+    except FindingContractError as exc:
+        raise SemanticArtifactError(str(exc)) from exc
 
 def _specialized_payload(value: Any) -> dict[str, dict[str, str]]:
     if value is None:
@@ -447,26 +446,45 @@ def _validate_specialized_verdict(
         )
 
 
-def _render_findings(findings: list[dict[str, str]]) -> str:
+def _render_findings(findings: list[dict[str, Any]]) -> str:
     if not findings:
         return "Material findings отсутствуют."
     chunks: list[str] = []
-    for index, item in enumerate(findings, 1):
+    for item in findings:
+        location = item["location"]["path"]
+        if item["location"].get("line") is not None:
+            location += f":{item['location']['line']}"
+        scenario = item["scenario"]
         chunks.extend(
             [
-                f"### F-{index:03d} — {item['title']}",
+                f"### {item['id']} — {item['title']}",
                 "",
                 f"**Severity:** {item['severity']}",
                 f"**Category:** {item['category']}",
-                f"**Location:** {item['location']}",
-                f"**Scenario:** {item['scenario']}",
+                f"**Location:** {location}",
+                f"**Scenario:** Given {scenario['given']} / When {scenario['when']} / Then {scenario['then']}",
+                f"**Expected:** {item['expected']}",
+                f"**Observed:** {item['observed']}",
                 f"**Impact:** {item['impact']}",
-                f"**Fix direction:** {item['fixDirection']}",
+                f"**Fix direction:** {item['repair']['direction']}",
+                f"**Fingerprint:** {item['fingerprint']}",
                 "",
             ]
         )
+        alternatives = item["repair"]["admissibleAlternatives"]
+        if alternatives:
+            chunks.append("**Admissible alternatives:**")
+            chunks.extend(f"- {value}" for value in alternatives)
+            chunks.append("")
+        if item["constraints"]:
+            chunks.append("**Constraints:**")
+            chunks.extend(f"- {value}" for value in item["constraints"])
+            chunks.append("")
+        if item["evidence"]:
+            chunks.append("**Evidence:**")
+            chunks.extend(f"- {value}" for value in item["evidence"])
+            chunks.append("")
     return "\n".join(chunks).strip()
-
 
 def _complete_step_after_pass(root: Path, step_id: str) -> dict[str, Any]:
     """Close STEP only when the full type-specific completion proof is real.
@@ -588,6 +606,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         frontmatter = {
             "schema": 1,
             "kind": "step_review",
+            "finding_contract": FINDING_CONTRACT_VERSION,
             "step_id": step_id,
             "verdict": data["verdict"],
             "reviewer_role": "reviewer",
@@ -608,6 +627,12 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
 ## Findings
 
 {_render_findings(data["findings"])}
+
+## Machine-readable findings
+
+```json
+{render_machine_findings(data["findings"])}
+```
 
 ## Verification observations
 
@@ -652,6 +677,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         provenance_recorded = False
     result = {
         "schemaVersion": 1,
+        "reviewContractVersion": FINDING_CONTRACT_VERSION,
         "status": data["verdict"].upper(),
         "provenanceRecorded": provenance_recorded,
         "completionResult": data["verdict"].upper(),
