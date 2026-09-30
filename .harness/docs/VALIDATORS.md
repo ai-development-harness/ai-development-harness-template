@@ -1517,3 +1517,26 @@ python3 .harness/tools/repair-cycle-self-test.py
 Self-test покрывает progress, no-progress, repeated findings, regression и scope-change guard. Resolver-level применение stored telemetry покрывается `execution-self-test.py`.
 
 Политика описана в [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).
+
+
+---
+
+# Runtime adapter conformance / scripted orchestration
+
+## Файл / Файлы
+
+- `.harness/tools/runtime_adapter_conformance.py`
+- `.harness/tools/scripted_runtime.py`
+- `.harness/tools/orchestration-harness-self-test.py`
+
+## Роль
+
+Общая deterministic conformance suite для declared runtime adapters и test-only ScriptedRuntime с exact event sequence/fault injection. Сеть, API key и real Claude/Codex process не требуются.
+
+## Self-test
+
+```bash
+python3 .harness/tools/orchestration-harness-self-test.py
+```
+
+Test автоматически входит в `run-self-tests.py`. Real-runtime integration вынесена за deterministic CI boundary. Подробнее: [`DETERMINISTIC_TEST_HARNESS.md`](DETERMINISTIC_TEST_HARNESS.md).

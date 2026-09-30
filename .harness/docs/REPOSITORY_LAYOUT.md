@@ -57,6 +57,8 @@ Local state не является единым типом данных: executio
 │   │   ├── repair_cycle.py
 │   │   ├── review_gates.py
 │   │   ├── side_effect_recovery.py
+│   │   ├── runtime_adapter_conformance.py
+│   │   ├── scripted_runtime.py
 │   │   ├── runtime_adapter_contract.py
 │   │   ├── reasoning_boundaries.py
 │   │   ├── project_integrity.py
