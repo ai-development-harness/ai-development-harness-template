@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Deterministic provider-neutral RuntimeAdapter test double.
+"""Детерминированный provider-neutral test double RuntimeAdapter.
 
-ScriptedRuntime is test-only control surface. It never owns Harness command
-semantics: callers pass the canonical interaction they expect to exercise, and
-the double validates ordering, capabilities, normalized events and injected
-fault checkpoints.
+ScriptedRuntime используется только в тестах и не владеет семантикой Harness
+commands: caller передаёт canonical interaction, а double проверяет порядок,
+capabilities, normalized events и injected fault checkpoints.
 
-Scenario format is plain Python/JSON-compatible data. No API key, runtime
-process or network is required.
+Scenario — обычная Python/JSON-compatible структура. API key, runtime process
+и сеть не требуются.
 """
 from __future__ import annotations
 
@@ -36,7 +35,7 @@ FAULT_POINTS = {
 
 
 class ScriptedRuntimeError(AssertionError):
-    """Scenario mismatch with exact interaction/event diagnostics."""
+    """Несовпадение scenario с точной диагностикой interaction/event."""
 
 
 @dataclass(frozen=True)
@@ -66,7 +65,7 @@ def _support_map(overrides: dict[str, str] | None = None) -> dict[str, str]:
 
 
 class ScriptedRuntime:
-    """Versioned deterministic test double for the Runtime Adapter Contract."""
+    """Versioned deterministic test double для Runtime Adapter Contract."""
 
     schema_version = 1
     runtime_id = "scripted"
@@ -204,8 +203,8 @@ class ScriptedRuntime:
         if not isinstance(fault, str) or step_index in self._faulted_once:
             return
 
-        # Named side effect is considered applied only once the injected crash
-        # crosses the explicit side-effect boundary.
+        # Named side effect считается применённым только после пересечения
+        # явной side-effect boundary соответствующим injected crash.
         if fault in {
             "after_side_effect_before_observation",
             "after_observation_before_completion_checkpoint",
