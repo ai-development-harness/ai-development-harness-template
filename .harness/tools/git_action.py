@@ -35,6 +35,11 @@ from git_preflight import (
     push_preflight,
     sync_preflight,
 )
+from pr_provider import (
+    ProviderError,
+    create_pr as provider_create_pr,
+    open_prs as provider_open_prs,
+)
 
 
 class GitActionError(RuntimeError):
@@ -589,43 +594,14 @@ def _repo_selector(gate: dict[str, Any]) -> str:
 
 
 def _open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
-    """Query exact open head/base PRs through configured provider tool."""
-    tool = str(gate["preferredTool"])
-    if gate.get("provider") != "github" or tool != "gh":
-        raise GitActionError(
-            "PR_PROVIDER_UNSUPPORTED",
-            "deterministic PR action currently supports provider=github, tool=gh",
-        )
-    data = _provider_json(
-        root,
-        [
-            tool,
-            "pr",
-            "list",
-            "--repo",
-            _repo_selector(gate),
-            "--head",
-            str(gate["branch"]),
-            "--base",
-            str(gate["base"]),
-            "--state",
-            "open",
-            "--limit",
-            "10",
-            "--json",
-            "number,url,state,headRefName,headRefOid,baseRefName,isDraft,title",
-        ],
-    )
-    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
-        raise GitActionError("PR_PROVIDER_INVALID_JSON", "PR list must be a JSON array")
-    exact = [
-        item
-        for item in data
-        if item.get("headRefName") == gate["branch"]
-        and item.get("baseRefName") == gate["base"]
-        and item.get("state") == "OPEN"
-    ]
-    return exact
+    """Query exact open head/base PRs through the configured provider adapter."""
+    try:
+        return provider_open_prs(root, gate)
+    except ProviderError as exc:
+        # git_action.py owns the public mutation error contract. Provider
+        # internals are normalized here so existing callers never need to know
+        # which adapter produced the blocker.
+        raise GitActionError(exc.code, str(exc), **exc.details) from exc
 
 
 def _validate_provider_pr(gate: dict[str, Any], item: dict[str, Any]) -> None:
@@ -810,26 +786,13 @@ def execute_pr(
         if not title or "\n" in title or "\r" in title:
             raise GitActionError("PR_TITLE_INVALID", "PR title must be one non-empty line")
 
-        argv = [
-            str(gate["preferredTool"]),
-            "pr",
-            "create",
-            "--repo",
-            _repo_selector(gate),
-            "--head",
-            str(gate["branch"]),
-            "--base",
-            str(gate["base"]),
-            "--title",
-            title,
-            "--body-file",
-            "-",
-        ]
-        if gate.get("draft"):
-            argv.append("--draft")
-        # GitHub CLI поддерживает --body-file -; provider получает captured
-        # body через stdin и больше не переоткрывает mutable semantic input.
-        _run(root, argv, input_text=body)
+        # Provider adapter consumes captured semantic body via stdin and owns
+        # provider/tool/host/login mechanics. Mutable source path is never
+        # reopened by gh/tea.
+        try:
+            provider_create_pr(root, gate, title=title, body=body)
+        except ProviderError as exc:
+            raise GitActionError(exc.code, str(exc), **exc.details) from exc
 
         existing = _open_prs(root, gate)
         if len(existing) != 1:
@@ -1001,7 +964,7 @@ def main() -> int:
             result = execute_sync(root)
         else:
             result = execute_pr_finish(root)
-    except (GitActionError, GitPreflightError, ConfigError, OSError, UnicodeError) as exc:
+    except (GitActionError, GitPreflightError, ProviderError, ConfigError, OSError, UnicodeError) as exc:
         code = getattr(exc, "code", "CONFIG_OR_IO_ERROR")
         result = {
             "status": "BLOCKED",

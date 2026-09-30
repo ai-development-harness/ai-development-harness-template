@@ -503,8 +503,8 @@ Dispatcher напрямую запускает deterministic Git preflight: tool
    ```
    При policy `title_from_commit=false` добавить `--title-file .harness/local/git/pr-title.txt`.
 3. Executor повторяет canonical PR preflight, использует только configured provider/tool/head/base/draft, находит exact open PR либо создаёт один согласно `reuse_existing`.
-4. SUCCESS требует provider `headRefOid == published HEAD`; local `.harness/local/git/pr-state.json` executor создаёт/обновляет сам. Ручной `gh pr create/list/view` и ручная запись state запрещены.
-5. Provider/tool blocker не ослаблять ручной командой; semantic title/body не имеют права подменять base/head/provider policy.
+4. SUCCESS требует normalized provider `headRefOid == published HEAD`; local `.harness/local/git/pr-state.json` executor создаёт/обновляет сам. Ручные provider-вызовы (`gh pr ...`, `tea pulls ...`, `tea api ...`) и ручная запись state запрещены.
+5. Provider/tool/login blocker не ослаблять ручной командой; semantic title/body не имеют права подменять base/head/provider/tool policy. Для Gitea self-hosted Tea login выбирается детерминированно по exact repository host.
 
 ## 22. `GIT PR FINISH`
 

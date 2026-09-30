@@ -58,7 +58,7 @@ python3 .harness/tools/git-action.py pr --body-file .harness/local/git/pr-body.m
 
 При требовании title повтори с `--title-file`.
 
-Не вызывай `gh pr create/list/view`, не выбирай head/base/provider/draft и не записывай `pr-state.json` вручную. Executor сам find/reuse/create-ит exact PR, сверяет provider head OID и сохраняет lifecycle state.
+Не вызывай provider CLI вручную (`gh pr create/list/view`, `tea pulls ...`, `tea api ...`), не выбирай head/base/provider/tool/draft и не записывай `pr-state.json` вручную. Executor сам разрешает configured GitHub/Gitea adapter, find/reuse/create-ит exact PR, сверяет provider head OID и сохраняет lifecycle state.
 
 ## Failure policy
 

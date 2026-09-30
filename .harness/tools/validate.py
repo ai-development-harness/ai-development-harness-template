@@ -1473,6 +1473,20 @@ def validate_repository_surface(
                 value = pull_request.get(key)
                 if not isinstance(value, str) or not value.strip():
                     errors.append(f"git-policy: pull_request.{key} must be a non-empty string")
+            provider = pull_request.get("provider")
+            preferred_tool = pull_request.get("preferred_tool")
+            expected_tools = {"github": "gh", "gitea": "tea"}
+            if isinstance(provider, str) and provider.strip():
+                expected_tool = expected_tools.get(provider)
+                if expected_tool is None:
+                    errors.append(
+                        "git-policy: pull_request.provider must be one of: github, gitea"
+                    )
+                elif preferred_tool != expected_tool:
+                    errors.append(
+                        "git-policy: incompatible pull_request provider/tool pair: "
+                        f"{provider} requires {expected_tool}"
+                    )
             body_template = pull_request.get("body_template")
             if isinstance(body_template, str) and body_template.strip():
                 try:

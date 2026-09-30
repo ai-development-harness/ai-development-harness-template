@@ -259,7 +259,7 @@ Read-only deterministic Git preflight без model call: dispatcher возвра
 <a id="command-git-pr"></a>
 ## `GIT PR`
 
-Semantic worker готовит только PR prose. `git-action.py pr` детерминированно повторяет preflight, ищет/переиспользует либо создаёт GitHub PR, сверяет exact provider head OID и сам сохраняет local PR lifecycle state. Base/head/provider/draft policy модель не выбирает.
+Semantic worker готовит только PR prose. `git-action.py pr` детерминированно повторяет preflight, выбирает configured adapter (`github→gh` или `gitea→tea`), ищет/переиспользует либо создаёт PR, сверяет exact normalized provider head OID и сам сохраняет local PR lifecycle state. Self-hosted Gitea host берётся из configured remote, а Tea login выбирается по exact host. Base/head/provider/tool/draft policy модель не выбирает.
 
 <a id="command-git-pr-finish"></a>
 ## `GIT PR FINISH`
