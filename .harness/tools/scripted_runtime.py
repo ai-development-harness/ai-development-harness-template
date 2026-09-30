@@ -204,27 +204,24 @@ class ScriptedRuntime:
         self._side_effect_crossed_steps.add(step_index)
         self._side_effect_applications.append(identity)
 
-    def _maybe_fault(
+    def _maybe_fault_at(
         self,
         raw: dict[str, Any],
         *,
+        checkpoint: str,
         interaction: str,
         step_index: int,
     ) -> None:
+        """Inject fault только в заявленной logical boundary scenario step."""
         fault = raw.get("faultOnce")
-        if not isinstance(fault, str) or step_index in self._faulted_once:
+        if (
+            fault != checkpoint
+            or step_index in self._faulted_once
+        ):
             return
 
-        # Named side effect считается применённым только после пересечения
-        # явной side-effect boundary соответствующим injected crash.
-        if fault in {
-            "after_side_effect_before_observation",
-            "after_observation_before_completion_checkpoint",
-        }:
-            self._apply_side_effect_once(raw, step_index=step_index)
-
         self._faulted_once.add(step_index)
-        if fault == "runtime_disconnect":
+        if checkpoint == "runtime_disconnect":
             self._events.append(
                 normalize_event(
                     {
@@ -234,7 +231,7 @@ class ScriptedRuntime:
                     }
                 )
             )
-        elif fault == "input_required":
+        elif checkpoint == "input_required":
             self._events.append(
                 normalize_event(
                     {
@@ -244,7 +241,7 @@ class ScriptedRuntime:
                     }
                 )
             )
-        raise ScriptedFault(fault, interaction, step_index)
+        raise ScriptedFault(checkpoint, interaction, step_index)
 
     def invoke(
         self,
@@ -279,6 +276,14 @@ class ScriptedRuntime:
 
         start_index = len(self._events)
         current_index = self._index
+
+        self._maybe_fault_at(
+            raw,
+            checkpoint="before_semantic_handoff",
+            interaction=interaction,
+            step_index=current_index,
+        )
+
         if current_index not in self._events_emitted_steps:
             for event_raw in raw.get("events", []):
                 if not isinstance(event_raw, dict):
@@ -299,13 +304,33 @@ class ScriptedRuntime:
                     ) from exc
             self._events_emitted_steps.add(current_index)
 
-        self._maybe_fault(
-            raw,
-            interaction=interaction,
-            step_index=current_index,
-        )
+        for checkpoint in (
+            "after_model_return_before_state_checkpoint",
+            "runtime_disconnect",
+            "input_required",
+            "before_side_effect",
+        ):
+            self._maybe_fault_at(
+                raw,
+                checkpoint=checkpoint,
+                interaction=interaction,
+                step_index=current_index,
+            )
 
         self._apply_side_effect_once(raw, step_index=current_index)
+
+        for checkpoint in (
+            "after_side_effect_before_observation",
+            "after_observation_before_completion_checkpoint",
+            "during_report_write",
+            "during_execution_state_write",
+        ):
+            self._maybe_fault_at(
+                raw,
+                checkpoint=checkpoint,
+                interaction=interaction,
+                step_index=current_index,
+            )
         result = {
             "schemaVersion": 1,
             "runtimeId": self.runtime_id,
