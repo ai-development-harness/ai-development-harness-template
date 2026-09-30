@@ -324,7 +324,7 @@ _GENERATED_EVIDENCE = re.compile(
 )
 
 
-def _generated_verification_status(task: dict[str, Any]) -> str | None:
+def generated_verification_status(task: dict[str, Any]) -> str | None:
     """Status generated Verification block или None, если block отсутствует."""
     match = _GENERATED_EVIDENCE.search(task["sections"].get("Evidence", ""))
     if match is None:
@@ -361,7 +361,7 @@ def step_completion_proof(
     evidence = _evidence_present(task)
     # Generated Verification block — deterministic факт, а не prose: FAIL или
     # PENDING в нём не может считаться доказательством completion (#113).
-    verification_status = _generated_verification_status(task)
+    verification_status = generated_verification_status(task)
     if verification_status is not None and verification_status != "PASS":
         reasons.append(f"generated Verification evidence status is {verification_status}")
     if step_type in {"research"}:
