@@ -679,7 +679,7 @@ Engine проверяет:
 - exact ahead/behind;
 - unconditional remote-ahead blocker при `force=never`;
 - published PR head equality;
-- PR base/template/tool availability;
+- PR base/template/provider/tool availability, включая строгие пары `github→gh` и `gitea→tea`;
 - merged-PR provider state, local PR state, safe return-branch ff-only и non-force branch deletion для `pr-finish`;
 - ff-only sync;
 - Harness validator перед mutation, если это требует policy.
@@ -690,7 +690,8 @@ Engine проверяет:
 
 Файлы:
 
-- `.harness/tools/git_action.py` — engine;
+- `.harness/tools/git_action.py` — mutation engine;
+- `.harness/tools/pr_provider.py` — deterministic GitHub/Gitea provider adapters;
 - `.harness/tools/git-action.py` — CLI wrapper.
 
 Preflight отвечает на вопрос «разрешена ли mutation», executor — «как выполнить уже одобренную mechanical mutation и доказать postcondition».
@@ -706,11 +707,11 @@ python3 .harness/tools/git-action.py sync --json
 python3 .harness/tools/git-action.py pr-finish --json
 ```
 
-Executor повторяет canonical preflight непосредственно перед mutation. Semantic commit/PR inputs сначала читаются и проверяются Harness-ом как exact snapshot; primary `git`/`gh` consumer получает captured text через stdin (`git commit -F -`, `gh pr create --body-file -`) и не переоткрывает mutable source path. Original local input после postcondition очищается отдельно по identity-safe lifecycle.
+Executor повторяет canonical preflight непосредственно перед mutation. Semantic commit/PR inputs сначала читаются и проверяются Harness-ом как exact snapshot; primary consumer получает captured text через stdin (`git commit -F -`, `gh pr create --body-file -`, `tea pulls create --description-file -`) и не переоткрывает mutable source path. Provider adapter детерминированно разрешает remote host/repository, проверяет CLI/auth/login и нормализует GitHub/Gitea PR payload. Original local input после postcondition очищается отдельно по identity-safe lifecycle.
 
 - COMMIT создаёт только exact `requiredBranch`, если protected-branch preflight потребовал его; message file разрешён только под `.harness/local/git/`; postcondition — новый HEAD.
 - PUSH исполняет только returned non-force argv; postcondition — configured remote branch совпадает с local HEAD.
-- PR принимает semantic body/title только из `.harness/local/git/**`, сам ищет/reuse/create provider PR, сверяет exact head OID и сохраняет local PR state.
+- PR принимает semantic body/title только из `.harness/local/git/**`, сам ищет/reuse/create provider PR через `github→gh` или `gitea→tea`, сверяет exact head OID и сохраняет local PR state. Self-hosted Gitea login выбирается только по exact remote host; неоднозначность блокируется.
 - SYNC разрешает только report/noop или exact `git merge --ff-only`; postcondition — local HEAD совпадает с configured remote.
 - PR FINISH исполняет ordered exact steps, проверяет return branch и удаление verified local PR branch; local PR state удаляется только после полного успеха.
 
