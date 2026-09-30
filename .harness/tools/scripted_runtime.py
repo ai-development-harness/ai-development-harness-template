@@ -86,7 +86,9 @@ class ScriptedRuntime:
         self._index = 0
         self._events: list[dict[str, Any]] = []
         self._faulted_once: set[int] = set()
-        self._applied_side_effects: set[str] = set()
+        self._side_effect_crossed_steps: set[int] = set()
+        self._side_effect_applications: list[str] = []
+        self._events_emitted_steps: set[int] = set()
         self._cancelled = False
         self._capabilities = _support_map(capability_overrides)
         self._validate_steps()
@@ -187,10 +189,20 @@ class ScriptedRuntime:
         value.setdefault("sessionId", session_id)
         return normalize_event(value)
 
-    def _apply_side_effect_once(self, raw: dict[str, Any]) -> None:
+    def _apply_side_effect_once(
+        self,
+        raw: dict[str, Any],
+        *,
+        step_index: int,
+    ) -> None:
+        """Пересечь synthetic side-effect boundary максимум один раз на logical step."""
         identity = raw.get("sideEffectIdentity")
-        if isinstance(identity, str) and identity:
-            self._applied_side_effects.add(identity)
+        if not isinstance(identity, str) or not identity:
+            return
+        if step_index in self._side_effect_crossed_steps:
+            return
+        self._side_effect_crossed_steps.add(step_index)
+        self._side_effect_applications.append(identity)
 
     def _maybe_fault(
         self,
@@ -209,7 +221,7 @@ class ScriptedRuntime:
             "after_side_effect_before_observation",
             "after_observation_before_completion_checkpoint",
         }:
-            self._apply_side_effect_once(raw)
+            self._apply_side_effect_once(raw, step_index=step_index)
 
         self._faulted_once.add(step_index)
         if fault == "runtime_disconnect":
@@ -266,32 +278,34 @@ class ScriptedRuntime:
             self.require_capability(required)
 
         start_index = len(self._events)
-        for event_raw in raw.get("events", []):
-            if not isinstance(event_raw, dict):
-                raise ScriptedRuntimeError(
-                    f"step {self._index} event must be an object"
-                )
-            try:
-                self._events.append(
-                    self._event(
-                        event_raw,
-                        execution_id=execution_id,
-                        session_id=session_id,
-                    )
-                )
-            except RuntimeContractError as exc:
-                raise ScriptedRuntimeError(
-                    f"step {self._index} invalid normalized event: {exc}"
-                ) from exc
-
         current_index = self._index
+        if current_index not in self._events_emitted_steps:
+            for event_raw in raw.get("events", []):
+                if not isinstance(event_raw, dict):
+                    raise ScriptedRuntimeError(
+                        f"step {self._index} event must be an object"
+                    )
+                try:
+                    self._events.append(
+                        self._event(
+                            event_raw,
+                            execution_id=execution_id,
+                            session_id=session_id,
+                        )
+                    )
+                except RuntimeContractError as exc:
+                    raise ScriptedRuntimeError(
+                        f"step {self._index} invalid normalized event: {exc}"
+                    ) from exc
+            self._events_emitted_steps.add(current_index)
+
         self._maybe_fault(
             raw,
             interaction=interaction,
             step_index=current_index,
         )
 
-        self._apply_side_effect_once(raw)
+        self._apply_side_effect_once(raw, step_index=current_index)
         result = {
             "schemaVersion": 1,
             "runtimeId": self.runtime_id,
@@ -326,7 +340,12 @@ class ScriptedRuntime:
         return deepcopy(self._events)
 
     def applied_side_effects(self) -> list[str]:
-        return sorted(self._applied_side_effects)
+        """Compatibility projection уникальных identities."""
+        return sorted(set(self._side_effect_applications))
+
+    def side_effect_applications(self) -> list[str]:
+        """Exact ordered journal фактического пересечения side-effect boundary."""
+        return list(self._side_effect_applications)
 
     def assert_complete(self) -> None:
         if self._index != len(self._steps):
