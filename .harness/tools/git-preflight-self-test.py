@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import os
+import os
 import subprocess
 import tempfile
 
@@ -94,7 +95,7 @@ require_clean_worktree = false
 [pull_request]
 after_push = "create-if-missing"
 provider = "github"
-preferred_tool = "git"
+preferred_tool = "gh"
 base = "main"
 draft = false
 reuse_existing = true
@@ -326,6 +327,12 @@ def subprocess_timeout_regression(root: Path) -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-git-preflight-") as tmp:
         base = Path(tmp)
+        fake_bin = base / "bin"
+        fake_bin.mkdir()
+        fake_gh = fake_bin / "gh"
+        fake_gh.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8", newline="\n")
+        fake_gh.chmod(0o755)
+        os.environ["PATH"] = str(fake_bin) + os.pathsep + os.environ.get("PATH", "")
         remote = base / "remote.git"
         run(base, "git", "init", "--bare", "-q", str(remote))
 
@@ -615,7 +622,7 @@ def main() -> int:
         pr_gate = pr_preflight(project)
         assert pr_gate["status"] == "PASS", pr_gate
         assert pr_gate["base"] == "main", pr_gate
-        assert pr_gate["preferredTool"] == "git", pr_gate
+        assert pr_gate["preferredTool"] == "gh", pr_gate
 
         # Another clone advances the remote feature branch.
         other = base / "other"
