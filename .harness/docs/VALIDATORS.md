@@ -1449,6 +1449,7 @@ FIX не должен угадывать structured fields из legacy report. �
 Validator `review_contract.py` для v2 дополнительно проверяет:
 
 - наличие и JSON-синтаксис machine section;
+- отсутствие legacy/partial transport forms внутри v2: `location` и `scenario` обязаны быть objects, `expected`/`observed` обязательны, legacy `fixDirection` не принимается;
 - exact schemaVersion;
 - supported fields/enums;
 - id sequence `F-001...`;
@@ -1506,7 +1507,7 @@ Runtime reconciliation Git/provider подробно описан в [`SIDE_EFFE
 
 ## Роль
 
-Сравнивает два consecutive Review Contract v2 report по stable fingerprints, `reviewed_revision` и `contract_basis`. Возвращает bounded telemetry и conservative stop decision `continue|NO_PROGRESS|REPEATED_FINDINGS|REGRESSION`.
+Сравнивает два consecutive Review Contract v2 report по stable fingerprints, `reviewed_revision`, `contract_basis`, `verification_basis` и optional factual `verification_status`. Возвращает bounded telemetry и conservative stop decision `continue|NO_PROGRESS|REPEATED_FINDINGS|REGRESSION`.
 
 ## Self-test
 
@@ -1514,7 +1515,7 @@ Runtime reconciliation Git/provider подробно описан в [`SIDE_EFFE
 python3 .harness/tools/repair-cycle-self-test.py
 ```
 
-Self-test покрывает progress, no-progress, repeated findings, regression и scope-change guard. Resolver-level применение stored telemetry покрывается `execution-self-test.py`.
+Self-test покрывает progress, no-progress, repeated findings, higher-severity regression, worsening factual Verification status, historical report без status и scope-change guard. Resolver-level применение stored telemetry покрывается `execution-self-test.py`.
 
 Политика описана в [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).
 
@@ -1531,7 +1532,7 @@ Self-test покрывает progress, no-progress, repeated findings, regressio
 
 ## Роль
 
-Общая deterministic conformance suite для declared runtime adapters и test-only ScriptedRuntime с exact event sequence/fault injection. Сеть, API key и real Claude/Codex process не требуются.
+Общая deterministic conformance suite для declared runtime adapters и test-only ScriptedRuntime с exact event sequence/fault injection. Recovery tests ведут exact ordered journal side-effect applications, поэтому duplicate mutation при resume не может быть скрыта дедупликацией identity. Сеть, API key и real Claude/Codex process не требуются.
 
 ## Self-test
 

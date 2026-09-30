@@ -145,7 +145,105 @@ def main() -> int:
     resumed = recover.resume("STEP FIX STEP-002")
     assert resumed["result"] == "SUCCESS", resumed
     assert recover.applied_side_effects() == ["fix:STEP-002:F-001"], recover.applied_side_effects()
+    assert recover.side_effect_applications() == [
+        "fix:STEP-002:F-001"
+    ], recover.side_effect_applications()
+    assert [event["type"] for event in recover.events()] == [
+        "run.started",
+        "tool.completed",
+    ], recover.events()
     recover.assert_complete()
+
+    # Crash до side effect не должен потерять mutation: resume пересекает boundary
+    # ровно один раз после восстановления.
+    retry_before_effect = ScriptedRuntime(
+        {
+            "steps": [
+                {
+                    "expect": "STEP FIX STEP-006",
+                    "expectResume": "STEP FIX STEP-006",
+                    "result": "SUCCESS",
+                    "sideEffectIdentity": "fix:STEP-006:F-001",
+                    "faultOnce": "before_side_effect",
+                }
+            ]
+        }
+    )
+    try:
+        retry_before_effect.start("STEP FIX STEP-006")
+    except ScriptedFault as exc:
+        assert exc.checkpoint == "before_side_effect", exc
+    else:
+        raise AssertionError("before_side_effect did not interrupt")
+    retry_before_effect.resume("STEP FIX STEP-006")
+    assert retry_before_effect.side_effect_applications() == [
+        "fix:STEP-006:F-001"
+    ], retry_before_effect.side_effect_applications()
+    retry_before_effect.assert_complete()
+
+    # Named checkpoints обязаны находиться на правильной logical boundary,
+    # а не только выбрасывать exception с правильным именем.
+    before_handoff = ScriptedRuntime(
+        {
+            "steps": [
+                {
+                    "expect": "STEP REVIEW STEP-007",
+                    "faultOnce": "before_semantic_handoff",
+                    "sideEffectIdentity": "review:STEP-007",
+                    "events": [{"type": "run.started"}],
+                }
+            ]
+        }
+    )
+    try:
+        before_handoff.start("STEP REVIEW STEP-007")
+    except ScriptedFault:
+        pass
+    else:
+        raise AssertionError("before_semantic_handoff did not interrupt")
+    assert before_handoff.events() == [], before_handoff.events()
+    assert before_handoff.side_effect_applications() == []
+
+    before_effect = ScriptedRuntime(
+        {
+            "steps": [
+                {
+                    "expect": "STEP FIX STEP-008",
+                    "faultOnce": "before_side_effect",
+                    "sideEffectIdentity": "fix:STEP-008:F-001",
+                    "events": [{"type": "run.started"}],
+                }
+            ]
+        }
+    )
+    try:
+        before_effect.start("STEP FIX STEP-008")
+    except ScriptedFault:
+        pass
+    else:
+        raise AssertionError("before_side_effect did not interrupt")
+    assert [event["type"] for event in before_effect.events()] == ["run.started"]
+    assert before_effect.side_effect_applications() == []
+
+    after_effect = ScriptedRuntime(
+        {
+            "steps": [
+                {
+                    "expect": "STEP FIX STEP-009",
+                    "faultOnce": "after_side_effect_before_observation",
+                    "sideEffectIdentity": "fix:STEP-009:F-001",
+                    "events": [{"type": "run.started"}],
+                }
+            ]
+        }
+    )
+    try:
+        after_effect.start("STEP FIX STEP-009")
+    except ScriptedFault:
+        pass
+    else:
+        raise AssertionError("after_side_effect_before_observation did not interrupt")
+    assert after_effect.side_effect_applications() == ["fix:STEP-009:F-001"]
 
     # Каждый declared named fault checkpoint реально исполняется, а не только числится в schema enum.
     for checkpoint in sorted(

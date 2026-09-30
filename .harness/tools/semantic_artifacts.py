@@ -30,6 +30,7 @@ from execution_status import (
 )
 from harness_config import planning_review_directory, review_directory
 from planning_contract import (
+    generated_verification_status,
     plan_content_hash,
     planning_context_basis,
     read_task,
@@ -630,6 +631,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "reviewed_revision": revision,
             "contract_basis": planning_context_basis(root, step_id),
             "verification_basis": _review_verification_basis(root, step_id),
+            "verification_status": generated_verification_status(read_task(root, step_id)),
             "specialized_reviews": specialized,
         }
         body = f"""# STEP REVIEW {step_id} — {display}

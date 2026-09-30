@@ -14,6 +14,7 @@ from document_contract import parse_document
 from review_findings import FINDING_CONTRACT_VERSION, parse_machine_findings
 
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+VERIFICATION_RANK = {"BLOCKED": 0, "FAIL": 1, "MANUAL_REQUIRED": 2, "PASS": 3}
 STOP_REASONS = {"NO_PROGRESS", "REPEATED_FINDINGS", "REGRESSION"}
 
 
@@ -43,6 +44,7 @@ def _snapshot(root: Path, report: str, *, expected_step_id: str) -> dict[str, An
         "verdict": meta.get("verdict"),
         "contractBasis": meta.get("contract_basis"),
         "verificationBasis": meta.get("verification_basis"),
+        "verificationStatus": meta.get("verification_status"),
         "reviewedRevision": meta.get("reviewed_revision"),
         "findings": findings,
     }
@@ -96,6 +98,15 @@ def compare_snapshots(
         if isinstance(verification_before, str) and isinstance(verification_after, str)
         else None
     )
+    verification_status_before = before.get("verificationStatus")
+    verification_status_after = after.get("verificationStatus")
+    verification_regressed = (
+        VERIFICATION_RANK[verification_status_after]
+        < VERIFICATION_RANK[verification_status_before]
+        if verification_status_before in VERIFICATION_RANK
+        and verification_status_after in VERIFICATION_RANK
+        else None
+    )
 
     stop: str | None = None
     message = "repair cycle made deterministic progress or scope is not comparable"
@@ -103,7 +114,12 @@ def compare_snapshots(
     # Scope change is an explicit guardrail: new findings after REQ/ADR/STEP
     # contract drift are not classified as a regression of the repair itself.
     if scope_comparable:
-        if before_fps == after_fps:
+        if verification_regressed is True:
+            stop = "REGRESSION"
+            message = (
+                "deterministic verification status became worse while contract scope stayed unchanged"
+            )
+        elif before_fps == after_fps:
             if revision_changed:
                 stop = "REPEATED_FINDINGS"
                 message = "FIX changed repository revision, but the same material findings remain"
@@ -132,6 +148,9 @@ def compare_snapshots(
         "contractBasisChanged": contract_before != contract_after,
         "scopeComparable": scope_comparable,
         "verificationChanged": verification_changed,
+        "verificationStatusBefore": verification_status_before,
+        "verificationStatusAfter": verification_status_after,
+        "verificationRegressed": verification_regressed,
         "stopDecision": stop or "continue",
         "reasonCode": stop,
         "message": message,
