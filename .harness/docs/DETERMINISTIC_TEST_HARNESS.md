@@ -78,6 +78,8 @@ Mismatch всегда показывает exact step index, expected interactio
 - `runtime_disconnect`;
 - `input_required`.
 
+Checkpoints привязаны к фактическому порядку logical step: `before_semantic_handoff` срабатывает до scenario events, `before_side_effect` — после model/event boundary, но до mutation, а post-side-effect checkpoints — только после пересечения mutation boundary. Self-test проверяет observable state на этих границах, а не только имя exception.
+
 `faultOnce` срабатывает ровно один раз на scenario step. `resume()` повторяет тот же logical interaction после interruption.
 
 ScriptedRuntime хранит exact ordered journal фактических пересечений side-effect boundary. Один logical scenario step может пересечь эту boundary максимум один раз:
