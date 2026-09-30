@@ -650,6 +650,10 @@ def validate_review_report(
     if contract_basis is not None and not _valid_sha256(contract_basis):
         errors.append("contract_basis must be sha256 when present")
 
+    verification_basis = meta.get("verification_basis")
+    if verification_basis is not None and not _valid_sha256(verification_basis):
+        errors.append("verification_basis must be sha256 when present")
+
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):
         errors.append("reviewed_revision must be a mapping")
