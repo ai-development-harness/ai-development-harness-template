@@ -89,7 +89,7 @@ Execution state хранит только **последнюю** сводку `r
   "verificationStatusAfter": "FAIL",
   "verificationRegressed": true,
   "stopDecision": "REGRESSION",
-  "reasonCode": null
+  "reasonCode": "REGRESSION"
 }
 ~~~
 
