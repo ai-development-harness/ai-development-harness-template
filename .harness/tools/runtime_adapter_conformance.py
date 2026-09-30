@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Provider-neutral deterministic conformance checks Runtime Adapter Contract.
 
-The suite validates adapter descriptors/capabilities/event envelope without
-starting a real Codex/Claude process. Runtime process/wire checks belong to the
-optional integration layer.
+Suite проверяет adapter descriptors, capabilities и event envelope без запуска
+реального Codex/Claude process. Runtime process/wire checks относятся к
+отдельному optional integration layer.
 """
 from __future__ import annotations
 
