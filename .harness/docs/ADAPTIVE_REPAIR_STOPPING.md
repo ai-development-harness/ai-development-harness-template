@@ -33,7 +33,7 @@ Adaptive decision не использует chat history и не просит м
 - repository delta берётся из `reviewed_revision`;
 - semantic scope сравнивается через `contract_basis`.
 
-Новые REVIEW reports получают `contract_basis = planning_context_basis(STEP)` и `verification_basis` — SHA-256 canonical Verification/Evidence snapshot. Historical v2 reports без этих полей остаются валидными; отсутствие `contract_basis` отключает adaptive classification fail-safe, а отсутствие verification basis даёт `verificationChanged=null`.
+Новые REVIEW reports получают `contract_basis = planning_context_basis(STEP)`, `verification_basis` — SHA-256 canonical Verification/Evidence snapshot — и factual `verification_status`, прочитанный из generated `VERIFICATION-EVIDENCE` block. Historical v2 reports без этих полей остаются валидными: отсутствие `contract_basis` отключает adaptive classification fail-safe, отсутствие verification basis даёт `verificationChanged=null`, а отсутствие persisted status даёт `verificationRegressed=null`.
 
 ## Решения
 
@@ -50,7 +50,12 @@ Contract scope не менялся, repository revision изменилась, н
 
 ### REGRESSION
 
-Contract scope не менялся, после FIX появился новый finding и highest severity стала выше предыдущей. Новый finding сам по себе не считается regression.
+Contract scope не менялся и выполняется хотя бы одно из условий:
+
+- после FIX появился новый finding и highest severity стала выше предыдущей;
+- factual generated Verification status стал хуже по deterministic шкале `PASS > MANUAL_REQUIRED > FAIL > BLOCKED`.
+
+Новый finding сам по себе не считается regression. Изменение только `verification_basis` тоже не считается ухудшением: hash доказывает лишь изменение snapshot, а не его качество.
 
 ### REPAIR_BLOCKED
 
@@ -80,14 +85,19 @@ Execution state хранит только **последнюю** сводку `r
   "contractBasisChanged": false,
   "scopeComparable": true,
   "verificationChanged": true,
-  "stopDecision": "continue",
+  "verificationStatusBefore": "PASS",
+  "verificationStatusAfter": "FAIL",
+  "verificationRegressed": true,
+  "stopDecision": "REGRESSION",
   "reasonCode": null
 }
 ~~~
 
 Fingerprint lists не копируются в execution state. Полный delta всегда восстанавливается из immutable reports. Размер telemetry дополнительно ограничен тем же bounded metadata gate, что и execution details.
 
-`verificationChanged` вычисляется по `verification_basis`: SHA-256 canonical snapshot разделов `Verification` и `Evidence` на момент REVIEW. Harness не интерпретирует semantic prose `Verification observations` как proof; delta показывает только факт изменения deterministic verification/evidence snapshot.
+`verificationChanged` вычисляется по `verification_basis`: SHA-256 canonical snapshot разделов `Verification` и `Evidence` на момент REVIEW. Это только факт изменения snapshot.
+
+`verificationRegressed` вычисляется отдельно по persisted factual `verification_status` из generated Verification evidence. Harness не интерпретирует semantic prose `Verification observations` как proof. Если historical report не содержит status, comparator оставляет `verificationRegressed=null` и не делает ложный stop.
 
 ## Restart semantics
 
