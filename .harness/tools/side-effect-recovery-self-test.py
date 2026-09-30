@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Synthetic tests bounded SideEffectProof contract без real Git/provider."""
+"""Fault-injection tests SideEffectProof contract без real provider/runtime."""
 from __future__ import annotations
 
+from pathlib import Path
 import sys
+import tempfile
 
+from execution_status import empty_status, load_status, save_status
 from side_effect_recovery import (
     MAX_PROOF_BYTES,
     checkpoint,
@@ -12,57 +15,117 @@ from side_effect_recovery import (
 )
 
 
+def _push_proof() -> dict[str, object]:
+    return {
+        "localHead": "a" * 40,
+        "remote": "origin",
+        "branch": "feature/x",
+        "remoteHeadBefore": "b" * 40,
+    }
+
+
 def main() -> int:
+    # Fault 1: crash before side effect. prepared не запрещает новую attempt.
     prepared = checkpoint(
         kind="git_push",
         phase="prepared",
         attempt=1,
-        proof={
-            "localHead": "a" * 40,
-            "remote": "origin",
-            "branch": "feature/x",
-            "remoteHeadBefore": "b" * 40,
-        },
+        proof=_push_proof(),
     )
+    retry = checkpoint(
+        kind="git_push",
+        phase="prepared",
+        attempt=2,
+        proof=_push_proof(),
+        previous=prepared,
+    )
+    assert retry["attempt"] == 2
+    assert retry["phase"] == "prepared"
+
+    # Fault 2: crash during unknown outcome. Третье внешнее состояние ambiguous.
     started = checkpoint(
         kind="git_push",
         phase="side_effect_started",
-        attempt=1,
-        proof=prepared["proof"],
-        previous=prepared,
+        attempt=2,
+        proof=retry["proof"],
+        previous=retry,
     )
-    observed = checkpoint(
-        kind="git_push",
-        phase="side_effect_observed",
-        attempt=1,
-        proof={**started["proof"], "observedRemoteHead": "a" * 40},
-        previous=started,
-    )
-    verified = checkpoint(
-        kind="git_push",
-        phase="postconditions_verified",
-        attempt=1,
-        proof=observed["proof"],
-        previous=observed,
-    )
-    assert validate_checkpoint(verified) == []
-
-    assert recovery_decision(
-        observed="a" * 40,
-        expected="a" * 40,
-        baseline="b" * 40,
-    ) == "ALREADY_APPLIED"
-    assert recovery_decision(
-        observed="b" * 40,
-        expected="a" * 40,
-        baseline="b" * 40,
-    ) == "SAFE_RETRY"
     assert recovery_decision(
         observed="c" * 40,
         expected="a" * 40,
         baseline="b" * 40,
     ) == "AMBIGUOUS"
 
+    # Fault 3: crash after side effect. Exact intended external identity means
+    # ALREADY_APPLIED и mutation нельзя повторять.
+    assert recovery_decision(
+        observed="a" * 40,
+        expected="a" * 40,
+        baseline="b" * 40,
+    ) == "ALREADY_APPLIED"
+
+    # Fault 4: crash after observation but before completion checkpoint.
+    observed = checkpoint(
+        kind="git_push",
+        phase="side_effect_observed",
+        attempt=2,
+        proof={**started["proof"], "observedRemoteHead": "a" * 40},
+        previous=started,
+    )
+    verified = checkpoint(
+        kind="git_push",
+        phase="postconditions_verified",
+        attempt=2,
+        proof=observed["proof"],
+        previous=observed,
+    )
+    assert validate_checkpoint(verified) == []
+
+    # SAFE_RETRY допускается только пока внешний факт равен baseline.
+    assert recovery_decision(
+        observed="b" * 40,
+        expected="a" * 40,
+        baseline="b" * 40,
+    ) == "SAFE_RETRY"
+
+    # Durable restart: checkpoint проходит execution-status schema, записывается
+    # atomic writer-ом и после нового read восстанавливается byte-semantically.
+    with tempfile.TemporaryDirectory(prefix="harness-side-effect-") as tmp:
+        root = Path(tmp)
+        status = empty_status()
+        status["executions"].append(
+            {
+                "executionId": "exec-test",
+                "ordinal": 1,
+                "mode": "single",
+                "requestedCommand": "GIT PUSH",
+                "rootCommand": "GIT PUSH",
+                "sequence": ["GIT PUSH"],
+                "currentIndex": 0,
+                "status": "running",
+                "current": {
+                    "command": "GIT PUSH",
+                    "status": "running",
+                    "result": None,
+                    "attempt": 2,
+                    "startedAt": "2026-01-01T00:00:00+00:00",
+                    "completedAt": None,
+                    "context": {"sideEffect": observed},
+                },
+                "notExecuted": [],
+                "fixReviewCycles": 0,
+                "startedAt": "2026-01-01T00:00:00+00:00",
+                "completedAt": None,
+                "updatedAt": "2026-01-01T00:00:00+00:00",
+            }
+        )
+        status["nextOrdinal"] = 2
+        save_status(root, status)
+        restored = load_status(root)
+        restored_checkpoint = restored["executions"][0]["current"]["context"]["sideEffect"]
+        assert restored_checkpoint == observed
+
+    # Secret-like metadata и oversized proof fail-closed.
     try:
         checkpoint(
             kind="git_push",
@@ -86,12 +149,13 @@ def main() -> int:
     }
     assert validate_checkpoint(too_large)
 
+    # Внутри одной attempt фаза не может откатиться назад.
     try:
         checkpoint(
             kind="git_push",
             phase="prepared",
-            attempt=1,
-            proof=prepared["proof"],
+            attempt=2,
+            proof=_push_proof(),
             previous=started,
         )
     except ValueError:
