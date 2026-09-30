@@ -60,6 +60,8 @@ from planning_contract import (
     task_contract_snapshot,
     task_path as configured_task_path,
 )
+from repair_cycle import RepairCycleError, compare_review_reports
+from review_findings import FindingContractError, latest_structured_findings
 from review_contract import latest_review as latest_valid_review
 from side_effect_recovery import checkpoint as build_side_effect_checkpoint
 from side_effect_recovery import validate_checkpoint as validate_side_effect_checkpoint
@@ -401,6 +403,25 @@ def _validate_execution_record(
     attempt = current.get("attempt")
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
         errors.append(f"{prefix}: current.attempt must be >= 1")
+
+    repair_telemetry = execution.get("repairTelemetry")
+    if repair_telemetry is not None:
+        if not isinstance(repair_telemetry, dict):
+            errors.append(f"{prefix}: repairTelemetry must be an object")
+        else:
+            errors.extend(
+                _details_errors(
+                    repair_telemetry,
+                    prefix=f"{prefix}: repairTelemetry",
+                    enforce_budget=True,
+                )
+            )
+            decision = repair_telemetry.get("stopDecision")
+            if decision not in {"continue", "NO_PROGRESS", "REPEATED_FINDINGS", "REGRESSION"}:
+                errors.append(f"{prefix}: repairTelemetry.stopDecision is invalid")
+            cycle = repair_telemetry.get("cycle")
+            if not isinstance(cycle, int) or isinstance(cycle, bool) or cycle < 1:
+                errors.append(f"{prefix}: repairTelemetry.cycle must be >= 1")
 
     fix_review_cycles = execution.get("fixReviewCycles", 0)
     if (
@@ -1627,6 +1648,10 @@ def complete_command(
         current["details"] = details
     execution["updatedAt"] = utc_now()
 
+    repair_telemetry = _capture_repair_telemetry(root, execution, current, result)
+    if repair_telemetry is not None:
+        execution["repairTelemetry"] = repair_telemetry
+
     # BLOCKED всегда терминален для автоматического продолжения root execution.
     # Уже выполненные side effects при этом не откатываются.
     if result == "BLOCKED":
@@ -1836,6 +1861,91 @@ def running_command_for(root: Path, root_command: str) -> str | None:
         return None
     command = current.get("command")
     return command if isinstance(command, str) else None
+
+
+def _capture_repair_telemetry(
+    root: Path,
+    execution: dict[str, Any],
+    current: dict[str, Any],
+    result: str,
+) -> dict[str, Any] | None:
+    """Снять deterministic delta только после REVIEW=FAIL и хотя бы одного FIX."""
+    if result != "FAIL" or int(execution.get("fixReviewCycles", 0)) < 1:
+        return None
+    try:
+        parsed = normalize_single_command(root, str(current.get("command") or ""))
+    except ValueError:
+        return None
+    if parsed.get("domain") != "STEP" or parsed.get("operation") != "REVIEW":
+        return None
+    step_id = parsed.get("target")
+    context = current.get("context")
+    before = context.get("reviewReportBefore") if isinstance(context, dict) else None
+    if not isinstance(step_id, str) or not isinstance(before, str) or not before:
+        return None
+    try:
+        latest = latest_structured_findings(root, step_id)
+    except (FindingContractError, OSError, ValueError):
+        return None
+    after = latest.get("report")
+    if not isinstance(after, str) or not after or after == before:
+        return None
+    try:
+        return compare_review_reports(
+            root,
+            step_id,
+            before,
+            after,
+            cycle=int(execution.get("fixReviewCycles", 0)),
+        )
+    except (RepairCycleError, FindingContractError, OSError, ValueError):
+        # Legacy/missing comparison metadata may disable adaptive stop, but must
+        # never create a false blocker. The existing hard cap remains active.
+        return None
+
+
+def _adaptive_fix_review_stop(
+    root: Path,
+    execution: dict[str, Any],
+    current_command: str,
+    next_command: str,
+    result: str,
+) -> dict[str, Any] | None:
+    """Hard cap first, then stored adaptive decision for REVIEW FAIL -> FIX."""
+    limited = _fix_review_limit(root, execution, current_command, next_command, result)
+    if limited is not None:
+        return limited
+
+    current_parsed = normalize_single_command(root, current_command)
+    next_parsed = normalize_single_command(root, next_command)
+    if not (
+        current_parsed.get("domain") == "STEP"
+        and current_parsed.get("operation") == "REVIEW"
+        and result == "FAIL"
+        and next_parsed.get("operation") == "FIX"
+        and int(execution.get("fixReviewCycles", 0)) >= 1
+    ):
+        return None
+
+    telemetry = execution.get("repairTelemetry")
+    if not isinstance(telemetry, dict):
+        return None
+    reason = telemetry.get("reasonCode")
+    if reason not in {"NO_PROGRESS", "REPEATED_FINDINGS", "REGRESSION"}:
+        return None
+    if telemetry.get("cycle") != int(execution.get("fixReviewCycles", 0)):
+        return None
+    return {
+        "status": "BLOCKED",
+        "executionId": execution["executionId"],
+        "rootCommand": execution["rootCommand"],
+        "command": None,
+        "reasonCode": reason,
+        "message": telemetry.get("message"),
+        "repairTelemetry": telemetry,
+        "fixReviewCycles": int(execution.get("fixReviewCycles", 0)),
+        "maxFixReviewCycles": max_fix_review_cycles(root),
+    }
 
 
 def _fix_review_limit(
@@ -2250,7 +2360,7 @@ def resolve_execution(
                 "notExecuted": sequence[index + 1 :],
             }
         # Ручная chain подчиняется тому же FIX↔REVIEW budget, что и STEP RUN.
-        limited = _fix_review_limit(root, execution, current["command"], next_command, result)
+        limited = _adaptive_fix_review_stop(root, execution, current["command"], next_command, result)
         if limited is not None:
             return limited
         return {
@@ -2290,7 +2400,7 @@ def resolve_execution(
             # а не рекомендация агенту. После исчерпания лимита REVIEW FAIL не
             # может открыть ещё один FIX даже при повторной session.
             next_command = _build_next_from_edge(root, current["command"], candidates[0])
-            limited = _fix_review_limit(root, execution, current["command"], next_command, result)
+            limited = _adaptive_fix_review_stop(root, execution, current["command"], next_command, result)
             if limited is not None:
                 return limited
             return {
