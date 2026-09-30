@@ -52,6 +52,12 @@ import sys
 args = sys.argv[1:]
 state_path = Path(os.environ["FAKE_GH_STATE"])
 
+if args[:2] == ["auth", "status"]:
+    if "--hostname" not in args or args[args.index("--hostname") + 1] != "github.com":
+        print("fake gh: wrong auth hostname", file=sys.stderr)
+        raise SystemExit(8)
+    raise SystemExit(0)
+
 # #109: provider-вызовы обязаны явно адресовать repository push remote.
 if "--repo" not in args or args[args.index("--repo") + 1] != "acme/app":
     print("fake gh: missing --repo acme/app: " + " ".join(args), file=sys.stderr)
