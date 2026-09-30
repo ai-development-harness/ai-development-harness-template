@@ -1493,3 +1493,27 @@ python3 .harness/tools/side-effect-recovery-self-test.py
 Synthetic fault injection покрывает crash before side effect, unknown outcome, crash after applied side effect и crash between observation/completion checkpoint.
 
 Runtime reconciliation Git/provider подробно описан в [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md).
+
+
+---
+
+# Adaptive repair-cycle comparator
+
+## Файл / Файлы
+
+- `.harness/tools/repair_cycle.py`
+- `.harness/tools/repair-cycle-self-test.py`
+
+## Роль
+
+Сравнивает два consecutive Review Contract v2 report по stable fingerprints, `reviewed_revision` и `contract_basis`. Возвращает bounded telemetry и conservative stop decision `continue|NO_PROGRESS|REPEATED_FINDINGS|REGRESSION`.
+
+## Self-test
+
+```bash
+python3 .harness/tools/repair-cycle-self-test.py
+```
+
+Self-test покрывает progress, no-progress, repeated findings, regression и scope-change guard. Resolver-level применение stored telemetry покрывается `execution-self-test.py`.
+
+Политика описана в [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).

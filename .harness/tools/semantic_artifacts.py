@@ -154,6 +154,22 @@ def _render_implementation_plan(steps: list[dict[str, Any]]) -> str:
     return "\n".join(lines).strip()
 
 
+def _review_verification_basis(root: Path, step_id: str) -> str:
+    """Hash canonical Verification/Evidence snapshot without interpreting prose."""
+    task = read_task(root, step_id)
+    payload = {
+        "verification": task["sections"].get("Verification", ""),
+        "evidence": task["sections"].get("Evidence", ""),
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def _replace_h2_section(body: str, title: str, value: str) -> str:
     """Replace one real H2 section while preserving all other body bytes semantically."""
     normalized = body.replace("\r\n", "\n")
@@ -612,6 +628,8 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "reviewer_role": "reviewer",
             "created_at": created_at,
             "reviewed_revision": revision,
+            "contract_basis": planning_context_basis(root, step_id),
+            "verification_basis": _review_verification_basis(root, step_id),
             "specialized_reviews": specialized,
         }
         body = f"""# STEP REVIEW {step_id} — {display}

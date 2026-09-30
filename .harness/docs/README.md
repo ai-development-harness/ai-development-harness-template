@@ -21,7 +21,8 @@
 - [`UPDATES.md`](UPDATES.md) — безопасное обновление Harness в уже идущем проекте.
 - [`EXECUTION_PROTOCOL.md`](EXECUTION_PROTOCOL.md) — формальная семантика state transitions и выполнения STEP.
 - [`RUNTIME_ADAPTER_CONTRACT.md`](RUNTIME_ADAPTER_CONTRACT.md)
-- [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md) — bounded checkpoints и reconciliation mutation-команд — provider-neutral lifecycle, capabilities, account identity и normalized events для Codex/Claude.
+- [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md)
+- [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md) — deterministic early-stop FIX ↔ REVIEW — bounded checkpoints и reconciliation mutation-команд — provider-neutral lifecycle, capabilities, account identity и normalized events для Codex/Claude.
 
 ## Агенты и автоматизация
 
