@@ -24,6 +24,7 @@
 - [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md) — bounded checkpoints и reconciliation mutation-команд.
 - [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md) — deterministic early-stop FIX ↔ REVIEW.
 - [`DETERMINISTIC_TEST_HARNESS.md`](DETERMINISTIC_TEST_HARNESS.md) — scripted runtime, adapter conformance и fault injection для orchestration tests.
+- [`PROJECT_STATE.md`](PROJECT_STATE.md) — read-only JSON graph состояния проекта для UI, VSCode Navigator и других клиентов.
 
 ## Агенты и автоматизация
 
