@@ -58,6 +58,7 @@ CATEGORIES = {"implementation", "evidence", "contract"}
 SPECIALIZED_STATUSES = {"pass", "fail", "blocked", "not_required"}
 SURFACE_MODES = {"implementation-baseline", "worktree", "clean-tree-fallback"}
 BASELINE_STATUSES = {"valid", "missing", "invalid", "legacy-auto"}
+VERIFICATION_STATUSES = {"PASS", "FAIL", "MANUAL_REQUIRED", "BLOCKED", "UNKNOWN"}
 
 
 def _valid_sha256(value: Any) -> bool:
@@ -653,6 +654,12 @@ def validate_review_report(
     verification_basis = meta.get("verification_basis")
     if verification_basis is not None and not _valid_sha256(verification_basis):
         errors.append("verification_basis must be sha256 when present")
+
+    verification_status = meta.get("verification_status")
+    if verification_status is not None and verification_status not in VERIFICATION_STATUSES:
+        errors.append(
+            "verification_status must be PASS|FAIL|MANUAL_REQUIRED|BLOCKED|UNKNOWN when present"
+        )
 
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):
