@@ -42,6 +42,7 @@ def _snapshot(root: Path, report: str, *, expected_step_id: str) -> dict[str, An
         "report": report,
         "verdict": meta.get("verdict"),
         "contractBasis": meta.get("contract_basis"),
+        "verificationBasis": meta.get("verification_basis"),
         "reviewedRevision": meta.get("reviewed_revision"),
         "findings": findings,
     }
@@ -88,6 +89,13 @@ def compare_snapshots(
         and contract_before == contract_after
     )
     revision_changed = before.get("reviewedRevision") != after.get("reviewedRevision")
+    verification_before = before.get("verificationBasis")
+    verification_after = after.get("verificationBasis")
+    verification_changed = (
+        verification_before != verification_after
+        if isinstance(verification_before, str) and isinstance(verification_after, str)
+        else None
+    )
 
     stop: str | None = None
     message = "repair cycle made deterministic progress or scope is not comparable"
@@ -123,7 +131,7 @@ def compare_snapshots(
         "repositoryRevisionChanged": revision_changed,
         "contractBasisChanged": contract_before != contract_after,
         "scopeComparable": scope_comparable,
-        "verificationChanged": None,
+        "verificationChanged": verification_changed,
         "stopDecision": stop or "continue",
         "reasonCode": stop,
         "message": message,
