@@ -78,9 +78,15 @@ Mismatch всегда показывает exact step index, expected interactio
 - `runtime_disconnect`;
 - `input_required`.
 
-`faultOnce` срабатывает ровно один раз на scenario step. `resume()` повторяет тот же interaction после interruption.
+`faultOnce` срабатывает ровно один раз на scenario step. `resume()` повторяет тот же logical interaction после interruption.
 
-Для checkpoints после external side effect `sideEffectIdentity` помещается в set до fault. Поэтому resume может доказать, что test double не создал вторую logical mutation.
+ScriptedRuntime хранит exact ordered journal фактических пересечений side-effect boundary. Один logical scenario step может пересечь эту boundary максимум один раз:
+
+- crash **до** side effect → resume применяет mutation один раз;
+- crash **после** side effect → resume не применяет mutation повторно;
+- уже emitted scenario events при resume не дублируются.
+
+Self-test проверяет именно exact application count/order, а не множество identities, которое могло бы скрыть повторное выполнение одинаковой mutation.
 
 ## Capability injection
 
