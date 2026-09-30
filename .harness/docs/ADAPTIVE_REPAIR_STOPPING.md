@@ -33,7 +33,7 @@ Adaptive decision не использует chat history и не просит м
 - repository delta берётся из `reviewed_revision`;
 - semantic scope сравнивается через `contract_basis`.
 
-Новые REVIEW reports получают `contract_basis = planning_context_basis(STEP)`. Historical v2 reports без этого поля остаются валидными, но adaptive classification для пары с отсутствующим basis отключается fail-safe.
+Новые REVIEW reports получают `contract_basis = planning_context_basis(STEP)` и `verification_basis` — SHA-256 canonical Verification/Evidence snapshot. Historical v2 reports без этих полей остаются валидными; отсутствие `contract_basis` отключает adaptive classification fail-safe, а отсутствие verification basis даёт `verificationChanged=null`.
 
 ## Решения
 
@@ -79,7 +79,7 @@ Execution state хранит только **последнюю** сводку `r
   "repositoryRevisionChanged": true,
   "contractBasisChanged": false,
   "scopeComparable": true,
-  "verificationChanged": null,
+  "verificationChanged": true,
   "stopDecision": "continue",
   "reasonCode": null
 }
@@ -87,7 +87,7 @@ Execution state хранит только **последнюю** сводку `r
 
 Fingerprint lists не копируются в execution state. Полный delta всегда восстанавливается из immutable reports. Размер telemetry дополнительно ограничен тем же bounded metadata gate, что и execution details.
 
-`verificationChanged=null` означает, что текущий Review Contract не содержит отдельного deterministic verification-result fingerprint. Harness не выдаёт semantic prose `Verification observations` за deterministic proof.
+`verificationChanged` вычисляется по `verification_basis`: SHA-256 canonical snapshot разделов `Verification` и `Evidence` на момент REVIEW. Harness не интерпретирует semantic prose `Verification observations` как proof; delta показывает только факт изменения deterministic verification/evidence snapshot.
 
 ## Restart semantics
 
