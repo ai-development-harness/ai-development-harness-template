@@ -39,6 +39,7 @@ Local state не является единым типом данных: executio
 │   ├── harness-update-graph.json
 │   ├── command-transitions.json
 │   ├── reasoning-boundaries.json        # generated projection
+│   ├── runtime-adapter-contract.json     # provider-neutral runtime contract
 │   ├── harness-update.toml
 │   ├── harness-policy.toml
 │   ├── git-policy.toml
@@ -54,6 +55,7 @@ Local state не является единым типом данных: executio
 │   │   ├── review_contract.py
 │   │   ├── review_findings.py
 │   │   ├── review_gates.py
+│   │   ├── runtime_adapter_contract.py
 │   │   ├── reasoning_boundaries.py
 │   │   ├── project_integrity.py
 │   │   ├── project_migration.py
