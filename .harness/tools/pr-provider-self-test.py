@@ -94,12 +94,9 @@ if args and args[0] == "api":
         print("wrong api login", file=sys.stderr)
         raise SystemExit(8)
     endpoint = args[-1]
-    if endpoint.startswith("/repos/team/project/pulls?"):
-        print(json.dumps([json.loads(state.read_text())] if state.is_file() else []))
-        raise SystemExit(0)
     if endpoint.startswith("/repos/team/project/pulls/"):
         if not state.is_file():
-            print("not found", file=sys.stderr)
+            print("404 not found", file=sys.stderr)
             raise SystemExit(1)
         print(state.read_text())
         raise SystemExit(0)
