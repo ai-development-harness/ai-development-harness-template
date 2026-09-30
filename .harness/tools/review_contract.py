@@ -46,6 +46,11 @@ from harness_config import (
 )
 from planning_contract import read_task
 from review_gates import required_reviewers
+from review_findings import (
+    FINDING_CONTRACT_VERSION,
+    FindingContractError,
+    parse_machine_findings,
+)
 
 
 SEVERITIES = {"critical", "high", "medium", "low"}
@@ -665,33 +670,70 @@ def validate_review_report(
                 if revision != current:
                     errors.append("reviewed_revision does not match current repository state")
 
-    findings = _parse_findings(document)
-    for index, finding in enumerate(findings, 1):
-        prefix = f"finding F-{index:03d}"
-        if finding.get("Severity") not in SEVERITIES:
-            errors.append(f"{prefix}: invalid or missing Severity")
-        if finding.get("Category") not in CATEGORIES:
-            errors.append(f"{prefix}: invalid or missing Category")
-        for field in ("Location", "Scenario", "Impact", "Fix direction"):
-            if not finding.get(field):
-                errors.append(f"{prefix}: missing {field}")
+    human_findings = _parse_findings(document)
+    finding_contract = meta.get("finding_contract")
+    structured_findings: list[dict[str, Any]] | None = None
 
-    if verdict == "pass" and findings:
+    if finding_contract is None:
+        # Historical Review Contract v1: validate the human-readable fields
+        # exactly as before. Immutable history is not rewritten during upgrade.
+        for index, finding in enumerate(human_findings, 1):
+            prefix = f"finding F-{index:03d}"
+            if finding.get("Severity") not in SEVERITIES:
+                errors.append(f"{prefix}: invalid or missing Severity")
+            if finding.get("Category") not in CATEGORIES:
+                errors.append(f"{prefix}: invalid or missing Category")
+            for field in ("Location", "Scenario", "Impact", "Fix direction"):
+                if not finding.get(field):
+                    errors.append(f"{prefix}: missing {field}")
+    elif finding_contract == FINDING_CONTRACT_VERSION:
+        try:
+            structured_findings = parse_machine_findings(document)
+        except FindingContractError as exc:
+            errors.append(f"Review Contract v2: {exc}")
+            structured_findings = []
+        if len(human_findings) != len(structured_findings):
+            errors.append(
+                "Review Contract v2: human and machine finding counts must match"
+            )
+        for index, (human, machine) in enumerate(
+            zip(human_findings, structured_findings), 1
+        ):
+            prefix = f"finding F-{index:03d}"
+            if human.get("Severity") != machine.get("severity"):
+                errors.append(f"{prefix}: human Severity differs from machine finding")
+            if human.get("Category") != machine.get("category"):
+                errors.append(f"{prefix}: human Category differs from machine finding")
+    else:
+        errors.append(
+            f"finding_contract must be omitted for legacy v1 or equal {FINDING_CONTRACT_VERSION}"
+        )
+        structured_findings = []
+
+    finding_count = (
+        len(structured_findings)
+        if structured_findings is not None
+        else len(human_findings)
+    )
+    categories = (
+        [item["category"] for item in structured_findings]
+        if structured_findings is not None
+        else [item.get("Category") for item in human_findings]
+    )
+
+    if verdict == "pass" and finding_count:
         errors.append("PASS review must not contain material findings")
     if verdict == "fail":
-        if not findings:
+        if not finding_count:
             errors.append("FAIL review requires at least one finding")
-        if any(item.get("Category") == "contract" for item in findings):
+        if "contract" in categories:
             errors.append("FAIL cannot contain contract findings; contract defect must be BLOCKED")
-        if not any(item.get("Category") in {"implementation", "evidence"} for item in findings):
+        if not any(item in {"implementation", "evidence"} for item in categories):
             errors.append("FAIL requires implementation/evidence finding")
     if verdict == "blocked":
-        if not findings:
+        if not finding_count:
             errors.append("BLOCKED review requires at least one finding")
-        if not any(
-            item.get("Category") in {"contract", "evidence"}
-            for item in findings
-        ):
+        if not any(item in {"contract", "evidence"} for item in categories):
             errors.append(
                 "BLOCKED review requires a contract or blocking evidence finding"
             )
