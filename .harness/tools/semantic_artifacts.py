@@ -612,6 +612,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "reviewer_role": "reviewer",
             "created_at": created_at,
             "reviewed_revision": revision,
+            "contract_basis": planning_context_basis(root, step_id),
             "specialized_reviews": specialized,
         }
         body = f"""# STEP REVIEW {step_id} — {display}
