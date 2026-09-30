@@ -1352,3 +1352,69 @@ python3 .harness/tools/finalize-project-init.py \
 python3 .harness/tools/validate-command.py --json -- '<command-or-chain>'
 python3 .harness/tools/check-command-references.py --json
 ```
+
+---
+
+# Review Contract v2 structured findings
+
+## Файл / Файлы
+
+- `.harness/tools/review_findings.py`
+- `.harness/tools/review-findings-self-test.py`
+
+## Роль
+
+`review_findings.py` задаёт machine-readable handoff `REVIEW → FIX`. Новый STEP REVIEW по-прежнему хранится как immutable Markdown, но внутри него есть отдельный canonical JSON-блок `## Machine-readable findings`.
+
+Human-readable `## Findings` нужен человеку. FIX/orchestration не должен повторно интерпретировать этот prose: он использует deterministic parser.
+
+## Contract finding v2
+
+Каждый finding содержит:
+
+- `id: F-NNN`;
+- `severity: critical|high|medium|low`;
+- `category: implementation|evidence|contract`;
+- `location.path` и optional `location.line`;
+- `scenario.given/when/then`;
+- `expected` и `observed`;
+- `impact`;
+- `repair.direction` и `repair.admissibleAlternatives[]`;
+- `constraints[]`;
+- `evidence[]`;
+- deterministic `fingerprint: sha256:...`.
+
+Fingerprint вычисляется из factual identity: `category + location + scenario + expected + observed`. ID, title и wording repair guidance не входят в fingerprint. Поэтому тот же дефект после FIX можно узнать даже при переформулировке текста.
+
+Duplicate fingerprints в одном report запрещены.
+
+## CLI
+
+```bash
+python3 .harness/tools/review_findings.py --step STEP-NNN --json
+```
+
+Команда возвращает latest Review Contract v2 report и normalized findings. Если latest review legacy v1, malformed или fingerprint не совпадает с содержимым, parser возвращает BLOCKED и non-zero exit code.
+
+## Совместимость
+
+Historical Review Contract v1 reports не переписываются и продолжают валидироваться старым human-readable contract. Writer новых STEP REVIEW всегда добавляет `finding_contract: 2` и canonical JSON section.
+
+FIX не должен угадывать structured fields из legacy report. Для deterministic REVIEW→FIX handoff нужен свежий v2 REVIEW.
+
+## Fail-closed проверки
+
+Validator `review_contract.py` для v2 дополнительно проверяет:
+
+- наличие и JSON-синтаксис machine section;
+- exact schemaVersion;
+- supported fields/enums;
+- id sequence `F-001...`;
+- deterministic fingerprint;
+- отсутствие duplicate fingerprints;
+- совпадение количества human и machine findings;
+- совпадение `Severity` / `Category` между обеими формами;
+- прежние verdict composition rules PASS/FAIL/BLOCKED.
+
+Self-test отдельно доказывает stable fingerprint при rename/repair rewording и его изменение при factual change.
+
