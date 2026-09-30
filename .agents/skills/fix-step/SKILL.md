@@ -8,8 +8,12 @@ description: Resolve every applicable implementation/evidence finding from the l
 
 Execution Status ведёт global wrapper.
 
-1. Найди последний schema-valid FAIL review в configured `protocol.reviewDirectory`, относящийся к применимой implementation revision.
-2. Выпиши все applicable findings категорий `implementation` и `evidence`, которые остаются внутри существующих Scope/Mutation policy/REQ/ADR. Не исправляй только первый finding, если review уже содержит другие material findings.
+1. Получи последний Review Contract v2 через deterministic parser, а не через повторный разбор Markdown prose:
+   ```bash
+   python3 .harness/tools/review_findings.py --step STEP-NNN --json
+   ```
+   Parser обязан вернуть schema-valid FAIL review и normalized findings с `id` + stable `fingerprint`. Если latest report legacy v1/malformed/ambiguous — не угадывай структуру, заверши `BLOCKED` и потребуй свежий REVIEW.
+2. Возьми все applicable findings категорий `implementation` и `evidence`, которые остаются внутри существующих Scope/Mutation policy/REQ/ADR. Не исправляй только первый finding, если review уже содержит другие material findings. Используй `fingerprint` как identity finding между FIX/REVIEW циклами; title и формулировка repair guidance не являются identity.
 3. Для каждого исправления сохрани явное соответствие **review finding → изменённый code/test/evidence**, чтобы перед completion можно было проверить, что ничего не потеряно.
 4. Если review фактически требует изменить product contract, Acceptance, architecture decision, dependency graph или добавить отсутствующий prerequisite, не «чинить» это кодом. Заверши как `BLOCKED` и создай/предложи corrective STEP, RESEARCH или ADR согласно типу проблемы.
 5. Передай подтверждённые findings implementer и исправь их вместе с необходимым supporting code в scope. Если command resume-ится после interruption, сначала изучи существующий diff и продолжи только незавершённые findings.
