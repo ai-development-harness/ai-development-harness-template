@@ -24,6 +24,8 @@ git --version
 
 Harness поддерживает Codex и Claude Code и **не требует их одновременной установки**. Для agent-session нужен выбранный пользователем runtime. Второй runtime может отсутствовать и не является blocker. Tracked configs обоих adapters всё равно валидируются Harness Integrity как release contract.
 
+Provider-neutral interface, capability negotiation, account sources и normalized events зафиксированы в [`RUNTIME_ADAPTER_CONTRACT.md`](RUNTIME_ADAPTER_CONTRACT.md) и `.harness/runtime-adapter-contract.json`. Unsupported runtime capability должна быть объявлена явно; отсутствие optional capability не маскируется моделью.
+
 ## Pull Request capability
 
 `GIT CHECK`, `GIT COMMIT`, `GIT PUSH` и `GIT SYNC` используют обычный Git и не требуют provider CLI. Provider-specific CLI нужен только для `GIT PR` и `GIT PR FINISH`.
