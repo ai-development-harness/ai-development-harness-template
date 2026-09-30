@@ -66,6 +66,38 @@ def main() -> int:
     changed_fp = normalize_findings([changed])[0]["fingerprint"]
     assert changed_fp != finding["fingerprint"]
 
+    # Review Contract v2 обязан fail-closed отвергать legacy/partial формы.
+    invalid_variants: list[tuple[str, dict[str, object]]] = []
+
+    missing_expected = sample()
+    missing_expected.pop("expected")
+    invalid_variants.append(("missing expected", missing_expected))
+
+    missing_observed = sample()
+    missing_observed.pop("observed")
+    invalid_variants.append(("missing observed", missing_observed))
+
+    string_location = sample()
+    string_location["location"] = "src/state.py"
+    invalid_variants.append(("string location", string_location))
+
+    string_scenario = sample()
+    string_scenario["scenario"] = "legacy scenario"
+    invalid_variants.append(("string scenario", string_scenario))
+
+    legacy_repair = sample()
+    legacy_repair.pop("repair")
+    legacy_repair["fixDirection"] = "legacy repair direction"
+    invalid_variants.append(("legacy fixDirection", legacy_repair))
+
+    for label, invalid in invalid_variants:
+        try:
+            normalize_findings([invalid])
+        except FindingContractError:
+            pass
+        else:
+            raise AssertionError(f"{label} was accepted as Review Contract v2")
+
     try:
         normalize_findings([sample(), sample()])
     except FindingContractError as exc:
