@@ -277,12 +277,21 @@ def _github_auth(root: Path, ctx: ProviderContext) -> None:
     )
     if proc.returncode == 0:
         return
+    message = _redact(proc.stderr.strip() or proc.stdout.strip())
+    low = message.lower()
     help_data = cli_remediation(ctx.provider, ctx.tool, ctx.identity.host)
+    rejected = any(
+        token in low
+        for token in ("invalid token", "token is invalid", "expired", "bad credentials", "401", "403")
+    )
+    code = "PROVIDER_AUTH_REJECTED" if rejected else "PROVIDER_AUTH_REQUIRED"
     raise ProviderError(
-        "PROVIDER_AUTH_REQUIRED",
+        code,
         (
-            f"gh is installed but no usable authentication was found for {ctx.identity.host}. "
-            f"Run '{help_data['authCommand']}' and verify with 'gh auth status --hostname {ctx.identity.host}'."
+            f"gh is installed but authentication for {ctx.identity.host} "
+            + ("is invalid or expired. " if rejected else "is not configured. ")
+            + f"Run '{help_data['authCommand']}' and verify with "
+            f"'gh auth status --hostname {ctx.identity.host}'."
         ),
         host=ctx.identity.host,
         **help_data,
@@ -523,6 +532,14 @@ def open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
                     tool=ctx.tool,
                     host=ctx.identity.host,
                 )
+            if any(token in low for token in ("connection refused", "timed out", "timeout", "no such host", "network is unreachable", "502", "503", "504")):
+                raise ProviderError(
+                    "PROVIDER_API_UNAVAILABLE",
+                    message or "Gitea API is unavailable",
+                    provider="gitea",
+                    tool=ctx.tool,
+                    host=ctx.identity.host,
+                )
             raise ProviderError(
                 "PR_PROVIDER_FAILED",
                 message or "Gitea exact pull request query failed",
@@ -588,7 +605,20 @@ def create_pr(root: Path, gate: dict[str, Any], *, title: str, body: str) -> Non
     ]
     if gate.get("draft"):
         argv.append("--draft")
-    _run(root, argv, input_text=body)
+    try:
+        _run(root, argv, input_text=body)
+    except ProviderError as exc:
+        if gate.get("draft") and exc.code == "PR_PROVIDER_FAILED":
+            low = str(exc).lower()
+            if "draft" in low and any(token in low for token in ("unknown", "unsupported", "flag")):
+                raise ProviderError(
+                    "PR_DRAFT_UNSUPPORTED",
+                    "configured Tea/Gitea version does not support draft Pull Request creation",
+                    provider="gitea",
+                    tool=ctx.tool,
+                    host=ctx.identity.host,
+                ) from exc
+        raise
 
 
 def view_pr(
