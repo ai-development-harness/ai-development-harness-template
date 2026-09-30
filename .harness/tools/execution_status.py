@@ -1068,10 +1068,18 @@ def write_side_effect_checkpoint(
     if not isinstance(context, dict):
         raise ValueError("current.context must be an object")
     previous = context.get("sideEffect")
+    # phase после restart может подтверждать side effect предыдущей попытки:
+    # current.attempt уже увеличен dispatcher-ом, но identity самого side effect
+    # остаётся у исходного attempt. Новый attempt начинается только с prepared.
+    checkpoint_attempt = int(current.get("attempt", 1))
+    if isinstance(previous, dict) and phase != "prepared":
+        previous_attempt = previous.get("attempt")
+        if isinstance(previous_attempt, int) and not isinstance(previous_attempt, bool):
+            checkpoint_attempt = previous_attempt
     value = build_side_effect_checkpoint(
         kind=kind,
         phase=phase,
-        attempt=int(current.get("attempt", 1)),
+        attempt=checkpoint_attempt,
         proof=proof,
         previous=previous if isinstance(previous, dict) else None,
     )
