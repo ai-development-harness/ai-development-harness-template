@@ -1,7 +1,6 @@
 ---
 schema: 1
 kind: step_review
-finding_contract: 2
 step_id: STEP-NNN
 verdict: pass
 reviewer_role: reviewer
@@ -44,30 +43,9 @@ specialized_reviews:
 **Severity:** high
 **Category:** implementation
 **Location:** path:line / component
-**Scenario:** Given ... / When ... / Then ...
-**Expected:** ...
-**Observed:** ...
+**Scenario:** Given / When / Then
 **Impact:** ...
 **Fix direction:** ...
-**Fingerprint:** sha256:...
-
-**Admissible alternatives:**
-- ...
-
-**Constraints:**
-- ...
-
-**Evidence:**
-- ...
-
-## Machine-readable findings
-
-```json
-{
-  "findings": [],
-  "schemaVersion": 2
-}
-```
 
 ## Verification observations
 
