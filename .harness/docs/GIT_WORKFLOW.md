@@ -197,3 +197,8 @@ Harness никогда по умолчанию не выполняет:
 Для typo/formatting/другого подтверждённого micro-change STEP не обязателен. Если пользователь уже внёс правку, достаточно `GIT CHECK > COMMIT` либо тех же команд по отдельности. Git operator обязан проверить, что diff действительно не меняет behavior/API/data/security/architecture/dependencies. Подробности: [`QUICK_CHANGES.md`](QUICK_CHANGES.md).
 
 Язык commit message берётся из `.harness/manifest.yaml` → `language.commitMessages`.
+
+
+## Durable side-effect recovery
+
+`GIT COMMIT`, `GIT PUSH` и `GIT PR` используют bounded checkpoint в active execution. После interruption executor сначала сверяет Git/provider facts и только затем решает, можно ли retry. Matching commit/push/PR не создаётся повторно; неоднозначное состояние блокируется с `SIDE_EFFECT_RECOVERY_AMBIGUOUS`. Полная модель: [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md).
