@@ -61,6 +61,8 @@ from planning_contract import (
     task_path as configured_task_path,
 )
 from review_contract import latest_review as latest_valid_review
+from side_effect_recovery import checkpoint as build_side_effect_checkpoint
+from side_effect_recovery import validate_checkpoint as validate_side_effect_checkpoint
 
 # Фиксированный project-level operational state. Один файл намеренно покрывает
 # STEP, Git, Harness update и остальные namespaces.
@@ -384,6 +386,18 @@ def _validate_execution_record(
             enforce_budget=enforce_details_budget,
         )
     )
+    context = current.get("context")
+    if context is not None:
+        if not isinstance(context, dict):
+            errors.append(f"{prefix}: current.context must be an object")
+        else:
+            errors.extend(
+                validate_side_effect_checkpoint(
+                    context.get("sideEffect"),
+                    prefix=f"{prefix}: current.context.sideEffect",
+                )
+            )
+
     attempt = current.get("attempt")
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
         errors.append(f"{prefix}: current.attempt must be >= 1")
@@ -979,6 +993,113 @@ def _git_head(root: Path) -> str | None:
         return None
     value = completed.stdout.strip()
     return value or None
+
+
+def _active_execution_for_command(
+    status: dict[str, Any],
+    normalized_command: str,
+) -> dict[str, Any] | None:
+    """Найти единственную running execution для exact canonical command."""
+    matches = [
+        execution
+        for execution in status.get("executions", [])
+        if isinstance(execution, dict)
+        and execution.get("status") == "running"
+        and isinstance(execution.get("current"), dict)
+        and execution["current"].get("status") == "running"
+        and execution["current"].get("command") == normalized_command
+    ]
+    if len(matches) > 1:
+        raise ValueError(
+            f"multiple active executions own side effect for {normalized_command}"
+        )
+    return matches[0] if matches else None
+
+
+def read_side_effect_checkpoint(
+    root: Path,
+    command: str,
+) -> dict[str, Any] | None:
+    """Прочитать durable checkpoint active command без изменения state.
+
+    git_action используется и standalone в deterministic tests/tools. Если
+    execution-status отсутствует, side-effect layer прозрачно отключён и не
+    требует CTS/bootstrap files от такого минимального Git fixture.
+    """
+    if not status_path(root).is_file():
+        return None
+    normalized = command.strip()
+    status = load_status(root)
+    execution = _active_execution_for_command(status, normalized)
+    if execution is None:
+        return None
+    current = execution["current"]
+    context = current.get("context")
+    if not isinstance(context, dict):
+        return None
+    value = context.get("sideEffect")
+    if value is None:
+        return None
+    errors = validate_side_effect_checkpoint(
+        value,
+        prefix="current.context.sideEffect",
+    )
+    if errors:
+        raise ValueError("; ".join(errors))
+    return deepcopy(value)
+
+
+def write_side_effect_checkpoint(
+    root: Path,
+    command: str,
+    *,
+    kind: str,
+    phase: str,
+    proof: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Атомарно записать bounded checkpoint для active command.
+
+    Direct invocation git-action.py вне Harness execution остаётся допустимым:
+    если active execution отсутствует, checkpoint не создаётся и возвращается
+    None. При Harness orchestration запись обязательна фактически потому, что
+    current command существует и однозначно владеет mutation boundary.
+    """
+    if not status_path(root).is_file():
+        return None
+    with execution_state_lock(root):
+        # Повторяем проверку уже под lock: другой process мог завершить/удалить
+        # active state между cheap precheck и acquire.
+        if not status_path(root).is_file():
+            return None
+        normalized = command.strip()
+        status = load_status(root)
+        execution = _active_execution_for_command(status, normalized)
+        if execution is None:
+            return None
+        current = execution["current"]
+        context = current.setdefault("context", {})
+        if not isinstance(context, dict):
+            raise ValueError("current.context must be an object")
+        previous = context.get("sideEffect")
+        # phase после restart может подтверждать side effect предыдущей попытки:
+        # current.attempt уже увеличен dispatcher-ом, но identity самого side effect
+        # остаётся у исходного attempt. Новый attempt начинается только с prepared.
+        checkpoint_attempt = int(current.get("attempt", 1))
+        if isinstance(previous, dict) and phase != "prepared":
+            previous_attempt = previous.get("attempt")
+            if isinstance(previous_attempt, int) and not isinstance(previous_attempt, bool):
+                checkpoint_attempt = previous_attempt
+        value = build_side_effect_checkpoint(
+            kind=kind,
+            phase=phase,
+            attempt=checkpoint_attempt,
+            proof=proof,
+            previous=previous if isinstance(previous, dict) else None,
+        )
+        context["sideEffect"] = value
+        execution["updatedAt"] = utc_now()
+        save_status(root, status)
+        return deepcopy(value)
 
 
 def git_commit_completion_proven(

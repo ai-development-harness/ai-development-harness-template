@@ -1459,3 +1459,37 @@ Validator `review_contract.py` для v2 дополнительно провер
 - прежние verdict composition rules PASS/FAIL/BLOCKED.
 
 Self-test отдельно доказывает stable fingerprint при rename/repair rewording и его изменение при factual change.
+
+---
+
+# Side-effect recovery contract validator
+
+## Файл / Файлы
+
+- `.harness/tools/side_effect_recovery.py`
+- `.harness/tools/side-effect-recovery-self-test.py`
+- persistence boundary: `.harness/tools/execution_status.py`
+
+## Роль
+
+Проверяет bounded internal checkpoint для mutation-команд. Contract не разрешает command transitions и не выполняет mutation; он валидирует version/kind/phase/attempt/proof и запрещает oversized или secret-like proof metadata.
+
+## Что проверяет
+
+- contract version;
+- известный kind `git_commit|git_push|github_pr|harness_update|file_write`;
+- monotonic phases одной attempt;
+- новая attempt начинается с `prepared`;
+- proof — JSON object не более 8 KiB;
+- credential/token/password/secret-like keys не сохраняются;
+- checkpoint восстанавливается из execution-status после process restart.
+
+## Self-test
+
+~~~bash
+python3 .harness/tools/side-effect-recovery-self-test.py
+~~~
+
+Synthetic fault injection покрывает crash before side effect, unknown outcome, crash after applied side effect и crash between observation/completion checkpoint.
+
+Runtime reconciliation Git/provider подробно описан в [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md).
