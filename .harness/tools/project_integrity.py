@@ -55,6 +55,7 @@ from planning_contract import (
 from projection_contract import validate_projections
 from report_contract import validate_all_operational_reports
 from review_contract import validate_all_review_reports
+from runtime_adapter_contract import load_contract, validate_contract
 from template_contract import validate_project_templates
 
 
@@ -491,4 +492,13 @@ def validate_project_integrity(
     except ConfigError as exc:
         errors.append(f"configured artifacts: {exc}")
     errors.extend(validate_update_lock(root))
+    try:
+        runtime_contract = load_contract(root)
+    except ValueError as exc:
+        errors.append(f"runtime-adapter-contract: {exc}")
+    else:
+        errors.extend(
+            f"runtime-adapter-contract: {issue}"
+            for issue in validate_contract(runtime_contract)
+        )
     return errors
