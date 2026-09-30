@@ -60,10 +60,6 @@ def _string_list(value: Any, label: str) -> list[str]:
 
 
 def _location(value: Any, label: str) -> dict[str, Any]:
-    if isinstance(value, str):
-        # Compatibility transport for pre-v2 semantic payloads. Generated
-        # reports are still v2; new reviewer skill asks the model for an object.
-        return {"path": _single_line(value, label), "line": None}
     if not isinstance(value, dict):
         raise FindingContractError(f"{label} must be an object")
     unknown = sorted(set(value) - {"path", "line"})
@@ -79,14 +75,6 @@ def _location(value: Any, label: str) -> dict[str, Any]:
 
 
 def _scenario(value: Any, label: str) -> dict[str, str]:
-    if isinstance(value, str):
-        # Compatibility only for old semantic payloads/self-tests.
-        text = _text(value, label)
-        return {
-            "given": text,
-            "when": "reviewed implementation is evaluated",
-            "then": "the described material defect is observable",
-        }
     if not isinstance(value, dict):
         raise FindingContractError(f"{label} must be an object")
     unknown = sorted(set(value) - {"given", "when", "then"})
@@ -99,12 +87,7 @@ def _scenario(value: Any, label: str) -> dict[str, str]:
     }
 
 
-def _repair(value: Any, *, legacy_direction: Any = None) -> dict[str, Any]:
-    if value is None and legacy_direction is not None:
-        return {
-            "direction": _text(legacy_direction, "fixDirection"),
-            "admissibleAlternatives": [],
-        }
+def _repair(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise FindingContractError("repair must be an object")
     unknown = sorted(set(value) - {"direction", "admissibleAlternatives"})
@@ -162,7 +145,6 @@ def normalize_finding(value: Any, index: int) -> dict[str, Any]:
         "observed",
         "impact",
         "repair",
-        "fixDirection",
         "constraints",
         "evidence",
         "fingerprint",
@@ -198,21 +180,8 @@ def normalize_finding(value: Any, index: int) -> dict[str, Any]:
     location = _location(value.get("location"), f"findings[{index}].location")
     scenario = _scenario(value.get("scenario"), f"findings[{index}].scenario")
 
-    # Old semantic payloads did not expose expected/observed separately. Keep
-    # them accepted as transport compatibility, but make the generated v2
-    # structure explicit and deterministic. New REVIEW skill requires both.
-    expected_raw = value.get("expected")
-    observed_raw = value.get("observed")
-    expected = (
-        _text(expected_raw, f"findings[{index}].expected")
-        if expected_raw is not None
-        else "Implementation must satisfy the linked STEP/REQ/ADR contract."
-    )
-    observed = (
-        _text(observed_raw, f"findings[{index}].observed")
-        if observed_raw is not None
-        else title
-    )
+    expected = _text(value.get("expected"), f"findings[{index}].expected")
+    observed = _text(value.get("observed"), f"findings[{index}].observed")
 
     result: dict[str, Any] = {
         "id": finding_id,
@@ -224,7 +193,7 @@ def normalize_finding(value: Any, index: int) -> dict[str, Any]:
         "expected": expected,
         "observed": observed,
         "impact": _text(value.get("impact"), f"findings[{index}].impact"),
-        "repair": _repair(value.get("repair"), legacy_direction=value.get("fixDirection")),
+        "repair": _repair(value.get("repair")),
         "constraints": _string_list(
             value.get("constraints"), f"findings[{index}].constraints"
         ),
