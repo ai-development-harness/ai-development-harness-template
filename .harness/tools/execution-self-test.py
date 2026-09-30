@@ -20,6 +20,7 @@ from execution_status import (
     implementation_baseline_for_step,
     load_status,
     resolve_root,
+    save_status,
     stamp_plan,
     start_execution,
     unresolved_executions,
@@ -815,6 +816,55 @@ def main() -> int:
         exhausted = resolve_root(root, run_root)
         assert_resolved(exhausted, "BLOCKED", None, "FIX_REVIEW_LIMIT_REACHED")
         assert exhausted["fixReviewCycles"] == 1
+
+        # Adaptive stop is earlier than hard cap and survives a state reload.
+        # Telemetry здесь инжектируется как уже доказанный output comparator-а:
+        # policy math отдельно покрывает repair-cycle-self-test.py.
+        manifest_path = root / ".harness/manifest.yaml"
+        original_manifest_text = manifest_path.read_text(encoding="utf-8")
+        write(
+            manifest_path,
+            original_manifest_text.replace("maxFixReviewCycles: 1", "maxFixReviewCycles: 3"),
+        )
+        adaptive_chain = (
+            "STEP REVIEW STEP-001 > STEP FIX STEP-001 > STEP REVIEW STEP-001"
+            " > STEP FIX STEP-001"
+        )
+        start_execution(root, adaptive_chain)
+        complete_command(root, adaptive_chain, "STEP REVIEW STEP-001", "FAIL")
+        begin_command(root, adaptive_chain, "STEP FIX STEP-001")
+        complete_command(root, adaptive_chain, "STEP FIX STEP-001", "SUCCESS")
+        begin_command(root, adaptive_chain, "STEP REVIEW STEP-001")
+        complete_command(root, adaptive_chain, "STEP REVIEW STEP-001", "FAIL")
+
+        adaptive_state = load_status(root)
+        adaptive_execution = next(
+            item
+            for item in adaptive_state["executions"]
+            if item.get("rootCommand") == adaptive_chain
+        )
+        adaptive_execution["repairTelemetry"] = {
+            "cycle": 1,
+            "stopDecision": "REPEATED_FINDINGS",
+            "reasonCode": "REPEATED_FINDINGS",
+            "message": "same canonical findings remain after FIX",
+        }
+        save_status(root, adaptive_state)
+
+        adaptive_stopped = resolve_root(root, adaptive_chain)
+        assert_resolved(
+            adaptive_stopped,
+            "BLOCKED",
+            None,
+            "REPEATED_FINDINGS",
+        )
+        assert adaptive_stopped["fixReviewCycles"] == 1, adaptive_stopped
+        assert adaptive_stopped["maxFixReviewCycles"] == 3, adaptive_stopped
+
+        # Restart reads the same bounded decision; no chat history/recomputation.
+        adaptive_reloaded = resolve_root(root, adaptive_chain)
+        assert adaptive_reloaded["reasonCode"] == "REPEATED_FINDINGS", adaptive_reloaded
+        write(manifest_path, original_manifest_text)
 
         # Regression #116: chain с повторяющейся командой продвигает позицию,
         # а не возвращается к первому вхождению. Второй REVIEW FAIL завершает
