@@ -777,9 +777,17 @@ def pr_preflight(root: Path) -> dict[str, Any]:
     preferred_tool = _text(pr, "preferred_tool", section="pull_request")
     remote_url_proc = repo.git("config", "--get", f"remote.{remote}.url", check=False)
     remote_url = remote_url_proc.stdout.strip()
+    host: str | None = None
     try:
-        identity = parse_remote_identity(remote_url)
-        ensure_provider_cli(provider, preferred_tool, host=identity.host)
+        host = parse_remote_identity(remote_url).host
+    except ProviderError as exc:
+        # Preflight historical/offline fixtures may use a local bare remote.
+        # CLI availability is still checkable without a provider host; exact
+        # provider repository resolution remains an executor/provider boundary.
+        if exc.code != "PR_REPO_UNRESOLVED":
+            raise GitPreflightError(exc.code, str(exc), **exc.details) from exc
+    try:
+        ensure_provider_cli(provider, preferred_tool, host=host)
     except ProviderError as exc:
         raise GitPreflightError(exc.code, str(exc), **exc.details) from exc
 
