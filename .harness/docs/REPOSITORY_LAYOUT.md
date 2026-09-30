@@ -54,6 +54,7 @@ Local state не является единым типом данных: executio
 │   │   ├── planning_contract.py
 │   │   ├── review_contract.py
 │   │   ├── review_findings.py
+│   │   ├── repair_cycle.py
 │   │   ├── review_gates.py
 │   │   ├── side_effect_recovery.py
 │   │   ├── runtime_adapter_contract.py
