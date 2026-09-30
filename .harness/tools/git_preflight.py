@@ -37,6 +37,13 @@ VALIDATOR_TIMEOUT_SECONDS = 120
 PR_PROVIDER_TIMEOUT_SECONDS = 60
 
 from harness_config import ConfigError, load_git_policy
+from pr_provider import (
+    ProviderError,
+    ensure_cli as ensure_provider_cli,
+    parse_remote_identity,
+    validate_provider_tool,
+    view_pr as provider_view_pr,
+)
 
 PR_STATE_PATH = Path(".harness/local/git/pr-state.json")
 
@@ -355,6 +362,13 @@ def policy(root: Path) -> dict[str, Any]:
     _text(push, "remote", section="push")
     for key in ("provider", "preferred_tool", "base", "body_template"):
         _text(pr, key, section="pull_request")
+    try:
+        validate_provider_tool(
+            _text(pr, "provider", section="pull_request"),
+            _text(pr, "preferred_tool", section="pull_request"),
+        )
+    except ProviderError as exc:
+        raise GitPreflightError("INVALID_GIT_POLICY", str(exc), **exc.details) from exc
     body_template = Path(pr["body_template"])
     if body_template.is_absolute() or ".." in body_template.parts:
         raise GitPreflightError(
@@ -761,11 +775,13 @@ def pr_preflight(root: Path) -> dict[str, Any]:
 
     provider = _text(pr, "provider", section="pull_request")
     preferred_tool = _text(pr, "preferred_tool", section="pull_request")
-    if shutil.which(preferred_tool) is None:
-        raise GitPreflightError(
-            "PR_TOOL_UNAVAILABLE",
-            f"configured pull_request.preferred_tool is unavailable: {preferred_tool}",
-        )
+    remote_url_proc = repo.git("config", "--get", f"remote.{remote}.url", check=False)
+    remote_url = remote_url_proc.stdout.strip()
+    try:
+        identity = parse_remote_identity(remote_url)
+        ensure_provider_cli(provider, preferred_tool, host=identity.host)
+    except ProviderError as exc:
+        raise GitPreflightError(exc.code, str(exc), **exc.details) from exc
 
     base = _text(pr, "base", section="pull_request")
     if repo.remote_ref(remote, base) is None:
@@ -832,54 +848,12 @@ def _load_pr_state(root: Path) -> dict[str, Any] | None:
     return data
 
 
-def _github_pr_view(root: Path, config: dict[str, Any], selector: str | int) -> dict[str, Any]:
-    pr = config["pull_request"]
-    provider = _text(pr, "provider", section="pull_request")
-    tool = _text(pr, "preferred_tool", section="pull_request")
-    if provider != "github" or tool != "gh":
-        raise GitPreflightError(
-            "PR_FINISH_TOOL_UNSUPPORTED",
-            "GIT PR FINISH currently requires pull_request.provider=github and preferred_tool=gh",
-        )
-    if shutil.which(tool) is None:
-        raise GitPreflightError("PR_TOOL_UNAVAILABLE", f"configured PR tool is unavailable: {tool}")
-    remote = _text(config["push"], "remote", section="push")
-    repo_selector = github_repo_selector(Repo(root), remote)
-    if repo_selector is None:
-        raise GitPreflightError(
-            "PR_REPO_UNRESOLVED",
-            f"cannot resolve GitHub repository from remote {remote} URL",
-        )
+def _provider_pr_view(root: Path, config: dict[str, Any], selector: str | int) -> dict[str, Any]:
+    """Read normalized PR state through configured GitHub/Gitea provider adapter."""
     try:
-        proc = subprocess.run(
-            [
-                tool, "pr", "view", str(selector), "--repo", repo_selector,
-                "--json", "number,state,mergedAt,headRefName,headRefOid,baseRefName,url",
-            ],
-            cwd=root,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=PR_PROVIDER_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise GitPreflightError(
-            "PR_PROVIDER_TIMEOUT",
-            f"PR provider timed out after {PR_PROVIDER_TIMEOUT_SECONDS}s",
-            timeoutSeconds=PR_PROVIDER_TIMEOUT_SECONDS,
-        ) from exc
-    if proc.returncode:
-        raise GitPreflightError(
-            "PR_NOT_FOUND",
-            proc.stderr.strip() or f"cannot resolve Pull Request for {selector}",
-        )
-    try:
-        data = json.loads(proc.stdout)
-    except json.JSONDecodeError as exc:
-        raise GitPreflightError("PR_QUERY_INVALID", "PR tool returned invalid JSON") from exc
-    if not isinstance(data, dict):
-        raise GitPreflightError("PR_QUERY_INVALID", "PR tool returned non-object JSON")
-    return data
+        return provider_view_pr(root, config, selector)
+    except ProviderError as exc:
+        raise GitPreflightError(exc.code, str(exc), **exc.details) from exc
 
 
 def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -911,7 +885,7 @@ def pr_finish_preflight(root: Path, *, pr_data: dict[str, Any] | None = None) ->
     repo.fetch(remote)
 
     selector: str | int = local_state["pr"] if local_state is not None else current_branch
-    data = pr_data if pr_data is not None else _github_pr_view(root, config, selector)
+    data = pr_data if pr_data is not None else _provider_pr_view(root, config, selector)
 
     number = data.get("number")
     state = data.get("state")
