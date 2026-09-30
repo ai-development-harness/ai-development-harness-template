@@ -42,6 +42,7 @@ required_files = [
   ".harness/docs/UPDATES.md",
   ".harness/docs/CLAUDE_CODE.md",
   ".harness/docs/EXECUTION_PROTOCOL.md",
+  ".harness/docs/RUNTIME_ADAPTER_CONTRACT.md",
   ".github/pull_request_template.md",
   ".harness/tools/validate.py",
   ".harness/tools/harness_config.py",
