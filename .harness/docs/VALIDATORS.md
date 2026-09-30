@@ -1352,3 +1352,46 @@ python3 .harness/tools/finalize-project-init.py \
 python3 .harness/tools/validate-command.py --json -- '<command-or-chain>'
 python3 .harness/tools/check-command-references.py --json
 ```
+
+---
+
+# Runtime Adapter Contract validator
+
+## Файл / Файлы
+
+- `.harness/runtime-adapter-contract.json`
+- `.harness/tools/runtime_adapter_contract.py`
+- `.harness/tools/runtime-adapter-contract-self-test.py`
+
+## Роль
+
+Проверяет provider-neutral boundary между Harness control plane и runtime adapters Codex/Claude: lifecycle methods, capability registry, support states и normalized event types.
+
+Этот contract валидируется из `project_integrity.py`, поэтому malformed runtime schema блокирует обычный Harness integrity gate.
+
+## CLI
+
+```bash
+python3 .harness/tools/runtime_adapter_contract.py --json
+python3 .harness/tools/runtime_adapter_contract.py --runtime codex --json
+python3 .harness/tools/runtime_adapter_contract.py --runtime claude --json
+```
+
+## Exit codes
+
+- `0` — PASS;
+- `1` — deterministic schema/capability violation;
+- `2` — BLOCKED: contract нельзя безопасно прочитать.
+
+## Что проверяет
+
+- exact `contractId` и `schemaVersion`;
+- закрытые registries lifecycle methods/capabilities/events/support states;
+- explicit capability state `native|synthesized|unsupported`;
+- полноту mappings каждого adapter;
+- account source без credential persistence;
+- invariants: command semantics принадлежат control plane, provider metadata optional, secrets persistence forbidden;
+- normalized runtime events и запрет неизвестных полей.
+
+Подробная семантика: [`RUNTIME_ADAPTER_CONTRACT.md`](RUNTIME_ADAPTER_CONTRACT.md).
+
