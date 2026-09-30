@@ -116,7 +116,7 @@ Standalone `GIT PUSH` остаётся semantic boundary для проверки
 after_push = "never"
 ```
 
-PR provider выбирается только из `.harness/git-policy.toml`: `github → gh`, `gitea → tea`. Это deterministic policy, модель provider/tool не выбирает. Если provider CLI отсутствует или не настроен для repository host, успешный push не объявляется неуспешным: PR operation возвращает отдельный actionable blocker с stable reason code и инструкцией по установке/авторизации.
+Provider для Pull Request выбирается только из `.harness/git-policy.toml`: `github → gh`, `gitea → tea`. Это deterministic policy, модель provider/tool не выбирает. Если provider CLI отсутствует или не настроен для repository host, успешный push не объявляется неуспешным: PR operation возвращает отдельный actionable blocker с stable reason code и инструкцией по установке/авторизации.
 
 ### `GIT PR`
 
