@@ -22,7 +22,7 @@ import re
 import shutil
 import subprocess
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 PROVIDER_TIMEOUT_SECONDS = 60
 SUPPORTED_PROVIDER_TOOLS = {
@@ -137,7 +137,8 @@ def ensure_cli(provider: str, tool: str, *, host: str | None = None) -> None:
         "PROVIDER_CLI_NOT_FOUND",
         (
             f"{tool} is required for pull_request.provider={provider} but was not found in PATH. "
-            f"Verify installation with '{help_data.get('verifyCommand')}' and configure authentication "
+            f"Install it using the official documentation listed in details.documentation, "
+            f"verify installation with '{help_data.get('verifyCommand')}', and configure authentication "
             f"with '{help_data.get('authCommand')}'."
         ),
         **help_data,
@@ -500,11 +501,40 @@ def open_prs(root: Path, gate: dict[str, Any]) -> list[dict[str, Any]]:
             raise ProviderError("PR_PROVIDER_INVALID_JSON", "gh pr list must return a JSON array")
         items = [_normalize_github_pr(item) for item in data]
     else:
-        endpoint = f"/repos/{ctx.identity.owner}/{ctx.identity.repo}/pulls?state=open&limit=50"
-        data = _tea_api(root, ctx, endpoint)
-        if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
-            raise ProviderError("PR_PROVIDER_INVALID_JSON", "Gitea pulls API must return a JSON array")
-        items = [_normalize_gitea_pr(item) for item in data]
+        # Gitea exposes exact base/head lookup. Prefer it to paginated listing
+        # so reuse cannot miss an older open PR when a repository has many PRs.
+        endpoint = (
+            f"/repos/{ctx.identity.owner}/{ctx.identity.repo}/pulls/"
+            f"{quote(base, safe='')}/{quote(branch, safe='')}"
+        )
+        assert ctx.login is not None
+        argv = [ctx.tool, "api", "--login", ctx.login, endpoint]
+        proc = _run(root, argv, allow_failure=True)
+        if proc.returncode:
+            message = _redact(proc.stderr.strip() or proc.stdout.strip())
+            low = message.lower()
+            if any(token in low for token in ("404", "not found")):
+                return []
+            if any(token in low for token in ("unauthorized", "authentication", "bad credentials", "401", "forbidden", "403")):
+                raise ProviderError(
+                    "PROVIDER_AUTH_REJECTED",
+                    message or "Gitea rejected Tea authentication",
+                    provider="gitea",
+                    tool=ctx.tool,
+                    host=ctx.identity.host,
+                )
+            raise ProviderError(
+                "PR_PROVIDER_FAILED",
+                message or "Gitea exact pull request query failed",
+                provider="gitea",
+                tool=ctx.tool,
+                host=ctx.identity.host,
+                exitCode=proc.returncode,
+            )
+        data = _json_output(proc, label="tea api pull lookup")
+        if not isinstance(data, dict):
+            raise ProviderError("PR_PROVIDER_INVALID_JSON", "Gitea exact pull lookup must return an object")
+        items = [_normalize_gitea_pr(data)]
 
     return [
         item
@@ -606,7 +636,7 @@ def view_pr(
         base = str(pr.get("base") or "")
         endpoint = (
             f"/repos/{ctx.identity.owner}/{ctx.identity.repo}/pulls/"
-            f"{base}/{selector}"
+            f"{quote(base, safe='')}/{quote(selector, safe='')}"
         )
     data = _tea_api(root, ctx, endpoint)
     if not isinstance(data, dict):
