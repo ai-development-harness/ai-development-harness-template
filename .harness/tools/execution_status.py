@@ -1020,8 +1020,15 @@ def read_side_effect_checkpoint(
     root: Path,
     command: str,
 ) -> dict[str, Any] | None:
-    """Прочитать durable checkpoint active command без изменения state."""
-    normalized = normalize_single_command(root, command)["normalized"]
+    """Прочитать durable checkpoint active command без изменения state.
+
+    git_action используется и standalone в deterministic tests/tools. Если
+    execution-status отсутствует, side-effect layer прозрачно отключён и не
+    требует CTS/bootstrap files от такого минимального Git fixture.
+    """
+    if not status_path(root).is_file():
+        return None
+    normalized = command.strip()
     status = load_status(root)
     execution = _active_execution_for_command(status, normalized)
     if execution is None:
@@ -1058,7 +1065,9 @@ def write_side_effect_checkpoint(
     None. При Harness orchestration запись обязательна фактически потому, что
     current command существует и однозначно владеет mutation boundary.
     """
-    normalized = normalize_single_command(root, command)["normalized"]
+    if not status_path(root).is_file():
+        return None
+    normalized = command.strip()
     status = load_status(root)
     execution = _active_execution_for_command(status, normalized)
     if execution is None:
