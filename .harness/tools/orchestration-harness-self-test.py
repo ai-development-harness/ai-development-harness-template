@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic orchestration/runtime/fault-injection regression suite."""
+"""Детерминированный regression suite orchestration/runtime/fault injection."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,13 +30,13 @@ def _edge_allows(root: Path, source: str, target: str, result: str) -> bool:
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
 
-    # Common deterministic conformance for every declared production adapter.
+    # Одна deterministic conformance suite для каждого declared production adapter.
     conformance = run_all_declared_adapters(root)
     assert [item["runtimeId"] for item in conformance] == ["claude", "codex"], conformance
     assert all(item["status"] == "PASS" for item in conformance), conformance
 
-    # Canonical STEP RUN repair path is proven against the real CTS, not a
-    # second transition table hidden in the test double.
+    # Canonical STEP RUN repair path проверяется по реальному CTS, а не по
+    # второй transition table, спрятанной внутри test double.
     flow = [
         ("STEP PLAN STEP-001", "SUCCESS"),
         ("STEP IMPLEMENT STEP-001", "SUCCESS"),
@@ -117,8 +117,8 @@ def main() -> int:
         "run.started", "model.message.completed", "run.completed",
     ], event_types
 
-    # Fault after external side effect: resume repeats the interaction but
-    # ScriptedRuntime records the side-effect identity only once.
+    # После fault за external side effect resume повторяет interaction, но
+    # ScriptedRuntime фиксирует side-effect identity только один раз.
     recover = ScriptedRuntime(
         {
             "steps": [
@@ -147,7 +147,7 @@ def main() -> int:
     assert recover.applied_side_effects() == ["fix:STEP-002:F-001"], recover.applied_side_effects()
     recover.assert_complete()
 
-    # Every declared named fault checkpoint is executable, not just a schema enum.
+    # Каждый declared named fault checkpoint реально исполняется, а не только числится в schema enum.
     for checkpoint in sorted(
         FAULT_POINTS - {"runtime_disconnect", "input_required"}
     ):
@@ -176,7 +176,7 @@ def main() -> int:
         else:
             raise AssertionError(f"{checkpoint} did not interrupt")
 
-    # Runtime disconnect and input-required are first-class named interruptions.
+    # Runtime disconnect и input-required — полноценные named interruptions.
     for checkpoint, expected_event in (
         ("runtime_disconnect", "run.interrupted"),
         ("input_required", "input.required"),
@@ -200,7 +200,7 @@ def main() -> int:
             raise AssertionError(f"{checkpoint} did not interrupt")
         assert interrupted.events()[-1]["type"] == expected_event, interrupted.events()
 
-    # Explicit unsupported capability must fail at the exact scenario step.
+    # Explicit unsupported capability должен падать на точном scenario step.
     unsupported = ScriptedRuntime(
         {
             "steps": [
@@ -219,7 +219,7 @@ def main() -> int:
     else:
         raise AssertionError("unsupported capability was accepted")
 
-    # Failure output contains exact step/expected/actual interaction.
+    # Failure output содержит exact step, expected и actual interaction.
     mismatch = ScriptedRuntime({"steps": [{"expect": "STEP PLAN STEP-005"}]})
     try:
         mismatch.start("STEP REVIEW STEP-005")
