@@ -7,7 +7,7 @@ import sys
 
 from command_transitions import load_transition_table, parse_canonical_command
 from runtime_adapter_conformance import run_all_declared_adapters
-from scripted_runtime import ScriptedFault, ScriptedRuntime, ScriptedRuntimeError
+from scripted_runtime import FAULT_POINTS, ScriptedFault, ScriptedRuntime, ScriptedRuntimeError
 
 
 def _edge_allows(root: Path, source: str, target: str, result: str) -> bool:
@@ -146,6 +146,35 @@ def main() -> int:
     assert resumed["result"] == "SUCCESS", resumed
     assert recover.applied_side_effects() == ["fix:STEP-002:F-001"], recover.applied_side_effects()
     recover.assert_complete()
+
+    # Every declared named fault checkpoint is executable, not just a schema enum.
+    for checkpoint in sorted(
+        FAULT_POINTS - {"runtime_disconnect", "input_required"}
+    ):
+        injected = ScriptedRuntime(
+            {
+                "steps": [
+                    {
+                        "expect": "STEP IMPLEMENT STEP-099",
+                        "faultOnce": checkpoint,
+                        **(
+                            {"sideEffectIdentity": "fault-side-effect"}
+                            if checkpoint in {
+                                "after_side_effect_before_observation",
+                                "after_observation_before_completion_checkpoint",
+                            }
+                            else {}
+                        ),
+                    }
+                ]
+            }
+        )
+        try:
+            injected.start("STEP IMPLEMENT STEP-099")
+        except ScriptedFault as exc:
+            assert exc.checkpoint == checkpoint, (checkpoint, exc)
+        else:
+            raise AssertionError(f"{checkpoint} did not interrupt")
 
     # Runtime disconnect and input-required are first-class named interruptions.
     for checkpoint, expected_event in (
