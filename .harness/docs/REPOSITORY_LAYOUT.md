@@ -47,6 +47,7 @@ Local state не является единым типом данных: executio
 │   │   ├── README.md
 │   │   ├── VALIDATORS.md
 │   │   ├── REASONING_BOUNDARIES.md      # generated table/diagrams
+│   │   ├── PROJECT_STATE.md              # JSON graph contract для UI/Navigator
 │   │   └── ...
 │   ├── tools/
 │   │   ├── harness_config.py
@@ -64,6 +65,8 @@ Local state не является единым типом данных: executio
 │   │   ├── project_integrity.py
 │   │   ├── project_migration.py
 │   │   ├── projection_contract.py
+│   │   ├── project_state.py              # read-only normalized project graph
+│   │   ├── project-state.py              # CLI wrapper
 │   │   ├── template_contract.py
 │   │   ├── validate.py
 │   │   ├── execution_status.py
