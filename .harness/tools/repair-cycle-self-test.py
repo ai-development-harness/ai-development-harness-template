@@ -15,10 +15,12 @@ def snap(
     *findings: dict[str, str],
     revision: str,
     basis: str = "basis-a",
+    verification: str = "verify-a",
 ) -> dict[str, object]:
     return {
         "report": revision + ".md",
         "contractBasis": basis,
+        "verificationBasis": verification,
         "reviewedRevision": {"git_head": revision, "worktree_hash": None},
         "findings": list(findings),
     }
@@ -33,6 +35,14 @@ def main() -> int:
     )
     assert progress["stopDecision"] == "continue", progress
     assert progress["resolved"] == 1
+    assert progress["verificationChanged"] is False
+
+    verification_delta = compare_snapshots(
+        snap(finding("a", "high"), revision="1" * 40, verification="verify-a"),
+        snap(finding("b", "medium"), revision="2" * 40, verification="verify-b"),
+        cycle=1,
+    )
+    assert verification_delta["verificationChanged"] is True, verification_delta
 
     # Same findings after a real revision change: repeated repair.
     repeated = compare_snapshots(
