@@ -185,6 +185,12 @@ Harness/client может отображать безопасную account iden
 
 Real Codex/Claude integration tests — отдельный слой. Они не должны заменять deterministic contract suite.
 
+## Project context identity
+
+Accepted architecture contract [`MULTI_PROJECT_CONTEXTS.md`](MULTI_PROJECT_CONTEXTS.md) требует, чтобы после реализации #188 runtime launch получал explicit `projectRoot` и `gitRoot` от Harness control plane. Adapter не должен определять project по process cwd самостоятельно.
+
+До #188 machine Runtime Adapter Contract v1 не объявляет эти поля реализованными; breaking change общей request/envelope schema должен сопровождаться обычным `schemaVersion` bump и contract regressions.
+
 ## Связь с UI client
 
 UI/client должен строить runtime bridge поверх этого контракта:
