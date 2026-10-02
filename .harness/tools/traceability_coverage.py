@@ -2,7 +2,9 @@
 """Deterministic REQ → STEP → Evidence coverage graph.
 
 Explicit repository IDs are the source of truth. LLM inference is intentionally
-not used by this module.
+not used by this module. Completion/evidence freshness is delegated to the
+existing step_completion_proof contract so coverage does not invent a second
+definition of current proof.
 """
 from __future__ import annotations
 
@@ -20,8 +22,20 @@ from planning_contract import (
 )
 
 SCHEMA_VERSION = 1
+
+# These STEP types are an explicit deterministic rationale for work that may be
+# legitimate without a product REQ. Only generic implementation work is treated
+# as orphan when it has neither REQ nor ADR rationale.
 NON_PRODUCT_ORPHAN_EXEMPT_TYPES = {
-    "research", "adr", "audit", "review", "documentation", "release"
+    "bugfix",
+    "refactor",
+    "research",
+    "adr",
+    "audit",
+    "review",
+    "hardening",
+    "documentation",
+    "release",
 }
 
 
@@ -32,7 +46,7 @@ def _canonical_docs(directory: Path, pattern: str) -> dict[str, dict[str, Any]]:
             continue
         try:
             doc = parse_document(path)
-        except DocumentError:
+        except (DocumentError, OSError, UnicodeDecodeError):
             continue
         artifact_id = doc["frontmatter"].get("id")
         if isinstance(artifact_id, str):
@@ -47,13 +61,15 @@ def _safe_proof(
 ) -> dict[str, Any]:
     try:
         proof = provider(root, step_id)
-    except Exception as exc:  # fail-closed diagnostic, never infer PASS
+    except Exception as exc:
         return {"complete": False, "reasons": [f"completion-proof-error:{exc}"]}
-    complete = proof.get("complete") is True
     reasons = proof.get("reasons")
     if not isinstance(reasons, list):
         reasons = []
-    return {"complete": complete, "reasons": [str(x) for x in reasons]}
+    return {
+        "complete": proof.get("complete") is True,
+        "reasons": [str(item) for item in reasons],
+    }
 
 
 def build_coverage(
@@ -78,7 +94,8 @@ def build_coverage(
     invalid: list[dict[str, str]] = []
     req_to_steps: dict[str, set[str]] = {req_id: set() for req_id in reqs}
 
-    # REQ-declared coverage and reverse consistency.
+    # REQ-side declarations are valid coverage only when STEP itself claims the
+    # REQ. A one-sided REQ -> STEP link is a mismatch, not positive coverage.
     for req_id, req in sorted(reqs.items()):
         raw = req["frontmatter"].get("steps")
         declared = raw if isinstance(raw, list) else []
@@ -92,20 +109,23 @@ def build_coverage(
                     "target": step_id,
                 })
                 continue
-            req_to_steps[req_id].add(step_id)
             if req_id not in requirement_ids(tasks[step_id]):
                 invalid.append({
                     "code": "REVERSE_TRACEABILITY_MISMATCH",
                     "source": req_id,
                     "target": step_id,
                 })
+                continue
+            req_to_steps[req_id].add(step_id)
 
-    # STEP-declared coverage and references.
     orphan_steps: list[dict[str, Any]] = []
     for step_id, task in sorted(tasks.items()):
         meta = task["frontmatter"]
         linked_reqs = requirement_ids(task)
         linked_adrs = adr_ids(task)
+
+        # STEP-side claim is enough to say the STEP claims the REQ, but missing
+        # reverse REQ linkage remains an explicit integrity finding.
         for req_id in linked_reqs:
             if req_id not in reqs:
                 invalid.append({
@@ -122,6 +142,7 @@ def build_coverage(
                         "source": step_id,
                         "target": req_id,
                     })
+
         for adr_id in linked_adrs:
             if adr_id not in adrs:
                 invalid.append({
@@ -129,6 +150,7 @@ def build_coverage(
                     "source": step_id,
                     "target": adr_id,
                 })
+
         step_type = str(meta.get("type") or "")
         if (
             not linked_reqs
@@ -138,14 +160,14 @@ def build_coverage(
             orphan_steps.append({
                 "stepId": step_id,
                 "type": step_type,
-                "reason": "no REQ or ADR rationale",
+                "reason": "no REQ, ADR or typed non-product rationale",
             })
 
     oqs = open_questions(root)
     known_targets = {"PROJECT", *reqs.keys(), *adrs.keys(), *tasks.keys()}
     blocking_oqs: list[dict[str, Any]] = []
     for oq in oqs:
-        affects = [x for x in (oq.get("affects") or []) if isinstance(x, str)]
+        affects = [item for item in (oq.get("affects") or []) if isinstance(item, str)]
         if oq.get("status") == "open":
             blocking_oqs.append({"id": oq.get("id"), "affects": affects})
         for target in affects:
@@ -176,11 +198,14 @@ def build_coverage(
     for req_id, req in sorted(reqs.items()):
         linked = sorted(req_to_steps.get(req_id, set()))
         executable = [
-            step_id for step_id in linked
+            step_id
+            for step_id in linked
             if tasks[step_id]["frontmatter"].get("status") not in {"deferred", "cancelled"}
         ]
         evidence = [
-            step_id for step_id in executable if proof_by_step[step_id]["complete"]
+            step_id
+            for step_id in executable
+            if proof_by_step[step_id]["complete"]
         ]
         stale = [
             {
@@ -191,12 +216,21 @@ def build_coverage(
             if tasks[step_id]["frontmatter"].get("status") == "completed"
             and not proof_by_step[step_id]["complete"]
         ]
+
+        # OQ may block the REQ directly, its executable STEP, or an ADR used by
+        # such STEP. This mirrors the existing planning notion of relevant OQ.
+        executable_adrs = {
+            adr_id
+            for step_id in executable
+            for adr_id in adr_ids(tasks[step_id])
+        }
         affected_oq = sorted(
             str(item["id"])
             for item in blocking_oqs
             if "PROJECT" in item["affects"]
             or req_id in item["affects"]
             or any(step_id in item["affects"] for step_id in executable)
+            or any(adr_id in item["affects"] for adr_id in executable_adrs)
         )
 
         if not executable:

@@ -653,7 +653,6 @@ def build_project_state(root: Path) -> dict[str, Any]:
         if diagnostics or dependency["cycles"]
         else "ok"
     )
-
     coverage = build_coverage(root)
 
     return {

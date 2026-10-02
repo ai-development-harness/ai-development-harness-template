@@ -12,7 +12,7 @@ Human-readable release-check report пиши на `.harness/manifest.yaml → la
 
 1. Сначала определи фактическую release model из repository: package/build/deploy artifacts, CI, environments, migrations, versioning, rollback/update mechanics и release documentation.
 2. Не выдумывай обязательные gates, которых в проекте нет, и не считай optional tooling mandatory только потому, что оно типично для похожих проектов.
-3. Получи `python3 .harness/tools/traceability-coverage.py --json` и используй high/critical `releaseRelevant` REQ для release-scope coverage. Затем проверь unresolved critical/high findings, release-critical REQ/STEP, actual build/test/type/lint/package/deploy gates, migrations/upgrades/rollback, security и docs/release notes там, где они реально применимы. Release-relevant uncovered/stale evidence является blocker, если этот requirement входит в фактический release scope.
+3. Получи `python3 .harness/tools/traceability-coverage.py --json` и используй `releaseRelevant` REQ как deterministic coverage input для фактического release scope. Затем проверь unresolved critical/high findings, release-critical REQ/STEP, applicable active Project Principles, actual build/test/type/lint/package/deploy gates, migrations/upgrades/rollback, security и docs/release notes там, где они реально применимы. Release-relevant uncovered/stale evidence и unresolved applicable `blocking` PRN блокируют release; `advisory` PRN сам по себе не является release blocker.
 
 ## Verdict
 
