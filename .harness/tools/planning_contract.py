@@ -35,6 +35,7 @@ from harness_config import (
     review_directory,
     task_directory,
 )
+from principles import active_blocking_principles
 from document_contract import (
     ADR_ID_RE,
     ADR_STATUSES,
@@ -487,7 +488,7 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
             "hash": content_hash(item["document"]["text"]),
         }
 
-    return {
+    snapshot = {
         "schema": 4,
         "step": task_contract_snapshot(root, step_id),
         "requirements": requirements,
@@ -496,6 +497,10 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
         "architecture_refs": architecture,
         "open_questions": oqs,
     }
+    principles = active_blocking_principles(root)
+    if principles:
+        snapshot["principles"] = principles
+    return snapshot
 
 def planning_context_basis(root: Path, step_id: str) -> str:
     """Hash exact planning context, от которого зависит корректность плана."""
