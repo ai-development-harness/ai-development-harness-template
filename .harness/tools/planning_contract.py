@@ -897,7 +897,11 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
             expected_basis = planning_context_basis(root, step_id)
         except (DocumentError, ConfigError, OSError, ValueError) as exc:
             errors.append(f"{prefix}: cannot compute context basis: {exc}")
-        expected_content = plan_content_hash(root, step_id)
+        try:
+            expected_content = plan_content_hash(root, step_id)
+        except (ExecutionGroupError, OSError, ValueError) as exc:
+            errors.append(f"{prefix}: cannot compute plan content hash: {exc}")
+            expected_content = None
         stored_basis = plan.get("context_basis")
         stored_content = plan.get("content_hash")
         if expected_basis is not None and stored_basis != expected_basis:
@@ -906,7 +910,7 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
                 errors.append(message)
             else:
                 warnings.append(message)
-        if stored_content != expected_content:
+        if expected_content is not None and stored_content != expected_content:
             errors.append(f"{prefix}: ready plan content_hash is stale")
         if not isinstance(plan.get("reviewed_report"), str) or not plan.get("reviewed_report"):
             errors.append(f"{prefix}: ready plan missing reviewed_report")
