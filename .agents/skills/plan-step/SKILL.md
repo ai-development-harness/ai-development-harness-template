@@ -4,7 +4,7 @@ description: Produce, independently review, fingerprint and persist a concrete i
 ---
 # plan-step
 
-Используй для `STEP PLAN STEP-NNN`. Human-readable prose Implementation plan и planning-review пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys не локализуй.
+Используй для `STEP PLAN STEP-NNN`. Используй `context.contextContract` как минимальный runtime-neutral набор artifacts/sections; legacy `readPaths` остаётся compatibility surface и не означает «прочитать файл целиком». Дополнительный context загружай только через explicit expansion с material reason; `.harness/tools/**` не входит в normal semantic context. Human-readable prose Implementation plan и planning-review пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys не локализуй.
 
 Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
@@ -24,7 +24,7 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-2. Используй только `context`, уже возвращённый canonical dispatcher handoff: `readPaths` + deterministic planning facts. Повторно `step-context.py` не вызывай. Затем исследуй только действительно relevant code/tests/config. Completion dependency для PLAN не вычисляй.
+2. Используй только `context`, уже возвращённый canonical dispatcher handoff: `context.contextContract.required` задаёт exact artifacts/sections, а deterministic facts остаются в том же handoff. Повторно `step-context.py`/resolver не вызывай. Не preload-ь unrelated docs/REQ/ADR; затем исследуй только действительно relevant code/tests/config. Completion dependency для PLAN не вычисляй.
 3. Проверь semantic consistency:
    - Goal/Scope/Out of scope/Mutation policy согласованы;
    - Acceptance следует из REQ/ADR и не требует forbidden mutation;
