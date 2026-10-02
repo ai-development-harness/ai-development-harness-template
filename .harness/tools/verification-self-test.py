@@ -161,6 +161,10 @@ def prepare(root: Path) -> None:
     run(root, "git", "init", "-q", "-b", "main")
     run(root, "git", "config", "user.email", "verification@example.invalid")
     run(root, "git", "config", "user.name", "Verification Test")
+    # Self-test suites run concurrently in CI. Disable background Git housekeeping
+    # so TemporaryDirectory cleanup cannot race a detached maintenance process.
+    run(root, "git", "config", "gc.auto", "0")
+    run(root, "git", "config", "maintenance.auto", "false")
     run(root, "git", "add", ".")
     run(root, "git", "commit", "-qm", "fixture")
 
