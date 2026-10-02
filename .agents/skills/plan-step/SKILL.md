@@ -24,8 +24,9 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
    - ownership не конфликтует с соседними STEP;
    - architecture prerequisite имеет explicit ref;
    - OPEN OQ/TBD не блокирует решение.
-4. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
-5. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
+4. Проверь active Project Principles из configured `sources.principles`. Semantic planner определяет применимость, но applicable `blocking` PRN нельзя игнорировать без explicit approved deviation. Active blocking principles входят в deterministic planning basis, поэтому их изменение stale-ит Ready plan.
+5. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
+6. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
 ## Phase B — architecture completeness pass
 
