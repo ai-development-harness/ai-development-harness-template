@@ -825,14 +825,14 @@ def main() -> int:
             completion_result="PASS",
         )
         recovered_completion = resolve_root(root, run_root)
-        recovered_proof = step_completion_proof(root, "STEP-001")
-        assert recovered_proof["complete"] is True, recovered_proof
         assert_resolved(
             recovered_completion,
             "RESUME",
             "STEP RUN STEP-001",
             "ORCHESTRATION_CONTINUE",
         )
+        recovered_proof = step_completion_proof(root, "STEP-001")
+        assert recovered_proof["complete"] is True, recovered_proof
 
         # Exact revision invalidation: product mutation after report prevents recovery.
         other_root = "STEP RUN STEP-001"
