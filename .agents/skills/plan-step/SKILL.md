@@ -8,7 +8,17 @@ description: Produce, independently review, fingerprint and persist a concrete i
 
 Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
-## Phase A — deterministic + semantic contract validation
+## Phase A — requirements quality / clarification
+
+До consistency reasoning выполни Requirements Quality Gate по STEP и linked owning artifacts. Сначала получи ответ из existing REQ/ADR/OQ/architecture/codebase; не спрашивай то, что уже зафиксировано. Верни schema-v1 quality payload и проверь его через:
+
+```bash
+python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
+```
+
+`NEEDS_INPUT`/`BLOCKED` с blocking finding останавливает PLAN до targeted user input или canonical prerequisite. Ответ пользователя сохрани в соответствующий REQ/ADR/OQ/STEP и запусти gate повторно. Не оставляй решение только в chat/session state. Warning-only PASS продолжает planning.
+
+## Phase B — deterministic + semantic contract validation
 
 1. Запусти:
    ```bash
@@ -27,7 +37,7 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
 4. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
 5. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
-## Phase B — architecture completeness pass
+## Phase C — architecture completeness pass
 
 До формирования Implementation plan явно проверь применимые архитектурные измерения. Это semantic gate, а не checklist ради checklist: неприменимые пункты не создают искусственных требований.
 
@@ -46,7 +56,7 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
 
 Architecture-sensitive решение нельзя прятать внутрь Implementation plan. Если durable decision ещё не принят, останови PLAN через ADR/OQ/prerequisite вместо того, чтобы выбирать архитектуру по ходу реализации.
 
-## Phase C — semantic plan payload
+## Phase D — semantic plan payload
 
 Не редактируй STEP/frontmatter вручную. Сформируй только semantic JSON:
 
@@ -62,7 +72,7 @@ python3 .harness/tools/semantic-writer.py plan-draft STEP-NNN --payload-file '<l
 
 Writer сам заменяет только `## Implementation plan` / `## Verification`, переводит plan в `draft`, валидирует Verification и возвращает exact context/content fingerprints.
 
-## Phase D — independent planning-review payload
+## Phase E — independent planning-review payload
 
 Передай persisted draft отдельному `reviewer` agent/session, отличному от planner и от architect, если тот привлекался. Planning reviewer выполняет adversarial pass и обязан проверить:
 
