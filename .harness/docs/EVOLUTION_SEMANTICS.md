@@ -146,7 +146,7 @@ RECONCILE не выбирает product intent автоматически.
 
 ## PROJECT QUICK FIX
 
-QUICK FIX разрешён только для non-semantic correction. Изменение REQ behavior intent, ADR decision/rationale, STEP Scope/Acceptance, OQ resolution или Project Principle не является QUICK FIX независимо от размера diff.
+PROJECT QUICK FIX разрешён только для non-semantic correction. Изменение REQ behavior intent, ADR decision/rationale, STEP Scope/Acceptance, OQ resolution или Project Principle не является QUICK FIX независимо от размера diff.
 
 ## История
 
