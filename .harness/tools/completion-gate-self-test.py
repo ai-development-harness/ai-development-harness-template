@@ -223,6 +223,24 @@ C.
         assert stale["status"] == "BLOCKED"
         assert stale["findings"][0]["code"] == "VERIFICATION_SUBJECT_STALE"
 
+        dependency_blocked = deterministic_precheck(
+            root,
+            "STEP-001",
+            freshness_provider=lambda _root, _step: {
+                "status": "PASS",
+                "fresh": True,
+                "reasonCode": None,
+            },
+            prerequisite_provider=lambda _root, _step: [
+                "dependency-incomplete:STEP-000:completion proof missing"
+            ],
+        )
+        assert dependency_blocked["status"] == "BLOCKED", dependency_blocked
+        assert (
+            dependency_blocked["findings"][0]["message"]
+            == "dependency-incomplete:STEP-000:completion proof missing"
+        ), dependency_blocked
+
     print("completion-gate self-test: PASS")
     return 0
 

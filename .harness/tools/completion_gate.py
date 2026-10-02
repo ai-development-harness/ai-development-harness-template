@@ -72,8 +72,6 @@ def deterministic_precheck(
             "message": "Generated Verification evidence is missing, stale or not PASS.",
         })
     for reason in prerequisite_provider(root, step_id):
-        if reason.startswith("dependency-incomplete"):
-            continue
         findings.append({
             "code": "CURRENT_CONTRACT_NOT_EXECUTABLE",
             "kind": "contract",
