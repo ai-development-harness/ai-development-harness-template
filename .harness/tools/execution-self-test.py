@@ -836,7 +836,17 @@ def main() -> int:
         recovered_proof = step_completion_proof(root, "STEP-001")
         assert recovered_proof["complete"] is True, recovered_proof
 
-        # Exact revision invalidation: product mutation after report prevents recovery.
+        # Exact revision invalidation is an independent recovery scenario.
+        # Previous scenario intentionally completed STEP-001, so reset only the
+        # synthetic lifecycle state before starting a new root execution.
+        completed_text = (root / "planning/tasks/STEP-001.md").read_text(encoding="utf-8")
+        write(
+            root / "planning/tasks/STEP-001.md",
+            completed_text.replace("status: completed", "status: planned", 1),
+        )
+
+        # Product mutation after durable REVIEW+completion PASS must invalidate
+        # exact reviewed revision and keep REVIEW resumable instead of auto-closing.
         other_root = "STEP RUN STEP-001"
         existing = resolve_root(root, run_root)
         if existing["status"] == "RESUME":
@@ -846,7 +856,7 @@ def main() -> int:
         begin_command(root, other_root, "STEP IMPLEMENT STEP-001")
         complete_command(root, other_root, "STEP IMPLEMENT STEP-001", "SUCCESS")
         begin_command(root, other_root, "STEP REVIEW STEP-001")
-        review_report(root, "PASS", "REVIEW-20260921T030000Z.md")
+        review_report(root, "PASS", "REVIEW-20260921T030000Z.md", completion_result="PASS")
         write(root / "src/product.txt", "changed after review\n")
         unresolved = resolve_root(root, other_root)
         assert unresolved["status"] == "RESUME" and unresolved["command"] == "STEP REVIEW STEP-001", unresolved
