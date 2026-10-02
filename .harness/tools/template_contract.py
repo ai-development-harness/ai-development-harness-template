@@ -33,6 +33,7 @@ from harness_config import (
     planning_review_directory,
     release_directory,
     requirements_directory,
+    principles_directory,
     review_directory,
     load_manifest,
     skill_search_directory,
@@ -145,6 +146,36 @@ adrs: []
 
 - Наблюдаемый критерий 1.
 - Наблюдаемый критерий 2.
+"""
+
+PRINCIPLE_TEMPLATE = """---
+schema: 1
+id: PRN-NNN
+status: active
+severity: blocking
+scope: project
+superseded_by: null
+requirements: []
+adrs: []
+---
+
+# PRN-NNN — Название инженерного инварианта
+
+## Rule
+
+Короткое нормативное правило.
+
+## Rationale
+
+Почему правило действует на проект в целом.
+
+## Applies to
+
+Какие решения/поверхности подпадают под правило.
+
+## Exceptions / approved deviation
+
+Как оформить допустимое исключение; если исключений нет — указать явно.
 """
 
 ADR_TEMPLATE = """---
@@ -464,6 +495,7 @@ def template_targets(root: Path) -> dict[Path, str]:
     return {
         task_directory(root) / "TEMPLATE.md": step_template,
         requirements_directory(root) / "TEMPLATE.md": REQ_TEMPLATE,
+        principles_directory(root) / "TEMPLATE.md": PRINCIPLE_TEMPLATE,
         adr_directory(root) / "TEMPLATE.md": ADR_TEMPLATE,
         open_questions_directory(root) / "TEMPLATE.md": OQ_TEMPLATE,
         review_directory(root) / "TEMPLATE.md": REVIEW_TEMPLATE,
