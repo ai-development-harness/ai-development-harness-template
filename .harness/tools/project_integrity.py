@@ -358,13 +358,16 @@ def validate_configured_artifacts(root: Path) -> list[str]:
         (requirements_directory(root) / "TEMPLATE.md", "requirements template"),
         (requirements_directory(root) / "SPEC.md", "requirements SPEC projection"),
         (requirements_directory(root) / "STATUS.md", "requirements STATUS projection"),
-        (principles_directory(root) / "TEMPLATE.md", "Project Principle template"),
         (adr_directory(root) / "TEMPLATE.md", "ADR template"),
         (task_directory(root) / "TEMPLATE.md", "STEP template"),
         (open_questions_directory(root) / "TEMPLATE.md", "Open Question template"),
         (skill_registry_path(root), "skill registry"),
         (update_report_directory(root) / "README.md", "Harness update report README"),
     ]
+    if get(load_manifest(root), "sources.principles") is not None:
+        checks.append(
+            (principles_directory(root) / "TEMPLATE.md", "Project Principle template")
+        )
     for path, label in checks:
         if not path.is_file():
             errors.append(f"configured artifact missing ({label}): {path.relative_to(root)}")
