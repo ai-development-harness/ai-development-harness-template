@@ -12,8 +12,9 @@ description: Run an independent read-only review of an exact repository revision
    ```
 2. Используй только phase `context`, уже возвращённый canonical dispatcher handoff. Прочитай `readPaths` + relevant diff/code/tests. `deterministic.specializedReviewGate` содержит exact gate, а `deterministic.repositoryRevision` — exact revision. Повторно `step-context.py`/gates не вызывай и revision вручную не восстанавливай. Модель может добавить reviewer, но не убрать required.
    `deterministic.implementationBaseline` — durable proof HEAD до первой product mutation. При валидном proof gate использует `surfaceMode=implementation-baseline` и проверяет полный `baseline..HEAD + current worktree`; rename/copy учитываются по source и destination path, это работает после нескольких commit, push/PR и restart. Если proof отсутствует/недоступен/non-ancestor, gate явно использует `clean-tree-fallback` и fail-closed требует `security` + `tests`. Harness-owned `.harness/local/**` и `REVIEW-*.md` не меняют surface/basis.
-3. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan с реализацией и tests. Сделай полный semantic проход exact revision и собери material findings.
-4. Верни structured payload Review Contract v2:
+3. До semantic convergence judgement запусти `python3 .harness/tools/completion-gate.py STEP-NNN --json`. Deterministic BLOCKED не переинтерпретируй reasoning-ом.
+4. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan с реализацией и tests. Сделай полный semantic проход exact revision и собери material findings.
+5. Верни structured payload Review Contract v2:
    - `verdict: pass|fail|blocked`;
    - `findings[]` — полный factual contract:
      - `title`, `severity`, `category`;
@@ -24,18 +25,19 @@ description: Run an independent read-only review of an exact repository revision
      - `constraints[]`, `evidence[]`;
    - `verificationObservations`;
    - `rationale`;
-   - `specializedReviews.security/tests` только для реально выполненных specialized reviews: `status + evidence`.
+   - `specializedReviews.security/tests` только для реально выполненных specialized reviews: `status + evidence`;
+   - при `verdict: pass` добавь `completion`: exact Acceptance coverage + `disposition: pass|fix|blocked`. `fix` означает missing in-scope work; `blocked` — contract/prerequisite gap. Не добавляй out-of-scope obligations.
 
    `id` и `fingerprint` модель не придумывает: writer присваивает `F-NNN` и вычисляет stable `sha256:` fingerprint из factual identity finding. Title/prose formatting и repair wording не участвуют в identity, поэтому повтор того же дефекта после FIX распознаётся детерминированно.
-5. Categories:
+6. Categories:
    - `implementation` — реализация/тест не соответствует непротиворечивому contract;
    - `evidence` — acceptance недостаточно доказан;
    - `contract` — STEP/REQ/ADR/dependency/Acceptance противоречив или требует отсутствующего решения.
-6. Routing:
+7. Routing:
    - `pass` — findings нет;
    - `fail` — implementation/evidence findings, исправимые внутри scope;
    - `blocked` — contract defect/missing prerequisite либо blocking evidence condition.
-7. Не создавай review Markdown/frontmatter, timestamp, revision или gate metadata вручную. Передай JSON в:
+8. Не создавай review Markdown/frontmatter, timestamp, revision или gate metadata вручную. Передай JSON в:
 
    ```bash
    python3 .harness/tools/semantic-writer.py step-review STEP-NNN --payload-file '<local-json-or->'
