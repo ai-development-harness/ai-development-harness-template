@@ -16,7 +16,7 @@ from document_contract import (
     require_schema,
     string_list,
 )
-from harness_config import principles_directory
+from harness_config import get, load_manifest, principles_directory
 
 PRN_ID_RE = re.compile(r"PRN-[0-9]{3,}")
 STATUSES = {"active", "superseded", "deprecated"}
@@ -25,6 +25,10 @@ SECTIONS = ("Rule", "Rationale", "Applies to", "Exceptions / approved deviation"
 
 
 def canonical_principles(root: Path) -> dict[str, dict[str, Any]]:
+    # Backward-compatible capability: legacy/custom synthetic manifests that do
+    # not declare sources.principles have no PRN surface yet.
+    if get(load_manifest(root), "sources.principles") is None:
+        return {}
     result: dict[str, dict[str, Any]] = {}
     for path in sorted(principles_directory(root).glob("PRN-*.md")):
         if path.name == "TEMPLATE.md":
@@ -40,6 +44,8 @@ def canonical_principles(root: Path) -> dict[str, dict[str, Any]]:
 
 
 def validate_principles(root: Path) -> list[str]:
+    if get(load_manifest(root), "sources.principles") is None:
+        return []
     errors: list[str] = []
     seen: dict[str, list[Path]] = {}
     directory = principles_directory(root)
