@@ -150,6 +150,17 @@ plan:
   content_hash: null
   reviewed_report: null
   planned_at: null
+  execution_groups:
+    - id: state
+      title: Project State group
+      steps:
+        - 1
+      dependsOn: []
+      mutationPaths:
+        - src/state
+      verificationResponsibilities:
+        - Verify Project State graph
+      parallel: false
 ---
 
 # STEP-001 — Project State fixture
@@ -246,6 +257,8 @@ Resolve.
         assert summary["byType"] == {"ADR": 1, "OQ": 1, "REQ": 1, "STEP": 1}, summary
         assert summary["missingReferences"] == 1, summary
         assert summary["blockers"] == 1, summary
+        step_node = next(node for node in state["graph"]["nodes"] if node["id"] == "STEP-001")
+        assert step_node["metadata"]["executionGroups"][0]["id"] == "state", step_node
 
         edges = {
             (edge["source"], edge["target"], edge["relation"]): edge

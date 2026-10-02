@@ -63,7 +63,8 @@ Architecture-sensitive решение нельзя прятать внутрь I
 
 - `implementationPlan` — непустой массив шагов;
 - каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`;
-- `verification` — массив `{"kind":"command|manual","value":"..."}`.
+- `verification` — массив `{"kind":"command|manual","value":"..."}`;
+- optional `executionGroups` — machine-readable DAG поверх 1-based элементов `implementationPlan`. Добавляй groups только когда декомпозиция действительно полезна и conflict boundary можно выразить явно. Каждая group содержит `id`, human-readable `title`, `steps[]`, `dependsOn[]`, non-empty `mutationPaths[]`, non-empty `verificationResponsibilities[]`, `parallel`. Если groups заданы, они покрывают каждый implementation step ровно один раз. `parallel=true` допустим только для кандидата с доказуемо непересекающимся declared mutation surface; это **не** команда на запуск concurrent agents.
 
 Сохрани payload только под `.harness/local/**` либо передай через stdin и вызови:
 

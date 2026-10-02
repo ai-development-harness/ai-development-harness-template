@@ -17,6 +17,7 @@ import hashlib
 from typing import Any
 
 from completion_gate import CompletionGateError, evaluate_completion, finalize_step_completion
+from execution_groups import ExecutionGroupError, normalize_execution_groups
 from document_contract import (
     atomic_write_text,
     create_durable_report,
@@ -193,9 +194,13 @@ def _replace_h2_section(body: str, title: str, value: str) -> str:
 def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     """Persist semantic plan/Verification payload without letting model edit metadata."""
     data = _require_object(payload, "plan payload")
-    _exact_keys(data, {"implementationPlan", "verification"}, "plan payload")
+    _exact_keys(data, {"implementationPlan", "verification", "executionGroups"}, "plan payload")
     implementation_steps = _implementation_plan(data.get("implementationPlan"))
     implementation_plan = _render_implementation_plan(implementation_steps)
+    try:
+        execution_groups = normalize_execution_groups(data.get("executionGroups"), len(implementation_steps))
+    except ExecutionGroupError as exc:
+        raise SemanticArtifactError(str(exc)) from exc
     verification = validate_verification_entries(data.get("verification"))
     verification_text = render_verification_entries(verification)
 
@@ -217,6 +222,7 @@ def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "content_hash": None,
         "reviewed_report": None,
         "planned_at": None,
+        "execution_groups": execution_groups,
     }
     atomic_write_text(task["path"], render_document(meta, body))
 
@@ -230,6 +236,7 @@ def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "contextBasis": planning_context_basis(root, step_id),
         "planContentHash": plan_content_hash(root, step_id),
         "implementationPlan": implementation_steps,
+        "executionGroups": execution_groups,
         "verification": verification,
     }
 

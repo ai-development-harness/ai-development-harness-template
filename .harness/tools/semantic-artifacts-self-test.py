@@ -19,7 +19,7 @@ from execution_status import (
     stamp_review_expectation,
     start_execution,
 )
-from planning_contract import read_task, validate_planning_review_report
+from planning_contract import read_task, validate_planning_contracts, validate_planning_review_report
 from review_contract import repository_revision, validate_review_report
 from review_gates import required_reviewers
 from verification import run_step_verification
@@ -191,6 +191,26 @@ def main() -> int:
                         "actions": ["Проверить canonical Markdown rendering."],
                     },
                 ],
+                "executionGroups": [
+                    {
+                        "id": "writer",
+                        "title": "Обновить deterministic writer",
+                        "steps": [1],
+                        "dependsOn": [],
+                        "mutationPaths": ["src/group-writer"],
+                        "verificationResponsibilities": ["Проверить writer regression."],
+                        "parallel": True,
+                    },
+                    {
+                        "id": "regression",
+                        "title": "Добавить regression coverage",
+                        "steps": [2],
+                        "dependsOn": [],
+                        "mutationPaths": ["tests/group-regression"],
+                        "verificationResponsibilities": ["Запустить synthetic regression suite."],
+                        "parallel": True,
+                    },
+                ],
                 "verification": [
                     {"kind": "command", "value": 'python3 -c "print(2)"'},
                     {"kind": "manual", "value": "Проверить semantic outcome"},
@@ -206,6 +226,8 @@ def main() -> int:
         assert "**Files:**" in planned["sections"]["Implementation plan"]
         assert ".harness/tools/semantic_artifacts.py" in planned["sections"]["Implementation plan"]
         assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
+        assert [item["id"] for item in plan["executionGroups"]] == ["writer", "regression"]
+        assert planned["frontmatter"]["plan"]["execution_groups"] == plan["executionGroups"]
 
         # Regression #85: file payload — одноразовый transport. Нормально
         # завершившийся writer удаляет его, validation/parsing failure оставляет
@@ -389,6 +411,12 @@ def main() -> int:
         ready = read_task(root, "STEP-001")
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
+        assert ready["frontmatter"]["plan"]["execution_groups"] == plan["executionGroups"]
+        ready_text = step_path.read_text(encoding="utf-8")
+        step_path.write_text(ready_text.replace("src/group-writer", "src/group-writer-changed"), encoding="utf-8", newline="\n")
+        stale_group_errors = validate_planning_contracts(root)
+        assert any("content_hash is stale" in item for item in stale_group_errors), stale_group_errors
+        step_path.write_text(ready_text, encoding="utf-8", newline="\n")
 
         incomplete_payload = {
             "verdict": "pass",

@@ -22,6 +22,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+from execution_groups import ExecutionGroupError, implementation_plan_step_count, normalize_execution_groups
 from harness_config import (
     ConfigError,
     adr_directory,
@@ -509,7 +510,13 @@ def planning_context_basis(root: Path, step_id: str) -> str:
 
 def plan_content_hash(root: Path, step_id: str) -> str:
     task = read_task(root, step_id)
-    return content_hash(task["sections"].get("Implementation plan", ""))
+    body = task["sections"].get("Implementation plan", "")
+    plan = task["frontmatter"].get("plan")
+    groups_value = plan.get("execution_groups") if isinstance(plan, dict) else None
+    if not groups_value:
+        return content_hash(body)
+    groups = normalize_execution_groups(groups_value, implementation_plan_step_count(body))
+    return stable_hash({"implementationPlan": body, "executionGroups": groups})
 
 
 def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
@@ -867,6 +874,11 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
     revision = plan.get("revision")
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
         errors.append(f"{prefix}: plan.revision must be a non-negative integer")
+    if "execution_groups" in plan:
+        try:
+            normalize_execution_groups(plan.get("execution_groups"), implementation_plan_step_count(task["sections"].get("Implementation plan", "")))
+        except ExecutionGroupError as exc:
+            errors.append(f"{prefix}: {exc}")
 
     if plan.get("status") == "ready":
         for issue in require_nonempty_sections(task, CONTRACT_SECTIONS + ("Implementation plan",)):

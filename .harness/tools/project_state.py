@@ -393,6 +393,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
                 "riskFlags": _string_list(meta.get("risk_flags")),
                 "planStatus": plan.get("status"),
                 "planRevision": plan.get("revision"),
+                "executionGroups": plan.get("execution_groups", []),
             },
         }
 
