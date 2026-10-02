@@ -84,6 +84,7 @@ Writer сам заменяет только `## Implementation plan` / `## Verif
 - не появляется ли hidden ownership conflict или новая cross-STEP dependency;
 - действительно ли Verification доказывает Acceptance;
 - не основан ли план на недоказанном предположении о соседней подсистеме.
+- если persisted draft содержит `plan.execution_groups`, прочитай canonical projection через `execution-groups.py STEP-NNN --json` и проверь, что group purpose соответствует связанным plan steps, declared `mutationPaths` достаточно консервативны, `verificationResponsibilities` реально проверяют group outcome, а `parallel=true` не основан только на разных filenames. Deterministic отсутствие overlap — необходимое, но не достаточное semantic доказательство независимости.
 
 Reviewer возвращает только:
 
