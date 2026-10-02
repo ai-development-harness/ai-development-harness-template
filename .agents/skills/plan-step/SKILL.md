@@ -27,7 +27,26 @@ Execution Status ведёт global wrapper. Active legacy schema после Harn
 4. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
 5. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
-## Phase B — semantic plan payload
+## Phase B — architecture completeness pass
+
+До формирования Implementation plan явно проверь применимые архитектурные измерения. Это semantic gate, а не checklist ради checklist: неприменимые пункты не создают искусственных требований.
+
+- module/service/bounded-context boundaries и ownership;
+- data model, persistence, migrations, rollback и backward compatibility;
+- public/internal API, protocol/schema compatibility;
+- authn/authz, trust boundaries, tenant/user scoping и data exposure;
+- async/event/state-machine/concurrency semantics;
+- extension/plugin/integration boundaries;
+- indexing/search/cache consistency;
+- observability, failure modes и recovery behavior;
+- deployment/update/config compatibility;
+- cross-cutting constraints из linked REQ/ADR/architecture baseline.
+
+Если STEP затрагивает cross-module/service boundary, persistence schema/migration, public API/protocol, security boundary, distributed/async state, extension/plugin contract или critical compatibility, передай canonical PLAN context отдельному read-only `architect` agent/session. Architect не строит implementation plan: он adversarially ищет missing decision, hidden coupling, incompatible boundary и ADR/OQ/prerequisite. Material unresolved issue => `BLOCKED`.
+
+Architecture-sensitive решение нельзя прятать внутрь Implementation plan. Если durable decision ещё не принят, останови PLAN через ADR/OQ/prerequisite вместо того, чтобы выбирать архитектуру по ходу реализации.
+
+## Phase C — semantic plan payload
 
 Не редактируй STEP/frontmatter вручную. Сформируй только semantic JSON:
 
@@ -43,9 +62,18 @@ python3 .harness/tools/semantic-writer.py plan-draft STEP-NNN --payload-file '<l
 
 Writer сам заменяет только `## Implementation plan` / `## Verification`, переводит plan в `draft`, валидирует Verification и возвращает exact context/content fingerprints.
 
-## Phase C — independent planning-review payload
+## Phase D — independent planning-review payload
 
-Передай persisted draft отдельному `reviewer` agent/session, отличному от planner. Reviewer возвращает только:
+Передай persisted draft отдельному `reviewer` agent/session, отличному от planner и от architect, если тот привлекался. Planning reviewer выполняет adversarial pass и обязан проверить:
+
+- покрывает ли plan все material architecture impacts;
+- не скрыто ли новое durable architecture decision без ADR/OQ/prerequisite;
+- учтены ли migration/rollback/failure/recovery/compatibility paths, когда они применимы;
+- не появляется ли hidden ownership conflict или новая cross-STEP dependency;
+- действительно ли Verification доказывает Acceptance;
+- не основан ли план на недоказанном предположении о соседней подсистеме.
+
+Reviewer возвращает только:
 
 ```json
 {"verdict":"pass|blocked","findings":[],"rationale":"..."}
