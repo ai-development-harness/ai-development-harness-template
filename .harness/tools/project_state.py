@@ -653,6 +653,8 @@ def build_project_state(root: Path) -> dict[str, Any]:
         else "ok"
     )
 
+    coverage = build_coverage(root)
+
     return {
         "schemaVersion": 1,
         "status": "PASS",
@@ -675,6 +677,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
             "missingReferences": missing_count,
             "invalidReviews": invalid_review_count,
             "relationshipCoveragePercent": relationship_coverage,
+            "traceabilityCoverage": coverage["metrics"],
         },
         "graph": {
             "rootNodeId": "PROJECT",
@@ -684,6 +687,12 @@ def build_project_state(root: Path) -> dict[str, Any]:
         "insights": {
             "blockers": blocked,
             "uncoveredRequirements": uncovered_requirements,
+            "traceabilityCoverage": {
+                "requirements": coverage["requirements"],
+                "orphanSteps": coverage["orphanSteps"],
+                "invalidReferences": coverage["invalidReferences"],
+                "blockingOpenQuestions": coverage["blockingOpenQuestions"],
+            },
             "isolatedArtifacts": isolated,
             "dependency": {
                 "longestChain": dependency["longestChain"],
