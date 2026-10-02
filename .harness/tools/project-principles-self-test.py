@@ -1,68 +1,94 @@
 #!/usr/bin/env python3
-"""Regressions for Project Principles contract."""
+"""Positive/negative regressions for Project Principles."""
 from __future__ import annotations
 from pathlib import Path
 import tempfile
-from document_contract import stable_hash
 from principles import active_blocking_principles, validate_principles
 
 MANIFEST="""sources:
+  requirements: docs/requirements
+  adrDirectory: docs/adr
   principles: docs/principles
 """
-
-def write(root: Path, name: str, body: str) -> None:
-    path=root/"docs"/"principles"/name
-    path.parent.mkdir(parents=True,exist_ok=True)
-    path.write_text(body,encoding="utf-8")
-
-def principle(prn: str, *, status: str="active", severity: str="blocking", superseded_by: str="null") -> str:
+def w(root:Path,p:str,s:str)->None:
+    x=root/p; x.parent.mkdir(parents=True,exist_ok=True); x.write_text(s,encoding="utf-8")
+def req()->str:
+    return """---
+schema: 1
+id: REQ-001
+priority: high
+source: brief
+steps: []
+adrs: []
+---
+# REQ-001 — R
+## Requirement
+Behavior.
+## Rationale
+Reason.
+## Acceptance
+- Observable.
+"""
+def adr()->str:
+    return """---
+schema: 1
+id: ADR-001
+status: accepted
+date: 2026-01-01
+deciders: []
+supersedes: []
+superseded_by: []
+requirements: []
+steps: []
+---
+# ADR-001 — A
+## Context
+C.
+## Problem
+P.
+## Decision
+D.
+## Alternatives considered
+A.
+## Consequences
+C.
+## Security implications
+None.
+## Data / migration implications
+None.
+## Compatibility / operational implications
+None.
+"""
+def prn(pid:str,status="active",severity="blocking",superseded_by="null",requirements="[]",adrs="[]")->str:
     return f"""---
 schema: 1
-id: {prn}
+id: {pid}
 status: {status}
 severity: {severity}
 scope: project
 superseded_by: {superseded_by}
-requirements: []
-adrs: []
+requirements: {requirements}
+adrs: {adrs}
 ---
-
-# {prn} — Test principle
-
+# {pid} — Compatibility
 ## Rule
-
 Public contract changes preserve backward compatibility.
-
 ## Rationale
-
 Future steps must not silently break consumers.
-
 ## Applies to
-
 Project-wide public contracts.
-
 ## Exceptions / approved deviation
-
 Only explicit reviewed deviation.
 """
-
-def main() -> int:
+def main()->int:
     with tempfile.TemporaryDirectory() as tmp:
-        root=Path(tmp)
-        (root/".harness").mkdir()
-        (root/".harness"/"manifest.yaml").write_text(MANIFEST,encoding="utf-8")
-        write(root,"PRN-001-compat.md",principle("PRN-001"))
-        assert validate_principles(root)==[]
-        first=stable_hash(active_blocking_principles(root))
-        write(root,"PRN-001-compat.md",principle("PRN-001").replace("backward compatibility","one-release backward compatibility"))
-        second=stable_hash(active_blocking_principles(root))
-        assert first != second
-        write(root,"PRN-002-advisory.md",principle("PRN-002",severity="advisory"))
-        assert "PRN-002" not in active_blocking_principles(root)
-        write(root,"PRN-003-old.md",principle("PRN-003",status="superseded",superseded_by="PRN-999"))
-        assert any("superseding principle does not exist" in e for e in validate_principles(root))
-    print("project-principles self-test: PASS")
-    return 0
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+        root=Path(tmp); w(root,".harness/manifest.yaml",MANIFEST); w(root,"docs/requirements/REQ-001-r.md",req()); w(root,"docs/adr/ADR-001-a.md",adr())
+        w(root,"docs/principles/PRN-001-compat.md",prn("PRN-001",requirements="[REQ-001]",adrs="[ADR-001]"))
+        assert validate_principles(root)==[] and "PRN-001" in active_blocking_principles(root)
+        w(root,"docs/principles/PRN-002-advisory.md",prn("PRN-002",severity="advisory")); assert "PRN-002" not in active_blocking_principles(root)
+        w(root,"docs/principles/PRN-003-bad-ref.md",prn("PRN-003",requirements="[REQ-999]")); assert any("unknown requirements reference REQ-999" in e for e in validate_principles(root)); (root/"docs/principles/PRN-003-bad-ref.md").unlink()
+        w(root,"docs/principles/PRN-004-old.md",prn("PRN-004",status="superseded",superseded_by="PRN-999")); assert any("superseding principle does not exist" in e for e in validate_principles(root)); (root/"docs/principles/PRN-004-old.md").unlink()
+        w(root,"docs/principles/PRN-005-self.md",prn("PRN-005",status="superseded",superseded_by="PRN-005")); assert any("principle cannot supersede itself" in e for e in validate_principles(root)); (root/"docs/principles/PRN-005-self.md").unlink()
+        w(root,"docs/principles/PRN-001-duplicate.md",prn("PRN-001")); assert any("duplicate canonical id PRN-001" in e for e in validate_principles(root))
+    print("project-principles contract self-test: PASS"); return 0
+if __name__=="__main__": raise SystemExit(main())

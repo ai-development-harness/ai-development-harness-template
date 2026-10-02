@@ -365,9 +365,7 @@ def validate_configured_artifacts(root: Path) -> list[str]:
         (update_report_directory(root) / "README.md", "Harness update report README"),
     ]
     if get(load_manifest(root), "sources.principles") is not None:
-        checks.append(
-            (principles_directory(root) / "TEMPLATE.md", "Project Principle template")
-        )
+        checks.append((principles_directory(root) / "TEMPLATE.md", "Project Principle template"))
     for path, label in checks:
         if not path.is_file():
             errors.append(f"configured artifact missing ({label}): {path.relative_to(root)}")
