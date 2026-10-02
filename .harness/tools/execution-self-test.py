@@ -60,6 +60,8 @@ sources:
   architecture: docs/architecture.md
   openQuestions: docs/open-questions
   openQuestionsIndex: docs/OPEN_QUESTIONS.md
+  roadmap: planning/PLAN.md
+  status: planning/STATUS.md
 protocol:
   taskDirectory: planning/tasks
   reviewDirectory: planning/reviews
