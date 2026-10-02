@@ -492,10 +492,9 @@ def template_targets(root: Path) -> dict[Path, str]:
         "docs/architecture.md#relevant-section",
         f"{architecture_ref}#relevant-section",
     )
-    return {
+    targets = {
         task_directory(root) / "TEMPLATE.md": step_template,
         requirements_directory(root) / "TEMPLATE.md": REQ_TEMPLATE,
-        principles_directory(root) / "TEMPLATE.md": PRINCIPLE_TEMPLATE,
         adr_directory(root) / "TEMPLATE.md": ADR_TEMPLATE,
         open_questions_directory(root) / "TEMPLATE.md": OQ_TEMPLATE,
         review_directory(root) / "TEMPLATE.md": REVIEW_TEMPLATE,
@@ -505,6 +504,9 @@ def template_targets(root: Path) -> dict[Path, str]:
         release_directory(root) / "TEMPLATE.md": RELEASE_TEMPLATE,
         skill_search_directory(root) / "TEMPLATE.md": SKILL_SEARCH_TEMPLATE,
     }
+    if get(load_manifest(root), "sources.principles") is not None:
+        targets[principles_directory(root) / "TEMPLATE.md"] = PRINCIPLE_TEMPLATE
+    return targets
 
 
 def refresh_project_templates(root: Path) -> list[str]:
