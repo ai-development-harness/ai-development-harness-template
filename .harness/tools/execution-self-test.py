@@ -825,7 +825,8 @@ def main() -> int:
             completion_result="PASS",
         )
         recovered_completion = resolve_root(root, run_root)
-        assert step_completion_proof(root, "STEP-001")["complete"] is True
+        recovered_proof = step_completion_proof(root, "STEP-001")
+        assert recovered_proof["complete"] is True, recovered_proof
         assert_resolved(
             recovered_completion,
             "RESUME",
