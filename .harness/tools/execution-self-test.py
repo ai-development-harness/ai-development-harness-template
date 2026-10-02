@@ -226,7 +226,7 @@ PASS.
 """
 
 
-def review_report(root: Path, verdict: str, name: str) -> str:
+def review_report(root: Path, verdict: str, name: str, completion_result: str | None = None) -> str:
     revision = repository_revision(root)
     match = re.fullmatch(r"REVIEW-(\d{8}T\d{6}Z)\.md", name)
     if match is None:
@@ -256,6 +256,45 @@ def review_report(root: Path, verdict: str, name: str) -> str:
 """
     else:
         findings = "No material findings.\n"
+    completion_frontmatter = ""
+    completion_section = ""
+    if completion_result is not None:
+        completion_frontmatter = (
+            "completion_contract: 1\n"
+            f"completion_result: {completion_result.lower()}\n"
+        )
+        status = (
+            "PASS" if completion_result == "PASS"
+            else "INCOMPLETE" if completion_result == "FAIL"
+            else "BLOCKED"
+        )
+        route = (
+            "FIX" if completion_result == "FAIL"
+            else "BLOCKED" if completion_result == "BLOCKED"
+            else None
+        )
+        findings = [] if route is None else [{
+            "id": "COMP-001",
+            "kind": "missing_acceptance_coverage" if route == "FIX" else "contract_gap",
+            "criterion": "recovery deterministic." if route == "FIX" else None,
+            "route": route,
+            "message": "Synthetic durable completion result.",
+        }]
+        completion_section = (
+            "\n## Completion convergence\n\n```json\n"
+            + json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "status": status,
+                    "completionResult": completion_result,
+                    "findings": findings,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n```\n"
+        )
+
     rel = f"planning/reviews/STEP-001/{name}"
     write(
         root / rel,
@@ -266,7 +305,7 @@ step_id: STEP-001
 verdict: {verdict.lower()}
 reviewer_role: reviewer
 created_at: {created_at}
-reviewed_revision:
+{completion_frontmatter}reviewed_revision:
   git_head: {revision["git_head"] or "null"}
   worktree_hash: {revision["worktree_hash"] or "null"}
 specialized_reviews:
@@ -297,7 +336,7 @@ Self-test verification.
 ## Verdict rationale
 
 {verdict}.
-""",
+{completion_section}""",
     )
     return rel
 
@@ -713,7 +752,7 @@ def main() -> int:
         complete_command(root, run_root, "STEP IMPLEMENT STEP-001", "SUCCESS")
         run_review = begin_command(root, run_root, "STEP REVIEW STEP-001")
         assert run_review["implementationBaseline"] == run_baseline, run_review
-        review_report(root, "FAIL", "REVIEW-20260921T010000Z.md")
+        review_report(root, "PASS", "REVIEW-20260921T010000Z.md", completion_result="FAIL")
         invalid_role = root / "planning/reviews/STEP-001/REVIEW-20260921T005000Z.md"
         valid_text = (root / "planning/reviews/STEP-001/REVIEW-20260921T010000Z.md").read_text(encoding="utf-8")
         write(invalid_role, valid_text.replace("reviewer_role: reviewer", "reviewer_role: implementer"))
@@ -774,9 +813,21 @@ def main() -> int:
         assert (
             run_review_after_fix["implementationBaseline"] == run_baseline
         ), run_review_after_fix
-        review_report(root, "PASS", "REVIEW-20260921T020000Z.md")
+        step_text = (root / "planning/tasks/STEP-001.md").read_text(encoding="utf-8")
+        write(
+            root / "planning/tasks/STEP-001.md",
+            step_text.replace("## Evidence\n\n—", "## Evidence\n\nRecovery completion evidence."),
+        )
+        review_report(
+            root,
+            "PASS",
+            "REVIEW-20260921T020000Z.md",
+            completion_result="PASS",
+        )
+        recovered_completion = resolve_root(root, run_root)
+        assert step_completion_proof(root, "STEP-001")["complete"] is True
         assert_resolved(
-            resolve_root(root, run_root),
+            recovered_completion,
             "RESUME",
             "STEP RUN STEP-001",
             "ORCHESTRATION_CONTINUE",

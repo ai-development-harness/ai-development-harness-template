@@ -22,6 +22,7 @@ from execution_status import (
 from planning_contract import read_task, validate_planning_review_report
 from review_contract import repository_revision, validate_review_report
 from review_gates import required_reviewers
+from verification import run_step_verification
 from semantic_artifacts import (
     SemanticArtifactError,
     write_plan_draft,
@@ -439,8 +440,8 @@ def main() -> int:
         )
         incomplete_review = write_step_review(root, "STEP-001", incomplete_payload)
         assert incomplete_review["status"] == "PASS", incomplete_review
-        assert incomplete_review["completionResult"] == "FAIL", incomplete_review
-        assert incomplete_review["reasonCode"] == "COMPLETION_COVERAGE_MISSING"
+        assert incomplete_review["completionResult"] == "BLOCKED", incomplete_review
+        assert incomplete_review["reasonCode"] == "COMPLETION_PRECHECK_BLOCKED"
         assert read_task(root, "STEP-001")["frontmatter"]["status"] == "planned"
         block_execution(root, "STEP REVIEW STEP-001")
 
@@ -496,6 +497,19 @@ def main() -> int:
             "SUCCESS",
         )
 
+        verification = run_step_verification(
+            root,
+            "STEP-001",
+            manual_results=[
+                {
+                    "check": "Проверить semantic outcome",
+                    "status": "PASS",
+                    "observed": "Semantic outcome confirmed.",
+                }
+            ],
+        )
+        assert verification["status"] == "PASS", verification
+
         # Отдельная REVIEW invocation после restart/session boundary наследует
         # durable baseline завершённого IMPLEMENT. Используем canonical dispatcher,
         # чтобы regression #83 проверял реальный stamp expectation до handoff.
@@ -544,11 +558,25 @@ def main() -> int:
                     {
                         "criterion": "Artifacts validate.",
                         "status": "covered",
-                        "evidence": ["Generated Verification и immutable PASS review."],
+                        "evidence": ["Generated Verification PASS + exact REVIEW revision."],
                     }
                 ],
+                "assertions": {
+                    "requirementObligations": {
+                        "status": "not_applicable",
+                        "evidence": ["STEP fixture has no linked REQ obligations."],
+                    },
+                    "plannedScope": {
+                        "status": "covered",
+                        "evidence": ["Ready Implementation plan inspected."],
+                    },
+                    "specializedObligations": {
+                        "status": "covered",
+                        "evidence": ["Required security/tests reviewers passed."],
+                    },
+                },
                 "findings": [],
-                "rationale": "Все in-scope Acceptance criteria покрыты свежим evidence.",
+                "rationale": "All in-scope obligations are covered.",
             },
         }
 

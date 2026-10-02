@@ -24,6 +24,7 @@ from harness_config import (
 )
 from planning_contract import step_completion_proof
 from review_contract import review_reports, validate_review_report
+from traceability_coverage import build_coverage
 
 
 CORE_TYPES = {"REQ", "ADR", "STEP", "OQ"}
@@ -362,8 +363,15 @@ def build_project_state(root: Path) -> dict[str, Any]:
         plan = meta.get("plan") if isinstance(meta.get("plan"), dict) else {}
         step_reviews = review_reports(root, artifact_id)
         latest_review_verdict = step_reviews[-1]["verdict"] if step_reviews else None
+        latest_completion_result = (
+            step_reviews[-1].get("completionResult") if step_reviews else None
+        )
         if meta.get("status") == "completed":
             completion_state = "completed"
+        elif latest_review_verdict == "PASS" and latest_completion_result == "FAIL":
+            completion_state = "review_pass_completion_fix_required"
+        elif latest_review_verdict == "PASS" and latest_completion_result == "BLOCKED":
+            completion_state = "review_pass_completion_blocked"
         elif latest_review_verdict == "PASS":
             completion_state = "review_pass_completion_pending"
         else:
@@ -378,6 +386,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
             "metadata": {
                 "completionState": completion_state,
                 "latestReviewVerdict": latest_review_verdict,
+                "latestCompletionResult": latest_completion_result,
                 "stepType": meta.get("type"),
                 "priority": meta.get("priority"),
                 "phase": meta.get("phase"),
@@ -662,6 +671,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
         if diagnostics or dependency["cycles"]
         else "ok"
     )
+    coverage = build_coverage(root)
 
     return {
         "schemaVersion": 1,
@@ -685,6 +695,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
             "missingReferences": missing_count,
             "invalidReviews": invalid_review_count,
             "relationshipCoveragePercent": relationship_coverage,
+            "traceabilityCoverage": coverage["metrics"],
         },
         "graph": {
             "rootNodeId": "PROJECT",
@@ -694,6 +705,12 @@ def build_project_state(root: Path) -> dict[str, Any]:
         "insights": {
             "blockers": blocked,
             "uncoveredRequirements": uncovered_requirements,
+            "traceabilityCoverage": {
+                "requirements": coverage["requirements"],
+                "orphanSteps": coverage["orphanSteps"],
+                "invalidReferences": coverage["invalidReferences"],
+                "blockingOpenQuestions": coverage["blockingOpenQuestions"],
+            },
             "isolatedArtifacts": isolated,
             "dependency": {
                 "longestChain": dependency["longestChain"],

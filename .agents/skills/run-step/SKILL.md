@@ -35,7 +35,7 @@ rootCommand = STEP RUN STEP-NNN
 9. Для PLAN → IMPLEMENT → REVIEW → FIX переходы определяет CTS; cycle budget enforce-ится Execution Resolver, а не памятью reasoning-модели.
 10. Contract-level blocker из PLAN/REVIEW/FIX терминален для текущего RUN. Создание corrective STEP/ADR/RESEARCH не является скрытым продолжением текущего root execution.
 11. Если Type выполняется внутри RUN без отдельной canonical child command, current остаётся `STEP RUN STEP-NNN`; после interruption resume-ится сам RUN.
-12. После REVIEW PASS completion/convergence выполняется внутри существующей review completion boundary: `PASS` закрывает STEP, `FAIL` использует существующий FIX loop, `BLOCKED` останавливает RUN. Отдельного lifecycle state не создавай. После успешного close без следующего CTS edge resolver возвращает root RUN для sync/finalization.
+12. REVIEW code verdict и completion result разделены внутри одного durable review artifact: completion `PASS` закрывает STEP, `FAIL` использует существующий FIX edge, `BLOCKED` останавливает RUN. Отдельного lifecycle state/CTS command нет. Crash recovery читает durable completion result и при `PASS` идемпотентно доводит canonical close/projections до конца; только после этого resolver возвращает root RUN для remaining finalization.
 13. Не запускай параллельные write-agents над одним scope.
 
 Повторный явный `STEP RUN STEP-NNN` при уже running root resume-ит существующий execution, а не создаёт второй.
