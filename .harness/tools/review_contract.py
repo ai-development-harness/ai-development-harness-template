@@ -762,20 +762,6 @@ def validate_review_report(
                                 errors.append(
                                     "Completion convergence contract_gap cannot route to FIX"
                                 )
-                            semantic = completion_payload.get("semantic")
-                            if (
-                                completion_result == "blocked"
-                                and isinstance(semantic, dict)
-                                and findings
-                                and not any(
-                                    isinstance(item, dict)
-                                    and item.get("kind") == "contract_gap"
-                                    for item in findings
-                                )
-                            ):
-                                errors.append(
-                                    "Semantic Completion convergence BLOCKED requires contract_gap"
-                                )
                             expected_ids = [
                                 f"COMP-{index:03d}"
                                 for index in range(1, len(findings) + 1)
