@@ -1594,3 +1594,43 @@ Deterministic gate не решает, действительно ли implementa
 семантически покрывают criterion. Это делает reviewer один раз. Writer затем
 нормализует completion findings, сохраняет их в immutable REVIEW report и
 использует существующий FIX/BLOCKED routing без второго lifecycle.
+
+
+---
+
+# STEP Execution Groups
+
+## Файл / Файлы
+
+- engine: `.harness/tools/execution_groups.py`;
+- CLI: `.harness/tools/execution-groups.py`;
+- regression: `.harness/tools/execution-groups-self-test.py`.
+
+## Роль
+
+Валидирует optional machine-readable DAG внутри STEP Implementation plan и строит deterministic sequential scheduling projection.
+
+## Что проверяет
+
+- stable group IDs и exact schema;
+- покрытие каждого numbered Implementation plan step ровно одной group;
+- unknown/self dependencies и cycles;
+- repository-relative explicit mutation prefixes;
+- обязательные group verification responsibilities;
+- overlap mutation surface у независимых `parallel=true` groups.
+
+`parallel=true` не запускает concurrent agents. В v1 это capability metadata; implementer следует `topologicalOrder` последовательно.
+
+## CLI
+
+```bash
+python3 .harness/tools/execution-groups.py STEP-024 --json
+```
+
+## Exit codes
+
+- `0` — graph отсутствует либо валиден, projection построена;
+- `1` — malformed/unsafe graph или STEP нельзя прочитать;
+- `2` — argparse error.
+
+Подробная schema и conflict semantics: [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md).

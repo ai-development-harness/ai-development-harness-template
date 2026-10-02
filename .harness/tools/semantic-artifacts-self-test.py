@@ -19,9 +19,10 @@ from execution_status import (
     stamp_review_expectation,
     start_execution,
 )
-from planning_contract import read_task, validate_planning_review_report
+from planning_contract import read_task, validate_planning_contracts, validate_planning_review_report
 from review_contract import repository_revision, validate_review_report
 from review_gates import required_reviewers
+from step_context import build_step_context
 from verification import run_step_verification
 from semantic_artifacts import (
     SemanticArtifactError,
@@ -190,6 +191,39 @@ def main() -> int:
                         "title": "Добавить тест",
                         "actions": ["Проверить canonical Markdown rendering."],
                     },
+                    {
+                        "title": "Проверить интеграцию",
+                        "actions": ["Проверить совместный результат writer и regression."],
+                    },
+                ],
+                "executionGroups": [
+                    {
+                        "id": "writer",
+                        "title": "Обновить deterministic writer",
+                        "steps": [1],
+                        "dependsOn": [],
+                        "mutationPaths": ["src/group-writer"],
+                        "verificationResponsibilities": ["Проверить writer regression."],
+                        "parallel": True,
+                    },
+                    {
+                        "id": "regression",
+                        "title": "Добавить regression coverage",
+                        "steps": [2],
+                        "dependsOn": [],
+                        "mutationPaths": ["tests/group-regression"],
+                        "verificationResponsibilities": ["Запустить synthetic regression suite."],
+                        "parallel": True,
+                    },
+                    {
+                        "id": "integration",
+                        "title": "Проверить интеграцию",
+                        "steps": [3],
+                        "dependsOn": ["writer", "regression"],
+                        "mutationPaths": ["docs/group-integration"],
+                        "verificationResponsibilities": ["Проверить integrated result."],
+                        "parallel": False,
+                    },
                 ],
                 "verification": [
                     {"kind": "command", "value": 'python3 -c "print(2)"'},
@@ -206,6 +240,12 @@ def main() -> int:
         assert "**Files:**" in planned["sections"]["Implementation plan"]
         assert ".harness/tools/semantic_artifacts.py" in planned["sections"]["Implementation plan"]
         assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
+        assert [item["id"] for item in plan["executionGroups"]] == ["writer", "regression", "integration"]
+        assert list(planned["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
+        implement_context = build_step_context(root, "STEP-001", "implement")
+        assert [item["id"] for item in implement_context["step"]["plan"]["executionGroups"]] == ["writer", "regression", "integration"], implement_context
+        review_context = build_step_context(root, "STEP-001", "review")
+        assert review_context["step"]["plan"]["executionGroups"][2]["dependsOn"] == ["writer", "regression"], review_context
 
         # Regression #85: file payload — одноразовый transport. Нормально
         # завершившийся writer удаляет его, validation/parsing failure оставляет
@@ -389,6 +429,12 @@ def main() -> int:
         ready = read_task(root, "STEP-001")
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
+        assert list(ready["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
+        ready_text = step_path.read_text(encoding="utf-8")
+        step_path.write_text(ready_text.replace("src/group-writer", "src/group-writer-changed"), encoding="utf-8", newline="\n")
+        stale_group_errors = validate_planning_contracts(root)
+        assert any("content_hash is stale" in item for item in stale_group_errors), stale_group_errors
+        step_path.write_text(ready_text, encoding="utf-8", newline="\n")
 
         incomplete_payload = {
             "verdict": "pass",

@@ -12,6 +12,7 @@ Execution Status ведёт global wrapper.
 - До product mutation запусти обычную deterministic validation проекта/Harness согласно workflow; не дублируй prerequisite reasoning.
 - Если execution-status показывает resume этой же команды, сначала изучи существующий diff/Evidence и продолжи недостающее; не переделывай готовое.
 - При первой фактической product mutation canonical `status → in_progress`.
+- Если Ready plan содержит `plan.execution_groups`, прочитай deterministic projection через `python3 .harness/tools/execution-groups.py STEP-NNN --json`. В v1 исполняй groups **последовательно** по `topologicalOrder`; не начинай group до её `dependsOn`. `parallel=true` — только capability/reporting hint для будущего orchestration и не разрешает автоматически запускать несколько write-agents. Соблюдай `mutationPaths` как declared conflict boundary и выполни `verificationResponsibilities` группы, не подменяя ими canonical STEP Verification.
 - Выбирай write-role по характеру работы:
   - `mechanic` — только механическая/локальная трансформация с уже однозначно заданным результатом, без нового behavior/semantic design;
   - `implementer` — изменение behavior, нескольких взаимодействующих компонентов либо работа, где остаются инженерные решения внутри утверждённого STEP contract.

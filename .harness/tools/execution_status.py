@@ -2117,6 +2117,7 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
         "content_hash": content,
         "reviewed_report": report_path,
         "planned_at": utc_now(),
+        "execution_groups": current_plan.get("execution_groups", []),
     }
     updated = render_document(meta, task["body"])
     fd, tmp_name = tempfile.mkstemp(

@@ -77,6 +77,8 @@ python3 .harness/tools/project-state.py --root /path/to/project --json
 
 REQ lifecycle status выводится детерминированно из связанных STEP и completion proof, а не придумывается клиентом.
 
+Для STEP node `metadata.executionGroups` содержит canonical optional execution-group DAG текущего plan: IDs, `steps`, `dependsOn`, declared `mutationPaths`, `verificationResponsibilities` и `parallel`. Клиент не должен восстанавливать group graph из prose Implementation plan.
+
 ### edges
 
 Связи нормализованы независимо от того, с какой стороны artifact их объявил:
