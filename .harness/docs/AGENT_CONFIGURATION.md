@@ -15,18 +15,18 @@ Harness отделяет **роль** от конкретного AI runtime. К
 
 | Роль | Модель | Effort | Когда |
 |---|---|---|---|
-| initializer | GPT-5.6 Sol | max | bootstrap/re-bootstrap и architecture baseline |
-| architect | GPT-5.6 Sol | max | architecture completeness и долговечные решения |
-| planner | GPT-5.6 Sol | max | contract + architecture analysis перед реализацией |
+| initializer | GPT-6.1 Sol | max | bootstrap/re-bootstrap и architecture baseline |
+| architect | GPT-6.1 Sol | max | architecture completeness и долговечные решения |
+| planner | GPT-6.1 Sol | max | contract + architecture analysis перед реализацией |
 | implementer | GPT-5.6 Terra | medium | основной coding volume |
-| reviewer | GPT-5.6 Sol | max | независимый adversarial review |
-| security-reviewer | GPT-5.6 Sol | max | условно, security-sensitive changes |
+| reviewer | GPT-6.1 Sol | max | независимый adversarial review |
+| security-reviewer | GPT-6.1 Sol | max | условно, security-sensitive changes |
 | test-reviewer | GPT-5.6 Terra | low | условно, сложная test surface |
 | docs | GPT-5.6 Terra | low | синхронизация документации |
 | mechanic | GPT-5.6 Terra | low | локальная механическая работа |
-| skill-curator | GPT-5.6 Sol | medium | внешние skills требуют careful inspection/provenance |
+| skill-curator | GPT-6.1 Sol | medium | внешние skills требуют careful inspection/provenance |
 | git-operator | GPT-5.6 Terra | medium | diff classification, commit/branch/PR safety |
-| harness-updater | GPT-5.6 Sol | high | BASE/OURS/THEIRS reconciliation и ownership conflicts |
+| harness-updater | GPT-6.1 Sol | high | BASE/OURS/THEIRS reconciliation и ownership conflicts |
 
 ### Claude Code
 
