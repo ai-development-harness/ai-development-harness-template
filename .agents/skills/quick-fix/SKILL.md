@@ -17,7 +17,7 @@ PROJECT QUICK FIX подходит только для изменения с н�
 - не нуждается в traceability через REQ/STEP/ADR;
 - можно проверить пропорциональными локальными gates.
 
-Критерий — **смысл и риск, а не число строк/файлов**. Механическая generated/formatting правка может затронуть много файлов и оставаться QUICK FIX, а однострочное изменение authorization/API behavior QUICK FIX уже не является.
+Критерий — **смысл и риск, а не число строк/файлов**. Любая правка, меняющая REQ behavior intent, ADR decision/rationale, STEP Scope/Acceptance, OQ resolution или Project Principle, **не является QUICK FIX**, даже если это одна строка. Механическая generated/formatting правка может затронуть много файлов и оставаться QUICK FIX, а однострочное изменение authorization/API behavior QUICK FIX уже не является.
 
 Примеры: typo, пунктуация, безопасная правка комментария/документа, локальное formatting, механическое изменение без semantic effect, очевидная корректировка текста без изменения смысла.
 

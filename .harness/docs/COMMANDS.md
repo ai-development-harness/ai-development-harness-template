@@ -192,7 +192,7 @@ PLAN (если актуального плана нет)
 <a id="command-project-status"></a>
 ## `PROJECT STATUS`
 
-Deterministic команда без model call. Пересобирает tracked projections из canonical state, запускает manual Harness integrity и возвращает structured snapshot: summary по lifecycle, in-progress, blocked, completed и deterministic `STEP NEXT`. Не пишет product code и не интерпретирует project intent.
+Deterministic команда без model call. Пересобирает tracked projections из canonical state, запускает manual Harness integrity и возвращает structured snapshot: summary по lifecycle, in-progress, blocked, completed, `stalePlans` и deterministic `STEP NEXT`. Для stale Ready plan result содержит `planStaleCauses` и exact `planRemediation: STEP PLAN STEP-NNN`. Не пишет product code и не интерпретирует project intent.
 
 <a id="command-step-next"></a>
 ## `STEP NEXT`

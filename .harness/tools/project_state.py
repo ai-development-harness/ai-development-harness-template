@@ -15,6 +15,7 @@ from typing import Any
 
 from document_contract import DocumentError, parse_document
 from execution_groups import implementation_plan_step_count, normalize_execution_groups
+from impact_analysis import plan_staleness
 from harness_config import (
     adr_directory,
     load_manifest,
@@ -366,6 +367,19 @@ def build_project_state(root: Path) -> dict[str, Any]:
             plan.get("execution_groups"),
             implementation_plan_step_count(doc["sections"].get("Implementation plan", "")),
         )
+        try:
+            plan_impact = plan_staleness(root, artifact_id)
+        except (OSError, UnicodeError, ValueError) as exc:
+            plan_impact = {
+                "status": "blocked",
+                "causes": [
+                    {
+                        "component": "PLANNING_CONTEXT",
+                        "change": str(exc),
+                    }
+                ],
+                "action": f"STEP PLAN {artifact_id}",
+            }
         step_reviews = review_reports(root, artifact_id)
         latest_review_verdict = step_reviews[-1]["verdict"] if step_reviews else None
         latest_completion_result = (
@@ -399,6 +413,9 @@ def build_project_state(root: Path) -> dict[str, Any]:
                 "planStatus": plan.get("status"),
                 "planRevision": plan.get("revision"),
                 "executionGroups": execution_groups,
+                "planFreshness": plan_impact.get("status"),
+                "planStaleCauses": plan_impact.get("causes", []),
+                "planRemediation": plan_impact.get("action"),
             },
         }
 

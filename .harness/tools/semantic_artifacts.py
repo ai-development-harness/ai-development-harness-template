@@ -223,6 +223,7 @@ def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "reviewed_report": None,
         "planned_at": None,
         "execution_groups": execution_groups_to_storage(execution_groups),
+        "context_components": [],
     }
     atomic_write_text(task["path"], render_document(meta, body))
 

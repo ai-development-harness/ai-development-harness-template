@@ -56,6 +56,7 @@ from planning_contract import (
     max_fix_review_cycles,
     plan_content_hash,
     planning_context_basis,
+    planning_context_components,
     read_task as read_planning_task,
     step_completion_proof,
     task_contract_snapshot,
@@ -2117,7 +2118,8 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
         "content_hash": content,
         "reviewed_report": report_path,
         "planned_at": utc_now(),
-        "execution_groups": current_plan.get("execution_groups", []),
+        "execution_groups": current_plan.get("execution_groups", {}),
+        "context_components": planning_context_components(root, step_id),
     }
     updated = render_document(meta, task["body"])
     fd, tmp_name = tempfile.mkstemp(
@@ -2141,6 +2143,7 @@ def stamp_plan(root: Path, step_id: str) -> dict[str, Any]:
         "planRevision": revision + 1,
         "planBasis": basis,
         "planContentHash": content,
+        "planContextComponents": meta["plan"]["context_components"],
         "planningReview": report_path,
     }
 

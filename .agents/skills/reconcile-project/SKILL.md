@@ -36,27 +36,28 @@ Migration:
 ## Reconcile
 
 1. Сравни code/config/migrations/tests с canonical REQ, Accepted ADR, active Project Principles, architecture refs, STEP, evidence и schema-valid review reports. Цель — найти **repository-wide cross-artifact drift**, а не сравнивать разные repositories.
-2. Классифицируй найденное:
+2. Для stale/changed contracts используй `python3 .harness/tools/impact-analysis.py --step STEP-NNN --json` или `--changed ARTIFACT-ID --json`; не пересчитывай staleness reasoning-ом.
+3. Классифицируй найденное по canonical owner:
    - deterministic projection/command-syntax drift, который можно безопасно пересобрать;
    - substantive product/contract drift, требующий corrective STEP;
    - missing/obsolete architecture decision, требующий ADR/RESEARCH;
    - active blocking principle violation, malformed principle semantics или active reference на superseded/deprecated PRN;
    - evidence gap, который нельзя объявлять исправленным без соответствующей проверки.
-3. Запусти deterministic coverage и включи findings в reconcile classification:
+4. Запусти deterministic coverage и включи findings в reconcile classification:
    ```bash
    python3 .harness/tools/traceability-coverage.py --json
    python3 .harness/tools/check-command-references.py --json
    ```
    Uncovered REQ, stale evidence, invalid refs и non-exempt orphan STEP нельзя скрывать за semantic summary. Paths берутся из manifest через общий config layer.
-4. Production code не исправляй. Не переписывай REQ/ADR под фактический код только ради устранения расхождения: accepted product/architecture contract остаётся authority, пока отдельное решение явно его не меняет.
-5. Однозначный projection/command-syntax drift можно синхронизировать. Пересобери projections:
+5. Production code не исправляй. Не переписывай REQ/ADR под фактический код только ради устранения расхождения: accepted product/architecture contract остаётся authority, пока отдельное решение явно его не меняет.
+6. Однозначный projection/command-syntax drift можно синхронизировать. Пересобери projections:
    ```bash
    python3 .harness/tools/sync-projections.py
    ```
-6. Выполни полный deterministic gate:
+7. Выполни полный deterministic gate:
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-7. Substantive gaps превращай в corrective STEP. Итоговый reconcile/audit report сохраняй в configured `protocol.auditDirectory` с YAML frontmatter `schema: 1`.
+8. Substantive gaps превращай в corrective STEP. Итоговый reconcile/audit report сохраняй в configured `protocol.auditDirectory` с YAML frontmatter `schema: 1`.
 
 Нельзя заявлять «drift отсутствует», пока migration/check-command-references/validator не выполнены либо их BLOCKED состояние не раскрыто в Evidence.
