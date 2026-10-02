@@ -47,6 +47,7 @@ from command_transitions import (
     parse_canonical_command,
     validate_command_text,
 )
+from completion_gate import finalize_step_completion
 from document_contract import render_document
 from harness_config import ConfigError, get, load_git_policy, update_lock_path
 from planning_contract import (
@@ -2168,6 +2169,7 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
     return {
         "path": _repo_relative(root, item["path"]),
         "verdict": item["verdict"],
+        "completionResult": item.get("completionResult"),
     }
 
 
@@ -2192,12 +2194,10 @@ def _durable_recovery_result(
             except (OSError, ValueError, FileNotFoundError):
                 return None
 
-    # REVIEW можно восстановить по новому immutable report, появившемуся после
-    # reviewReportBefore. FAIL/BLOCKED не меняют STEP lifecycle и потому требуют
-    # exact current revision. PASS writer после валидного report может выполнить
-    # единственную post-review mutation status->completed; тогда exact revision
-    # закономерно меняется, а recovery использует более сильный combined proof:
-    # новый PASS report + completed STEP + type-specific completion proof.
+    # REVIEW recovery использует durable code verdict + Completion Contract.
+    # PASS report сам по себе больше не означает completion PASS: immutable report
+    # хранит completion_result=pass|fail|blocked. Это закрывает crash-window между
+    # созданием report, lifecycle close и local execution checkpoint.
     if parsed.get("domain") == "STEP" and parsed.get("operation") == "REVIEW":
         target = parsed.get("target")
         baseline = current.get("context", {}).get("reviewReportBefore")
@@ -2205,14 +2205,24 @@ def _durable_recovery_result(
             review = latest_review(root, target, require_current_revision=True)
             if review is not None and review.get("path") != baseline:
                 verdict = review.get("verdict")
-                if verdict in {"PASS", "FAIL", "BLOCKED"}:
+                if verdict in {"FAIL", "BLOCKED"}:
                     return verdict
+                if verdict == "PASS":
+                    completion_result = review.get("completionResult")
+                    if completion_result in {"FAIL", "BLOCKED"}:
+                        return completion_result
+                    if completion_result == "PASS":
+                        finalized = finalize_step_completion(root, target)
+                        return "PASS" if finalized.get("completed") else "BLOCKED"
+                    # Historical PASS без Completion Contract автоматически
+                    # завершается только если lifecycle уже доказан ниже.
 
             latest = latest_review(root, target, require_current_revision=False)
             if (
                 latest is not None
                 and latest.get("path") != baseline
                 and latest.get("verdict") == "PASS"
+                and latest.get("completionResult") in {None, "PASS"}
             ):
                 try:
                     task = read_planning_task(root, target)
@@ -2223,7 +2233,8 @@ def _durable_recovery_result(
                     task["frontmatter"].get("status") == "completed"
                     and proof.get("complete") is True
                 ):
-                    return "PASS"
+                    finalized = finalize_step_completion(root, target)
+                    return "PASS" if finalized.get("completed") else "BLOCKED"
 
     if (
         parsed.get("domain") == "GIT"

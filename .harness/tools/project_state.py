@@ -361,6 +361,21 @@ def build_project_state(root: Path) -> dict[str, Any]:
         meta = doc["frontmatter"]
         artifact_id = meta["id"]
         plan = meta.get("plan") if isinstance(meta.get("plan"), dict) else {}
+        step_reviews = review_reports(root, artifact_id)
+        latest_review_verdict = step_reviews[-1]["verdict"] if step_reviews else None
+        latest_completion_result = (
+            step_reviews[-1].get("completionResult") if step_reviews else None
+        )
+        if meta.get("status") == "completed":
+            completion_state = "completed"
+        elif latest_review_verdict == "PASS" and latest_completion_result == "FAIL":
+            completion_state = "review_pass_completion_fix_required"
+        elif latest_review_verdict == "PASS" and latest_completion_result == "BLOCKED":
+            completion_state = "review_pass_completion_blocked"
+        elif latest_review_verdict == "PASS":
+            completion_state = "review_pass_completion_pending"
+        else:
+            completion_state = "not_ready_for_completion"
         nodes[artifact_id] = {
             "id": artifact_id,
             "artifactId": artifact_id,
@@ -369,6 +384,9 @@ def build_project_state(root: Path) -> dict[str, Any]:
             "status": meta.get("status"),
             "path": _rel(root, item["path"]),
             "metadata": {
+                "completionState": completion_state,
+                "latestReviewVerdict": latest_review_verdict,
+                "latestCompletionResult": latest_completion_result,
                 "stepType": meta.get("type"),
                 "priority": meta.get("priority"),
                 "phase": meta.get("phase"),

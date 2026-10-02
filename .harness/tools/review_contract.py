@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+import json
 import hashlib
 from pathlib import Path
 import re
@@ -261,7 +262,19 @@ def trusted_review_reports(
     транзакции: projections могут вычислить final state до публикации migration
     report, который затем делает те же pins durable.
     """
-    result = review_reports(root, step_id)
+    result = []
+    for item in review_reports(root, step_id):
+        document = item.get("document")
+        meta = document.get("frontmatter", {}) if isinstance(document, dict) else {}
+        # Новый Completion Contract не позволяет REVIEW PASS с completion FAIL/BLOCKED
+        # становиться type-specific completion proof. Historical reports без поля
+        # сохраняют прежнюю migration-compatible semantics.
+        if (
+            meta.get("completion_contract") == 1
+            and str(meta.get("completion_result") or "").lower() != "pass"
+        ):
+            continue
+        result.append(item)
     try:
         pins = legacy_review_pins(root)
     except ValueError:
@@ -434,7 +447,11 @@ def _submodule_head(path: Path) -> str | None:
     value = proc.stdout.strip()
     return value or None
 
-def repository_revision(root: Path) -> dict[str, str | None]:
+def repository_revision(
+    root: Path,
+    *,
+    ignored_paths: set[str] | frozenset[str] | None = None,
+) -> dict[str, str | None]:
     """Fingerprint exact review target, excluding report/state written by review itself.
 
     STEP REVIEW сначала фиксирует product/config worktree, затем создаёт immutable
@@ -446,6 +463,13 @@ def repository_revision(root: Path) -> dict[str, str | None]:
     code, status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
     if code != 0:
         raise ValueError("cannot read git worktree state")
+
+    ignored: set[str] = set()
+    for value in ignored_paths or set():
+        normalized = _normalize_git_rel(value)
+        if normalized is None:
+            raise ValueError(f"invalid ignored repository path: {value}")
+        ignored.add(normalized)
 
     def local_operational(rel: str) -> bool:
         normalized = _normalize_git_rel(rel)
@@ -478,6 +502,16 @@ def repository_revision(root: Path) -> dict[str, str | None]:
                 raise ValueError("malformed git status rename/copy entry")
             source_rel = entries[index].decode("utf-8", errors="surrogateescape")
             index += 1
+
+        normalized_rel = _normalize_git_rel(rel)
+        normalized_source = (
+            _normalize_git_rel(source_rel) if source_rel is not None else None
+        )
+        if (
+            normalized_rel in ignored
+            and (source_rel is None or normalized_source in ignored)
+        ):
+            continue
 
         path = root / rel
 
@@ -660,6 +694,99 @@ def validate_review_report(
         errors.append(
             "verification_status must be PASS|FAIL|MANUAL_REQUIRED|BLOCKED|UNKNOWN when present"
         )
+
+    completion_contract = meta.get("completion_contract")
+    if completion_contract is not None:
+        if verdict != "pass":
+            errors.append("completion_contract is allowed only for PASS review")
+        if completion_contract != 1:
+            errors.append("completion_contract must be 1 when present")
+        completion_result = meta.get("completion_result")
+        if completion_result not in {"pass", "fail", "blocked"}:
+            errors.append("completion_result must be pass|fail|blocked")
+        section = document["sections"].get("Completion convergence")
+        if not isinstance(section, str) or not section.strip():
+            errors.append("completion_contract requires '## Completion convergence'")
+        else:
+            match = re.fullmatch(r"\s*```json\s*(\{.*\})\s*```\s*", section, re.S)
+            if match is None:
+                errors.append("Completion convergence must contain one JSON object")
+            else:
+                try:
+                    completion_payload = json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    errors.append("Completion convergence JSON is invalid")
+                else:
+                    if not isinstance(completion_payload, dict):
+                        errors.append("Completion convergence JSON must be an object")
+                    else:
+                        if completion_payload.get("schemaVersion") != 1:
+                            errors.append("Completion convergence schemaVersion must be 1")
+                        durable_result = completion_payload.get("completionResult")
+                        if (
+                            isinstance(completion_result, str)
+                            and durable_result != completion_result.upper()
+                        ):
+                            errors.append(
+                                "Completion convergence result differs from frontmatter"
+                            )
+                        expected_status = {
+                            "pass": "PASS",
+                            "fail": "INCOMPLETE",
+                            "blocked": "BLOCKED",
+                        }.get(completion_result)
+                        if (
+                            expected_status is not None
+                            and completion_payload.get("status") != expected_status
+                        ):
+                            errors.append(
+                                "Completion convergence status differs from result"
+                            )
+                        findings = completion_payload.get("findings")
+                        if not isinstance(findings, list):
+                            errors.append("Completion convergence findings must be an array")
+                        else:
+                            if completion_result == "pass" and findings:
+                                errors.append(
+                                    "Completion convergence PASS must not contain findings"
+                                )
+                            if completion_result in {"fail", "blocked"} and not findings:
+                                errors.append(
+                                    "Completion convergence FAIL/BLOCKED requires findings"
+                                )
+                            if completion_result == "fail" and any(
+                                isinstance(item, dict)
+                                and item.get("kind") == "contract_gap"
+                                for item in findings
+                            ):
+                                errors.append(
+                                    "Completion convergence contract_gap cannot route to FIX"
+                                )
+                            expected_ids = [
+                                f"COMP-{index:03d}"
+                                for index in range(1, len(findings) + 1)
+                            ]
+                            actual_ids = [
+                                item.get("id") if isinstance(item, dict) else None
+                                for item in findings
+                            ]
+                            if actual_ids != expected_ids:
+                                errors.append(
+                                    "Completion convergence finding IDs must be COMP-001..."
+                                )
+                            route = (
+                                "FIX" if completion_result == "fail"
+                                else "BLOCKED" if completion_result == "blocked"
+                                else None
+                            )
+                            if route is not None and any(
+                                not isinstance(item, dict)
+                                or item.get("route") != route
+                                for item in findings
+                            ):
+                                errors.append(
+                                    "Completion convergence finding route differs from result"
+                                )
 
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):
@@ -974,9 +1101,15 @@ def review_reports(root: Path, step_id: str) -> list[dict[str, Any]]:
         if errors:
             continue
         doc = parse_document(path)
+        completion_result = doc["frontmatter"].get("completion_result")
         result.append({
             "path": path,
             "verdict": str(doc["frontmatter"]["verdict"]).upper(),
+            "completionResult": (
+                str(completion_result).upper()
+                if isinstance(completion_result, str)
+                else None
+            ),
             "document": doc,
         })
     return result

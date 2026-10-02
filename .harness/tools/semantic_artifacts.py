@@ -16,6 +16,7 @@ from pathlib import Path
 import hashlib
 from typing import Any
 
+from completion_gate import CompletionGateError, evaluate_completion, finalize_step_completion
 from document_contract import (
     atomic_write_text,
     create_durable_report,
@@ -34,8 +35,6 @@ from planning_contract import (
     plan_content_hash,
     planning_context_basis,
     read_task,
-    step_completion_proof,
-    task_path,
     validate_planning_review_report,
 )
 from review_contract import (
@@ -50,7 +49,6 @@ from review_findings import (
     normalize_finding,
     render_machine_findings,
 )
-from projection_contract import ProjectionDerivationError, write_projections
 from review_gates import required_reviewers
 from verification import render_verification_entries, validate_verification_entries
 
@@ -379,7 +377,7 @@ def _step_review_payload(payload: Any) -> dict[str, Any]:
     data = _require_object(payload, "step review payload")
     _exact_keys(
         data,
-        {"verdict", "findings", "verificationObservations", "rationale", "specializedReviews"},
+        {"verdict", "findings", "verificationObservations", "rationale", "specializedReviews", "completion"},
         "step review payload",
     )
     verdict = data.get("verdict")
@@ -411,6 +409,7 @@ def _step_review_payload(payload: Any) -> dict[str, Any]:
         ),
         "rationale": _text(data.get("rationale"), "rationale"),
         "specializedReviews": _specialized_payload(data.get("specializedReviews")),
+        "completion": data.get("completion"),
     }
 
 
@@ -503,76 +502,6 @@ def _render_findings(findings: list[dict[str, Any]]) -> str:
             chunks.append("")
     return "\n".join(chunks).strip()
 
-def _complete_step_after_pass(root: Path, step_id: str) -> dict[str, Any]:
-    """Close STEP only when the full type-specific completion proof is real.
-
-    The immutable PASS review is created first for the exact implementation
-    revision. Lifecycle metadata is then changed mechanically. If proof fails,
-    the STEP bytes are restored; the PASS report remains durable evidence, but
-    execution cannot claim completion.
-    """
-    path = task_path(root, step_id)
-    original = path.read_text(encoding="utf-8")
-    task = read_task(root, step_id)
-    previous_status = task["frontmatter"].get("status")
-    if previous_status == "completed":
-        proof = step_completion_proof(root, step_id)
-        return {
-            "completed": bool(proof["complete"]),
-            "previousStatus": previous_status,
-            "proof": proof,
-            "projections": [],
-        }
-
-    meta = deepcopy(task["frontmatter"])
-    meta["status"] = "completed"
-    atomic_write_text(path, render_document(meta, task["body"]))
-
-    try:
-        proof = step_completion_proof(root, step_id)
-    except (OSError, ValueError) as exc:
-        atomic_write_text(path, original)
-        return {
-            "completed": False,
-            "previousStatus": previous_status,
-            "reasonCode": "STEP_COMPLETION_PROOF_ERROR",
-            "message": str(exc),
-        }
-
-    if not proof["complete"]:
-        atomic_write_text(path, original)
-        return {
-            "completed": False,
-            "previousStatus": previous_status,
-            "reasonCode": "STEP_COMPLETION_PROOF_INCOMPLETE",
-            "proof": proof,
-        }
-
-    try:
-        projections = write_projections(root)
-    except (ProjectionDerivationError, OSError, ValueError) as exc:
-        atomic_write_text(path, original)
-        # Best-effort restore of projections to the restored canonical state.
-        try:
-            write_projections(root)
-        except (ProjectionDerivationError, OSError, ValueError):
-            pass
-        return {
-            "completed": False,
-            "previousStatus": previous_status,
-            "reasonCode": "STEP_COMPLETION_PROJECTION_FAILED",
-            "message": str(exc),
-            "proof": proof,
-        }
-
-    return {
-        "completed": True,
-        "previousStatus": previous_status,
-        "proof": proof,
-        "projections": projections,
-    }
-
-
 def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     """Create one validated immutable implementation review for exact revision."""
     data = _step_review_payload(payload)
@@ -616,6 +545,12 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
 
     specialized = _specialized_meta(gate, data["specializedReviews"])
     _validate_specialized_verdict(data["verdict"], specialized)
+    convergence: dict[str, Any] | None = None
+    if data["verdict"] == "pass":
+        try:
+            convergence = evaluate_completion(root, step_id, data.get("completion"))
+        except CompletionGateError as exc:
+            raise SemanticArtifactError(str(exc)) from exc
     directory = review_directory(root) / step_id
 
     def content_factory(created_at: str) -> str:
@@ -634,6 +569,23 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "verification_status": generated_verification_status(read_task(root, step_id)),
             "specialized_reviews": specialized,
         }
+        if convergence is not None:
+            frontmatter["completion_contract"] = 1
+            frontmatter["completion_result"] = str(
+                convergence["completionResult"]
+            ).lower()
+        completion_section = (
+            "\n## Completion convergence\n\n```json\n"
+            + json.dumps(
+                convergence,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n```\n"
+            if convergence is not None
+            else ""
+        )
         body = f"""# STEP REVIEW {step_id} — {display}
 
 ## Scope checked
@@ -661,7 +613,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
 ## Verdict rationale
 
 {data["rationale"]}
-"""
+{completion_section}"""
         return render_document(frontmatter, body)
 
     path, _created_at = create_durable_report(
@@ -713,15 +665,20 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "changedPathsHash": gate["changedPathsHash"],
         },
     }
-    if data["verdict"] == "pass":
-        completion = _complete_step_after_pass(root, step_id)
-        result["stepCompletion"] = completion
-        if not completion.get("completed"):
-            result["completionResult"] = "BLOCKED"
-            result["reasonCode"] = completion.get(
-                "reasonCode",
-                "STEP_COMPLETION_PROOF_INCOMPLETE",
-            )
+    if convergence is not None:
+        result["completionGate"] = convergence
+        result["completionResult"] = convergence["completionResult"]
+        if convergence["completionResult"] == "PASS":
+            completion = finalize_step_completion(root, step_id)
+            result["stepCompletion"] = completion
+            if not completion.get("completed"):
+                result["completionResult"] = "BLOCKED"
+                result["reasonCode"] = completion.get(
+                    "reasonCode",
+                    "STEP_COMPLETION_PROOF_INCOMPLETE",
+                )
+        else:
+            result["reasonCode"] = convergence.get("reasonCode")
     return result
 
 

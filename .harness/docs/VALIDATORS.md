@@ -1541,3 +1541,56 @@ python3 .harness/tools/orchestration-harness-self-test.py
 ```
 
 Test автоматически входит в `run-self-tests.py`. Real-runtime integration вынесена за deterministic CI boundary. Подробнее: [`DETERMINISTIC_TEST_HARNESS.md`](DETERMINISTIC_TEST_HARNESS.md).
+
+
+---
+
+# Completion / Convergence Gate
+
+## Файл / Файлы
+
+- CLI: `.harness/tools/completion-gate.py`
+- engine: `.harness/tools/completion_gate.py`
+- regression: `.harness/tools/completion-gate-self-test.py`
+
+## Роль
+
+Deterministic precheck перед semantic convergence judgement STEP. Gate не
+повторяет code review: он проверяет, можно ли вообще оценивать полноту на
+текущем contract/evidence basis.
+
+## Когда использовать
+
+- внутри `STEP REVIEW` до semantic completion judgement;
+- при диагностике REVIEW PASS, который не закрыл STEP;
+- при проверке stale/missing Verification evidence.
+
+## Что проверяет
+
+- machine-discoverable Acceptance criteria;
+- generated Verification status;
+- совпадение current Verification contract hash с basis evidence;
+- совпадение current product/worktree subject revision с revision, на которой
+  запускалась Verification; сам STEP Evidence исключается из subject revision,
+  поэтому запись generated evidence не делает proof stale;
+- current Ready/prerequisite contract;
+- structured completion result `PASS | FAIL | BLOCKED`.
+
+## CLI
+
+```bash
+python3 .harness/tools/completion-gate.py STEP-024 --json
+```
+
+## Exit codes
+
+- `0` — deterministic precheck PASS;
+- `1` — BLOCKED/stale/missing prerequisite;
+- `2` — argparse error.
+
+## Граница ответственности
+
+Deterministic gate не решает, действительно ли implementation/evidence
+семантически покрывают criterion. Это делает reviewer один раз. Writer затем
+нормализует completion findings, сохраняет их в immutable REVIEW report и
+использует существующий FIX/BLOCKED routing без второго lifecycle.

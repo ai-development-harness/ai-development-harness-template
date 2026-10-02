@@ -12,7 +12,7 @@ import hashlib
 import os
 import time
 
-from verification import CAPTURE_TAIL_BYTES, EVIDENCE_START, _run_command, run_step_verification
+from verification import CAPTURE_TAIL_BYTES, EVIDENCE_START, _run_command, run_step_verification, verification_freshness
 
 
 from self_test_fixture import isolate_project_artifacts
@@ -207,6 +207,33 @@ def main() -> int:
         evidence = step.read_text(encoding="utf-8")
         assert "Condition observed." in evidence
         assert "Status: PASS" in evidence
+        fresh = verification_freshness(root, "STEP-001")
+        assert fresh["status"] == "PASS" and fresh["fresh"] is True, fresh
+
+        # Product/worktree mutation outside STEP makes previously PASS evidence stale.
+        probe = root / "src/freshness-probe.txt"
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        probe.write_text("changed after verification\n", encoding="utf-8")
+        stale = verification_freshness(root, "STEP-001")
+        assert stale["fresh"] is False, stale
+        assert stale["reasonCode"] == "VERIFICATION_SUBJECT_STALE", stale
+        probe.unlink()
+
+        # Verification contract mutation is also stale even though STEP Evidence
+        # itself is excluded from subject revision.
+        original_text = step.read_text(encoding="utf-8")
+        step.write_text(
+            original_text.replace(
+                'python3 -c "print(123)"',
+                'python3 -c "print(456)"',
+                1,
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        contract_stale = verification_freshness(root, "STEP-001")
+        assert contract_stale["reasonCode"] == "VERIFICATION_CONTRACT_STALE", contract_stale
+        step.write_text(original_text, encoding="utf-8", newline="\n")
 
         # Non-zero exit is factual FAIL, not LLM interpretation.
         reset(root)

@@ -26,6 +26,7 @@
 - [`DETERMINISTIC_TEST_HARNESS.md`](DETERMINISTIC_TEST_HARNESS.md) — scripted runtime, adapter conformance и fault injection для orchestration tests.
 - [`PROJECT_STATE.md`](PROJECT_STATE.md) — read-only JSON graph состояния проекта для UI, VSCode Navigator и других клиентов.
 - [`CONTEXT_CONTRACTS.md`](CONTEXT_CONTRACTS.md) — role-specific progressive disclosure: required sections, explicit expansion, runtime-neutral resolver и token-economy metrics.
+- [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
 
 ## Агенты и автоматизация
 
