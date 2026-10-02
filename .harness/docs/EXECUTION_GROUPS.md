@@ -61,6 +61,8 @@ plan:
 
 CLI/PROJECT STATE обратно публикуют normalized list; storage encoding не является отдельной semantic schema.
 
+`step-context.py` также публикует normalized groups в `step.plan.executionGroups`, поэтому implementer/reviewer получают group contract через canonical dispatcher handoff, а не повторно парсят frontmatter.
+
 ## Conflict safety
 
 Harness отклоняет две независимые `parallel=true` groups, если их declared mutation prefixes пересекаются (`src/api` и `src/api/schema`, одинаковый path или `.`). Если одна group зависит от другой, overlap допустим: DAG уже запрещает их одновременное выполнение.

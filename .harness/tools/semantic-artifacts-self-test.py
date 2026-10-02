@@ -22,6 +22,7 @@ from execution_status import (
 from planning_contract import read_task, validate_planning_contracts, validate_planning_review_report
 from review_contract import repository_revision, validate_review_report
 from review_gates import required_reviewers
+from step_context import build_step_context
 from verification import run_step_verification
 from semantic_artifacts import (
     SemanticArtifactError,
@@ -241,6 +242,10 @@ def main() -> int:
         assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
         assert [item["id"] for item in plan["executionGroups"]] == ["writer", "regression", "integration"]
         assert list(planned["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
+        implement_context = build_step_context(root, "STEP-001", "implement")
+        assert [item["id"] for item in implement_context["step"]["plan"]["executionGroups"]] == ["writer", "regression", "integration"], implement_context
+        review_context = build_step_context(root, "STEP-001", "review")
+        assert review_context["step"]["plan"]["executionGroups"][2]["dependsOn"] == ["writer", "regression"], review_context
 
         # Regression #85: file payload — одноразовый transport. Нормально
         # завершившийся writer удаляет его, validation/parsing failure оставляет
