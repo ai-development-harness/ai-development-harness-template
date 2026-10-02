@@ -24,6 +24,7 @@ from harness_config import (
 )
 from planning_contract import step_completion_proof
 from review_contract import review_reports, validate_review_report
+from traceability_coverage import build_coverage
 
 
 CORE_TYPES = {"REQ", "ADR", "STEP", "OQ"}
@@ -652,6 +653,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
         if diagnostics or dependency["cycles"]
         else "ok"
     )
+    coverage = build_coverage(root)
 
     return {
         "schemaVersion": 1,
@@ -675,6 +677,7 @@ def build_project_state(root: Path) -> dict[str, Any]:
             "missingReferences": missing_count,
             "invalidReviews": invalid_review_count,
             "relationshipCoveragePercent": relationship_coverage,
+            "traceabilityCoverage": coverage["metrics"],
         },
         "graph": {
             "rootNodeId": "PROJECT",
@@ -684,6 +687,12 @@ def build_project_state(root: Path) -> dict[str, Any]:
         "insights": {
             "blockers": blocked,
             "uncoveredRequirements": uncovered_requirements,
+            "traceabilityCoverage": {
+                "requirements": coverage["requirements"],
+                "orphanSteps": coverage["orphanSteps"],
+                "invalidReferences": coverage["invalidReferences"],
+                "blockingOpenQuestions": coverage["blockingOpenQuestions"],
+            },
             "isolatedArtifacts": isolated,
             "dependency": {
                 "longestChain": dependency["longestChain"],

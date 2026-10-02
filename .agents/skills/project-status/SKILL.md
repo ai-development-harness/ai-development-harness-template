@@ -16,8 +16,13 @@ description: Refresh deterministic projections from canonical project artifacts 
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-5. Lifecycle-status REQ выводится только из canonical REQ + STEP completion proofs. Не меняй смысл REQ/ADR и не пиши product code.
-6. В ответе раздели:
+5. Перед summary получи deterministic traceability coverage:
+   ```bash
+   python3 .harness/tools/traceability-coverage.py --json
+   ```
+   PROJECT STATE также содержит `summary.traceabilityCoverage`. Покажи uncovered REQ, stale evidence, orphan STEP, invalid refs и blocking OQ без LLM inference.
+6. Lifecycle-status REQ выводится только из canonical REQ + STEP completion proofs. Не меняй смысл REQ/ADR и не пиши product code.
+7. В ответе раздели:
    - **In progress** — реально начатая незавершённая работа;
    - **Blocked** — blocker + required next action;
    - **Recently completed** — недавняя работа с completion proof;

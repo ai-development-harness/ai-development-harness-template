@@ -25,6 +25,7 @@
 - [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md) — deterministic early-stop FIX ↔ REVIEW.
 - [`DETERMINISTIC_TEST_HARNESS.md`](DETERMINISTIC_TEST_HARNESS.md) — scripted runtime, adapter conformance и fault injection для orchestration tests.
 - [`PROJECT_STATE.md`](PROJECT_STATE.md) — read-only JSON graph состояния проекта для UI, VSCode Navigator и других клиентов.
+- [`CONTEXT_CONTRACTS.md`](CONTEXT_CONTRACTS.md) — role-specific progressive disclosure: required sections, explicit expansion, runtime-neutral resolver и token-economy metrics.
 
 ## Агенты и автоматизация
 

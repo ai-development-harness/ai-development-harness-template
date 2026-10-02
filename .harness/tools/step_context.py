@@ -166,7 +166,11 @@ def build_step_context(
             "openQuestions": oqs,
         },
         "readPaths": read_paths,
-        "contextContract": build_context_contract(root, step_id, {"plan": "planner", "implement": "implementer", "review": "reviewer"}[phase]),
+        "contextContract": build_context_contract(
+            root,
+            step_id,
+            {"plan": "planner", "implement": "implementer", "review": "reviewer"}[phase],
+        ),
     }
 
     if phase == "plan":

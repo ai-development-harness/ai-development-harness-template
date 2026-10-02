@@ -8,7 +8,7 @@ description: Implement a planned STEP within its scope, update tests, satisfy ca
 
 Execution Status ведёт global wrapper.
 
-- Используй `context`, уже возвращённый canonical dispatcher handoff: `context.contextContract` задаёт exact artifact sections, а `implementPrerequisites.status=PASS` — deterministic prerequisite gate. Не читай весь artifact только потому, что он присутствует в legacy `readPaths`. Дополнительный context загружай только через explicit expansion с material reason; tool source `.harness/tools/**` не является normal semantic input. Повторно `step-context.py` и prerequisite reasoning не запускай.
+- Используй `context`, уже возвращённый canonical dispatcher handoff: `context.contextContract.required` задаёт exact artifact sections, а `implementPrerequisites.status=PASS` — deterministic prerequisite gate. Legacy `readPaths` остаётся compatibility surface и не означает «прочитать artifact целиком». Дополнительный context загружай только через explicit expansion с material reason; `.harness/tools/**` не является normal semantic input. Повторно `step-context.py`/resolver и prerequisite reasoning не запускай.
 - До product mutation запусти обычную deterministic validation проекта/Harness согласно workflow; не дублируй prerequisite reasoning.
 - Если execution-status показывает resume этой же команды, сначала изучи существующий diff/Evidence и продолжи недостающее; не переделывай готовое.
 - При первой фактической product mutation canonical `status → in_progress`.

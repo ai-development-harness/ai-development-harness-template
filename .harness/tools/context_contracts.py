@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Runtime-neutral role-specific Context Contracts for STEP semantic work.
 
-The resolver returns repository references and exact section projections. It does
-not summarize semantic content and never silently falls back to a full-repo scan.
+Resolver возвращает repository refs и exact section projections. Он не
+summarize-ит semantic content, не зависит от runtime provider и никогда не
+fallback-ит на full-repository scan.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
-from document_contract import parse_document
+from document_contract import DocumentError, parse_document
 from harness_config import get, load_manifest, resolve_repo_path
 from planning_contract import (
     adr_ids,
@@ -22,36 +24,47 @@ from planning_contract import (
     requirement_ids,
     task_path,
 )
+from review_contract import repository_revision
 
 SCHEMA_VERSION = 1
 ROLES = {"planner", "implementer", "reviewer"}
+ROLE_COMMAND = {
+    "planner": "STEP PLAN",
+    "implementer": "STEP IMPLEMENT",
+    "reviewer": "STEP REVIEW",
+}
 ROLE_SECTIONS = {
     "planner": {
         "step": ["Goal", "Context", "Scope", "Mutation policy", "Out of scope", "Acceptance criteria", "Verification"],
         "requirement": ["Requirement", "Rationale", "Acceptance"],
         "adr": ["Decision", "Consequences", "Security implications", "Data / migration implications", "Compatibility / operational implications"],
         "dependency": ["Goal", "Acceptance criteria"],
-        "oq": ["Context", "Decision needed", "Resolution"],
+        "oq": ["Context", "Decision needed"],
     },
     "implementer": {
         "step": ["Scope", "Mutation policy", "Out of scope", "Acceptance criteria", "Verification", "Implementation plan"],
         "requirement": ["Requirement", "Acceptance"],
         "adr": ["Decision", "Consequences", "Security implications", "Data / migration implications", "Compatibility / operational implications"],
         "dependency": ["Goal", "Acceptance criteria", "Evidence"],
-        "oq": ["Decision needed", "Resolution"],
+        "oq": ["Decision needed"],
     },
     "reviewer": {
         "step": ["Scope", "Mutation policy", "Out of scope", "Acceptance criteria", "Verification", "Implementation plan", "Evidence"],
         "requirement": ["Requirement", "Acceptance"],
         "adr": ["Decision", "Consequences", "Security implications", "Data / migration implications", "Compatibility / operational implications"],
         "dependency": ["Goal", "Acceptance criteria", "Evidence"],
-        "oq": ["Context", "Decision needed", "Resolution"],
+        "oq": ["Context", "Decision needed"],
     },
+}
+OPTIONAL_SECTIONS = {
+    "planner": {"oq": ["Resolution"]},
+    "implementer": {"oq": ["Resolution"]},
+    "reviewer": {"oq": ["Resolution"]},
 }
 
 
 class ContextContractError(ValueError):
-    """Context cannot be resolved safely and must fail closed."""
+    """Context нельзя безопасно разрешить; caller обязан остановить semantic stage."""
 
 
 def _rel(root: Path, path: Path) -> str:
@@ -61,17 +74,31 @@ def _rel(root: Path, path: Path) -> str:
         raise ContextContractError(f"context path escapes repository: {path}") from exc
 
 
-def _projection(root: Path, path: Path, artifact: str, sections: list[str]) -> dict[str, Any]:
-    doc = parse_document(path)
+def _projection(
+    root: Path,
+    path: Path,
+    artifact: str,
+    sections: list[str],
+    *,
+    optional_sections: list[str] | None = None,
+) -> dict[str, Any]:
+    try:
+        doc = parse_document(path)
+    except (DocumentError, OSError, UnicodeDecodeError) as exc:
+        raise ContextContractError(f"{artifact}: cannot parse context artifact: {exc}") from exc
     missing = [name for name in sections if name not in doc["sections"]]
     if missing:
         raise ContextContractError(
             f"{artifact}: required sections missing: " + ", ".join(missing)
         )
+    selected = list(sections)
+    for name in optional_sections or []:
+        if name in doc["sections"] and name not in selected:
+            selected.append(name)
     return {
         "artifact": artifact,
         "path": _rel(root, path),
-        "sections": sections,
+        "sections": selected,
     }
 
 
@@ -91,34 +118,47 @@ def _architecture_projection(root: Path, ref: str) -> dict[str, Any]:
     }
 
 
-def _optional_principles(root: Path) -> list[dict[str, Any]]:
-    """Include configured active PRN surfaces without depending on #169 implementation."""
+def _active_principles(root: Path) -> list[dict[str, Any]]:
+    """Вернуть project-wide active PRN candidates для semantic applicability pass."""
     manifest = load_manifest(root)
     configured = get(manifest, "sources.principles")
     if configured is None:
         return []
     directory = resolve_repo_path(root, configured, label="manifest sources.principles")
     if not directory.is_dir():
-        raise ContextContractError(f"configured principles directory missing: {_rel(root, directory)}")
+        raise ContextContractError(
+            f"configured principles directory missing: {_rel(root, directory)}"
+        )
+
     result: list[dict[str, Any]] = []
     for path in sorted(directory.glob("PRN-*.md")):
         if path.name == "TEMPLATE.md":
             continue
-        doc = parse_document(path)
+        try:
+            doc = parse_document(path)
+        except (DocumentError, OSError, UnicodeDecodeError) as exc:
+            raise ContextContractError(
+                f"{_rel(root, path)}: cannot parse Project Principle: {exc}"
+            ) from exc
         meta = doc["frontmatter"]
         if meta.get("status") != "active":
             continue
-        result.append({
-            "artifact": str(meta.get("id") or path.stem),
-            "path": _rel(root, path),
-            "sections": ["Rule", "Applies to", "Exceptions / approved deviation"],
-        })
+        artifact = str(meta.get("id") or path.stem)
+        result.append(
+            _projection(
+                root,
+                path,
+                artifact,
+                ["Rule", "Applies to", "Exceptions / approved deviation"],
+            )
+        )
     return result
 
 
-def build_context_contract(root: Path, step_id: str, role: str) -> dict[str, Any]:
+def _build_context_contract(root: Path, step_id: str, role: str) -> dict[str, Any]:
     if role not in ROLES:
         raise ContextContractError(f"role must be one of {sorted(ROLES)}")
+
     root = root.resolve()
     sections = ROLE_SECTIONS[role]
     task = read_task(root, step_id)
@@ -128,26 +168,52 @@ def build_context_contract(root: Path, step_id: str, role: str) -> dict[str, Any
 
     for req_id in requirement_ids(task):
         required.append(
-            _projection(root, canonical_requirement_path(root, req_id), req_id, sections["requirement"])
+            _projection(
+                root,
+                canonical_requirement_path(root, req_id),
+                req_id,
+                sections["requirement"],
+            )
         )
     for adr_id in adr_ids(task):
         required.append(
-            _projection(root, canonical_adr_path(root, adr_id), adr_id, sections["adr"])
+            _projection(
+                root,
+                canonical_adr_path(root, adr_id),
+                adr_id,
+                sections["adr"],
+            )
         )
     for dependency_id in dependency_ids(task):
         required.append(
-            _projection(root, task_path(root, dependency_id), dependency_id, sections["dependency"])
+            _projection(
+                root,
+                task_path(root, dependency_id),
+                dependency_id,
+                sections["dependency"],
+            )
         )
     for item in relevant_open_questions(root, task):
         required.append(
-            _projection(root, item["path"], str(item["id"]), sections["oq"])
+            _projection(
+                root,
+                item["path"],
+                str(item["id"]),
+                sections["oq"],
+                optional_sections=OPTIONAL_SECTIONS[role]["oq"],
+            )
         )
-    required.extend(_architecture_projection(root, ref) for ref in architecture_refs(task))
+    required.extend(
+        _architecture_projection(root, ref)
+        for ref in architecture_refs(task)
+    )
 
+    # Applicability PRN — semantic judgement. Deterministic resolver therefore
+    # даёт planner/reviewer только compact section projections всех active PRN,
+    # а не пытается угадывать applicability и не читает их целиком.
     if role in {"planner", "reviewer"}:
-        required.extend(_optional_principles(root))
+        required.extend(_active_principles(root))
 
-    # Deduplicate exact projection identity while preserving deterministic order.
     seen: set[tuple[str, str, tuple[str, ...], str | None]] = set()
     unique: list[dict[str, Any]] = []
     for item in required:
@@ -161,12 +227,6 @@ def build_context_contract(root: Path, step_id: str, role: str) -> dict[str, Any
             seen.add(key)
             unique.append(item)
 
-    forbidden = [
-        ".harness/tools/**",
-        "planning/** unrelated to current STEP",
-        "docs/** unrelated to explicit canonical links",
-        ".agents/skills/** except selected command skill",
-    ]
     optional = [
         {
             "trigger": "material integration/security/domain boundary discovered",
@@ -177,20 +237,50 @@ def build_context_contract(root: Path, step_id: str, role: str) -> dict[str, Any
             "action": "request explicit expansion with repository-relative path and reason",
         },
     ]
-    return {
+    contract: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
         "status": "PASS",
+        "runtimeNeutral": True,
         "role": role,
+        "command": f"{ROLE_COMMAND[role]} {step_id}",
         "stepId": step_id,
+        "repositoryRevision": repository_revision(root),
         "required": unique,
         "optionalExpansions": optional,
-        "forbiddenOrUnnecessary": forbidden,
-        "metrics": {
-            "artifactCount": len(unique),
-            "sectionCount": sum(len(item.get("sections") or []) for item in unique),
-            "fullRepositoryPreload": False,
-        },
+        "forbiddenOrUnnecessary": [
+            ".harness/tools/**",
+            "planning/** unrelated to current STEP",
+            "docs/** unrelated to explicit canonical links",
+            ".agents/skills/** except selected command skill",
+        ],
     }
+    manifest_chars = len(
+        json.dumps(
+            contract,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    )
+    contract["metrics"] = {
+        "artifactCount": len(unique),
+        "sectionCount": sum(len(item.get("sections") or []) for item in unique),
+        "manifestChars": manifest_chars,
+        "fullRepositoryPreload": False,
+    }
+    return contract
+
+
+def build_context_contract(root: Path, step_id: str, role: str) -> dict[str, Any]:
+    """Public fail-closed resolver boundary."""
+    try:
+        return _build_context_contract(root, step_id, role)
+    except ContextContractError:
+        raise
+    except (DocumentError, OSError, UnicodeError, ValueError) as exc:
+        raise ContextContractError(
+            f"context resolution failed for {step_id}/{role}: {exc}"
+        ) from exc
 
 
 def validate_expansion(root: Path, path: str, reason: str) -> dict[str, Any]:
