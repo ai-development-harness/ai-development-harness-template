@@ -144,7 +144,7 @@ architecture_refs: []
 risk_flags:
   - none
 plan:
-  status: not_planned
+  status: draft
   revision: 0
   context_basis: null
   content_hash: null
@@ -209,7 +209,9 @@ Synthetic.
 
 ## Implementation plan
 
-TBD.
+### 1. Build graph
+
+- Build fixture.
 
 ## Evidence
 

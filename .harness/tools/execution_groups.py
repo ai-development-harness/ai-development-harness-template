@@ -47,7 +47,9 @@ def _path(value: Any, label: str) -> str:
     return path
 
 def mutation_paths_overlap(left: str, right: str) -> bool:
-    return left=="." or right=="." or left==right or left.startswith(right+"/") or right.startswith(left+"/")
+    # Conservative across case-sensitive and case-insensitive worktrees.
+    left_key=left.casefold(); right_key=right.casefold()
+    return left_key=="." or right_key=="." or left_key==right_key or left_key.startswith(right_key+"/") or right_key.startswith(left_key+"/")
 
 def _depends_transitively(by_id: dict[str,dict[str,Any]], group_id: str, dependency_id: str) -> bool:
     stack=list(by_id[group_id]["dependsOn"])

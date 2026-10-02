@@ -190,6 +190,10 @@ def main() -> int:
                         "title": "Добавить тест",
                         "actions": ["Проверить canonical Markdown rendering."],
                     },
+                    {
+                        "title": "Проверить интеграцию",
+                        "actions": ["Проверить совместный результат writer и regression."],
+                    },
                 ],
                 "executionGroups": [
                     {
@@ -210,6 +214,15 @@ def main() -> int:
                         "verificationResponsibilities": ["Запустить synthetic regression suite."],
                         "parallel": True,
                     },
+                    {
+                        "id": "integration",
+                        "title": "Проверить интеграцию",
+                        "steps": [3],
+                        "dependsOn": ["writer", "regression"],
+                        "mutationPaths": ["docs/group-integration"],
+                        "verificationResponsibilities": ["Проверить integrated result."],
+                        "parallel": False,
+                    },
                 ],
                 "verification": [
                     {"kind": "command", "value": 'python3 -c "print(2)"'},
@@ -226,7 +239,7 @@ def main() -> int:
         assert "**Files:**" in planned["sections"]["Implementation plan"]
         assert ".harness/tools/semantic_artifacts.py" in planned["sections"]["Implementation plan"]
         assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
-        assert [item["id"] for item in plan["executionGroups"]] == ["writer", "regression"]
+        assert [item["id"] for item in plan["executionGroups"]] == ["writer", "regression", "integration"]
         assert planned["frontmatter"]["plan"]["execution_groups"] == plan["executionGroups"]
 
         # Regression #85: file payload — одноразовый transport. Нормально
