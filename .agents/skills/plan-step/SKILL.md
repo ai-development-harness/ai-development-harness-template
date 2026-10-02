@@ -4,7 +4,7 @@ description: Produce, independently review, fingerprint and persist a concrete i
 ---
 # plan-step
 
-Используй для `STEP PLAN STEP-NNN`. Human-readable prose Implementation plan и planning-review пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys не локализуй.
+Используй для `STEP PLAN STEP-NNN`. Используй `context.contextContract` как минимальный runtime-neutral набор artifacts/sections. Не читай весь linked artifact, если contract перечисляет конкретные sections. Дополнительный файл загружай только через explicit context expansion с material reason; `.harness/tools/**` не входит в semantic context. Human-readable prose Implementation plan и planning-review пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys не локализуй.
 
 Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
