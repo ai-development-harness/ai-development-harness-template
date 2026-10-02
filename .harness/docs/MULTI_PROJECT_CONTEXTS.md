@@ -1,8 +1,8 @@
 # Multiple Harness Project Contexts — Architecture Contract
 
-**Status:** Accepted  
-**Accepted:** 2026-10-02  
-**Architecture issue:** #175  
+**Status:** Accepted
+**Accepted:** 2026-10-02
+**Architecture issue:** #175
 **Implementation follow-up:** #188
 
 Этот документ фиксирует архитектурный contract поддержки нескольких независимых Harness project contexts внутри одного Git worktree. Он является **Harness-owned protocol documentation**.
