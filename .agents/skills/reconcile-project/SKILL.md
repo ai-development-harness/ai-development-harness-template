@@ -41,10 +41,12 @@ Migration:
    - substantive product/contract drift, требующий corrective STEP;
    - missing/obsolete architecture decision, требующий ADR/RESEARCH;
    - evidence gap, который нельзя объявлять исправленным без соответствующей проверки.
-3. Запусти:
+3. Запусти deterministic coverage и включи findings в reconcile classification:
    ```bash
+   python3 .harness/tools/traceability-coverage.py --json
    python3 .harness/tools/check-command-references.py --json
    ```
+   Uncovered REQ, stale evidence, invalid refs и non-exempt orphan STEP нельзя скрывать за semantic summary.
    Paths берутся из manifest через общий config layer.
 4. Production code не исправляй. Не переписывай REQ/ADR под фактический код только ради устранения расхождения: accepted product/architecture contract остаётся authority, пока отдельное решение явно его не меняет.
 5. Однозначный projection/command-syntax drift можно синхронизировать. Пересобери projections:
