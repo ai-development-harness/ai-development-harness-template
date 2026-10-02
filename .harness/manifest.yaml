@@ -98,6 +98,9 @@ sources:
   # Каталог canonical ADR.
   # Пример: docs/adr.
   adrDirectory: docs/adr
+  # Каталог project-owned engineering principles PRN-NNN.
+  # Пример: docs/principles.
+  principles: docs/principles
   # Текущий architecture baseline; STEP ссылаются на document/anchor через architecture_refs.
   # Пример: docs/architecture.md.
   architecture: docs/architecture.md

@@ -35,11 +35,12 @@ Migration:
 
 ## Reconcile
 
-1. Сравни code/config/migrations/tests с canonical REQ, Accepted ADR, architecture refs, STEP, evidence и schema-valid review reports. Цель — найти **repository-wide cross-artifact drift**, а не сравнивать разные repositories.
+1. Сравни code/config/migrations/tests с canonical REQ, Accepted ADR, active Project Principles, architecture refs, STEP, evidence и schema-valid review reports. Цель — найти **repository-wide cross-artifact drift**, а не сравнивать разные repositories.
 2. Классифицируй найденное:
    - deterministic projection/command-syntax drift, который можно безопасно пересобрать;
    - substantive product/contract drift, требующий corrective STEP;
    - missing/obsolete architecture decision, требующий ADR/RESEARCH;
+   - active blocking principle violation, malformed principle semantics или active reference на superseded/deprecated PRN;
    - evidence gap, который нельзя объявлять исправленным без соответствующей проверки.
 3. Запусти:
    ```bash

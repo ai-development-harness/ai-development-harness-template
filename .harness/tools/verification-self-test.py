@@ -161,6 +161,10 @@ def prepare(root: Path) -> None:
     run(root, "git", "init", "-q", "-b", "main")
     run(root, "git", "config", "user.email", "verification@example.invalid")
     run(root, "git", "config", "user.name", "Verification Test")
+    # Не позволяем Git запускать background housekeeping внутри временного fixture:
+    # процесс maintenance/gc может пережить git commit и конфликтовать с cleanup TemporaryDirectory.
+    run(root, "git", "config", "gc.auto", "0")
+    run(root, "git", "config", "maintenance.auto", "false")
     run(root, "git", "add", ".")
     run(root, "git", "commit", "-qm", "fixture")
 

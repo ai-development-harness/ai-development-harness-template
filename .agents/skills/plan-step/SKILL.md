@@ -34,8 +34,9 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
    - ownership не конфликтует с соседними STEP;
    - architecture prerequisite имеет explicit ref;
    - OPEN OQ/TBD не блокирует решение.
-4. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
-5. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
+4. Прочитай active Project Principles из configured `sources.principles` и semantic-оценкой определи применимость к этому STEP. Applicable `blocking` PRN без explicit approved deviation является blocker до Ready plan; `advisory` PRN сам по себе не блокирует. Active blocking principles входят в deterministic planning basis, поэтому изменение правила stale-ит Ready plan.
+5. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
+6. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
 ## Phase C — architecture completeness pass
 
