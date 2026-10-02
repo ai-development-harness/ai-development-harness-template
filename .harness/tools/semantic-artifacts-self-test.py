@@ -439,8 +439,8 @@ def main() -> int:
         )
         incomplete_review = write_step_review(root, "STEP-001", incomplete_payload)
         assert incomplete_review["status"] == "PASS", incomplete_review
-        assert incomplete_review["completionResult"] == "BLOCKED", incomplete_review
-        assert incomplete_review["reasonCode"] == "STEP_COMPLETION_PROOF_INCOMPLETE"
+        assert incomplete_review["completionResult"] == "FAIL", incomplete_review
+        assert incomplete_review["reasonCode"] == "COMPLETION_COVERAGE_MISSING"
         assert read_task(root, "STEP-001")["frontmatter"]["status"] == "planned"
         block_execution(root, "STEP REVIEW STEP-001")
 
@@ -537,6 +537,18 @@ def main() -> int:
                     "status": "pass",
                     "evidence": "Test reviewer подтвердил достаточность coverage.",
                 },
+            },
+            "completion": {
+                "disposition": "pass",
+                "coverage": [
+                    {
+                        "criterion": "Artifacts validate.",
+                        "status": "covered",
+                        "evidence": ["Generated Verification и immutable PASS review."],
+                    }
+                ],
+                "findings": [],
+                "rationale": "Все in-scope Acceptance criteria покрыты свежим evidence.",
             },
         }
 
