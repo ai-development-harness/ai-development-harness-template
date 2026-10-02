@@ -3,8 +3,8 @@
 model = "gpt-5.6-sol"
 
 # Reasoning effort роли.
-# Пример: "high". Допустимые значения зависят от выбранной модели/Codex runtime.
-model_reasoning_effort = "high"
+# Пример: "max" для adversarial quality-first security review. Допустимые значения зависят от выбранной модели/Codex runtime.
+model_reasoning_effort = "max"
 
 # Доступ агента к файловой системе проекта.
 # Пример: "read-only". Read-only: security reviewer фиксирует findings, но не скрыто исправляет их.
