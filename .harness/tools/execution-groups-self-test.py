@@ -28,5 +28,6 @@ def main()->int:
     ordered=normalize_execution_groups([group("a",[1],paths=["src/shared"],parallel=True),group("b",[2],depends=["a"],paths=["src/shared/model"],parallel=True)],2)
     assert topological_group_order(ordered)==["a","b"]
     err([group("a",[1],paths=["src/**"])],1,"glob syntax is not supported")
+    err([group("a",[1],paths=["src/./shared"])],1,"'.' or '..' segments")
     print("execution-groups self-test: PASS"); return 0
 if __name__=="__main__": raise SystemExit(main())

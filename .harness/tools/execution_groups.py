@@ -42,8 +42,11 @@ def _path(value: Any, label: str) -> str:
     while path.startswith("./"):
         path=path[2:]
     path=path.rstrip("/") or "."
-    if any(part in {"",".."} for part in path.split("/")):
-        raise ExecutionGroupError(f"{label} must not contain empty or '..' segments")
+    parts=path.split("/")
+    if any(part in {"",".."} for part in parts) or (path!="." and "." in parts):
+        raise ExecutionGroupError(
+            f"{label} must not contain empty, '.' or '..' segments"
+        )
     return path
 
 def mutation_paths_overlap(left: str, right: str) -> bool:
