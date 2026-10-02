@@ -151,7 +151,7 @@ plan:
   reviewed_report: null
   planned_at: null
   execution_groups:
-    - id: state
+    state:
       title: Project State group
       steps:
         - 1

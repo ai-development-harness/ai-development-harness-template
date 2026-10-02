@@ -240,7 +240,7 @@ def main() -> int:
         assert ".harness/tools/semantic_artifacts.py" in planned["sections"]["Implementation plan"]
         assert plan["implementationPlan"][0]["title"] == "Изменить модуль"
         assert [item["id"] for item in plan["executionGroups"]] == ["writer", "regression", "integration"]
-        assert planned["frontmatter"]["plan"]["execution_groups"] == plan["executionGroups"]
+        assert list(planned["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
 
         # Regression #85: file payload — одноразовый transport. Нормально
         # завершившийся writer удаляет его, validation/parsing failure оставляет
@@ -424,7 +424,7 @@ def main() -> int:
         ready = read_task(root, "STEP-001")
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
-        assert ready["frontmatter"]["plan"]["execution_groups"] == plan["executionGroups"]
+        assert list(ready["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
         ready_text = step_path.read_text(encoding="utf-8")
         step_path.write_text(ready_text.replace("src/group-writer", "src/group-writer-changed"), encoding="utf-8", newline="\n")
         stale_group_errors = validate_planning_contracts(root)

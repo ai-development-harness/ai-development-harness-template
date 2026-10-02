@@ -38,6 +38,29 @@ Planner добавляет groups только если STEP достаточн�
 
 Если `executionGroups` заданы, **каждый** numbered implementation step обязан принадлежать ровно одной group. Частичный graph запрещён: sequential projection не имеет права терять работу.
 
+## Canonical persistence
+
+Semantic planner payload использует массив `executionGroups[]`. В STEP frontmatter Harness хранит ту же модель как restricted-YAML-compatible mapping `plan.execution_groups.<id>`, потому что canonical YAML subset намеренно запрещает list-of-maps.
+
+Пример persisted формы:
+
+```yaml
+plan:
+  execution_groups:
+    backend:
+      title: Backend contract
+      steps:
+        - 1
+      dependsOn: []
+      mutationPaths:
+        - src/api
+      verificationResponsibilities:
+        - Run API unit tests
+      parallel: true
+```
+
+CLI/PROJECT STATE обратно публикуют normalized list; storage encoding не является отдельной semantic schema.
+
 ## Conflict safety
 
 Harness отклоняет две независимые `parallel=true` groups, если их declared mutation prefixes пересекаются (`src/api` и `src/api/schema`, одинаковый path или `.`). Если одна group зависит от другой, overlap допустим: DAG уже запрещает их одновременное выполнение.

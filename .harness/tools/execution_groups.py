@@ -65,10 +65,19 @@ def _depends_transitively(by_id: dict[str,dict[str,Any]], group_id: str, depende
     return False
 
 def normalize_execution_groups(value: Any, step_count: int) -> list[dict[str,Any]]:
-    if value is None or value==[]:
+    if value is None or value==[] or value=={}:
         return []
+    if isinstance(value,dict):
+        expanded=[]
+        for group_id, raw_group in value.items():
+            if not isinstance(raw_group,dict):
+                raise ExecutionGroupError(f"execution_groups.{group_id} must be a mapping")
+            if "id" in raw_group:
+                raise ExecutionGroupError(f"execution_groups.{group_id} must not repeat id")
+            expanded.append({"id":group_id, **raw_group})
+        value=expanded
     if not isinstance(value,list):
-        raise ExecutionGroupError("executionGroups must be an array")
+        raise ExecutionGroupError("executionGroups must be an array or canonical mapping")
     if isinstance(step_count,bool) or not isinstance(step_count,int) or step_count<1:
         raise ExecutionGroupError("executionGroups require at least one canonical Implementation plan step")
     groups:list[dict[str,Any]]=[]
@@ -148,6 +157,20 @@ def normalize_execution_groups(value: Any, step_count: int) -> list[dict[str,Any
                         raise ExecutionGroupError(f"parallel execution groups have overlapping mutation surfaces: {left['id']}:{lp} <-> {right['id']}:{rp}")
     return groups
 
+def execution_groups_to_storage(groups: list[dict[str,Any]]) -> dict[str,dict[str,Any]]:
+    """Encode normalized groups into restricted-YAML-compatible frontmatter."""
+    return {
+        group["id"]: {
+            "title": group["title"],
+            "steps": list(group["steps"]),
+            "dependsOn": list(group["dependsOn"]),
+            "mutationPaths": list(group["mutationPaths"]),
+            "verificationResponsibilities": list(group["verificationResponsibilities"]),
+            "parallel": group["parallel"],
+        }
+        for group in groups
+    }
+
 def topological_group_order(groups: list[dict[str,Any]]) -> list[str]:
     by_id={g["id"]:g for g in groups}; seen:set[str]=set(); order:list[str]=[]
     def visit(gid:str)->None:
@@ -167,4 +190,4 @@ def dependency_layers(groups: list[dict[str,Any]]) -> list[list[str]]:
         for gid in ready: del remaining[gid]
     return layers
 
-__all__=["ExecutionGroupError","dependency_layers","implementation_plan_step_count","mutation_paths_overlap","normalize_execution_groups","topological_group_order"]
+__all__=["ExecutionGroupError","dependency_layers","execution_groups_to_storage","implementation_plan_step_count","mutation_paths_overlap","normalize_execution_groups","topological_group_order"]

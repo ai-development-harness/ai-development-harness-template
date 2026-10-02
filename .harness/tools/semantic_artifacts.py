@@ -17,7 +17,7 @@ import hashlib
 from typing import Any
 
 from completion_gate import CompletionGateError, evaluate_completion, finalize_step_completion
-from execution_groups import ExecutionGroupError, normalize_execution_groups
+from execution_groups import ExecutionGroupError, execution_groups_to_storage, normalize_execution_groups
 from document_contract import (
     atomic_write_text,
     create_durable_report,
@@ -222,7 +222,7 @@ def write_plan_draft(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "content_hash": None,
         "reviewed_report": None,
         "planned_at": None,
-        "execution_groups": execution_groups,
+        "execution_groups": execution_groups_to_storage(execution_groups),
     }
     atomic_write_text(task["path"], render_document(meta, body))
 
