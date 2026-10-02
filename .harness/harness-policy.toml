@@ -51,6 +51,7 @@ required_files = [
   ".harness/docs/COMPLETION_GATE.md",
   ".harness/docs/EXECUTION_GROUPS.md",
   ".harness/docs/EVOLUTION_SEMANTICS.md",
+  ".harness/docs/MULTI_PROJECT_CONTEXTS.md",
   ".github/pull_request_template.md",
   ".harness/tools/validate.py",
   ".harness/tools/harness_config.py",

@@ -29,6 +29,7 @@
 - [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
 - [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md) — optional machine-readable dependency groups внутри Implementation plan, mutation conflict boundaries и sequential scheduling semantics.
 - [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md) — canonical owner изменений REQ/ADR/OQ/STEP, flow-forward/flow-back, deterministic impact propagation и re-plan semantics.
+- [`MULTI_PROJECT_CONTEXTS.md`](MULTI_PROJECT_CONTEXTS.md) — accepted architecture contract для разделения Harness project root и Git worktree root; реализация отслеживается в #188.
 
 ## Агенты и автоматизация
 

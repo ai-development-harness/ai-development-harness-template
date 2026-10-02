@@ -120,6 +120,8 @@ Local state не является единым типом данных: executio
 
 Это **defaults нового template**, а не hard-coded runtime topology.
 
+Accepted expansion contract для нескольких Harness project roots в одном Git worktree описан в [`MULTI_PROJECT_CONTEXTS.md`](MULTI_PROJECT_CONTEXTS.md). До реализации #188 runtime остаётся single-root; этот раздел не следует трактовать как уже доступный nearest-root resolver.
+
 ## Manifest-driven project topology
 
 Примеры:
