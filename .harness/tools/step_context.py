@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from context_contracts import build_context_contract
 from document_contract import parse_document
 from planning_contract import (
     adr_ids,
@@ -165,6 +166,7 @@ def build_step_context(
             "openQuestions": oqs,
         },
         "readPaths": read_paths,
+        "contextContract": build_context_contract(root, step_id, {"plan": "planner", "implement": "implementer", "review": "reviewer"}[phase]),
     }
 
     if phase == "plan":
