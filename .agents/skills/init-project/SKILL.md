@@ -15,6 +15,7 @@ description: Bootstrap a new repository from the configured local brief into a d
    - минимальный architecture baseline;
    - canonical OQ в `sources.openQuestions`;
    - ADR в `sources.adrDirectory` только для устойчивых решений;
+   - PRN в `sources.principles` только для действительно project-wide инженерных инвариантов; preference/coding style не превращай в principle;
    - STEP в `protocol.taskDirectory`.
    Machine keys/enums frontmatter всегда protocol-English и не локализуются.
 5. Удали pre-init `REQ-001-template.md`, когда появились реальные требования. Не редактируй projection-файлы вручную.
@@ -23,28 +24,29 @@ description: Bootstrap a new repository from the configured local brief into a d
    python3 .harness/tools/planning-state.py init-basis requirements
    ```
    Сохрани immutable schema-v1 report `INIT-REVIEW-<UTC timestamp>.md` в configured `protocol.initReviewDirectory` по template с `reviewer_role: reviewer`. PASS обязан ссылаться на текущий basis. Если остаётся существенное contradiction/missing decision — создай canonical OQ с `affects: PROJECT` либо prerequisite work и верни BLOCKED.
-7. Перед roadmap выполни architecture completeness pass по подтверждённым brief/REQ/Accepted ADR: системные boundaries/ownership, persistence/migrations/compatibility, API/protocol contracts, security/trust boundaries, async/state/concurrency, extension/integration contracts, observability/recovery и deployment/update constraints. Неприменимые измерения не выдумывай. Material missing durable decision оформи как ADR prerequisite или OPEN OQ с `affects: PROJECT`; не прячь неизвестность в будущий STEP.
-8. Для architecture-sensitive baseline передай requirements + architecture context отдельному read-only `architect` agent/session. Его задача — найти hidden coupling, incompatible boundary и missing durable decision до roadmap. Material unresolved issue => BLOCKED.
-9. Построй canonical STEP roadmap по dependencies. Для каждого STEP заполни strict frontmatter refs, `architecture_refs`, `risk_flags`, contract sections и mutation policy. `plan.status=not_planned`.
-10. Передай candidate roadmap отдельному `reviewer` agent/session и выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, contract↔Acceptance, ownership, dependencies/completion prerequisites, architecture refs, OQ и Verification. Получи basis:
+7. Перед roadmap проверь candidate Project Principles: global blocking/advisory invariants должны быть явно отделены от REQ и ADR. Blocking principle становится частью planning context; исключение допустимо только как explicit approved deviation.
+8. Перед roadmap выполни architecture completeness pass по подтверждённым brief/REQ/Accepted ADR: системные boundaries/ownership, persistence/migrations/compatibility, API/protocol contracts, security/trust boundaries, async/state/concurrency, extension/integration contracts, observability/recovery и deployment/update constraints. Неприменимые измерения не выдумывай. Material missing durable decision оформи как ADR prerequisite или OPEN OQ с `affects: PROJECT`; не прячь неизвестность в будущий STEP.
+9. Для architecture-sensitive baseline передай requirements + architecture context отдельному read-only `architect` agent/session. Его задача — найти hidden coupling, incompatible boundary и missing durable decision до roadmap. Material unresolved issue => BLOCKED.
+10. Построй canonical STEP roadmap по dependencies. Для каждого STEP заполни strict frontmatter refs, `architecture_refs`, `risk_flags`, contract sections и mutation policy. `plan.status=not_planned`.
+11. Передай candidate roadmap отдельному `reviewer` agent/session и выполни независимый roadmap consistency review: REQ↔REQ, REQ↔ADR, STEP↔REQ, contract↔Acceptance, ownership, dependencies/completion prerequisites, architecture refs, OQ и Verification. Получи basis:
    ```bash
    python3 .harness/tools/planning-state.py init-basis roadmap
    ```
    Сохрани второй immutable INIT report с `stage: roadmap`.
-11. Обеспечь двустороннюю traceability REQ↔STEP и ADR↔STEP. Project-level OPEN OQ нельзя обходить.
-12. Пересобери tracked projections:
+12. Обеспечь двустороннюю traceability REQ↔STEP и ADR↔STEP. Project-level OPEN OQ нельзя обходить.
+13. Пересобери tracked projections:
     ```bash
     python3 .harness/tools/sync-projections.py
     ```
-13. Обнови generated project blocks README/AGENTS и другие разрешённые INIT artifacts. После **всех** candidate mutations запусти:
+14. Обнови generated project blocks README/AGENTS и другие разрешённые INIT artifacts. После **всех** candidate mutations запусти:
     ```bash
     python3 .harness/tools/validate.py --mode manual
     ```
-14. Только после PASS atomically заверши INIT:
+15. Только после PASS atomically заверши INIT:
     ```bash
     python3 .harness/tools/finalize-project-init.py --name '<project-name>'
     ```
     Нельзя вручную выставлять `project.initialized=true`: finalizer повторно проверяет projections, active schema, оба semantic PASS report и INIT postconditions.
-15. Не создавай production code. Product-specific CI проектируй отдельным STEP после появления реального tooling.
+16. Не создавай production code. Product-specific CI проектируй отдельным STEP после появления реального tooling.
 
 Если semantic review после одного исправляющего прохода всё ещё BLOCKED, заверши INIT как BLOCKED. Не запускай внутренний бесконечный цикл.
