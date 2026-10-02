@@ -8,7 +8,17 @@ description: Produce, independently review, fingerprint and persist a concrete i
 
 Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
-## Phase A — requirements quality / clarification\n\nДо consistency reasoning выполни Requirements Quality Gate по STEP и linked owning artifacts. Сначала получи ответ из existing REQ/ADR/OQ/architecture/codebase; не спрашивай то, что уже зафиксировано. Верни schema-v1 quality payload и проверь его через:\n\n```bash\npython3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'\n```\n\n`NEEDS_INPUT`/`BLOCKED` с blocking finding останавливает PLAN до targeted user input или canonical prerequisite. Ответ пользователя сохрани в соответствующий REQ/ADR/OQ/STEP и запусти gate повторно. Не оставляй решение только в chat/session state. Warning-only PASS продолжает planning.\n\n## Phase B — deterministic + semantic contract validation
+## Phase A — requirements quality / clarification
+
+До consistency reasoning выполни Requirements Quality Gate по STEP и linked owning artifacts. Сначала получи ответ из existing REQ/ADR/OQ/architecture/codebase; не спрашивай то, что уже зафиксировано. Верни schema-v1 quality payload и проверь его через:
+
+```bash
+python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
+```
+
+`NEEDS_INPUT`/`BLOCKED` с blocking finding останавливает PLAN до targeted user input или canonical prerequisite. Ответ пользователя сохрани в соответствующий REQ/ADR/OQ/STEP и запусти gate повторно. Не оставляй решение только в chat/session state. Warning-only PASS продолжает planning.
+
+## Phase B — deterministic + semantic contract validation
 
 1. Запусти:
    ```bash

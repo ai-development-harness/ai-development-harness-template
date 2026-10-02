@@ -18,7 +18,8 @@ description: Bootstrap a new repository from the configured local brief into a d
    - STEP в `protocol.taskDirectory`.
    Machine keys/enums frontmatter всегда protocol-English и не локализуются.
 5. Удали pre-init `REQ-001-template.md`, когда появились реальные требования. Не редактируй projection-файлы вручную.
-6. До requirements review выполни Requirements Quality Gate: систематически проверь применимые functional/data/UX/NFR/integration/acceptance dimensions. Сначала ищи ответ в уже существующих REQ/ADR/OQ/architecture/codebase. Сформируй schema-v1 payload и проверь его через `python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'`. Blocking ambiguity => targeted user question; ответ обязательно сохрани в canonical REQ/ADR/OQ/STEP и повтори gate. Non-blocking stylistic warnings не блокируют INIT.\n7. До roadmap передай candidate requirements отдельному `reviewer` agent/session, отличному от initializer, и выполни semantic requirements review по `requirements-review`. Получи точный basis:
+6. До requirements review выполни Requirements Quality Gate: систематически проверь применимые functional/data/UX/NFR/integration/acceptance dimensions. Сначала ищи ответ в уже существующих REQ/ADR/OQ/architecture/codebase. Сформируй schema-v1 payload и проверь его через `python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'`. Blocking ambiguity => targeted user question; ответ обязательно сохрани в canonical REQ/ADR/OQ/STEP и повтори gate. Non-blocking stylistic warnings не блокируют INIT.
+7. До roadmap передай candidate requirements отдельному `reviewer` agent/session, отличному от initializer, и выполни semantic requirements review по `requirements-review`. Получи точный basis:
    ```bash
    python3 .harness/tools/planning-state.py init-basis requirements
    ```
