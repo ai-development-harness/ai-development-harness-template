@@ -503,6 +503,33 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
         snapshot["principles"] = principles
     return snapshot
 
+def planning_context_components(root: Path, step_id: str) -> list[str]:
+    """Разложить authoritative planning context на stable component fingerprints.
+
+    Это диагностическая проекция того же schema-v4 snapshot, который уже
+    образует planning_context_basis. Она не создаёт второй staleness engine.
+    """
+    snapshot = planning_context_snapshot(root, step_id)
+    entries: list[str] = [
+        f"STEP@{step_id}={stable_hash(snapshot['step'])}"
+    ]
+    for req_id, value in sorted(snapshot["requirements"].items()):
+        entries.append(f"REQ@{req_id}={stable_hash(value)}")
+    for adr_id, value in sorted(snapshot["adrs"].items()):
+        entries.append(f"ADR@{adr_id}={stable_hash(value)}")
+    for dependency_id, value in sorted(snapshot["dependencies"].items()):
+        entries.append(f"STEP@{dependency_id}={stable_hash(value)}")
+    for item in snapshot["architecture_refs"]:
+        entries.append(f"ARCH@{item['ref']}={stable_hash(item)}")
+    for oq_id, value in sorted(snapshot["open_questions"].items()):
+        entries.append(f"OQ@{oq_id}={stable_hash(value)}")
+    principles = snapshot.get("principles")
+    if isinstance(principles, dict):
+        for principle_id, value in sorted(principles.items()):
+            entries.append(f"PRN@{principle_id}={stable_hash(value)}")
+    return sorted(entries)
+
+
 def planning_context_basis(root: Path, step_id: str) -> str:
     """Hash exact planning context, от которого зависит корректность плана."""
     return stable_hash(planning_context_snapshot(root, step_id))
@@ -874,6 +901,41 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
     revision = plan.get("revision")
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
         errors.append(f"{prefix}: plan.revision must be a non-negative integer")
+
+    context_components = plan.get("context_components")
+    if context_components is not None:
+        if not isinstance(context_components, list):
+            errors.append(f"{prefix}: plan.context_components must be a string array")
+        else:
+            seen_components: set[str] = set()
+            for index, component in enumerate(context_components):
+                if not isinstance(component, str) or "=" not in component:
+                    errors.append(
+                        f"{prefix}: plan.context_components[{index}] must be COMPONENT=sha256"
+                    )
+                    continue
+                key, digest = component.rsplit("=", 1)
+                if not (
+                    key.startswith("STEP@")
+                    or key.startswith("REQ@")
+                    or key.startswith("ADR@")
+                    or key.startswith("ARCH@")
+                    or key.startswith("OQ@")
+                    or key.startswith("PRN@")
+                ):
+                    errors.append(
+                        f"{prefix}: plan.context_components[{index}] has unsupported component key"
+                    )
+                if not _valid_sha256(digest):
+                    errors.append(
+                        f"{prefix}: plan.context_components[{index}] must end with sha256"
+                    )
+                if key in seen_components:
+                    errors.append(
+                        f"{prefix}: duplicate plan.context_components key {key}"
+                    )
+                seen_components.add(key)
+
     if "execution_groups" in plan:
         try:
             normalize_execution_groups(plan.get("execution_groups"), implementation_plan_step_count(task["sections"].get("Implementation plan", "")))

@@ -18,6 +18,7 @@ Execution Status ведёт global wrapper.
   - `implementer` — изменение behavior, нескольких взаимодействующих компонентов либо работа, где остаются инженерные решения внутри утверждённого STEP contract.
   При сомнении используй `implementer`; `mechanic` не является способом удешевить reasoning там, где решение ещё нужно принять.
 - Соблюдай mutation policy/out-of-scope и Accepted ADR.
+- Если implementation обнаружил, что approved REQ/ADR/STEP contract невозможно корректно выполнить или требуется изменить behavior/architecture/Acceptance, верни `BLOCKED`. Не меняй owning contract и не подгоняй документацию под уже изменённый code из IMPLEMENT. Handoff должен назвать предполагаемого owner: REQ / ADR / OQ / STEP.
 - Добавь необходимые tests, которые доказывают затронутое Acceptance/regression.
 - Verification commands вручную не запускай только ради completion: при result `SUCCESS` dispatcher сам запускает canonical Verification и пишет generated Evidence.
 - `VERIFICATION_FAIL` возвращает factual command failure — исправь его и повтори completion. `VERIFICATION_MANUAL_REQUIRED` означает выполнить только перечисленные manual checks и передать exact `manualVerification` observations через dispatcher details.

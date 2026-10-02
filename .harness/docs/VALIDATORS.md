@@ -1634,3 +1634,48 @@ python3 .harness/tools/execution-groups.py STEP-024 --json
 - `2` — argparse error.
 
 Подробная schema и conflict semantics: [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md).
+
+
+---
+
+# Planning impact / evolution analysis
+
+## Файл / Файлы
+
+- engine: `.harness/tools/impact_analysis.py`;
+- CLI: `.harness/tools/impact-analysis.py`;
+- regression: `.harness/tools/impact-analysis-self-test.py`;
+- authoritative fingerprint source: `.harness/tools/planning_contract.py → planning_context_basis / planning_context_components`.
+
+## Роль
+
+Объясняет, какой canonical planning component сделал Ready plan stale, и показывает affected STEP surface после изменения REQ/ADR/STEP/OQ/PRN/architecture reference. Tool не создаёт второй freshness engine: окончательное решение fresh/stale по-прежнему определяется `planning_context_basis`.
+
+## CLI
+
+```bash
+python3 .harness/tools/impact-analysis.py --step STEP-018 --json
+python3 .harness/tools/impact-analysis.py --changed REQ-007 --json
+python3 .harness/tools/impact-analysis.py --changed ADR-012 --changed REQ-007 --json
+```
+
+`--step` и `--changed` взаимоисключающие.
+
+## Что проверяет / возвращает
+
+- current Ready basis против stored `plan.context_basis`;
+- per-component fingerprints, сохранённые при Ready stamp;
+- exact cause `added | removed | changed`;
+- affected STEP и remediation `STEP PLAN STEP-NNN`;
+- superseding ADR propagation через `superseded_by`;
+- legacy Ready plan без component fingerprints остаётся fail-safe stale с generic `PLANNING_CONTEXT changed`.
+
+Impact analysis read-only: downstream artifacts, reviews и completed history не переписываются.
+
+## Exit codes
+
+- `0` — запрос корректно вычислен, даже если найден stale plan;
+- `1` — canonical context нельзя безопасно прочитать/разрешить;
+- `2` — argparse error.
+
+Подробная lifecycle policy: [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md).

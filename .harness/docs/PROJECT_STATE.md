@@ -79,6 +79,14 @@ REQ lifecycle status выводится детерминированно из с
 
 Для STEP node `metadata.executionGroups` содержит canonical optional execution-group DAG текущего plan: IDs, `steps`, `dependsOn`, declared `mutationPaths`, `verificationResponsibilities` и `parallel`. Клиент не должен восстанавливать group graph из prose Implementation plan.
 
+Evolution/freshness metadata для STEP:
+
+- `planFreshness: fresh | stale | not_ready | blocked | invalid`;
+- `planStaleCauses[]` — deterministic component causes из того же planning context, например `REQ@REQ-007 changed`;
+- `planRemediation` — exact next action, обычно `STEP PLAN STEP-NNN`.
+
+Эти поля объясняют staleness, но не меняют lifecycle STEP и не создают отдельный state machine.
+
 ### edges
 
 Связи нормализованы независимо от того, с какой стороны artifact их объявил:
