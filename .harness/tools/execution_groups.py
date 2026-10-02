@@ -11,7 +11,7 @@ class ExecutionGroupError(ValueError):
     """Execution-group graph is malformed or unsafe."""
 
 def implementation_plan_step_count(text: str) -> int:
-    return len(re.findall(r"(?m)^### [0-9]+\\. ", text))
+    return len(re.findall(r"(?m)^### [0-9]+\. ", text))
 
 def _text(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value.strip():

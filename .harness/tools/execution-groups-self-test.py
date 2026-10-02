@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Regressions for optional STEP execution-group DAG."""
-from execution_groups import ExecutionGroupError,dependency_layers,normalize_execution_groups,topological_group_order
+from execution_groups import ExecutionGroupError,dependency_layers,implementation_plan_step_count,normalize_execution_groups,topological_group_order
 
 def group(gid,steps,*,depends=None,paths=None,parallel=False):
     return {"id":gid,"title":f"Purpose {gid}","steps":steps,"dependsOn":depends or [],"mutationPaths":paths or [f"src/{gid}"],"verificationResponsibilities":[f"Verify {gid}"],"parallel":parallel}
@@ -9,6 +9,8 @@ def err(value,count,needle):
     except ExecutionGroupError as exc: assert needle in str(exc),str(exc)
     else: raise AssertionError("expected ExecutionGroupError")
 def main()->int:
+    assert implementation_plan_step_count("### 1. Foundation\n\n### 2. UI\n") == 2
+    assert implementation_plan_step_count("1. Legacy prose list\n") == 0
     assert normalize_execution_groups(None,4)==[]
     groups=normalize_execution_groups([
       group("foundation",[1]),
