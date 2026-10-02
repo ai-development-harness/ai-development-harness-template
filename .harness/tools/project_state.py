@@ -24,6 +24,7 @@ from harness_config import (
 )
 from planning_contract import step_completion_proof
 from review_contract import review_reports, validate_review_report
+from traceability_coverage import build_coverage
 
 
 CORE_TYPES = {"REQ", "ADR", "STEP", "OQ"}
