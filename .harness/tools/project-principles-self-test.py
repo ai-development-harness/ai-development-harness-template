@@ -59,7 +59,9 @@ None.
 ## Compatibility / operational implications
 None.
 """
-def prn(pid:str,status="active",severity="blocking",superseded_by="null",requirements="[]",adrs="[]")->str:
+def prn(pid:str,status="active",severity="blocking",superseded_by="null",requirements:tuple[str,...]=(),adrs:tuple[str,...]=())->str:
+    req_yaml = "[]" if not requirements else "\\n" + "\\n".join(f"  - {item}" for item in requirements)
+    adr_yaml = "[]" if not adrs else "\\n" + "\\n".join(f"  - {item}" for item in adrs)
     return f"""---
 schema: 1
 id: {pid}
@@ -67,8 +69,8 @@ status: {status}
 severity: {severity}
 scope: project
 superseded_by: {superseded_by}
-requirements: {requirements}
-adrs: {adrs}
+requirements: {req_yaml}
+adrs: {adr_yaml}
 ---
 # {pid} — Compatibility
 ## Rule
@@ -83,10 +85,10 @@ Only explicit reviewed deviation.
 def main()->int:
     with tempfile.TemporaryDirectory() as tmp:
         root=Path(tmp); w(root,".harness/manifest.yaml",MANIFEST); w(root,"docs/requirements/REQ-001-r.md",req()); w(root,"docs/adr/ADR-001-a.md",adr())
-        w(root,"docs/principles/PRN-001-compat.md",prn("PRN-001",requirements="[REQ-001]",adrs="[ADR-001]"))
+        w(root,"docs/principles/PRN-001-compat.md",prn("PRN-001",requirements=("REQ-001",),adrs=("ADR-001",)))
         assert validate_principles(root)==[] and "PRN-001" in active_blocking_principles(root)
         w(root,"docs/principles/PRN-002-advisory.md",prn("PRN-002",severity="advisory")); assert "PRN-002" not in active_blocking_principles(root)
-        w(root,"docs/principles/PRN-003-bad-ref.md",prn("PRN-003",requirements="[REQ-999]")); assert any("unknown requirements reference REQ-999" in e for e in validate_principles(root)); (root/"docs/principles/PRN-003-bad-ref.md").unlink()
+        w(root,"docs/principles/PRN-003-bad-ref.md",prn("PRN-003",requirements=("REQ-999",))); assert any("unknown requirements reference REQ-999" in e for e in validate_principles(root)); (root/"docs/principles/PRN-003-bad-ref.md").unlink()
         w(root,"docs/principles/PRN-004-old.md",prn("PRN-004",status="superseded",superseded_by="PRN-999")); assert any("superseding principle does not exist" in e for e in validate_principles(root)); (root/"docs/principles/PRN-004-old.md").unlink()
         w(root,"docs/principles/PRN-005-self.md",prn("PRN-005",status="superseded",superseded_by="PRN-005")); assert any("principle cannot supersede itself" in e for e in validate_principles(root)); (root/"docs/principles/PRN-005-self.md").unlink()
         w(root,"docs/principles/PRN-001-duplicate.md",prn("PRN-001")); assert any("duplicate canonical id PRN-001" in e for e in validate_principles(root))
