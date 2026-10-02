@@ -78,6 +78,62 @@ def main() -> int:
 
     try:
         normalize_semantic_completion({
+            "disposition": "fix",
+            "coverage": [
+                {"criterion": CRITERIA[0], "status": "covered", "evidence": ["test_save PASS"]},
+                {"criterion": CRITERIA[1], "status": "missing", "evidence": []},
+            ],
+            "assertions": assertions(),
+            "findings": [{
+                "kind": "contract_gap",
+                "criterion": CRITERIA[1],
+                "message": "Architecture decision is missing.",
+            }],
+            "rationale": "invalid route",
+        }, CRITERIA)
+    except CompletionGateError as exc:
+        assert "contract gaps must BLOCK" in str(exc)
+    else:
+        raise AssertionError("contract gap was accepted into FIX route")
+
+    try:
+        normalize_semantic_completion({
+            "disposition": "fix",
+            "coverage": [
+                {"criterion": CRITERIA[0], "status": "covered", "evidence": ["test_save PASS"]},
+                {"criterion": CRITERIA[1], "status": "missing", "evidence": []},
+            ],
+            "assertions": assertions(),
+            "findings": [],
+            "rationale": "missing structured finding",
+        }, CRITERIA)
+    except CompletionGateError as exc:
+        assert "structured findings" in str(exc)
+    else:
+        raise AssertionError("completion gap without structured finding was accepted")
+
+    try:
+        normalize_semantic_completion({
+            "disposition": "blocked",
+            "coverage": [
+                {"criterion": CRITERIA[0], "status": "covered", "evidence": ["test_save PASS"]},
+                {"criterion": CRITERIA[1], "status": "missing", "evidence": []},
+            ],
+            "assertions": assertions(),
+            "findings": [{
+                "kind": "evidence_gap",
+                "criterion": CRITERIA[1],
+                "message": "Only implementation evidence is missing.",
+            }],
+            "rationale": "invalid blocker",
+        }, CRITERIA)
+    except CompletionGateError as exc:
+        assert "requires a contract_gap" in str(exc)
+    else:
+        raise AssertionError("evidence-only semantic gap was accepted as BLOCKED")
+
+    try:
+        normalize_semantic_completion({
             "disposition": "pass",
             "coverage": [{
                 "criterion": "Out of scope obligation",

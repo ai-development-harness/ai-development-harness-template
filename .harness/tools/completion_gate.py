@@ -229,6 +229,14 @@ def normalize_semantic_completion(payload: Any, criteria: list[str]) -> dict[str
     material_gap = bool(
         missing_criteria or missing_coverage or assertion_missing or findings
     )
+    contract_findings = [
+        item for item in findings if item["kind"] == "contract_gap"
+    ]
+    missing_without_finding = [
+        criterion
+        for criterion in missing_coverage
+        if not any(item.get("criterion") == criterion for item in findings)
+    ]
 
     if disposition == "pass":
         if material_gap:
@@ -241,6 +249,24 @@ def normalize_semantic_completion(payload: Any, criteria: list[str]) -> dict[str
         raise CompletionGateError(
             f"completion {disposition.upper()} requires a material gap"
         )
+    else:
+        if not findings:
+            raise CompletionGateError(
+                f"completion {disposition.upper()} requires structured findings"
+            )
+        if missing_without_finding:
+            raise CompletionGateError(
+                "missing Acceptance coverage requires a matching structured finding: "
+                + ", ".join(missing_without_finding)
+            )
+        if disposition == "fix" and contract_findings:
+            raise CompletionGateError(
+                "completion FIX cannot contain contract_gap; contract gaps must BLOCK"
+            )
+        if disposition == "blocked" and not contract_findings:
+            raise CompletionGateError(
+                "completion BLOCKED requires a contract_gap finding"
+            )
 
     return {
         "disposition": disposition,

@@ -730,10 +730,46 @@ def validate_review_report(
                             errors.append(
                                 "Completion convergence result differs from frontmatter"
                             )
+                        expected_status = {
+                            "pass": "PASS",
+                            "fail": "INCOMPLETE",
+                            "blocked": "BLOCKED",
+                        }.get(completion_result)
+                        if (
+                            expected_status is not None
+                            and completion_payload.get("status") != expected_status
+                        ):
+                            errors.append(
+                                "Completion convergence status differs from result"
+                            )
                         findings = completion_payload.get("findings")
                         if not isinstance(findings, list):
                             errors.append("Completion convergence findings must be an array")
                         else:
+                            if completion_result == "pass" and findings:
+                                errors.append(
+                                    "Completion convergence PASS must not contain findings"
+                                )
+                            if completion_result in {"fail", "blocked"} and not findings:
+                                errors.append(
+                                    "Completion convergence FAIL/BLOCKED requires findings"
+                                )
+                            if completion_result == "fail" and any(
+                                isinstance(item, dict)
+                                and item.get("kind") == "contract_gap"
+                                for item in findings
+                            ):
+                                errors.append(
+                                    "Completion convergence contract_gap cannot route to FIX"
+                                )
+                            if completion_result == "blocked" and findings and not any(
+                                isinstance(item, dict)
+                                and item.get("kind") == "contract_gap"
+                                for item in findings
+                            ):
+                                errors.append(
+                                    "Completion convergence BLOCKED requires contract_gap"
+                                )
                             expected_ids = [
                                 f"COMP-{index:03d}"
                                 for index in range(1, len(findings) + 1)
