@@ -16,6 +16,7 @@ from pathlib import Path
 import hashlib
 from typing import Any
 
+from completion_gate import evaluate_completion
 from document_contract import (
     atomic_write_text,
     create_durable_report,
@@ -379,7 +380,7 @@ def _step_review_payload(payload: Any) -> dict[str, Any]:
     data = _require_object(payload, "step review payload")
     _exact_keys(
         data,
-        {"verdict", "findings", "verificationObservations", "rationale", "specializedReviews"},
+        {"verdict", "findings", "verificationObservations", "rationale", "specializedReviews", "completion"},
         "step review payload",
     )
     verdict = data.get("verdict")
@@ -411,6 +412,7 @@ def _step_review_payload(payload: Any) -> dict[str, Any]:
         ),
         "rationale": _text(data.get("rationale"), "rationale"),
         "specializedReviews": _specialized_payload(data.get("specializedReviews")),
+        "completion": data.get("completion"),
     }
 
 
@@ -714,14 +716,20 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         },
     }
     if data["verdict"] == "pass":
-        completion = _complete_step_after_pass(root, step_id)
-        result["stepCompletion"] = completion
-        if not completion.get("completed"):
-            result["completionResult"] = "BLOCKED"
-            result["reasonCode"] = completion.get(
-                "reasonCode",
-                "STEP_COMPLETION_PROOF_INCOMPLETE",
-            )
+        convergence = evaluate_completion(root, step_id, data.get("completion"))
+        result["completionGate"] = convergence
+        result["completionResult"] = convergence["completionResult"]
+        if convergence["completionResult"] == "PASS":
+            completion = _complete_step_after_pass(root, step_id)
+            result["stepCompletion"] = completion
+            if not completion.get("completed"):
+                result["completionResult"] = "BLOCKED"
+                result["reasonCode"] = completion.get(
+                    "reasonCode",
+                    "STEP_COMPLETION_PROOF_INCOMPLETE",
+                )
+        else:
+            result["reasonCode"] = convergence.get("reasonCode")
     return result
 
 
