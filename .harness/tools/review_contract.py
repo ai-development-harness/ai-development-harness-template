@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+import json
 import hashlib
 from pathlib import Path
 import re
