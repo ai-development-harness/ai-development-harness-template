@@ -60,8 +60,8 @@ None.
 None.
 """
 def prn(pid:str,status="active",severity="blocking",superseded_by="null",requirements:tuple[str,...]=(),adrs:tuple[str,...]=())->str:
-    req_yaml = "[]" if not requirements else "\\n" + "\\n".join(f"  - {item}" for item in requirements)
-    adr_yaml = "[]" if not adrs else "\\n" + "\\n".join(f"  - {item}" for item in adrs)
+    req_yaml = "[]" if not requirements else "\n" + "\n".join(f"  - {item}" for item in requirements)
+    adr_yaml = "[]" if not adrs else "\n" + "\n".join(f"  - {item}" for item in adrs)
     return f"""---
 schema: 1
 id: {pid}
