@@ -17,9 +17,11 @@ created_at: YYYY-MM-DDTHH:MM:SSZ
 - STEP contract
 - Semantic dependency contracts (completion proof проверяется перед IMPLEMENT)
 - Linked REQ/Accepted ADR/Open Questions
-- Architecture refs
+- Architecture refs and material architecture impacts
+- Boundary/ownership and hidden dependency risks
+- Applicable migration/rollback/failure/recovery/compatibility paths
 - Proposed Implementation plan
-- Verification feasibility
+- Verification feasibility against Acceptance
 
 ## Findings
 
