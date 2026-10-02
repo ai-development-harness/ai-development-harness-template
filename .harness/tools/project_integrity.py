@@ -38,12 +38,14 @@ from harness_config import (
     load_update_policy,
     project_overview_path,
     requirements_directory,
+    principles_directory,
     skill_registry_path,
     task_directory,
     update_lock_path,
     update_report_directory,
     open_questions_directory,
 )
+from principles import validate_principles
 from planning_contract import (
     adr_ids,
     dependency_ids,
@@ -356,6 +358,7 @@ def validate_configured_artifacts(root: Path) -> list[str]:
         (requirements_directory(root) / "TEMPLATE.md", "requirements template"),
         (requirements_directory(root) / "SPEC.md", "requirements SPEC projection"),
         (requirements_directory(root) / "STATUS.md", "requirements STATUS projection"),
+        (principles_directory(root) / "TEMPLATE.md", "Project Principle template"),
         (adr_directory(root) / "TEMPLATE.md", "ADR template"),
         (task_directory(root) / "TEMPLATE.md", "STEP template"),
         (open_questions_directory(root) / "TEMPLATE.md", "Open Question template"),
@@ -477,6 +480,7 @@ def validate_project_integrity(
     if not allow_legacy:
         errors.extend(validate_requirements(root))
         errors.extend(validate_adrs(root))
+        errors.extend(validate_principles(root))
         errors.extend(validate_all_review_reports(root, ci_mode=ci_mode))
         errors.extend(validate_all_operational_reports(root))
         errors.extend(validate_projections(root))
