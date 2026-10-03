@@ -22,6 +22,9 @@ PHASES = (
 KINDS = {
     "git_commit",
     "git_push",
+    "provider_pr",
+    # Legacy read/recovery compatibility for checkpoints persisted before the
+    # provider-neutral PR kind was introduced. New checkpoints must use provider_pr.
     "github_pr",
     "harness_update",
     "file_write",
