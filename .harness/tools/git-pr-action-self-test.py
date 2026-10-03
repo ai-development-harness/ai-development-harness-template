@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 import git_action as git_action_module
+from execution_status import empty_status, load_status, save_status
 from git_action import GitActionError, execute_pr
 
 
@@ -244,11 +245,45 @@ def main() -> int:
                 "url": "https://example.invalid/pr/17",
             }, state
 
-            # Idempotent retry reuses provider PR and needs no semantic files.
+            # Idempotent retry under real Harness execution reuses provider
+            # PR without opening a side-effect lifecycle: no provider mutation
+            # happens, so the first checkpoint must not be terminal (#194).
+            execution_status = empty_status()
+            execution_status["executions"].append(
+                {
+                    "executionId": "exec-pr-reuse",
+                    "ordinal": 1,
+                    "mode": "single",
+                    "requestedCommand": "GIT PR",
+                    "rootCommand": "GIT PR",
+                    "sequence": ["GIT PR"],
+                    "currentIndex": 0,
+                    "status": "running",
+                    "current": {
+                        "command": "GIT PR",
+                        "status": "running",
+                        "result": None,
+                        "attempt": 1,
+                        "startedAt": "2026-01-01T00:00:00+00:00",
+                        "completedAt": None,
+                        "context": {},
+                    },
+                    "notExecuted": [],
+                    "fixReviewCycles": 0,
+                    "startedAt": "2026-01-01T00:00:00+00:00",
+                    "completedAt": None,
+                    "updatedAt": "2026-01-01T00:00:00+00:00",
+                }
+            )
+            execution_status["nextOrdinal"] = 2
+            save_status(root, execution_status)
+
             reused = execute_pr(root)
             assert reused["status"] == "SUCCESS", reused
             assert reused["reused"] is True, reused
             assert reused["pr"] == 17, reused
+            persisted_execution = load_status(root)["executions"][0]
+            assert "sideEffect" not in persisted_execution["current"]["context"], persisted_execution
 
             # Regression #110: pr-state не object — BLOCKED, а не AttributeError.
             valid_state = state_path.read_bytes()
