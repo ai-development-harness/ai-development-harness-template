@@ -974,15 +974,25 @@ def execute_pr(
     title_file: Path | None = None,
     body_file: Path | None = None,
 ) -> dict[str, Any]:
-    """Find/reuse/create GitHub PR с durable reconciliation unknown outcome."""
+    """Find/reuse/create provider PR с durable reconciliation unknown outcome."""
     gate = pr_preflight(root)
     recovery = _side_effect_read(root, "GIT PR")
+    recovery_kind = recovery.get("kind") if isinstance(recovery, dict) else None
+    if recovery is not None and recovery_kind not in {"provider_pr", "github_pr"}:
+        raise GitActionError(
+            "SIDE_EFFECT_CHECKPOINT_INVALID",
+            f"GIT PR cannot recover side-effect kind {recovery_kind!r}",
+        )
+    # Новые executions используют provider-neutral kind. Legacy github_pr
+    # продолжаем с исходным kind до terminal phase: contract запрещает менять
+    # kind внутри active side-effect lifecycle.
+    pr_side_effect_kind = recovery_kind if recovery is not None else "provider_pr"
     recovery_proof = (
         recovery.get("proof")
         if isinstance(recovery, dict) and isinstance(recovery.get("proof"), dict)
         else {}
     )
-    if recovery is not None and recovery.get("kind") == "github_pr":
+    if recovery is not None:
         expected = (
             recovery_proof.get("headBranch"),
             recovery_proof.get("baseBranch"),
@@ -1067,9 +1077,9 @@ def execute_pr(
             "baseBranch": gate["base"],
             "headSha": gate["publishedHead"],
         }
-        _side_effect_write(root, "GIT PR", kind="github_pr", phase="prepared", proof=proof)
+        _side_effect_write(root, "GIT PR", kind=pr_side_effect_kind, phase="prepared", proof=proof)
         _side_effect_write(
-            root, "GIT PR", kind="github_pr", phase="side_effect_started", proof=proof
+            root, "GIT PR", kind=pr_side_effect_kind, phase="side_effect_started", proof=proof
         )
         try:
             provider_create_pr(root, gate, title=title, body=body)
@@ -1092,7 +1102,7 @@ def execute_pr(
         _side_effect_write(
             root,
             "GIT PR",
-            kind="github_pr",
+            kind=pr_side_effect_kind,
             phase="side_effect_observed",
             proof=observed,
         )
@@ -1109,13 +1119,18 @@ def execute_pr(
         "providerUrl": item.get("url"),
         "recovered": recovered_existing,
     }
-    _side_effect_write(
-        root,
-        "GIT PR",
-        kind="github_pr",
-        phase="postconditions_verified",
-        proof=verified,
-    )
+    # Обычный reuse уже существующего PR не пересекает mutation boundary:
+    # provider create не выполнялся, поэтому начинать SideEffectProof только
+    # терминальной фазой нельзя. Если checkpoint уже есть, это recovery/create
+    # lifecycle и его нужно довести до postconditions_verified.
+    if recovery is not None or not reused:
+        _side_effect_write(
+            root,
+            "GIT PR",
+            kind=pr_side_effect_kind,
+            phase="postconditions_verified",
+            proof=verified,
+        )
 
     cleanup_warnings = [
         warning

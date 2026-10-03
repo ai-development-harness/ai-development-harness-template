@@ -125,6 +125,37 @@ def main() -> int:
         restored_checkpoint = restored["executions"][0]["current"]["context"]["sideEffect"]
         assert restored_checkpoint == observed
 
+    # Provider PR kind не зависит от конкретного Git provider.
+    provider_pr = checkpoint(
+        kind="provider_pr",
+        phase="prepared",
+        attempt=1,
+        proof={"headBranch": "feature/x", "baseBranch": "main", "headSha": "a" * 40},
+    )
+    assert validate_checkpoint(provider_pr) == []
+
+    # Legacy github_pr остаётся валидным для durable recovery уже сохранённого
+    # checkpoint, но kind нельзя переименовывать посреди active lifecycle.
+    legacy_pr = checkpoint(
+        kind="github_pr",
+        phase="prepared",
+        attempt=1,
+        proof={"headBranch": "feature/x", "baseBranch": "main", "headSha": "a" * 40},
+    )
+    assert validate_checkpoint(legacy_pr) == []
+    try:
+        checkpoint(
+            kind="provider_pr",
+            phase="side_effect_started",
+            attempt=1,
+            proof=legacy_pr["proof"],
+            previous=legacy_pr,
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("legacy PR checkpoint kind changed within active lifecycle")
+
     # Secret-like metadata и oversized proof fail-closed.
     try:
         checkpoint(

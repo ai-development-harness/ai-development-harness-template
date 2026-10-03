@@ -81,6 +81,8 @@ Force push по-прежнему запрещён Git policy/preflight.
 
 ## GIT PR
 
+Side-effect kind для новых execution — provider-neutral `provider_pr`: один и тот же recovery contract применяется к GitHub/`gh` и Gitea/`tea`. Legacy `github_pr` остаётся валидным только для чтения и завершения checkpoint, созданного до переименования; kind внутри активного lifecycle не мигрируется.
+
 До provider create фиксируются head repository (если известен), head branch, base branch и published head SHA.
 
 После interruption executor сначала делает exact provider query:
