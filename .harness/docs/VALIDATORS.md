@@ -1478,7 +1478,8 @@ Self-test отдельно доказывает stable fingerprint при rename
 ## Что проверяет
 
 - contract version;
-- известный kind `git_commit|git_push|github_pr|harness_update|file_write`;
+- известный canonical kind `git_commit|git_push|provider_pr|harness_update|file_write`;
+- legacy `github_pr` принимается только для чтения/завершения уже сохранённого PR recovery checkpoint; новые PR checkpoints используют `provider_pr`;
 - monotonic phases одной attempt;
 - новая attempt начинается с `prepared`;
 - proof — JSON object не более 8 KiB;
