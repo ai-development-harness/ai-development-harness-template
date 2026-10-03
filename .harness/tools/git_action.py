@@ -1109,13 +1109,18 @@ def execute_pr(
         "providerUrl": item.get("url"),
         "recovered": recovered_existing,
     }
-    _side_effect_write(
-        root,
-        "GIT PR",
-        kind="github_pr",
-        phase="postconditions_verified",
-        proof=verified,
-    )
+    # Обычный reuse уже существующего PR не пересекает mutation boundary:
+    # provider create не выполнялся, поэтому начинать SideEffectProof только
+    # терминальной фазой нельзя. Если checkpoint уже есть, это recovery/create
+    # lifecycle и его нужно довести до postconditions_verified.
+    if recovery is not None or not reused:
+        _side_effect_write(
+            root,
+            "GIT PR",
+            kind="github_pr",
+            phase="postconditions_verified",
+            proof=verified,
+        )
 
     cleanup_warnings = [
         warning
