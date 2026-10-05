@@ -25,7 +25,7 @@ from planning_contract import (
     read_task,
     step_completion_proof,
 )
-from review_contract import latest_review, repository_revision
+from review_contract import latest_review, repository_activity_fingerprint
 from review_findings import (
     FINDING_CONTRACT_VERSION,
     FindingContractError,
@@ -44,6 +44,7 @@ SEMANTIC_STEP_OPERATIONS = {"PLAN", "IMPLEMENT", "REVIEW", "FIX"}
 _VERIFICATION_RANK = {
     None: 0,
     "UNKNOWN": 0,
+    "MISSING": 0,
     "BLOCKED": 0,
     "FAIL": 1,
     "MANUAL_REQUIRED": 2,
@@ -102,7 +103,6 @@ def _completion_findings(review: dict[str, Any] | None) -> list[str]:
                     "kind": item.get("kind"),
                     "criterion": item.get("criterion"),
                     "route": item.get("route"),
-                    "message": item.get("message"),
                 }
             )
         )
@@ -133,40 +133,78 @@ def _review_findings(review: dict[str, Any] | None) -> tuple[list[str], str | No
     return [], "legacy"
 
 
-def _execution_groups_hash(task: dict[str, Any]) -> str | None:
+def _execution_groups(task: dict[str, Any]) -> list[dict[str, Any]]:
     meta = task["frontmatter"]
     plan = meta.get("plan")
     groups_value = plan.get("execution_groups") if isinstance(plan, dict) else None
     if groups_value in (None, [], {}):
-        return None
+        return []
     body = task["sections"].get("Implementation plan", "")
-    groups = normalize_execution_groups(
+    return normalize_execution_groups(
         groups_value,
         implementation_plan_step_count(body),
     )
-    return stable_hash(groups)
 
 
-def _verification_summary(root: Path, step_id: str) -> dict[str, Any]:
+def _execution_groups_hash(groups: list[dict[str, Any]]) -> str | None:
+    return stable_hash(groups) if groups else None
+
+
+def _activity_scope(
+    groups: list[dict[str, Any]],
+    operation: str,
+) -> set[str] | None:
+    # PLAN/REVIEW are semantic/read-only phases: unrelated worktree movement
+    # must never reset their stagnation counter.
+    if operation in {"PLAN", "REVIEW"}:
+        return set()
+    # executionGroups provide the only strict machine-readable mutation
+    # surface today. Without groups retain conservative whole-repository
+    # fallback instead of guessing paths from prose Mutation policy.
+    if not groups:
+        return None
+    return {
+        str(path)
+        for group in groups
+        for path in group.get("mutationPaths", [])
+        if isinstance(path, str) and path
+    }
+
+
+def _verification_state(
+    root: Path,
+    step_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     try:
         value = verification_freshness(root, step_id)
     except (OSError, UnicodeError, ValueError) as exc:
-        return {
+        value = {
             "status": "UNKNOWN",
             "fresh": False,
             "reasonCode": "VERIFICATION_UNAVAILABLE",
             "errorHash": content_hash(str(exc)),
         }
-    return {
+    summary = {
         "status": value.get("status"),
         "fresh": value.get("fresh"),
         "reasonCode": value.get("reasonCode"),
     }
+    if "errorHash" in value:
+        summary["errorHash"] = value["errorHash"]
+    return summary, value
 
 
-def _precheck_summary(root: Path, step_id: str) -> dict[str, Any]:
+def _precheck_summary(
+    root: Path,
+    step_id: str,
+    verification_value: dict[str, Any],
+) -> dict[str, Any]:
     try:
-        value = deterministic_precheck(root, step_id)
+        value = deterministic_precheck(
+            root,
+            step_id,
+            freshness_provider=lambda _root, _step: verification_value,
+        )
     except (OSError, UnicodeError, ValueError) as exc:
         return {
             "status": "BLOCKED",
@@ -205,20 +243,25 @@ def capture_progress(
     task = read_task(root, step_id)
     meta = task["frontmatter"]
     plan = meta.get("plan") if isinstance(meta.get("plan"), dict) else {}
+    groups = _execution_groups(task)
+    activity_scope = _activity_scope(groups, operation)
+
     proof = step_completion_proof(root, step_id)
     review = latest_review(root, step_id)
     review_fingerprints, review_contract = _review_findings(review)
     completion_fingerprints = _completion_findings(review)
-    verification = _verification_summary(root, step_id)
-    precheck = _precheck_summary(root, step_id)
+    verification, verification_value = _verification_state(root, step_id)
+    precheck = _precheck_summary(root, step_id, verification_value)
     criteria = acceptance_criteria(root, step_id)
+    context_basis = planning_context_basis(root, step_id)
+    content_hash_value = plan_content_hash(root, step_id)
 
     material = {
         "stepStatus": meta.get("status"),
-        "contextBasis": planning_context_basis(root, step_id),
-        "planContentHash": plan_content_hash(root, step_id),
+        "contextBasis": context_basis,
+        "planContentHash": content_hash_value,
         "planRevision": plan.get("revision"),
-        "executionGroupsHash": _execution_groups_hash(task),
+        "executionGroupsHash": _execution_groups_hash(groups),
         "acceptanceHash": stable_hash(criteria),
         "evidenceHash": proof["snapshot"].get("evidence_hash"),
         "completionComplete": bool(proof.get("complete")),
@@ -234,8 +277,17 @@ def capture_progress(
         "reviewFindings": review_fingerprints,
         "completionFindings": completion_fingerprints,
     }
+    activity_revision = repository_activity_fingerprint(
+        root,
+        included_paths=activity_scope,
+    )
     activity = {
-        "repositoryRevision": repository_revision(root),
+        "repositoryActivity": activity_revision,
+        "scope": (
+            sorted(activity_scope)
+            if isinstance(activity_scope, set)
+            else None
+        ),
     }
     metrics = {
         "stepStatus": material["stepStatus"],
@@ -275,9 +327,9 @@ def _changed_metrics(before: dict[str, Any], after: dict[str, Any]) -> tuple[lis
     changed = [name for name in names if left.get(name) != right.get(name)]
     unchanged = [name for name in names if left.get(name) == right.get(name)]
     if before.get("activityFingerprint") != after.get("activityFingerprint"):
-        changed.append("repositoryRevision")
+        changed.append("repositoryActivity")
     else:
-        unchanged.append("repositoryRevision")
+        unchanged.append("repositoryActivity")
     return changed, unchanged
 
 
@@ -310,8 +362,9 @@ def compare_progress(before: dict[str, Any], after: dict[str, Any]) -> dict[str,
         improvements.append("completionPrecheck")
     if _VERIFICATION_RANK.get(right.get("verificationStatus"), 0) > _VERIFICATION_RANK.get(left.get("verificationStatus"), 0):
         improvements.append("verification")
-    if left.get("evidenceHash") != right.get("evidenceHash"):
-        improvements.append("evidence")
+    # Evidence text/hash change is material but directionless. It becomes
+    # progress only through an independently improving verification/completion
+    # fact; otherwise it must not mask regressions.
 
     if _STEP_STATUS_RANK.get(right.get("stepStatus"), 0) < _STEP_STATUS_RANK.get(left.get("stepStatus"), 0):
         regressions.append("stepStatus")
@@ -338,15 +391,18 @@ def compare_progress(before: dict[str, Any], after: dict[str, Any]) -> dict[str,
     ):
         regressions.append("verification")
 
-    if (
-        int(left.get("reviewFindingCount") or 0) > 0
-        and int(right.get("reviewFindingCount") or 0) > int(left.get("reviewFindingCount") or 0)
-    ):
+    left_review_findings = int(left.get("reviewFindingCount") or 0)
+    right_review_findings = int(right.get("reviewFindingCount") or 0)
+    if right_review_findings < left_review_findings:
+        improvements.append("reviewFindings")
+    elif right_review_findings > left_review_findings:
         regressions.append("reviewFindings")
-    if (
-        int(left.get("completionFindingCount") or 0) > 0
-        and int(right.get("completionFindingCount") or 0) > int(left.get("completionFindingCount") or 0)
-    ):
+
+    left_completion_findings = int(left.get("completionFindingCount") or 0)
+    right_completion_findings = int(right.get("completionFindingCount") or 0)
+    if right_completion_findings < left_completion_findings:
+        improvements.append("completionFindings")
+    elif right_completion_findings > left_completion_findings:
         regressions.append("completionFindings")
 
     if not material_changed and not activity_changed:

@@ -58,6 +58,7 @@ from planning_contract import (
     plan_content_hash,
     planning_context_basis,
     planning_context_components,
+    planning_context_fingerprints,
     read_task as read_planning_task,
     step_completion_proof,
     task_contract_snapshot,
@@ -66,6 +67,7 @@ from planning_contract import (
 from repair_cycle import RepairCycleError, compare_review_reports
 from progress_guard import (
     MAX_PROGRESS_SAMPLES,
+    PROGRESS_SCHEMA_VERSION,
     PROGRESS_TELEMETRY_VERSION,
     ProgressGuardError,
     capture_progress,
@@ -318,6 +320,26 @@ class ProgressExecutionError(ValueError):
         self.details = details
 
 
+class StaleSemanticResultError(ValueError):
+    """Semantic completion no longer owns the current execution invocation."""
+
+    code = "STALE_SEMANTIC_RESULT"
+
+    def __init__(
+        self,
+        expected_execution_id: str,
+        current_execution_id: str | None,
+    ):
+        super().__init__(
+            f"semantic result belongs to execution {expected_execution_id!r}, "
+            f"but current execution is {current_execution_id!r}"
+        )
+        self.details = {
+            "expectedExecutionId": expected_execution_id,
+            "currentExecutionId": current_execution_id,
+        }
+
+
 def _sha256_value(value: Any) -> bool:
     return isinstance(value, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value) is not None
 
@@ -402,6 +424,10 @@ def _capture_intent_basis(root: Path, command: str) -> dict[str, Any] | None:
     plan_value = plan if isinstance(plan, dict) else {}
     requires_plan = operation in PLAN_BOUND_STEP_OPERATIONS
 
+    context_basis, context_components = planning_context_fingerprints(
+        root,
+        step_id,
+    )
     value = {
         "schemaVersion": INTENT_BASIS_SCHEMA_VERSION,
         "stepId": step_id,
@@ -409,8 +435,8 @@ def _capture_intent_basis(root: Path, command: str) -> dict[str, Any] | None:
         "operation": operation,
         # schema-v4 planning basis already includes semantic STEP/REQ/ADR/OQ,
         # referenced architecture and active blocking Project Principles.
-        "contextBasis": planning_context_basis(root, step_id),
-        "contextComponents": planning_context_components(root, step_id),
+        "contextBasis": context_basis,
+        "contextComponents": context_components,
         # plan_content_hash includes canonical executionGroups when present.
         # PLAN itself is allowed to change this output, so PLAN does not bind it.
         "planContentRequired": requires_plan,
@@ -598,6 +624,77 @@ def _raise_intent_resume_error(blocker: dict[str, Any]) -> None:
     )
 
 
+def _progress_sample_errors(value: Any, *, prefix: str) -> list[str]:
+    if not isinstance(value, dict):
+        return [f"{prefix} must be an object"]
+    errors: list[str] = []
+    if value.get("schemaVersion") != PROGRESS_SCHEMA_VERSION:
+        errors.append(f"{prefix}.schemaVersion must be {PROGRESS_SCHEMA_VERSION}")
+    step_id = value.get("stepId")
+    if not isinstance(step_id, str) or re.fullmatch(r"STEP-\d{3,}", step_id) is None:
+        errors.append(f"{prefix}.stepId must be STEP-NNN")
+    if not isinstance(value.get("command"), str) or not value.get("command"):
+        errors.append(f"{prefix}.command must be non-empty")
+    if value.get("operation") not in INTENT_AWARE_STEP_OPERATIONS:
+        errors.append(f"{prefix}.operation is invalid")
+    for key in ("materialFingerprint", "activityFingerprint", "fingerprint"):
+        if not _sha256_value(value.get(key)):
+            errors.append(f"{prefix}.{key} must be sha256")
+    metrics = value.get("metrics")
+    if not isinstance(metrics, dict):
+        errors.append(f"{prefix}.metrics must be an object")
+    else:
+        integer_metrics = (
+            "completionReasonCount",
+            "completionPrecheckFindingCount",
+            "reviewFindingCount",
+            "completionFindingCount",
+        )
+        for key in integer_metrics:
+            number = metrics.get(key)
+            if not isinstance(number, int) or isinstance(number, bool) or number < 0:
+                errors.append(f"{prefix}.metrics.{key} must be a non-negative integer")
+        if not isinstance(metrics.get("completionComplete"), bool):
+            errors.append(f"{prefix}.metrics.completionComplete must be boolean")
+        evidence_hash = metrics.get("evidenceHash")
+        if evidence_hash is not None and not _sha256_value(evidence_hash):
+            errors.append(f"{prefix}.metrics.evidenceHash must be null or sha256")
+        groups_hash = metrics.get("executionGroupsHash")
+        if groups_hash is not None and not _sha256_value(groups_hash):
+            errors.append(f"{prefix}.metrics.executionGroupsHash must be null or sha256")
+        verification = metrics.get("verificationStatus")
+        if verification not in {None, "UNKNOWN", "MISSING", "BLOCKED", "FAIL", "MANUAL_REQUIRED", "PASS"}:
+            errors.append(f"{prefix}.metrics.verificationStatus is invalid")
+    if not isinstance(value.get("capturedAt"), str) or not value.get("capturedAt"):
+        errors.append(f"{prefix}.capturedAt must be non-empty")
+    return errors
+
+
+def _progress_delta_errors(value: Any, *, prefix: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        return [f"{prefix} must be null or an object"]
+    errors: list[str] = []
+    if value.get("classification") not in {
+        "NO_CHANGE",
+        "ACTIVITY_ONLY",
+        "WORSENED",
+        "PROGRESS",
+    }:
+        errors.append(f"{prefix}.classification is invalid")
+    for key in ("materialChanged", "activityChanged"):
+        if not isinstance(value.get(key), bool):
+            errors.append(f"{prefix}.{key} must be boolean")
+    for key in ("changed", "unchanged", "improvements", "regressions"):
+        items = value.get(key)
+        if not isinstance(items, list) or any(
+            not isinstance(item, str) or not item for item in items
+        ):
+            errors.append(f"{prefix}.{key} must be a string array")
+    return errors
+
+
 def _progress_telemetry_errors(value: Any, *, prefix: str) -> list[str]:
     if value is None:
         return []
@@ -613,10 +710,24 @@ def _progress_telemetry_errors(value: Any, *, prefix: str) -> list[str]:
     samples = value.get("samples")
     if not isinstance(samples, list):
         errors.append(f"{prefix}.samples must be an array")
-    elif len(samples) > MAX_PROGRESS_SAMPLES:
-        errors.append(
-            f"{prefix}.samples exceeds hard limit {MAX_PROGRESS_SAMPLES}"
+    else:
+        if len(samples) > MAX_PROGRESS_SAMPLES:
+            errors.append(
+                f"{prefix}.samples exceeds hard limit {MAX_PROGRESS_SAMPLES}"
+            )
+        for index, sample in enumerate(samples):
+            errors.extend(
+                _progress_sample_errors(
+                    sample,
+                    prefix=f"{prefix}.samples[{index}]",
+                )
+            )
+    errors.extend(
+        _progress_delta_errors(
+            value.get("lastDelta"),
+            prefix=f"{prefix}.lastDelta",
         )
+    )
     stop = value.get("stopDecision")
     if stop not in {
         "continue",
@@ -2156,6 +2267,7 @@ def complete_command(
     command: str,
     result: str,
     *,
+    expected_execution_id: str | None = None,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if result not in RESULTS:
@@ -2175,6 +2287,14 @@ def complete_command(
     if latest is None:
         raise ValueError(f"execution not found for {normalized_root}")
     invocation_kind, execution = latest
+    if (
+        expected_execution_id is not None
+        and execution.get("executionId") != expected_execution_id
+    ):
+        raise StaleSemanticResultError(
+            expected_execution_id,
+            str(execution.get("executionId") or "") or None,
+        )
     if invocation_kind == "terminal":
         if execution.get("status") == "complete":
             raise ValueError(f"execution is already complete for {normalized_root}")
@@ -2264,6 +2384,8 @@ def begin_command(
     root: Path,
     root_command: str,
     command: str,
+    *,
+    expected_execution_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     normalized_command = normalize_single_command(root, command)["normalized"]
@@ -2280,6 +2402,8 @@ def begin_command(
         else None
     )
     if execution is None:
+        if expected_execution_id is not None:
+            raise StaleSemanticResultError(expected_execution_id, None)
         execution = start_execution(root, root_command)
         status = load_status(root)
         latest = _latest_invocation(
@@ -2288,6 +2412,15 @@ def begin_command(
         )
         assert latest is not None and latest[0] == "active"
         execution = latest[1]
+
+    if (
+        expected_execution_id is not None
+        and execution.get("executionId") != expected_execution_id
+    ):
+        raise StaleSemanticResultError(
+            expected_execution_id,
+            str(execution.get("executionId") or "") or None,
+        )
 
     current = execution["current"]
     if current.get("command") == normalized_command and current.get("status") == "running":
@@ -2578,6 +2711,7 @@ def block_execution(
     root_command: str,
     *,
     command: str | None = None,
+    expected_execution_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     status = load_status(root)
@@ -2593,7 +2727,17 @@ def block_execution(
         else None
     )
     if execution is None:
+        if expected_execution_id is not None:
+            raise StaleSemanticResultError(expected_execution_id, None)
         raise ValueError(f"active execution not found for {normalized_root}")
+    if (
+        expected_execution_id is not None
+        and execution.get("executionId") != expected_execution_id
+    ):
+        raise StaleSemanticResultError(
+            expected_execution_id,
+            str(execution.get("executionId") or "") or None,
+        )
     current = execution["current"]
     if command is not None:
         normalized_command = normalize_single_command(root, command)["normalized"]
