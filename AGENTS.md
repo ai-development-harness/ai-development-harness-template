@@ -35,10 +35,10 @@ Dispatcher сам выполняет structural validation, execution state, run
 После semantic работы передай factual result обратно dispatcher:
 
 ```bash
-python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --result PASS|SUCCESS|FAIL|BLOCKED
+python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --execution-id '<executionId>' --result PASS|SUCCESS|FAIL|BLOCKED
 ```
 
-Dispatcher сам разрешит chain/orchestration continuation. Для interruption используй `harness-dispatch.py resume`; `HARNESS RESUME` отдельную root execution не создаёт. `PASS/BLOCKED` deterministic tools reasoning-ом не переопределяй.
+`executionId` бери только из exact semantic handoff: semantic result является proposal, а commit execution/transition state принадлежит dispatcher. Старый result другой invocation отклоняется fail-closed. Dispatcher сам разрешит chain/orchestration continuation. Для interruption используй `harness-dispatch.py resume`; `HARNESS RESUME` отдельную root execution не создаёт. `PASS/BLOCKED` deterministic tools reasoning-ом не переопределяй.
 
 Machine details остаются pull-based в `.harness/docs/COMMAND_SYNTAX.md`, `EXECUTION_PROTOCOL.md`, `EXECUTION_STATUS.md` и `UPDATES.md`.
 
