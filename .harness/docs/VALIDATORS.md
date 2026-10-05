@@ -1116,7 +1116,7 @@ Current execution state использует schema v2. Validator проверя
 - current command/status/result;
 - attempt;
 - fix/review cycle counter;
-- optional `current.context.intentBasis`: bounded 16 KiB versioned envelope для `STEP PLAN/IMPLEMENT/REVIEW/FIX`. Known schema v1 проверяет STEP/command/context fingerprints/plan binding; unknown future sub-schema остаётся parseable, но resume fail-closed возвращает `INTENT_BASIS_SCHEMA_UNSUPPORTED`.
+- optional `current.context.intentBasis`: bounded 16 KiB versioned envelope для `STEP PLAN/IMPLEMENT/REVIEW/FIX`. Known schema v1 проверяет STEP/command/context fingerprints/plan binding; unknown future sub-schema остаётся parseable, но resume fail-closed возвращает `INTENT_BASIS_SCHEMA_UNSUPPORTED`; legacy/diagnostic fresh start, где basis вычислить нельзя, сохраняет bounded `intentBasisError`, который делает последующий resume `INTENT_BASIS_UNAVAILABLE`.
 
 `load_status()` и `save_status()` всегда вызывают schema validation, поэтому повреждённый local state не трактуется как пустой.
 
