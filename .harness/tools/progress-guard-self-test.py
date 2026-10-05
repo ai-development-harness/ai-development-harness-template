@@ -18,6 +18,7 @@ from execution_status import (
 from harness_ux import harness_resume
 from progress_guard import (
     MAX_PROGRESS_SAMPLES,
+    _completion_findings,
     capture_progress,
     compare_progress,
     new_telemetry,
@@ -333,6 +334,52 @@ def policy_tests() -> None:
     finding_delta = compare_progress(finding_before, finding_after)
     assert finding_delta["classification"] == "WORSENED", finding_delta
     assert "reviewFindings" in finding_delta["regressions"], finding_delta
+
+    # Completion finding identity is factual, not wording-based.
+    completion_a = {
+        "document": {
+            "sections": {
+                "Completion convergence": (
+                    "```json\n"
+                    + json.dumps(
+                        {
+                            "findings": [
+                                {
+                                    "id": "COMP-001",
+                                    "kind": "evidence_gap",
+                                    "criterion": "criterion-a",
+                                    "route": "FIX",
+                                    "message": "Evidence is missing.",
+                                }
+                            ]
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n```"
+                )
+            }
+        }
+    }
+    completion_b = json.loads(json.dumps(completion_a))
+    completion_b["document"]["sections"]["Completion convergence"] = (
+        "```json\n"
+        + json.dumps(
+            {
+                "findings": [
+                    {
+                        "id": "COMP-777",
+                        "kind": "evidence_gap",
+                        "criterion": "criterion-a",
+                        "route": "FIX",
+                        "message": "The same criterion still lacks evidence.",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        )
+        + "\n```"
+    )
+    assert _completion_findings(completion_a) == _completion_findings(completion_b)
 
     # Repeated exact no-op resume is bounded.
     telemetry = new_telemetry(base)
