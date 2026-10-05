@@ -9,6 +9,7 @@ on:
   # Пример: issue branch → feature/reliable-orchestration-hardening → main.
   pull_request:
     # Integration PR проходит тот же trust-boundary validator до объединения серии изменений.
+    # Пример: [main, feature/reliable-orchestration-hardening].
     branches:
       - main
       - feature/reliable-orchestration-hardening
