@@ -64,6 +64,15 @@ from planning_contract import (
     task_path as configured_task_path,
 )
 from repair_cycle import RepairCycleError, compare_review_reports
+from progress_guard import (
+    MAX_PROGRESS_SAMPLES,
+    PROGRESS_TELEMETRY_VERSION,
+    ProgressGuardError,
+    capture_progress,
+    new_telemetry,
+    observe_resume,
+    observe_transition,
+)
 from review_findings import FindingContractError, latest_structured_findings
 from review_contract import latest_review as latest_valid_review
 from side_effect_recovery import checkpoint as build_side_effect_checkpoint
@@ -293,6 +302,15 @@ def _validate_baseline(value: Any, prefix: str) -> list[str]:
 
 class IntentResumeError(ValueError):
     """Unsafe semantic resume blocked by the durable Intent Basis."""
+
+    def __init__(self, code: str, message: str, *, details: dict[str, Any]):
+        super().__init__(message)
+        self.code = code
+        self.details = details
+
+
+class ProgressExecutionError(ValueError):
+    """Long-running execution is trapped in deterministic progress state."""
 
     def __init__(self, code: str, message: str, *, details: dict[str, Any]):
         super().__init__(message)
@@ -580,6 +598,184 @@ def _raise_intent_resume_error(blocker: dict[str, Any]) -> None:
     )
 
 
+def _progress_telemetry_errors(value: Any, *, prefix: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        return [f"{prefix} must be an object"]
+    errors = _details_errors(value, prefix=prefix, enforce_budget=True)
+    if errors:
+        return errors
+    if value.get("schemaVersion") != PROGRESS_TELEMETRY_VERSION:
+        errors.append(
+            f"{prefix}.schemaVersion must be {PROGRESS_TELEMETRY_VERSION}"
+        )
+    samples = value.get("samples")
+    if not isinstance(samples, list):
+        errors.append(f"{prefix}.samples must be an array")
+    elif len(samples) > MAX_PROGRESS_SAMPLES:
+        errors.append(
+            f"{prefix}.samples exceeds hard limit {MAX_PROGRESS_SAMPLES}"
+        )
+    stop = value.get("stopDecision")
+    if stop not in {
+        "continue",
+        "EXECUTION_STAGNATION",
+        "EXECUTION_CYCLE",
+        "EXECUTION_DRIFT",
+    }:
+        errors.append(f"{prefix}.stopDecision is invalid")
+    for key in ("unchangedResumes", "driftStreak"):
+        number = value.get(key)
+        if not isinstance(number, int) or isinstance(number, bool) or number < 0:
+            errors.append(f"{prefix}.{key} must be a non-negative integer")
+    return errors
+
+
+def _progress_sample_for_command(
+    root: Path,
+    command: str,
+) -> dict[str, Any] | None:
+    parsed = normalize_single_command(root, command)
+    if (
+        parsed.get("domain") != "STEP"
+        or parsed.get("operation") not in INTENT_AWARE_STEP_OPERATIONS
+        or not isinstance(parsed.get("target"), str)
+    ):
+        return None
+    return capture_progress(
+        root,
+        str(parsed["target"]),
+        parsed["normalized"],
+        str(parsed["operation"]),
+    )
+
+
+def _repair_loop_progress_suppressed(
+    execution: dict[str, Any],
+    operation: str,
+    *,
+    previous_operation: str | None = None,
+) -> bool:
+    # #153 remains the sole stop policy once FIX↔REVIEW repair has started.
+    if operation == "FIX":
+        return True
+    if operation == "REVIEW" and (
+        previous_operation == "FIX"
+        or int(execution.get("fixReviewCycles", 0)) > 0
+        or isinstance(execution.get("repairTelemetry"), dict)
+    ):
+        return True
+    return False
+
+
+def _store_progress_error(execution: dict[str, Any], exc: Exception) -> None:
+    execution["progressTelemetryError"] = {
+        "reasonCode": "PROGRESS_SNAPSHOT_UNAVAILABLE",
+        "message": str(exc)[:2048],
+        "updatedAt": utc_now(),
+    }
+
+
+def _initialize_progress(
+    root: Path,
+    execution: dict[str, Any],
+    command: str,
+) -> None:
+    try:
+        sample = _progress_sample_for_command(root, command)
+    except (OSError, UnicodeError, ValueError, ProgressGuardError) as exc:
+        _store_progress_error(execution, exc)
+        return
+    if sample is None:
+        return
+    execution["progressTelemetry"] = new_telemetry(sample)
+    execution.pop("progressTelemetryError", None)
+
+
+def _apply_progress_blocker(
+    execution: dict[str, Any],
+    blocker: dict[str, Any],
+    *,
+    command: str,
+    block_current: bool,
+) -> None:
+    current = execution.get("current")
+    if block_current and isinstance(current, dict) and current.get("status") == "running":
+        current["status"] = "blocked"
+        current["result"] = "BLOCKED"
+        current["completedAt"] = utc_now()
+    execution["blockedBy"] = {
+        "reasonCode": blocker["reasonCode"],
+        "command": command,
+        "remediation": blocker.get("remediation"),
+        "details": blocker,
+    }
+    _mark_root_complete(execution, blocked=True)
+
+
+def _raise_progress_error(blocker: dict[str, Any]) -> None:
+    raise ProgressExecutionError(
+        str(blocker["reasonCode"]),
+        str(blocker.get("message") or blocker["reasonCode"]),
+        details=blocker,
+    )
+
+
+def _observe_progress_resume(
+    root: Path,
+    execution: dict[str, Any],
+    command: str,
+) -> dict[str, Any] | None:
+    try:
+        sample = _progress_sample_for_command(root, command)
+    except (OSError, UnicodeError, ValueError, ProgressGuardError) as exc:
+        _store_progress_error(execution, exc)
+        return None
+    if sample is None:
+        return None
+    operation = str(sample.get("operation") or "")
+    observed = observe_resume(
+        execution.get("progressTelemetry"),
+        sample,
+        suppress_stop=_repair_loop_progress_suppressed(execution, operation),
+    )
+    execution["progressTelemetry"] = observed["telemetry"]
+    execution.pop("progressTelemetryError", None)
+    blocker = observed.get("blocker")
+    return blocker if isinstance(blocker, dict) else None
+
+
+def _observe_progress_transition(
+    root: Path,
+    execution: dict[str, Any],
+    command: str,
+    *,
+    previous_operation: str | None,
+) -> dict[str, Any] | None:
+    try:
+        sample = _progress_sample_for_command(root, command)
+    except (OSError, UnicodeError, ValueError, ProgressGuardError) as exc:
+        _store_progress_error(execution, exc)
+        return None
+    if sample is None:
+        return None
+    operation = str(sample.get("operation") or "")
+    observed = observe_transition(
+        execution.get("progressTelemetry"),
+        sample,
+        suppress_stop=_repair_loop_progress_suppressed(
+            execution,
+            operation,
+            previous_operation=previous_operation,
+        ),
+    )
+    execution["progressTelemetry"] = observed["telemetry"]
+    execution.pop("progressTelemetryError", None)
+    blocker = observed.get("blocker")
+    return blocker if isinstance(blocker, dict) else None
+
+
 def _details_size_bytes(value: dict[str, Any]) -> int:
     """Размер durable details в точном compact UTF-8 JSON transport."""
     encoded = json.dumps(
@@ -712,6 +908,20 @@ def _validate_execution_record(
     attempt = current.get("attempt")
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
         errors.append(f"{prefix}: current.attempt must be >= 1")
+
+    errors.extend(
+        _progress_telemetry_errors(
+            execution.get("progressTelemetry"),
+            prefix=f"{prefix}: progressTelemetry",
+        )
+    )
+    errors.extend(
+        _details_errors(
+            execution.get("progressTelemetryError"),
+            prefix=f"{prefix}: progressTelemetryError",
+            enforce_budget=True,
+        )
+    )
 
     repair_telemetry = execution.get("repairTelemetry")
     if repair_telemetry is not None:
@@ -1649,6 +1859,20 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
                     _apply_intent_blocker(existing, blocker)
                     save_status(root, status)
                     _raise_intent_resume_error(blocker)
+                progress_blocker = _observe_progress_resume(
+                    root,
+                    existing,
+                    str(current["command"]),
+                )
+                if progress_blocker is not None:
+                    _apply_progress_blocker(
+                        existing,
+                        progress_blocker,
+                        command=str(current["command"]),
+                        block_current=True,
+                    )
+                    save_status(root, status)
+                    _raise_progress_error(progress_blocker)
                 current["attempt"] = int(current.get("attempt", 1)) + 1
                 current["startedAt"] = utc_now()
                 existing["updatedAt"] = utc_now()
@@ -1699,6 +1923,7 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
         current_command,
         baseline,
     )
+    _initialize_progress(root, execution, current_command)
     status["executions"].append(execution)
     save_status(root, status)
     return execution
@@ -2071,6 +2296,20 @@ def begin_command(
             _apply_intent_blocker(execution, blocker)
             save_status(root, status)
             _raise_intent_resume_error(blocker)
+        progress_blocker = _observe_progress_resume(
+            root,
+            execution,
+            normalized_command,
+        )
+        if progress_blocker is not None:
+            _apply_progress_blocker(
+                execution,
+                progress_blocker,
+                command=normalized_command,
+                block_current=True,
+            )
+            save_status(root, status)
+            _raise_progress_error(progress_blocker)
         current["attempt"] = int(current.get("attempt", 1)) + 1
         current["startedAt"] = utc_now()
         # Preserve the original crash-recovery context. Recomputing it here
@@ -2154,6 +2393,29 @@ def begin_command(
         and next_parsed.get("operation") == "REVIEW"
     ):
         execution["fixReviewCycles"] = int(execution.get("fixReviewCycles", 0)) + 1
+
+    progress_blocker = _observe_progress_transition(
+        root,
+        execution,
+        normalized_command,
+        previous_operation=(
+            str(previous_parsed.get("operation"))
+            if previous_parsed.get("operation") is not None
+            else None
+        ),
+    )
+    if progress_blocker is not None:
+        _apply_progress_blocker(
+            execution,
+            progress_blocker,
+            command=normalized_command,
+            block_current=False,
+        )
+        if execution["mode"] == "chain":
+            index = int(execution.get("currentIndex", 0))
+            execution["notExecuted"] = execution["sequence"][index:]
+        save_status(root, status)
+        _raise_progress_error(progress_blocker)
 
     baseline = _baseline_for_new_command(
         root,
