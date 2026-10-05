@@ -120,6 +120,7 @@ def _block_recording_error(
     root_command: str,
     *,
     command: str | None,
+    expected_execution_id: str | None = None,
 ) -> str | None:
     """Зафиксировать blocker; вернуть ошибку записи state вместо её сокрытия.
 
@@ -127,7 +128,12 @@ def _block_recording_error(
     обязан сообщить это в BLOCKED ответе (`stateWriteError`), а не молчать (#117).
     """
     try:
-        block_execution(root, root_command, command=command)
+        block_execution(
+            root,
+            root_command,
+            command=command,
+            expected_execution_id=expected_execution_id,
+        )
     except (OSError, ValueError) as exc:
         return str(exc)
     return None
@@ -439,6 +445,7 @@ def _finish_machine_result(
         str(execution["rootCommand"]),
         command,
         str(status),
+        expected_execution_id=str(execution["executionId"]),
         details=_machine_completion_details(handler=handler, result=result),
     )
     resolved = resolve_execution(root, completed)
@@ -449,6 +456,7 @@ def _finish_machine_result(
             root,
             str(execution["rootCommand"]),
             next_command,
+            expected_execution_id=str(completed["executionId"]),
         )
         return _dispatch_running(root, next_execution, next_command)
 
@@ -462,7 +470,12 @@ def _finish_machine_result(
         and str(execution.get("rootCommand", "")).startswith("STEP RUN ")
     ):
         root_command = str(execution["rootCommand"])
-        root_execution = begin_command(root, root_command, root_command)
+        root_execution = begin_command(
+            root,
+            root_command,
+            root_command,
+            expected_execution_id=str(completed["executionId"]),
+        )
         return _dispatch_running(root, root_execution, root_command)
 
     return _terminal(completed, resolved, result=result)
@@ -596,6 +609,7 @@ def _dispatch_step_run(
         root,
         str(execution["rootCommand"]),
         child,
+        expected_execution_id=str(execution["executionId"]),
     )
     return _dispatch_running(root, child_execution, child)
 
@@ -955,7 +969,12 @@ def complete_dispatch(
             and not git_commit_completion_proven(root, active)
         ):
             try:
-                blocked = block_execution(root, root_command, command=command)
+                blocked = block_execution(
+                    root,
+                    root_command,
+                    command=command,
+                    expected_execution_id=execution_id,
+                )
             except (OSError, ValueError):
                 blocked = active
             return {
@@ -1037,7 +1056,12 @@ def complete_dispatch(
     if resolved.get("status") == "NEXT" and resolved.get("command"):
         next_command = str(resolved["command"])
         try:
-            execution = begin_command(root, root_command, next_command)
+            execution = begin_command(
+                root,
+                root_command,
+                next_command,
+                expected_execution_id=str(execution["executionId"]),
+            )
             return _dispatch_running(root, execution, next_command)
         except (DispatchError, OSError, ValueError) as exc:
             state_error = _block_recording_error(root, root_command, command=next_command)
@@ -1059,7 +1083,12 @@ def complete_dispatch(
         and root_command.startswith("STEP RUN ")
     ):
         try:
-            execution = begin_command(root, root_command, root_command)
+            execution = begin_command(
+                root,
+                root_command,
+                root_command,
+                expected_execution_id=str(execution["executionId"]),
+            )
             return _dispatch_running(root, execution, root_command)
         except (DispatchError, OSError, ValueError) as exc:
             state_error = _block_recording_error(root, root_command, command=root_command)
@@ -1101,7 +1130,16 @@ def resume_dispatch(
 
     command = str(resolved["command"])
     try:
-        execution = begin_command(root, root_command, command)
+        execution = begin_command(
+            root,
+            root_command,
+            command,
+            expected_execution_id=(
+                str(resolved["executionId"])
+                if resolved.get("executionId")
+                else None
+            ),
+        )
         return _dispatch_running(root, execution, command)
     except (DispatchError, OSError, ValueError) as exc:
         state_error = _block_recording_error(root, root_command, command=command)
