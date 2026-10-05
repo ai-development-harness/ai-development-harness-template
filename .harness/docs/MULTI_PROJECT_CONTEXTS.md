@@ -99,6 +99,49 @@ Machine-readable resolved pair:
 
 Absolute paths являются runtime facts и не должны попадать в tracked project artifacts.
 
+## Deterministic Project Context resolver
+
+Foundation implementation #211 предоставляет единый machine-readable resolver:
+
+```bash
+python3 .harness/tools/project-context.py --json
+python3 .harness/tools/project-context.py --project-root apps/web --json
+python3 .harness/tools/project-context.py --start apps/web/src --json
+```
+
+PASS payload имеет contract:
+
+```json
+{
+  "status": "PASS",
+  "schemaVersion": 1,
+  "projectRoot": "/absolute/path/to/member",
+  "gitRoot": "/absolute/path/to/repo",
+  "selectionSource": "explicit|environment|nearest-parent",
+  "projectName": "web",
+  "harnessRelease": "0.x.y"
+}
+```
+
+BLOCKED payload использует stable `reasonCode` из этого architecture contract.
+
+Аргументы:
+
+- `--project-root` — explicit selected project root с высшим приоритетом;
+- `--start` — invocation/start directory для nearest-parent resolution;
+- `--json` — compact machine-readable output.
+
+Exit codes:
+
+- `0` — Project Context однозначно разрешён;
+- `2` — BLOCKED: root selection/validation/containment нельзя доказать безопасно.
+
+Core module `.harness/tools/project_context.py` также владеет общими
+lexical/realpath containment primitives для project-local paths и product
+mutation targets. Downstream STEP/Execution/Git/Update tooling переводится на
+этот boundary отдельными implementation slices #212–#214; наличие resolver
+само по себе ещё не означает завершение полной capability #188.
+
 ## Project root resolution
 
 Canonical precedence:
