@@ -191,6 +191,13 @@ fail-closed запрещён.
 
 Snapshot повреждён либо current canonical basis невозможно безопасно вычислить.
 
+Если fresh semantic start выполняется в legacy/diagnostic fixture с неполным
+knowledge graph и exact basis нельзя вычислить, Harness не ломает сам первый
+diagnostic invocation: он сохраняет bounded `intentBasisError`. Но после
+interruption такой execution **не может быть resumed** — resolver возвращает
+`INTENT_BASIS_UNAVAILABLE`, потому что снять новый basis задним числом означало
+бы подменить исходный intent текущим состоянием.
+
 ## Remediation
 
 Для stale STEP intent canonical remediation:
