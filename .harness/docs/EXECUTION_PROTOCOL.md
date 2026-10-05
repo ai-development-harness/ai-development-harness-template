@@ -577,7 +577,7 @@ STEP закрывается только если:
 
 ## Generic long-running progress guard
 
-После Intent Basis PASS actual resume semantic STEP-команды сравнивает bounded canonical progress sample с предыдущим observed state. Material signal включает lifecycle/completion proof/Verification/Evidence/review findings/execution-groups fingerprint, activity signal — exact repository revision.
+После Intent Basis PASS actual resume semantic STEP-команды сравнивает bounded canonical progress sample с предыдущим observed state. Material signal включает lifecycle/completion proof/Verification/Evidence/review findings/execution-groups fingerprint. Activity signal отделён от material progress: `PLAN/REVIEW` не учитывают product-file activity; `IMPLEMENT/FIX` с `plan.execution_groups` fingerprint-ят только union validated `mutationPaths`; при отсутствии execution groups используется conservative whole-repository fallback.
 
 - два последовательных resume без material и repository delta → `EXECUTION_STAGNATION`;
 - возврат к тому же semantic command и exact bounded state через промежуточные semantic nodes → `EXECUTION_CYCLE`; одинаковый state на нормальном переходе между разными фазами не считается cycle;
