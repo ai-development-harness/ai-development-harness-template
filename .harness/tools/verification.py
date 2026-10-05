@@ -532,6 +532,15 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
     )
 
 
+def write_verification_evidence(
+    root: Path,
+    step_id: str,
+    result: dict[str, Any],
+) -> None:
+    """Persist an already-computed factual Verification result."""
+    _write_evidence(root, step_id, result)
+
+
 def run_step_verification(
     root: Path,
     step_id: str,
@@ -657,6 +666,7 @@ __all__ = [
     "parse_verification",
     "render_verification_entries",
     "run_step_verification",
+    "write_verification_evidence",
     "verification_contract_basis",
     "verification_freshness",
     "verification_subject_revision",
