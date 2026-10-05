@@ -246,10 +246,6 @@ def capture_progress(
     plan = meta.get("plan") if isinstance(meta.get("plan"), dict) else {}
     groups = _execution_groups(task)
     activity_scope = _activity_scope(groups, operation)
-    activity_before = repository_activity_fingerprint(
-        root,
-        included_paths=activity_scope,
-    )
 
     proof = step_completion_proof(root, step_id)
     review = latest_review(root, step_id)
@@ -282,16 +278,12 @@ def capture_progress(
         "reviewFindings": review_fingerprints,
         "completionFindings": completion_fingerprints,
     }
-    activity_after = repository_activity_fingerprint(
+    activity_revision = repository_activity_fingerprint(
         root,
         included_paths=activity_scope,
     )
-    if activity_before != activity_after:
-        raise ProgressGuardError(
-            "repository activity changed while progress snapshot was being captured"
-        )
     activity = {
-        "repositoryActivity": activity_after,
+        "repositoryActivity": activity_revision,
         "scope": (
             sorted(activity_scope)
             if isinstance(activity_scope, set)
