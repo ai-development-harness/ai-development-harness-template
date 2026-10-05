@@ -18,6 +18,7 @@ Harness уменьшает риск **случайных ошибок агент
 - reuse review verdict для другой repository revision;
 - неправильный command transition или скрытое продолжение BLOCKED execution;
 - stale semantic result, который пытается завершить более новую invocation того же command;
+- semantic resume после изменения canonical REQ/ADR/STEP/Ready plan, когда mechanical cursor ещё указывает на старую running command;
 - случайную загрузку избыточного контекста вместо deterministic routing.
 
 ## От чего Harness не защищает
