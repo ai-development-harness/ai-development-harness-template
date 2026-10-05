@@ -976,7 +976,14 @@ def complete_dispatch(
         if running is None:
             # Нет running команды: complete_command гарантированно отклонит
             # completion с точной причиной (already complete/blocked/not found).
-            complete_command(root, root_command, command, result, details=details)
+            complete_command(
+                root,
+                root_command,
+                command,
+                result,
+                expected_execution_id=execution_id,
+                details=details,
+            )
             raise ValueError("execution has no running command")
         if running != normalized_command:
             return {
@@ -1007,17 +1014,24 @@ def complete_dispatch(
             root_command,
             command,
             result,
+            expected_execution_id=execution_id,
             details=completion_details,
         )
         resolved = resolve_execution(root, execution)
     except (OSError, ValueError) as exc:
+        details_value = getattr(exc, "details", None)
         return {
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
             "rootCommand": root_command,
             "command": command,
-            "reasonCode": "EXECUTION_COMPLETE_BLOCKED",
+            "reasonCode": getattr(exc, "code", "EXECUTION_COMPLETE_BLOCKED"),
             "message": str(exc),
+            **(
+                {"details": details_value}
+                if isinstance(details_value, dict)
+                else {}
+            ),
         }
 
     if resolved.get("status") == "NEXT" and resolved.get("command"):
