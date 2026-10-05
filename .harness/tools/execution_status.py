@@ -439,6 +439,22 @@ def _intent_resume_blocker(root: Path, execution: dict[str, Any]) -> dict[str, A
     context = current.get("context")
     stored = context.get("intentBasis") if isinstance(context, dict) else None
     if stored is None:
+        capture_error = (
+            context.get("intentBasisError")
+            if isinstance(context, dict)
+            else None
+        )
+        if isinstance(capture_error, dict):
+            return {
+                "reasonCode": "INTENT_BASIS_UNAVAILABLE",
+                "message": str(
+                    capture_error.get("message")
+                    or "Intent Basis was unavailable when semantic execution started"
+                ),
+                "remediation": remediation,
+                "stepId": step_id,
+                "captureError": capture_error,
+            }
         return {
             "reasonCode": "INTENT_BASIS_MISSING",
             "message": "interrupted semantic STEP execution has no durable Intent Basis",
@@ -683,6 +699,13 @@ def _validate_execution_record(
                 _intent_basis_errors(
                     context.get("intentBasis"),
                     prefix=f"{prefix}: current.context.intentBasis",
+                )
+            )
+            errors.extend(
+                _details_errors(
+                    context.get("intentBasisError"),
+                    prefix=f"{prefix}: current.context.intentBasisError",
+                    enforce_budget=True,
                 )
             )
 
@@ -1554,7 +1577,17 @@ def _command_context(
         if parsed.get("operation") in INTENT_AWARE_STEP_OPERATIONS:
             # Durable semantic intent lives as hashes/components of canonical
             # artifacts, never as copied REQ/ADR/STEP prose or chat history.
-            context["intentBasis"] = _capture_intent_basis(root, command)
+            try:
+                context["intentBasis"] = _capture_intent_basis(root, command)
+            except (ImpactAnalysisError, OSError, UnicodeError, ValueError) as exc:
+                # Fresh semantic start remains compatible with legacy/diagnostic
+                # fixtures that intentionally have incomplete knowledge state.
+                # The original failure is persisted so a later resume cannot
+                # silently invent a new basis from whatever state exists then.
+                context["intentBasisError"] = {
+                    "reasonCode": "INTENT_BASIS_UNAVAILABLE",
+                    "message": str(exc)[:2048],
+                }
             try:
                 # Compatibility diagnostic retained for existing tools/UI.
                 context["planBasisAtStart"] = contract_basis(root, step_id)
