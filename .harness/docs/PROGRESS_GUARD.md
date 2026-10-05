@@ -45,7 +45,7 @@ Material fingerprint строится из уже существующих canon
 - Implementation plan hash;
 - execution-groups graph hash;
 - Acceptance criteria hash;
-- Evidence hash;
+- Evidence hash как material-change signal без автоматического направления;
 - type-specific completion proof;
 - Completion Gate deterministic precheck;
 - Verification freshness/status;
@@ -56,7 +56,14 @@ Material fingerprint строится из уже существующих canon
 
 ### Repository activity
 
-Отдельный activity fingerprint строится из exact repository revision.
+Activity signal отделён от material progress и по возможности ограничен
+machine-readable mutation surface:
+
+- `PLAN/REVIEW` не получают product-file activity signal;
+- `IMPLEMENT/FIX` при наличии `plan.execution_groups` используют union их
+  validated `mutationPaths`;
+- STEP без execution groups сохраняет conservative whole-repository fallback,
+  потому что prose Mutation policy пока не является строгим path contract.
 
 Это разделение намеренное:
 
@@ -174,7 +181,7 @@ ring последних восьми samples.
 - completion reasons увеличиваются;
 - Completion Gate blockers увеличиваются;
 - Verification status ухудшается;
-- уже существующий finding surface ухудшается;
+- finding surface увеличивается, включая первое появление material findings;
 - completion proof откатывается.
 
 Один negative delta не блокирует execution. Требуются два последовательных
@@ -243,9 +250,8 @@ unsafe и потому fail-closed.
 Guard специально **не** блокирует:
 
 - один no-op resume;
-- repository revision change без material completion delta;
+- scoped repository activity без material completion delta;
 - single long model call;
-- первое появление review findings;
 - normal FIX↔REVIEW repair loop;
 - read-only STATUS/inspection;
 - unrelated transcript/history changes.
@@ -262,7 +268,11 @@ Guard специально **не** блокирует:
 - FIX↔REVIEW suppression;
 - execution-groups fingerprint;
 - real execution-state persistence;
-- bounded sample ring.
+- bounded sample ring;
+- strict persisted sample/lastDelta schema;
+- Evidence reword/update не маскирует Verification regression;
+- unrelated PLAN activity и activity вне execution-group mutationPaths не
+  сбрасывают stagnation.
 
 Implementation issue:
 https://github.com/ai-development-harness/ai-development-harness-template/issues/204
