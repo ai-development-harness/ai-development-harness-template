@@ -2384,6 +2384,8 @@ def begin_command(
     root: Path,
     root_command: str,
     command: str,
+    *,
+    expected_execution_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     normalized_command = normalize_single_command(root, command)["normalized"]
@@ -2400,6 +2402,8 @@ def begin_command(
         else None
     )
     if execution is None:
+        if expected_execution_id is not None:
+            raise StaleSemanticResultError(expected_execution_id, None)
         execution = start_execution(root, root_command)
         status = load_status(root)
         latest = _latest_invocation(
@@ -2408,6 +2412,15 @@ def begin_command(
         )
         assert latest is not None and latest[0] == "active"
         execution = latest[1]
+
+    if (
+        expected_execution_id is not None
+        and execution.get("executionId") != expected_execution_id
+    ):
+        raise StaleSemanticResultError(
+            expected_execution_id,
+            str(execution.get("executionId") or "") or None,
+        )
 
     current = execution["current"]
     if current.get("command") == normalized_command and current.get("status") == "running":
@@ -2698,6 +2711,7 @@ def block_execution(
     root_command: str,
     *,
     command: str | None = None,
+    expected_execution_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_root = _normalize_root(root, root_command)["rootCommand"]
     status = load_status(root)
@@ -2713,7 +2727,17 @@ def block_execution(
         else None
     )
     if execution is None:
+        if expected_execution_id is not None:
+            raise StaleSemanticResultError(expected_execution_id, None)
         raise ValueError(f"active execution not found for {normalized_root}")
+    if (
+        expected_execution_id is not None
+        and execution.get("executionId") != expected_execution_id
+    ):
+        raise StaleSemanticResultError(
+            expected_execution_id,
+            str(execution.get("executionId") or "") or None,
+        )
     current = execution["current"]
     if command is not None:
         normalized_command = normalize_single_command(root, command)["normalized"]
