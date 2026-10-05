@@ -29,10 +29,13 @@ Dispatcher использует `.harness/command-transitions.json` как ед�
 python3 .harness/tools/harness-dispatch.py complete \
   --root '<root command>' \
   --command '<current command>' \
+  --execution-id '<executionId from semantic handoff>' \
   --result <SUCCESS|PASS|FAIL|BLOCKED>
 ```
 
-Dispatcher сам применяет CTS `onPreviousResult`, runtime preconditions и при разрешённом continuation начинает следующий segment. Interrupted execution продолжается через:
+Semantic result является **proposal**, а не authoritative state mutation. Completion принимается только с exact `executionId` из handoff; stale result предыдущей invocation получает `BLOCKED/STALE_SEMANTIC_RESULT`. Dispatcher сам применяет CTS `onPreviousResult`, runtime preconditions и при разрешённом continuation начинает следующий segment.
+
+Global ownership contract находится в `.harness/command-transitions.json → authorityContract`; подробная матрица — [`STATE_AUTHORITY.md`](STATE_AUTHORITY.md). Interrupted execution продолжается через:
 
 ```bash
 python3 .harness/tools/harness-dispatch.py resume [--root '<root command>']
