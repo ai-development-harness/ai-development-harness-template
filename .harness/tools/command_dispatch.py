@@ -269,15 +269,16 @@ def _verification_before_completion(
                 },
                 None,
             )
-        try:
-            write_verification_evidence(root, step_id, verification)
-        except (OSError, ValueError) as exc:
-            verification = {
-                **verification,
-                "status": "BLOCKED",
-                "reasonCode": "EVIDENCE_WRITE_FAILED",
-                "message": str(exc),
-            }
+        if verification.get("status") in {"PASS", "FAIL", "MANUAL_REQUIRED"}:
+            try:
+                write_verification_evidence(root, step_id, verification)
+            except (OSError, ValueError) as exc:
+                verification = {
+                    **verification,
+                    "status": "BLOCKED",
+                    "reasonCode": "EVIDENCE_WRITE_FAILED",
+                    "message": str(exc),
+                }
 
     verification_status = verification.get("status")
 
