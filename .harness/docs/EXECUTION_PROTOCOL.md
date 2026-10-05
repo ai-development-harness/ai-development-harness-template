@@ -41,7 +41,7 @@ Global ownership contract находится в `.harness/command-transitions.js
 python3 .harness/tools/harness-dispatch.py resume [--root '<root command>']
 ```
 
-`HARNESS RESUME` использует тот же механизм и не создаёт отдельную root execution.
+`HARNESS RESUME` использует тот же механизм и не создаёт отдельную root execution. Для interrupted `STEP PLAN/IMPLEMENT/REVIEW/FIX` resolver дополнительно проверяет versioned Intent Basis: schema-v4 planning context и, для IMPLEMENT/REVIEW/FIX, exact Ready plan hash. Stale semantic contract блокирует resume до re-plan; chat transcript не используется как source of truth. Подробно: [`INTENT_RESUME.md`](INTENT_RESUME.md).
 
 ### 0.2. Низкоуровневые contracts
 
@@ -296,7 +296,7 @@ Execution tracking уже ведётся root execution wrapper. До semantic h
 10. Не ставить `Выполнено` до required review PASS.
 11. Command завершается только после PASS deterministic/manual Verification contract.
 
-Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN`.
+Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN` **только после PASS Intent Basis guard**. Изменившийся REQ/ADR/STEP/Project Principle или Ready plan делает старую semantic execution stale и маршрутизирует к `STEP PLAN STEP-NNN`.
 
 Single IMPLEMENT после SUCCESS останавливается; внутри chain/RUN CTS может продолжить к REVIEW.
 

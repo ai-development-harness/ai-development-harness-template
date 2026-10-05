@@ -47,7 +47,7 @@ python3 .harness/tools/harness-ux.py status --json
 <a id="command-harness-resume"></a>
 ## `HARNESS RESUME`
 
-Продолжает единственное незавершённое выполнение, которое можно безопасно возобновить. Если таких выполнений нет — возвращает `BLOCKED/NO_RESUMABLE_EXECUTION`; если их несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
+Продолжает единственное незавершённое выполнение, которое можно безопасно возобновить. Для interrupted `STEP PLAN/IMPLEMENT/REVIEW/FIX` перед semantic handoff сравнивает durable Intent Basis с текущими canonical planning fingerprints; REQ/ADR/STEP/Project Principle/Ready plan drift возвращает точный stale-intent reasonCode и `STEP PLAN STEP-NNN` remediation. Если resumable выполнений нет — `BLOCKED/NO_RESUMABLE_EXECUTION`; если их несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
 
 ```bash
 python3 .harness/tools/harness-ux.py resume --json

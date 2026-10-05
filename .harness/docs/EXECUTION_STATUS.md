@@ -51,6 +51,7 @@ Per-STEP файлы запрещены.
 - `stepRecovery` — минимальные STEP recovery proofs, прежде всего durable implementation baseline; recovery key `STEP-NNN` обязан совпадать с `implementationBaseline.stepId`;
 - `recentTerminals` — compact terminal tombstones, hard limit **100**; tombstone сохраняет optional `current.details` как recent durable handoff metadata, причём один `details` ограничен **16 KiB compact UTF-8 JSON**;
 - `nextOrdinal` — monotonic invocation order, чтобы latest semantics не зависела от timestamp collision.
+- для running `STEP PLAN/IMPLEMENT/REVIEW/FIX` `current.context.intentBasis` хранит bounded versioned snapshot canonical semantic fingerprints (hard limit 16 KiB); это не копия REQ/ADR/STEP и не audit log.
 
 Completed execution не хранится в полном виде бесконечно. При terminal checkpoint full record превращается в tombstone. Historical blocked также перестаёт быть full operational state, когда появляется более новая invocation того же `rootCommand`.
 
@@ -226,7 +227,7 @@ Completion не доказан.
 RESUME current.command
 ```
 
-Повтор должен иметь resume-semantics: сначала проверить уже существующие artifacts/diff/state и не дублировать side effects вслепую.
+Для intent-aware STEP semantic commands resolver сначала сравнивает сохранённый `current.context.intentBasis` с текущими `planning_context_basis` / `plan_content_hash`. Если semantic input изменился, execution становится BLOCKED с точным reasonCode/remediation и **не получает новый snapshot поверх старого**. Только после этого применяются обычные resume-semantics: проверить существующие artifacts/diff/state и не дублировать side effects вслепую.
 
 ### `complete`
 
