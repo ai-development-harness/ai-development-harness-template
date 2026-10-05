@@ -5,14 +5,13 @@ name: Harness Integrity
 # GitHub Actions events, на которых выполняется baseline Harness validation.
 # Пример: pull_request в main и push в main после merge.
 on:
-  # Проверять Pull Request в main и общую integration-ветку orchestration hardening.
-  # Пример: issue branch → feature/reliable-orchestration-hardening → main.
+  # Проверять Pull Request, направленный в main.
+  # Пример: feature/token-budget → main запускает Harness Integrity.
   pull_request:
-    # Integration PR проходит тот же trust-boundary validator до объединения серии изменений.
-    # Пример: [main, feature/reliable-orchestration-hardening].
+    # Ограничить base branch основной веткой проекта.
+    # Пример: main.
     branches:
       - main
-      - feature/reliable-orchestration-hardening
   # После merge PR GitHub создаёт push в main — это отдельная финальная проверка.
   # Пример: squash merge PR → push нового commit в main → Harness Integrity.
   push:
