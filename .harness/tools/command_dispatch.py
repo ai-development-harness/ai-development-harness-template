@@ -372,6 +372,19 @@ def _semantic_handoff(
             "completionBinding": "executionId",
         },
     }
+    current_state = execution.get("current")
+    recovery_context = (
+        current_state.get("context")
+        if isinstance(current_state, dict)
+        else None
+    )
+    intent_basis = (
+        recovery_context.get("intentBasis")
+        if isinstance(recovery_context, dict)
+        else None
+    )
+    if isinstance(intent_basis, dict):
+        result["intentBasis"] = intent_basis
     if context is not None:
         result["context"] = context
     return result
@@ -819,12 +832,17 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
     try:
         execution = start_execution(root, raw_command)
     except (OSError, ValueError) as exc:
-        return {
+        value = {
             "schemaVersion": SCHEMA_VERSION,
             "status": "BLOCKED",
-            "reasonCode": "EXECUTION_START_BLOCKED",
+            "reasonCode": getattr(exc, "code", "EXECUTION_START_BLOCKED"),
             "message": str(exc),
         }
+        details = getattr(exc, "details", None)
+        if isinstance(details, dict):
+            value["details"] = details
+            value["remediation"] = details.get("remediation")
+        return value
 
     current = execution.get("current") or {}
     command = current.get("command")
@@ -861,6 +879,17 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
             **({"stateWriteError": state_error} if state_error else {}),
             "reasonCode": getattr(exc, "code", "DISPATCH_BLOCKED"),
             "message": str(exc),
+            **(
+                {"details": getattr(exc, "details")}
+                if isinstance(getattr(exc, "details", None), dict)
+                else {}
+            ),
+            **(
+                {"remediation": getattr(exc, "details").get("remediation")}
+                if isinstance(getattr(exc, "details", None), dict)
+                and getattr(exc, "details").get("remediation")
+                else {}
+            ),
         }
 
 
@@ -1006,6 +1035,8 @@ def complete_dispatch(
                 "command": next_command,
                 "reasonCode": getattr(exc, "code", "NEXT_DISPATCH_BLOCKED"),
                 "message": str(exc),
+                **({"details": getattr(exc, "details")} if isinstance(getattr(exc, "details", None), dict) else {}),
+                **({"remediation": getattr(exc, "details").get("remediation")} if isinstance(getattr(exc, "details", None), dict) and getattr(exc, "details").get("remediation") else {}),
             }
 
     if (
@@ -1026,6 +1057,8 @@ def complete_dispatch(
                 "command": root_command,
                 "reasonCode": getattr(exc, "code", "ORCHESTRATION_DISPATCH_BLOCKED"),
                 "message": str(exc),
+                **({"details": getattr(exc, "details")} if isinstance(getattr(exc, "details", None), dict) else {}),
+                **({"remediation": getattr(exc, "details").get("remediation")} if isinstance(getattr(exc, "details", None), dict) and getattr(exc, "details").get("remediation") else {}),
             }
 
     return _terminal(execution, resolved)
@@ -1066,6 +1099,8 @@ def resume_dispatch(
             "command": command,
             "reasonCode": getattr(exc, "code", "RESUME_DISPATCH_BLOCKED"),
             "message": str(exc),
+            **({"details": getattr(exc, "details")} if isinstance(getattr(exc, "details", None), dict) else {}),
+            **({"remediation": getattr(exc, "details").get("remediation")} if isinstance(getattr(exc, "details", None), dict) and getattr(exc, "details").get("remediation") else {}),
         }
 
 
