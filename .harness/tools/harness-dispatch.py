@@ -37,6 +37,7 @@ def _dispatch(root: Path, args: argparse.Namespace) -> dict:
             args.root_command,
             args.command,
             args.result,
+            execution_id=args.execution_id,
             details=details,
         )
     return resume_dispatch(root, args.root_command)
@@ -59,6 +60,12 @@ def main() -> int:
     complete = sub.add_parser("complete")
     complete.add_argument("--root", required=True, dest="root_command")
     complete.add_argument("--command", required=True)
+    complete.add_argument(
+        "--execution-id",
+        required=True,
+        dest="execution_id",
+        help="Exact executionId from the semantic handoff.",
+    )
     complete.add_argument(
         "--result",
         required=True,
