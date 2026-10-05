@@ -192,6 +192,8 @@ def _verification_before_completion(
     command: str,
     result: str,
     details: dict[str, Any] | None,
+    *,
+    expected_execution_id: str,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Enforce Verification before IMPLEMENT/FIX SUCCESS.
 
@@ -237,6 +239,35 @@ def _verification_before_completion(
     )
     verification_status = verification.get("status")
 
+    # Verification may be long-running. Re-check authority after it completes
+    # before creating a semantic handoff or recording a blocker. Final PASS is
+    # checked once more inside complete_command's atomic commit point.
+    active_after_verification = _active_execution(root, root_command)
+    if (
+        active_after_verification is None
+        or active_after_verification.get("executionId") != expected_execution_id
+    ):
+        current_id = (
+            active_after_verification.get("executionId")
+            if isinstance(active_after_verification, dict)
+            else None
+        )
+        return (
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                "rootCommand": root_command,
+                "command": command,
+                "executionId": current_id,
+                "reasonCode": "STALE_SEMANTIC_RESULT",
+                "message": (
+                    f"semantic result belongs to execution {expected_execution_id!r}, "
+                    f"but current execution is {current_id!r}"
+                ),
+            },
+            None,
+        )
+
     if verification_status == "PASS":
         compact = {
             key: value
@@ -251,7 +282,7 @@ def _verification_before_completion(
         return None, compact
 
     if verification_status in {"FAIL", "MANUAL_REQUIRED"}:
-        execution = _active_execution(root, root_command)
+        execution = active_after_verification
         if execution is None:
             return (
                 {
@@ -269,7 +300,12 @@ def _verification_before_completion(
         handoff["verification"] = verification
         return handoff, None
 
-    state_error = _block_recording_error(root, root_command, command=command)
+    state_error = _block_recording_error(
+        root,
+        root_command,
+        command=command,
+        expected_execution_id=expected_execution_id,
+    )
     return (
         {
             "schemaVersion": SCHEMA_VERSION,
@@ -884,6 +920,7 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
             root,
             str(execution["rootCommand"]),
             command=command,
+            expected_execution_id=str(execution["executionId"]),
         )
         return {
             "schemaVersion": SCHEMA_VERSION,
@@ -1024,6 +1061,7 @@ def complete_dispatch(
             command,
             result,
             details,
+            expected_execution_id=execution_id,
         )
         if early is not None:
             return early
@@ -1064,7 +1102,12 @@ def complete_dispatch(
             )
             return _dispatch_running(root, execution, next_command)
         except (DispatchError, OSError, ValueError) as exc:
-            state_error = _block_recording_error(root, root_command, command=next_command)
+            state_error = _block_recording_error(
+                root,
+                root_command,
+                command=next_command,
+                expected_execution_id=str(execution["executionId"]),
+            )
             return {
                 **({"stateWriteError": state_error} if state_error else {}),
                 "schemaVersion": SCHEMA_VERSION,
@@ -1091,7 +1134,12 @@ def complete_dispatch(
             )
             return _dispatch_running(root, execution, root_command)
         except (DispatchError, OSError, ValueError) as exc:
-            state_error = _block_recording_error(root, root_command, command=root_command)
+            state_error = _block_recording_error(
+                root,
+                root_command,
+                command=root_command,
+                expected_execution_id=str(execution["executionId"]),
+            )
             return {
                 **({"stateWriteError": state_error} if state_error else {}),
                 "schemaVersion": SCHEMA_VERSION,
@@ -1142,7 +1190,16 @@ def resume_dispatch(
         )
         return _dispatch_running(root, execution, command)
     except (DispatchError, OSError, ValueError) as exc:
-        state_error = _block_recording_error(root, root_command, command=command)
+        state_error = _block_recording_error(
+            root,
+            root_command,
+            command=command,
+            expected_execution_id=(
+                str(resolved["executionId"])
+                if resolved.get("executionId")
+                else None
+            ),
+        )
         return {
             **({"stateWriteError": state_error} if state_error else {}),
             "schemaVersion": SCHEMA_VERSION,
