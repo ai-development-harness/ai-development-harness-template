@@ -6,7 +6,8 @@ is the only durable handoff. They complement unit/policy self-tests with:
 - crash after Intent Basis persistence;
 - STEP RUN resume across fresh processes;
 - persisted progress blocker after response loss;
-- concurrent stale completion vs current semantic resume.
+- concurrent stale completion vs current semantic resume;
+- stale continuation/resume mutation cannot block or advance a newer invocation.
 """
 from __future__ import annotations
 
@@ -532,6 +533,76 @@ def test_atomic_completion_binding(root: Path) -> None:
     assert running[0]["current"]["status"] == "running", running[0]
 
 
+def test_stale_continuation_mutation_binding(root: Path) -> None:
+    """Stale continuation guards must never mutate the newer invocation."""
+    command = "PROJECT QUICK FIX: continuation authority"
+    first = child_json(
+        root,
+        (
+            "from command_dispatch import start_dispatch\\n"
+            f"result = start_dispatch(root, {command!r})"
+        ),
+    )
+    assert first["status"] == "SEMANTIC", first
+
+    blocked = child_json(
+        root,
+        (
+            "from command_dispatch import complete_dispatch\\n"
+            f"result = complete_dispatch(root, {command!r}, {command!r}, "
+            f"'BLOCKED', execution_id={first['executionId']!r})"
+        ),
+    )
+    assert blocked["status"] == "BLOCKED", blocked
+
+    current = child_json(
+        root,
+        (
+            "from command_dispatch import start_dispatch\\n"
+            f"result = start_dispatch(root, {command!r})"
+        ),
+    )
+    assert current["status"] == "SEMANTIC", current
+    assert current["executionId"] != first["executionId"], (first, current)
+
+    # Both continuation mutations are canonical read-modify-write operations.
+    # A stale owner must be rejected under the execution-state lock and must
+    # leave the current invocation completely untouched.
+    raced = child_json(
+        root,
+        (
+            "from execution_status import begin_command, block_execution\\n"
+            f"command = {command!r}\\n"
+            f"stale_id = {first['executionId']!r}\\n"
+            "result = {}\\n"
+            "for name, callback in (\\n"
+            "    ('begin', lambda: begin_command(root, command, command, expected_execution_id=stale_id)),\\n"
+            "    ('block', lambda: block_execution(root, command, command=command, expected_execution_id=stale_id)),\\n"
+            "):\\n"
+            "    try:\\n"
+            "        callback()\\n"
+            "    except ValueError as exc:\\n"
+            "        result[name] = {'code': getattr(exc, 'code', None), 'message': str(exc)}\\n"
+            "    else:\\n"
+            "        result[name] = {'code': 'UNEXPECTED_SUCCESS'}"
+        ),
+    )
+    assert raced["begin"]["code"] == "STALE_SEMANTIC_RESULT", raced
+    assert raced["block"]["code"] == "STALE_SEMANTIC_RESULT", raced
+
+    state = load_status(root)
+    running = [
+        item
+        for item in state["executions"]
+        if item.get("rootCommand") == command
+        and item.get("status") == "running"
+    ]
+    assert len(running) == 1, running
+    assert running[0]["executionId"] == current["executionId"], running
+    assert running[0]["current"]["status"] == "running", running[0]
+    assert running[0]["current"]["attempt"] == 1, running[0]
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-fault-intent-") as tmp:
         root = Path(tmp)
@@ -552,6 +623,11 @@ def main() -> int:
         root = Path(tmp)
         prepare(root)
         test_atomic_completion_binding(root)
+
+    with tempfile.TemporaryDirectory(prefix="harness-fault-continuation-authority-") as tmp:
+        root = Path(tmp)
+        prepare(root)
+        test_stale_continuation_mutation_binding(root)
 
     print("RELIABLE ORCHESTRATION FAULT SELF-TEST: PASS")
     return 0
