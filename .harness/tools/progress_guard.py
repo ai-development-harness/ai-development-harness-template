@@ -100,7 +100,6 @@ def _completion_findings(review: dict[str, Any] | None) -> list[str]:
         identities.append(
             stable_hash(
                 {
-                    "id": item.get("id"),
                     "kind": item.get("kind"),
                     "criterion": item.get("criterion"),
                     "route": item.get("route"),
