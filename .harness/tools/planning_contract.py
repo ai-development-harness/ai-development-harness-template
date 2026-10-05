@@ -517,13 +517,11 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
         snapshot["principles"] = principles
     return snapshot
 
-def planning_context_components(root: Path, step_id: str) -> list[str]:
-    """Разложить authoritative planning context на stable component fingerprints.
-
-    Это диагностическая проекция того же schema-v4 snapshot, который уже
-    образует planning_context_basis. Она не создаёт второй staleness engine.
-    """
-    snapshot = planning_context_snapshot(root, step_id)
+def _planning_context_components_from_snapshot(
+    snapshot: dict[str, Any],
+    step_id: str,
+) -> list[str]:
+    """Разложить уже собранный schema-v4 snapshot без повторного I/O."""
     entries: list[str] = [
         f"STEP@{step_id}={stable_hash(snapshot['step'])}"
     ]
@@ -542,6 +540,24 @@ def planning_context_components(root: Path, step_id: str) -> list[str]:
         for principle_id, value in sorted(principles.items()):
             entries.append(f"PRN@{principle_id}={stable_hash(value)}")
     return sorted(entries)
+
+
+def planning_context_components(root: Path, step_id: str) -> list[str]:
+    """Разложить authoritative planning context на stable component fingerprints."""
+    snapshot = planning_context_snapshot(root, step_id)
+    return _planning_context_components_from_snapshot(snapshot, step_id)
+
+
+def planning_context_fingerprints(
+    root: Path,
+    step_id: str,
+) -> tuple[str, list[str]]:
+    """Compute basis + diagnostic components from one coherent parsed snapshot."""
+    snapshot = planning_context_snapshot(root, step_id)
+    return (
+        stable_hash(snapshot),
+        _planning_context_components_from_snapshot(snapshot, step_id),
+    )
 
 
 def planning_context_basis(root: Path, step_id: str) -> str:
