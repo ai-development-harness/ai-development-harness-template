@@ -276,12 +276,13 @@ python3 .harness/tools/execution-state.py begin \
 python3 .harness/tools/harness-dispatch.py complete \
   --root 'STEP RUN STEP-001' \
   --command 'STEP IMPLEMENT STEP-001' \
+  --execution-id '<executionId from handoff>' \
   --result SUCCESS
 ```
 
 Низкоуровневый `execution-state.py complete` для `STEP IMPLEMENT/FIX` с `SUCCESS` возвращает `BLOCKED/VERIFICATION_REQUIRES_DISPATCH`: он не является обходным путём мимо Verification.
 
-Следующая command определяется resolver/CTS, а не chat history.
+Следующая command определяется resolver/CTS, а не chat history. Completion semantic command дополнительно связан с exact `executionId`: одинаковые `rootCommand/current.command` новой invocation не дают старому result права commit-ить её state.
 
 ## Resolver
 
