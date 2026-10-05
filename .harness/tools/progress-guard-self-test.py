@@ -451,6 +451,26 @@ def integration_tests(root: Path) -> None:
     assert resume["reasonCode"] == "EXECUTION_STAGNATION", resume
     assert resume["remediation"] == "STEP PLAN STEP-001", resume
 
+    # Public UX propagation is closed over all generic progress reason codes,
+    # not only the detector reached by this concrete execution fixture.
+    status_path = root / ".harness/local/execution/execution-status.json"
+    stagnation_bytes = status_path.read_bytes()
+    for reason in ("EXECUTION_CYCLE", "EXECUTION_DRIFT"):
+        variant = json.loads(stagnation_bytes)
+        blocked_execution = variant["executions"][0]
+        blocked_execution["blockedBy"]["reasonCode"] = reason
+        blocked_execution["blockedBy"]["details"]["reasonCode"] = reason
+        blocked_execution["progressTelemetry"]["stopDecision"] = reason
+        write(
+            status_path,
+            json.dumps(variant, ensure_ascii=False, indent=2) + "\n",
+        )
+        surfaced = harness_resume(root)
+        assert surfaced["status"] == "BLOCKED", surfaced
+        assert surfaced["reasonCode"] == reason, surfaced
+        assert surfaced["remediation"] == "STEP PLAN STEP-001", surfaced
+    write(status_path, stagnation_bytes.decode("utf-8"))
+
     # New root after the blocked invocation: repository activity alone must not
     # be mistaken for stagnation.
     execution = start_execution(root, "STEP PLAN STEP-001")
