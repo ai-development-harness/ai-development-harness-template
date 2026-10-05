@@ -238,14 +238,15 @@ Synthetic fixture.
 
 def task_with_execution_groups(group_path: str) -> str:
     value = task()
-    needle = """  planned_at: 2026-10-05T00:00:00+00:00
+    metadata_needle = """  planned_at: 2026-10-05T00:00:00+00:00
 ---"""
-    replacement = f"""  planned_at: 2026-10-05T00:00:00+00:00
+    metadata_replacement = f"""  planned_at: 2026-10-05T00:00:00+00:00
   execution_groups:
     core:
       title: Core
       steps:
         - 1
+        - 2
       dependsOn: []
       mutationPaths:
         - {group_path}
@@ -253,9 +254,30 @@ def task_with_execution_groups(group_path: str) -> str:
         - Verify core behavior
       parallel: false
 ---"""
-    if needle not in value:
-        raise AssertionError("execution-groups fixture anchor missing")
-    return value.replace(needle, replacement, 1)
+    if metadata_needle not in value:
+        raise AssertionError("execution-groups metadata anchor missing")
+    value = value.replace(metadata_needle, metadata_replacement, 1)
+
+    # execution_groups references numbered "### N." plan steps; the base
+    # fixture intentionally uses legacy prose numbering for unrelated tests.
+    plan_needle = """## Implementation plan
+
+1. Capture canonical basis.
+2. Compare it before resume.
+"""
+    plan_replacement = """## Implementation plan
+
+### 1. Capture canonical basis
+
+Capture canonical basis.
+
+### 2. Compare before resume
+
+Compare it before resume.
+"""
+    if plan_needle not in value:
+        raise AssertionError("execution-groups plan anchor missing")
+    return value.replace(plan_needle, plan_replacement, 1)
 
 
 def prepare(root: Path) -> None:
