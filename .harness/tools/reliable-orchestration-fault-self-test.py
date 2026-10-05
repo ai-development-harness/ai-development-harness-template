@@ -533,6 +533,62 @@ def test_atomic_completion_binding(root: Path) -> None:
     assert running[0]["current"]["status"] == "running", running[0]
 
 
+def test_stale_verification_evidence_publication(root: Path) -> None:
+    """Stale semantic completion must not publish Evidence into a successor."""
+    root_command = "PROJECT QUICK FIX: verification evidence authority"
+    first = child_json(
+        root,
+        (
+            "import command_dispatch as dispatcher\n"
+            f"root_command = {root_command!r}\n"
+            "first = dispatcher.start_dispatch(root, root_command)\n"
+            "writes = []\n"
+            "successor = {}\n"
+            "def fake_verification(_root, _step_id, **_kwargs):\n"
+            "    dispatcher.complete_dispatch(\n"
+            "        root, root_command, root_command, 'BLOCKED',\n"
+            "        execution_id=first['executionId'],\n"
+            "    )\n"
+            "    successor.update(dispatcher.start_dispatch(root, root_command))\n"
+            "    return {\n"
+            "        'schemaVersion': 1, 'status': 'PASS', 'stepId': 'STEP-900',\n"
+            "        'runAt': '2026-10-05T00:00:00+00:00',\n"
+            "        'revision': {'git_head': None, 'worktree_hash': None},\n"
+            "    }\n"
+            "dispatcher.run_step_verification = fake_verification\n"
+            "dispatcher.write_verification_evidence = (\n"
+            "    lambda *_args, **_kwargs: writes.append('written')\n"
+            ")\n"
+            "early, details = dispatcher._verification_before_completion(\n"
+            "    root, root_command, 'STEP IMPLEMENT STEP-900', 'SUCCESS', None,\n"
+            "    expected_execution_id=first['executionId'],\n"
+            ")\n"
+            "result = {\n"
+            "    'firstExecutionId': first['executionId'],\n"
+            "    'successorExecutionId': successor.get('executionId'),\n"
+            "    'early': early,\n"
+            "    'details': details,\n"
+            "    'writes': writes,\n"
+            "}"
+        ),
+    )
+    assert first["successorExecutionId"] != first["firstExecutionId"], first
+    assert first["early"]["status"] == "BLOCKED", first
+    assert first["early"]["reasonCode"] == "STALE_SEMANTIC_RESULT", first
+    assert first["writes"] == [], first
+    assert first["details"] is None, first
+
+    state = load_status(root)
+    running = [
+        item
+        for item in state["executions"]
+        if item.get("rootCommand") == root_command
+        and item.get("status") == "running"
+    ]
+    assert len(running) == 1, running
+    assert running[0]["executionId"] == first["successorExecutionId"], running
+
+
 def test_stale_continuation_mutation_binding(root: Path) -> None:
     """Stale continuation guards must never mutate the newer invocation."""
     command = "PROJECT QUICK FIX: continuation authority"
@@ -628,6 +684,11 @@ def main() -> int:
         root = Path(tmp)
         prepare(root)
         test_stale_continuation_mutation_binding(root)
+
+    with tempfile.TemporaryDirectory(prefix="harness-fault-evidence-authority-") as tmp:
+        root = Path(tmp)
+        prepare(root)
+        test_stale_verification_evidence_publication(root)
 
     print("RELIABLE ORCHESTRATION FAULT SELF-TEST: PASS")
     return 0
