@@ -22,6 +22,7 @@
 - [`EXECUTION_PROTOCOL.md`](EXECUTION_PROTOCOL.md) — формальная семантика state transitions и выполнения STEP.
 - [`STATE_AUTHORITY.md`](STATE_AUTHORITY.md) — ownership canonical control-plane state: semantic proposal → deterministic validation/commit, execution-bound completion и stale-result protection.
 - [`INTENT_RESUME.md`](INTENT_RESUME.md) — versioned Intent Basis, stale-intent guards и fail-closed semantic resume.
+- [`PROGRESS_GUARD.md`](PROGRESS_GUARD.md) — bounded deterministic detection stagnation/cycles/drift для long-running semantic executions.
 - [`RUNTIME_ADAPTER_CONTRACT.md`](RUNTIME_ADAPTER_CONTRACT.md) — provider-neutral lifecycle, capabilities, account identity и normalized events для Codex/Claude.
 - [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md) — bounded checkpoints и reconciliation mutation-команд.
 - [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md) — deterministic early-stop FIX ↔ REVIEW.
