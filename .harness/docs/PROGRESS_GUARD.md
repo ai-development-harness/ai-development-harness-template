@@ -154,8 +154,7 @@ Blocker содержит:
 
 ## CYCLE
 
-`EXECUTION_CYCLE` означает, что bounded execution path вернулась к exact
-комбинации material + activity fingerprint после промежуточных semantic nodes.
+`EXECUTION_CYCLE` означает, что bounded execution path вернулась к **тому же semantic command** и exact комбинации material + activity fingerprint после промежуточных semantic nodes. Одинаковый project state на обычном переходе между разными фазами (`IMPLEMENT → REVIEW`) cycle-ом не считается.
 
 Пример:
 
