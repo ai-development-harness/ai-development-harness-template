@@ -31,6 +31,7 @@ from execution_status import (
     begin_command,
     block_execution,
     complete_command,
+    execution_state_lock,
     git_commit_completion_proven,
     load_status,
     resolve_execution,
@@ -57,7 +58,7 @@ from harness_ux import (
 from planning_contract import step_completion_proof
 from step_context import build_step_context
 from step_next import resolve_step_action, resolve_step_next
-from verification import run_step_verification
+from verification import run_step_verification, write_verification_evidence
 
 
 SCHEMA_VERSION = 1
@@ -235,38 +236,50 @@ def _verification_before_completion(
         root,
         step_id,
         manual_results=manual_results,
-        write_evidence=True,
+        write_evidence=False,
     )
-    verification_status = verification.get("status")
 
-    # Verification may be long-running. Re-check authority after it completes
-    # before creating a semantic handoff or recording a blocker. Final PASS is
-    # checked once more inside complete_command's atomic commit point.
-    active_after_verification = _active_execution(root, root_command)
-    if (
-        active_after_verification is None
-        or active_after_verification.get("executionId") != expected_execution_id
-    ):
-        current_id = (
-            active_after_verification.get("executionId")
-            if isinstance(active_after_verification, dict)
-            else None
-        )
-        return (
-            {
-                "schemaVersion": SCHEMA_VERSION,
+    # Verification commands may be long-running, so they execute without the
+    # global execution lock. Evidence publication is short and stateful: bind it
+    # to the same execution under lock, then complete_command performs the final
+    # CAS again at the execution-state commit point.
+    with execution_state_lock(root):
+        active_after_verification = _active_execution(root, root_command)
+        if (
+            active_after_verification is None
+            or active_after_verification.get("executionId") != expected_execution_id
+        ):
+            current_id = (
+                active_after_verification.get("executionId")
+                if isinstance(active_after_verification, dict)
+                else None
+            )
+            return (
+                {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "status": "BLOCKED",
+                    "rootCommand": root_command,
+                    "command": command,
+                    "executionId": current_id,
+                    "reasonCode": "STALE_SEMANTIC_RESULT",
+                    "message": (
+                        f"semantic result belongs to execution {expected_execution_id!r}, "
+                        f"but current execution is {current_id!r}"
+                    ),
+                },
+                None,
+            )
+        try:
+            write_verification_evidence(root, step_id, verification)
+        except (OSError, ValueError) as exc:
+            verification = {
+                **verification,
                 "status": "BLOCKED",
-                "rootCommand": root_command,
-                "command": command,
-                "executionId": current_id,
-                "reasonCode": "STALE_SEMANTIC_RESULT",
-                "message": (
-                    f"semantic result belongs to execution {expected_execution_id!r}, "
-                    f"but current execution is {current_id!r}"
-                ),
-            },
-            None,
-        )
+                "reasonCode": "EVIDENCE_WRITE_FAILED",
+                "message": str(exc),
+            }
+
+    verification_status = verification.get("status")
 
     if verification_status == "PASS":
         compact = {
