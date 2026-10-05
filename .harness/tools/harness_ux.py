@@ -168,8 +168,15 @@ def harness_resume(root: Path) -> dict[str, Any]:
             item
             for item in items
             if item.get("status") == "BLOCKED"
-            and str(item.get("reasonCode") or "").startswith(
-                ("INTENT_", "PLAN_BASIS_", "TASK_CONTRACT_", "ARCHITECTURE_BASIS_")
+            and (
+                str(item.get("reasonCode") or "").startswith(
+                    ("INTENT_", "PLAN_BASIS_", "TASK_CONTRACT_", "ARCHITECTURE_BASIS_")
+                )
+                or item.get("reasonCode") in {
+                    "EXECUTION_STAGNATION",
+                    "EXECUTION_CYCLE",
+                    "EXECUTION_DRIFT",
+                }
             )
         ]
         if len(intent_blockers) == 1:

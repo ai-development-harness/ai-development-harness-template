@@ -52,6 +52,7 @@ Per-STEP файлы запрещены.
 - `recentTerminals` — compact terminal tombstones, hard limit **100**; tombstone сохраняет optional `current.details` как recent durable handoff metadata, причём один `details` ограничен **16 KiB compact UTF-8 JSON**;
 - `nextOrdinal` — monotonic invocation order, чтобы latest semantics не зависела от timestamp collision.
 - для running `STEP PLAN/IMPLEMENT/REVIEW/FIX` `current.context.intentBasis` хранит bounded versioned snapshot canonical semantic fingerprints (hard limit 16 KiB); это не копия REQ/ADR/STEP и не audit log.
+- active long-running STEP execution может хранить `progressTelemetry`: максимум 8 compact samples material/activity fingerprints, `unchangedResumes`, `driftStreak` и последний factual delta; полный trajectory/transcript не сохраняется.
 
 Completed execution не хранится в полном виде бесконечно. При terminal checkpoint full record превращается в tombstone. Historical blocked также перестаёт быть full operational state, когда появляется более новая invocation того же `rootCommand`.
 

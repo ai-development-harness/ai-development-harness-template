@@ -575,6 +575,19 @@ STEP закрывается только если:
 - внутри scope нет blocker.
 
 
+## Generic long-running progress guard
+
+После Intent Basis PASS actual resume semantic STEP-команды сравнивает bounded canonical progress sample с предыдущим observed state. Material signal включает lifecycle/completion proof/Verification/Evidence/review findings/execution-groups fingerprint, activity signal — exact repository revision.
+
+- два последовательных resume без material и repository delta → `EXECUTION_STAGNATION`;
+- возврат к тому же semantic command и exact bounded state через промежуточные semantic nodes → `EXECUTION_CYCLE`; одинаковый state на нормальном переходе между разными фазами не считается cycle;
+- два последовательных factual worsening delta → `EXECUTION_DRIFT`;
+- `ACTIVITY_ONLY` не является blocker: длинный IMPLEMENT может менять code до появления нового Evidence/Acceptance proof;
+- read-only STATUS не добавляет sample;
+- FIX↔REVIEW stop decision подавляется здесь и остаётся за adaptive repair controller.
+
+Подробности: [`PROGRESS_GUARD.md`](PROGRESS_GUARD.md).
+
 ## Adaptive FIX ↔ REVIEW stopping
 
 После как минимум одного успешного FIX → REVIEW цикла новый `REVIEW=FAIL` может остановить orchestration раньше `maxFixReviewCycles` по deterministic delta двух Review Contract v2 reports. Поддерживаемые stop reasons: `NO_PROGRESS`, `REPEATED_FINDINGS`, `REGRESSION`. Hard cap `FIX_REVIEW_LIMIT_REACHED` сохраняет приоритет и абсолютную верхнюю границу. Подробности: [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).
