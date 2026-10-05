@@ -539,7 +539,7 @@ def test_stale_continuation_mutation_binding(root: Path) -> None:
     first = child_json(
         root,
         (
-            "from command_dispatch import start_dispatch\\n"
+            "from command_dispatch import start_dispatch\n"
             f"result = start_dispatch(root, {command!r})"
         ),
     )
@@ -548,7 +548,7 @@ def test_stale_continuation_mutation_binding(root: Path) -> None:
     blocked = child_json(
         root,
         (
-            "from command_dispatch import complete_dispatch\\n"
+            "from command_dispatch import complete_dispatch\n"
             f"result = complete_dispatch(root, {command!r}, {command!r}, "
             f"'BLOCKED', execution_id={first['executionId']!r})"
         ),
@@ -558,7 +558,7 @@ def test_stale_continuation_mutation_binding(root: Path) -> None:
     current = child_json(
         root,
         (
-            "from command_dispatch import start_dispatch\\n"
+            "from command_dispatch import start_dispatch\n"
             f"result = start_dispatch(root, {command!r})"
         ),
     )
@@ -571,19 +571,19 @@ def test_stale_continuation_mutation_binding(root: Path) -> None:
     raced = child_json(
         root,
         (
-            "from execution_status import begin_command, block_execution\\n"
-            f"command = {command!r}\\n"
-            f"stale_id = {first['executionId']!r}\\n"
-            "result = {}\\n"
-            "for name, callback in (\\n"
-            "    ('begin', lambda: begin_command(root, command, command, expected_execution_id=stale_id)),\\n"
-            "    ('block', lambda: block_execution(root, command, command=command, expected_execution_id=stale_id)),\\n"
-            "):\\n"
-            "    try:\\n"
-            "        callback()\\n"
-            "    except ValueError as exc:\\n"
-            "        result[name] = {'code': getattr(exc, 'code', None), 'message': str(exc)}\\n"
-            "    else:\\n"
+            "from execution_status import begin_command, block_execution\n"
+            f"command = {command!r}\n"
+            f"stale_id = {first['executionId']!r}\n"
+            "result = {}\n"
+            "for name, callback in (\n"
+            "    ('begin', lambda: begin_command(root, command, command, expected_execution_id=stale_id)),\n"
+            "    ('block', lambda: block_execution(root, command, command=command, expected_execution_id=stale_id)),\n"
+            "):\n"
+            "    try:\n"
+            "        callback()\n"
+            "    except ValueError as exc:\n"
+            "        result[name] = {'code': getattr(exc, 'code', None), 'message': str(exc)}\n"
+            "    else:\n"
             "        result[name] = {'code': 'UNEXPECTED_SUCCESS'}"
         ),
     )
