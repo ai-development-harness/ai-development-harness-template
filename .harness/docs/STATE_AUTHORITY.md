@@ -173,6 +173,7 @@ Harness обязан блокировать:
 - STEP REVIEW payload без matching stamped expectation;
 - deterministic PASS без требуемой postcondition;
 - попытку продолжить `BLOCKED` execution reasoning-ом.
+- semantic resume, если durable Intent Basis больше не совпадает с current canonical contract; runtime не имеет права "обновить intent" из chat history. См. [`INTENT_RESUME.md`](INTENT_RESUME.md).
 
 ## Не является security sandbox
 
