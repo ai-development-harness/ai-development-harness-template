@@ -580,7 +580,7 @@ STEP закрывается только если:
 После Intent Basis PASS actual resume semantic STEP-команды сравнивает bounded canonical progress sample с предыдущим observed state. Material signal включает lifecycle/completion proof/Verification/Evidence/review findings/execution-groups fingerprint, activity signal — exact repository revision.
 
 - два последовательных resume без material и repository delta → `EXECUTION_STAGNATION`;
-- возврат к exact bounded state через промежуточные semantic nodes → `EXECUTION_CYCLE`;
+- возврат к тому же semantic command и exact bounded state через промежуточные semantic nodes → `EXECUTION_CYCLE`; одинаковый state на нормальном переходе между разными фазами не считается cycle;
 - два последовательных factual worsening delta → `EXECUTION_DRIFT`;
 - `ACTIVITY_ONLY` не является blocker: длинный IMPLEMENT может менять code до появления нового Evidence/Acceptance proof;
 - read-only STATUS не добавляет sample;
