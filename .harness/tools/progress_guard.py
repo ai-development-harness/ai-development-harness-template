@@ -404,7 +404,13 @@ def _cycle_blocker(
         return None
     for index in range(len(samples) - 2, -1, -1):
         prior = samples[index]
-        if prior.get("fingerprint") != sample.get("fingerprint"):
+        # Normal phase transitions may legitimately observe the same project
+        # state (for example IMPLEMENT -> REVIEW immediately after completion).
+        # A cycle requires returning to the same semantic node after other work.
+        if (
+            prior.get("command") != sample.get("command")
+            or prior.get("fingerprint") != sample.get("fingerprint")
+        ):
             continue
         between = samples[index + 1 :]
         operations = {
