@@ -58,6 +58,7 @@ from planning_contract import (
     plan_content_hash,
     planning_context_basis,
     planning_context_components,
+    planning_context_fingerprints,
     read_task as read_planning_task,
     step_completion_proof,
     task_contract_snapshot,
@@ -423,6 +424,10 @@ def _capture_intent_basis(root: Path, command: str) -> dict[str, Any] | None:
     plan_value = plan if isinstance(plan, dict) else {}
     requires_plan = operation in PLAN_BOUND_STEP_OPERATIONS
 
+    context_basis, context_components = planning_context_fingerprints(
+        root,
+        step_id,
+    )
     value = {
         "schemaVersion": INTENT_BASIS_SCHEMA_VERSION,
         "stepId": step_id,
@@ -430,8 +435,8 @@ def _capture_intent_basis(root: Path, command: str) -> dict[str, Any] | None:
         "operation": operation,
         # schema-v4 planning basis already includes semantic STEP/REQ/ADR/OQ,
         # referenced architecture and active blocking Project Principles.
-        "contextBasis": planning_context_basis(root, step_id),
-        "contextComponents": planning_context_components(root, step_id),
+        "contextBasis": context_basis,
+        "contextComponents": context_components,
         # plan_content_hash includes canonical executionGroups when present.
         # PLAN itself is allowed to change this output, so PLAN does not bind it.
         "planContentRequired": requires_plan,
