@@ -3305,7 +3305,6 @@ def stamp_review_expectation(
 
 
 @execution_state_mutation
-@execution_state_mutation
 def record_review_report(root: Path, step_id: str, record: dict[str, Any]) -> bool:
     """Связать созданный writer-ом report с active STEP REVIEW execution.
 
