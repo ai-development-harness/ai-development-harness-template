@@ -383,6 +383,19 @@ def main() -> int:
         ), principle_stale
         write(principle_path, principle())
 
+        # Legacy/diagnostic fresh start may have incomplete canonical inputs.
+        # Preserve the original capture failure, then fail-closed on resume
+        # instead of inventing a basis from the later repository state.
+        clear_execution(root)
+        req_path.unlink()
+        unavailable_start = start_execution(root, "STEP REVIEW STEP-001")
+        capture_error = unavailable_start["current"]["context"]["intentBasisError"]
+        assert capture_error["reasonCode"] == "INTENT_BASIS_UNAVAILABLE", capture_error
+        unavailable_resume = resolve_execution(root, unavailable_start, mutate=False)
+        assert unavailable_resume["status"] == "BLOCKED", unavailable_resume
+        assert unavailable_resume["reasonCode"] == "INTENT_BASIS_UNAVAILABLE", unavailable_resume
+        write(req_path, requirement())
+
         # Future/unknown sub-schema remains readable but is never best-effort resumed.
         clear_execution(root)
         execution = start_review(root)
