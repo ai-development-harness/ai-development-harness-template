@@ -242,7 +242,7 @@ Canonical runtime boundary между raw Harness command и semantic модел
 
 ```bash
 python3 .harness/tools/harness-dispatch.py start --command '<raw command>'
-python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --result PASS
+python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --execution-id '<executionId>' --result PASS
 python3 .harness/tools/harness-dispatch.py resume [--root '<root>']
 python3 .harness/tools/harness-dispatch.py route --command '<canonical command>'
 ```

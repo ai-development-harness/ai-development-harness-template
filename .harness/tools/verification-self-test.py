@@ -330,6 +330,7 @@ def main() -> int:
             dispatch["rootCommand"],
             dispatch["command"],
             "SUCCESS",
+            execution_id=dispatch["executionId"],
         )
         assert first_complete["status"] == "SEMANTIC", first_complete
         assert first_complete["reasonCode"] == "VERIFICATION_MANUAL_REQUIRED", first_complete
@@ -339,6 +340,7 @@ def main() -> int:
             dispatch["rootCommand"],
             dispatch["command"],
             "SUCCESS",
+            execution_id=dispatch["executionId"],
             details={
                 "manualVerification": [
                     {

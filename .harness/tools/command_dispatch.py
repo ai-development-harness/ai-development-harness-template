@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from command_transitions import (
+    authority_contract,
     dispatch_spec,
     load_transition_table,
     parse_canonical_command,
@@ -103,6 +104,7 @@ def route_command(root: Path, command: str) -> dict[str, Any]:
         "target": parsed.get("target"),
         "input": parsed.get("input"),
         "dispatch": spec,
+        "authority": authority_contract(table),
     }
 
 
@@ -364,6 +366,10 @@ def _semantic_handoff(
             "operation": route["operation"],
             "target": route.get("target"),
             "input": route.get("input"),
+        },
+        "authority": {
+            **route["authority"],
+            "completionBinding": "executionId",
         },
     }
     if context is not None:
@@ -864,14 +870,44 @@ def complete_dispatch(
     command: str,
     result: str,
     *,
+    execution_id: str,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Зафиксировать semantic result и сразу dispatch-нуть continuation."""
+    """Зафиксировать execution-bound semantic result и dispatch-нуть continuation."""
+
+    if not isinstance(execution_id, str) or not execution_id:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "status": "BLOCKED",
+            "rootCommand": root_command,
+            "command": command,
+            "reasonCode": "EXECUTION_ID_REQUIRED",
+            "message": "semantic completion requires executionId from the exact handoff",
+        }
+
+    # Semantic result является proposal, а не authority. Completion допустим
+    # только для той invocation, которая выдала handoff: старый ответ не может
+    # закрыть более новую execution с тем же rootCommand/current command.
+    active = _active_execution(root, root_command)
+    if (
+        active is not None
+        and str(active.get("executionId") or "") != execution_id
+    ):
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "status": "BLOCKED",
+            **_execution_identity(active),
+            "command": command,
+            "reasonCode": "STALE_SEMANTIC_RESULT",
+            "message": (
+                f"semantic result belongs to execution {execution_id!r}, "
+                f"but current execution is {active.get('executionId')!r}"
+            ),
+        }
 
     # The PUSH fast-path is allowed only when the preceding COMMIT has a
     # deterministic repository postcondition. This prevents a semantic
     # SUCCESS claim from skipping the scope boundary without an actual commit.
-    active = _active_execution(root, root_command)
     if active is not None and result == "SUCCESS":
         route = route_command(root, command)
         sequence = active.get("sequence")
