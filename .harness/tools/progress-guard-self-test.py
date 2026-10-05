@@ -289,6 +289,51 @@ def policy_tests() -> None:
     assert progress_delta["classification"] == "PROGRESS", progress_delta
     assert "verification" in progress_delta["improvements"], progress_delta
 
+    # Evidence mutation is directionless and must not hide factual regression.
+    pass_state = synthetic(
+        "pass-state",
+        operation="IMPLEMENT",
+        command="STEP IMPLEMENT STEP-001",
+        reasons=1,
+        precheck=1,
+        verification="PASS",
+        evidence="sha256:old-evidence",
+    )
+    failed_with_new_evidence = synthetic(
+        "failed-state",
+        operation="IMPLEMENT",
+        command="STEP IMPLEMENT STEP-001",
+        reasons=2,
+        precheck=2,
+        verification="FAIL",
+        evidence="sha256:new-evidence",
+        activity="activity-b",
+    )
+    evidence_regression = compare_progress(
+        pass_state,
+        failed_with_new_evidence,
+    )
+    assert evidence_regression["classification"] == "WORSENED", evidence_regression
+    assert "verification" in evidence_regression["regressions"], evidence_regression
+    assert "evidence" not in evidence_regression["improvements"], evidence_regression
+
+    # First appearance of findings is also worsening, not a neutral discovery.
+    finding_before = synthetic(
+        "finding-a",
+        operation="IMPLEMENT",
+        command="STEP IMPLEMENT STEP-001",
+    )
+    finding_after = synthetic(
+        "finding-b",
+        operation="IMPLEMENT",
+        command="STEP IMPLEMENT STEP-001",
+        activity="activity-b",
+    )
+    finding_after["metrics"]["reviewFindingCount"] = 1
+    finding_delta = compare_progress(finding_before, finding_after)
+    assert finding_delta["classification"] == "WORSENED", finding_delta
+    assert "reviewFindings" in finding_delta["regressions"], finding_delta
+
     # Repeated exact no-op resume is bounded.
     telemetry = new_telemetry(base)
     first = observe_resume(telemetry, same)
@@ -471,24 +516,53 @@ def integration_tests(root: Path) -> None:
         assert surfaced["remediation"] == "STEP PLAN STEP-001", surfaced
     write(status_path, stagnation_bytes.decode("utf-8"))
 
-    # New root after the blocked invocation: repository activity alone must not
-    # be mistaken for stagnation.
+    # PLAN is read-only for product files: unrelated repository activity must
+    # not reset stagnation.
     execution = start_execution(root, "STEP PLAN STEP-001")
     begin_command(root, execution["rootCommand"], execution["current"]["command"])
-    write(root / "src/core/placeholder.txt", "changed product work\n")
-    active = begin_command(
-        root,
-        execution["rootCommand"],
-        execution["current"]["command"],
-    )
-    assert active["status"] == "running", active
-    assert active["progressTelemetry"]["unchangedResumes"] == 0, active
-    assert (
-        active["progressTelemetry"]["lastDelta"]["classification"]
-        == "ACTIVITY_ONLY"
-    ), active["progressTelemetry"]
+    write(root / "src/unrelated.txt", "other execution activity\n")
+    try:
+        begin_command(
+            root,
+            execution["rootCommand"],
+            execution["current"]["command"],
+        )
+    except ProgressExecutionError as exc:
+        assert exc.code == "EXECUTION_STAGNATION", exc
+    else:
+        raise AssertionError("unrelated PLAN activity incorrectly reset stagnation")
 
-    # Material Evidence progress also resets the no-op streak.
+    # IMPLEMENT/FIX with execution groups use declared mutationPaths. Direct
+    # capture is enough here; command preconditions are tested elsewhere.
+    implement_before = capture_progress(
+        root,
+        "STEP-001",
+        "STEP IMPLEMENT STEP-001",
+        "IMPLEMENT",
+    )
+    write(root / "src/unrelated-2.txt", "still unrelated\n")
+    implement_unrelated = capture_progress(
+        root,
+        "STEP-001",
+        "STEP IMPLEMENT STEP-001",
+        "IMPLEMENT",
+    )
+    unrelated_delta = compare_progress(implement_before, implement_unrelated)
+    assert unrelated_delta["classification"] == "NO_CHANGE", unrelated_delta
+
+    write(root / "src/core/placeholder.txt", "changed scoped product work\n")
+    implement_scoped = capture_progress(
+        root,
+        "STEP-001",
+        "STEP IMPLEMENT STEP-001",
+        "IMPLEMENT",
+    )
+    scoped_delta = compare_progress(implement_unrelated, implement_scoped)
+    assert scoped_delta["classification"] == "ACTIVITY_ONLY", scoped_delta
+
+    # Material Evidence progress still resets the no-op streak even for PLAN.
+    execution = start_execution(root, "STEP PLAN STEP-001")
+    begin_command(root, execution["rootCommand"], execution["current"]["command"])
     write(root / "planning/tasks/STEP-001.md", task(evidence="progress proof"))
     progressed = begin_command(
         root,
@@ -516,6 +590,16 @@ def integration_tests(root: Path) -> None:
     bad_counter = json.loads(valid_bytes)
     bad_counter["executions"][0]["progressTelemetry"]["unchangedResumes"] = -1
     corruptions.append(("counter", bad_counter))
+
+    bad_sample = json.loads(valid_bytes)
+    bad_sample["executions"][0]["progressTelemetry"]["samples"][0] = {}
+    corruptions.append(("sample-schema", bad_sample))
+
+    bad_delta = json.loads(valid_bytes)
+    bad_delta["executions"][0]["progressTelemetry"]["lastDelta"] = {
+        "classification": "PROGRESS"
+    }
+    corruptions.append(("delta-schema", bad_delta))
 
     too_many = json.loads(valid_bytes)
     sample = too_many["executions"][0]["progressTelemetry"]["samples"][0]
