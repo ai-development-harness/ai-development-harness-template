@@ -112,15 +112,18 @@ python3 .harness/tools/harness-dispatch.py complete \
   --result <SUCCESS|PASS|FAIL|BLOCKED>
 ```
 
-Если между handoff и completion уже появилась новая invocation того же
-`rootCommand`, старый result получает:
+Если между handoff и **commit point** completion уже появилась новая invocation
+того же `rootCommand`, старый result получает:
 
 ```text
 BLOCKED / STALE_SEMANTIC_RESULT
 ```
 
-Это предотвращает ABA-подобную гонку, где одинаковые `rootCommand` и
-`current.command` выглядят валидно, хотя результат принадлежит старому run.
+Проверка повторяется внутри той же execution-state transaction, которая меняет
+`current.status/result`. Ранняя dispatcher-проверка является только fast-path
+и не считается authority proof. Это закрывает ABA/TOCTOU-гонку, где одинаковые
+`rootCommand` и `current.command` выглядят валидно, хотя result принадлежит
+старому run.
 
 ## Canonical writers
 
