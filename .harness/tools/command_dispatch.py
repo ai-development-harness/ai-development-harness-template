@@ -1026,7 +1026,22 @@ def complete_dispatch(
                     command=command,
                     expected_execution_id=execution_id,
                 )
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                if getattr(exc, "code", None) == "STALE_SEMANTIC_RESULT":
+                    current = _active_execution(root, root_command)
+                    return {
+                        "schemaVersion": SCHEMA_VERSION,
+                        "status": "BLOCKED",
+                        **(_execution_identity(current) if current else {}),
+                        "command": command,
+                        "reasonCode": "STALE_SEMANTIC_RESULT",
+                        "message": str(exc),
+                        **(
+                            {"details": getattr(exc, "details")}
+                            if isinstance(getattr(exc, "details", None), dict)
+                            else {}
+                        ),
+                    }
                 blocked = active
             return {
                 "schemaVersion": SCHEMA_VERSION,
