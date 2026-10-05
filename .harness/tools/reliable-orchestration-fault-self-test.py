@@ -485,6 +485,53 @@ def test_concurrent_stale_complete_vs_current_resume(root: Path) -> None:
     assert running[0]["current"]["attempt"] == 2, running[0]
 
 
+def test_atomic_completion_binding(root: Path) -> None:
+    """Force the old TOCTOU window and prove commit-point execution binding."""
+    command = "PROJECT QUICK FIX: atomic completion authority"
+    first = child_json(
+        root,
+        (
+            "from command_dispatch import start_dispatch\n"
+            f"result = start_dispatch(root, {command!r})"
+        ),
+    )
+    assert first["status"] == "SEMANTIC", first
+
+    # In one process keep a stale pre-check view of execution A, move durable
+    # state to a new execution B, then let complete_dispatch continue. The
+    # initial authority check is deliberately fooled; only complete_command's
+    # under-lock expected_execution_id check can reject the stale proposal.
+    raced = child_json(
+        root,
+        (
+            "import command_dispatch as dispatcher\n"
+            f"command = {command!r}\n"
+            "stale = dispatcher._active_execution(root, command)\n"
+            f"dispatcher.complete_dispatch(root, command, command, 'BLOCKED', "
+            f"execution_id={first['executionId']!r})\n"
+            "current = dispatcher.start_dispatch(root, command)\n"
+            "dispatcher._active_execution = lambda _root, _command: stale\n"
+            f"result = dispatcher.complete_dispatch(root, command, command, "
+            f"'SUCCESS', execution_id={first['executionId']!r})\n"
+            "result['currentExecutionId'] = current['executionId']"
+        ),
+    )
+    assert raced["status"] == "BLOCKED", raced
+    assert raced["reasonCode"] == "STALE_SEMANTIC_RESULT", raced
+    assert raced["currentExecutionId"] != first["executionId"], raced
+
+    state = load_status(root)
+    running = [
+        item
+        for item in state["executions"]
+        if item.get("rootCommand") == command
+        and item.get("status") == "running"
+    ]
+    assert len(running) == 1, running
+    assert running[0]["executionId"] == raced["currentExecutionId"], running
+    assert running[0]["current"]["status"] == "running", running[0]
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-fault-intent-") as tmp:
         root = Path(tmp)
@@ -500,6 +547,11 @@ def main() -> int:
         root = Path(tmp)
         prepare(root)
         test_concurrent_stale_complete_vs_current_resume(root)
+
+    with tempfile.TemporaryDirectory(prefix="harness-fault-atomic-authority-") as tmp:
+        root = Path(tmp)
+        prepare(root)
+        test_atomic_completion_binding(root)
 
     print("RELIABLE ORCHESTRATION FAULT SELF-TEST: PASS")
     return 0
