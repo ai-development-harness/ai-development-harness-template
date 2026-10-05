@@ -80,8 +80,8 @@ def _completion_findings(review: dict[str, Any] | None) -> list[str]:
         return []
     text = section.strip()
     fence = chr(96) * 3
-    start = fence + "json\\n"
-    end = "\\n" + fence
+    start = fence + "json\n"
+    end = "\n" + fence
     if not (text.startswith(start) and text.endswith(end)):
         return []
     raw = text[len(start) : -len(end)]
