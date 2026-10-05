@@ -242,7 +242,7 @@ Canonical runtime boundary между raw Harness command и semantic модел
 
 ```bash
 python3 .harness/tools/harness-dispatch.py start --command '<raw command>'
-python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --result PASS
+python3 .harness/tools/harness-dispatch.py complete --root '<root>' --command '<command>' --execution-id '<executionId>' --result PASS
 python3 .harness/tools/harness-dispatch.py resume [--root '<root>']
 python3 .harness/tools/harness-dispatch.py route --command '<canonical command>'
 ```
@@ -1115,7 +1115,9 @@ Current execution state использует schema v2. Validator проверя
 - sequence;
 - current command/status/result;
 - attempt;
-- fix/review cycle counter.
+- fix/review cycle counter;
+- optional `current.context.intentBasis`: bounded 16 KiB versioned envelope для `STEP PLAN/IMPLEMENT/REVIEW/FIX`. Known schema v1 проверяет STEP/command/context fingerprints/plan binding; unknown future sub-schema остаётся parseable, но resume fail-closed возвращает `INTENT_BASIS_SCHEMA_UNSUPPORTED`; legacy/diagnostic fresh start, где basis вычислить нельзя, сохраняет bounded `intentBasisError`, который делает последующий resume `INTENT_BASIS_UNAVAILABLE`;
+- optional root `progressTelemetry`: schema v1, общий 16 KiB budget, максимум 8 samples, non-negative `unchangedResumes`/`driftStreak`, closed stopDecision `continue|EXECUTION_STAGNATION|EXECUTION_CYCLE|EXECUTION_DRIFT`; optional `progressTelemetryError` остаётся bounded diagnostic и не подменяет Intent Basis safety gate.
 
 `load_status()` и `save_status()` всегда вызывают schema validation, поэтому повреждённый local state не трактуется как пустой.
 
@@ -1519,6 +1521,10 @@ python3 .harness/tools/repair-cycle-self-test.py
 Self-test покрывает progress, no-progress, repeated findings, higher-severity regression, worsening factual Verification status, historical report без status и scope-change guard. Resolver-level применение stored telemetry покрывается `execution-self-test.py`.
 
 Политика описана в [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).
+
+Generic long-running detector реализован в `.harness/tools/progress_guard.py`; regression suite `.harness/tools/progress-guard-self-test.py` покрывает STAGNATION/CYCLE/DRIFT, activity-only false-positive guard, execution-groups fingerprint и suppression FIX↔REVIEW. Политика: [`PROGRESS_GUARD.md`](PROGRESS_GUARD.md). Execution-state schema дополнительно валидирует каждый persisted progress sample и `lastDelta` fail-closed: command/STEP/operation, fingerprints, metrics, counters и classification не могут восстанавливаться из malformed defaults.
+
+Cross-process integration suite `.harness/tools/reliable-orchestration-fault-self-test.py` проверяет совместную работу state authority, Intent Basis и Progress Guard через реальные process boundaries: crash после durable snapshot, `STEP RUN` resume/stagnation после потери response и concurrent stale completion против current invocation.
 
 
 ---

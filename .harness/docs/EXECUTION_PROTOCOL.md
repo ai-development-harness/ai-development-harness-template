@@ -29,16 +29,19 @@ Dispatcher использует `.harness/command-transitions.json` как ед�
 python3 .harness/tools/harness-dispatch.py complete \
   --root '<root command>' \
   --command '<current command>' \
+  --execution-id '<executionId from semantic handoff>' \
   --result <SUCCESS|PASS|FAIL|BLOCKED>
 ```
 
-Dispatcher сам применяет CTS `onPreviousResult`, runtime preconditions и при разрешённом continuation начинает следующий segment. Interrupted execution продолжается через:
+Semantic result является **proposal**, а не authoritative state mutation. Completion принимается только с exact `executionId` из handoff; stale result предыдущей invocation получает `BLOCKED/STALE_SEMANTIC_RESULT`. Dispatcher сам применяет CTS `onPreviousResult`, runtime preconditions и при разрешённом continuation начинает следующий segment.
+
+Global ownership contract находится в `.harness/command-transitions.json → authorityContract`; подробная матрица — [`STATE_AUTHORITY.md`](STATE_AUTHORITY.md). Interrupted execution продолжается через:
 
 ```bash
 python3 .harness/tools/harness-dispatch.py resume [--root '<root command>']
 ```
 
-`HARNESS RESUME` использует тот же механизм и не создаёт отдельную root execution.
+`HARNESS RESUME` использует тот же механизм и не создаёт отдельную root execution. Для interrupted `STEP PLAN/IMPLEMENT/REVIEW/FIX` resolver дополнительно проверяет versioned Intent Basis: schema-v4 planning context и, для IMPLEMENT/REVIEW/FIX, exact Ready plan hash. Stale semantic contract блокирует resume до re-plan; chat transcript не используется как source of truth. Подробно: [`INTENT_RESUME.md`](INTENT_RESUME.md).
 
 ### 0.2. Низкоуровневые contracts
 
@@ -293,7 +296,7 @@ Execution tracking уже ведётся root execution wrapper. До semantic h
 10. Не ставить `Выполнено` до required review PASS.
 11. Command завершается только после PASS deterministic/manual Verification contract.
 
-Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN`.
+Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN` **только после PASS Intent Basis guard**. Изменившийся REQ/ADR/STEP/Project Principle или Ready plan делает старую semantic execution stale и маршрутизирует к `STEP PLAN STEP-NNN`.
 
 Single IMPLEMENT после SUCCESS останавливается; внутри chain/RUN CTS может продолжить к REVIEW.
 
@@ -571,6 +574,19 @@ STEP закрывается только если:
 - affected docs/status projections синхронизированы;
 - внутри scope нет blocker.
 
+
+## Generic long-running progress guard
+
+После Intent Basis PASS actual resume semantic STEP-команды сравнивает bounded canonical progress sample с предыдущим observed state. Material signal включает lifecycle/completion proof/Verification/Evidence/review findings/execution-groups fingerprint. Activity signal отделён от material progress: `PLAN/REVIEW` не учитывают product-file activity; `IMPLEMENT/FIX` с `plan.execution_groups` fingerprint-ят только union validated `mutationPaths`; при отсутствии execution groups используется conservative whole-repository fallback.
+
+- два последовательных resume без material и repository delta → `EXECUTION_STAGNATION`;
+- возврат к тому же semantic command и exact bounded state через промежуточные semantic nodes → `EXECUTION_CYCLE`; одинаковый state на нормальном переходе между разными фазами не считается cycle;
+- два последовательных factual worsening delta → `EXECUTION_DRIFT`;
+- `ACTIVITY_ONLY` не является blocker: длинный IMPLEMENT может менять code до появления нового Evidence/Acceptance proof;
+- read-only STATUS не добавляет sample;
+- FIX↔REVIEW stop decision подавляется здесь и остаётся за adaptive repair controller.
+
+Подробности: [`PROGRESS_GUARD.md`](PROGRESS_GUARD.md).
 
 ## Adaptive FIX ↔ REVIEW stopping
 

@@ -105,6 +105,10 @@ Telemetry записывается при completion второго и посл�
 
 Первый FAIL review (`fixReviewCycles=0`) никогда не создаёт adaptive stop.
 
+## Связь с generic Progress Guard
+
+[`PROGRESS_GUARD.md`](PROGRESS_GUARD.md) может сохранять compact progress samples во время FIX/REVIEW для общей observability, но generic stop decisions на repair loop подавляются. `NO_PROGRESS`, `REPEATED_FINDINGS`, `REGRESSION` и hard cap `FIX_REVIEW_LIMIT_REACHED` остаются единственной authoritative taxonomy FIX↔REVIEW.
+
 ## Граница ответственности
 
 - CTS определяет допустимость REVIEW → FIX;

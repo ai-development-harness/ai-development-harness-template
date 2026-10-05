@@ -47,7 +47,7 @@ python3 .harness/tools/harness-ux.py status --json
 <a id="command-harness-resume"></a>
 ## `HARNESS RESUME`
 
-Продолжает единственное незавершённое выполнение, которое можно безопасно возобновить. Если таких выполнений нет — возвращает `BLOCKED/NO_RESUMABLE_EXECUTION`; если их несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
+Продолжает единственное незавершённое выполнение, которое можно безопасно возобновить. Для interrupted `STEP PLAN/IMPLEMENT/REVIEW/FIX` сначала проверяет durable Intent Basis, затем bounded Progress Guard. Stale REQ/ADR/STEP/Project Principle/Ready plan блокируется intent guard; repeated no-op/cycle/repeated factual worsening возвращают `EXECUTION_STAGNATION | EXECUTION_CYCLE | EXECUTION_DRIFT` с `STEP PLAN STEP-NNN` remediation. Read-only STATUS не увеличивает progress counters. Если resumable выполнений нет — `BLOCKED/NO_RESUMABLE_EXECUTION`; если их несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
 
 ```bash
 python3 .harness/tools/harness-ux.py resume --json
