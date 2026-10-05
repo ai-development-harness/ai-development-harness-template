@@ -2,17 +2,20 @@
 """Regression suite generic deterministic progress guard (#204)."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 
 from execution_status import (
+    MAX_DETAILS_BYTES,
     ProgressExecutionError,
     begin_command,
     load_status,
     start_execution,
 )
+from harness_ux import harness_resume
 from progress_guard import (
     MAX_PROGRESS_SAMPLES,
     capture_progress,
@@ -372,6 +375,24 @@ def policy_tests() -> None:
 
     assert len(two["telemetry"]["samples"]) <= MAX_PROGRESS_SAMPLES, two
 
+    # Ring eviction is exact, not merely bounded. Activity-only samples avoid
+    # stop decisions while exercising more than MAX_PROGRESS_SAMPLES writes.
+    rolling = new_telemetry(base)
+    observed_fingerprints = [base["fingerprint"]]
+    for index in range(MAX_PROGRESS_SAMPLES + 4):
+        sample = synthetic(
+            "material-a",
+            operation="IMPLEMENT",
+            command="STEP IMPLEMENT STEP-001",
+            activity=f"activity-{index + 10}",
+        )
+        observed_fingerprints.append(sample["fingerprint"])
+        rolling = observe_resume(rolling, sample)["telemetry"]
+    assert len(rolling["samples"]) == MAX_PROGRESS_SAMPLES, rolling
+    assert [item["fingerprint"] for item in rolling["samples"]] == (
+        observed_fingerprints[-MAX_PROGRESS_SAMPLES:]
+    ), rolling
+
 
 def integration_tests(root: Path) -> None:
     # executionGroups are part of the canonical progress material.
@@ -423,6 +444,33 @@ def integration_tests(root: Path) -> None:
     assert blocked["status"] == "blocked", blocked
     assert blocked["blockedBy"]["reasonCode"] == "EXECUTION_STAGNATION", blocked
 
+    # Public HARNESS RESUME must preserve the exact generic progress blocker
+    # instead of collapsing it into NO_RESUMABLE_EXECUTION.
+    resume = harness_resume(root)
+    assert resume["status"] == "BLOCKED", resume
+    assert resume["reasonCode"] == "EXECUTION_STAGNATION", resume
+    assert resume["remediation"] == "STEP PLAN STEP-001", resume
+
+    # Public UX propagation is closed over all generic progress reason codes,
+    # not only the detector reached by this concrete execution fixture.
+    status_path = root / ".harness/local/execution/execution-status.json"
+    stagnation_bytes = status_path.read_bytes()
+    for reason in ("EXECUTION_CYCLE", "EXECUTION_DRIFT"):
+        variant = json.loads(stagnation_bytes)
+        blocked_execution = variant["executions"][0]
+        blocked_execution["blockedBy"]["reasonCode"] = reason
+        blocked_execution["blockedBy"]["details"]["reasonCode"] = reason
+        blocked_execution["progressTelemetry"]["stopDecision"] = reason
+        write(
+            status_path,
+            json.dumps(variant, ensure_ascii=False, indent=2) + "\n",
+        )
+        surfaced = harness_resume(root)
+        assert surfaced["status"] == "BLOCKED", surfaced
+        assert surfaced["reasonCode"] == reason, surfaced
+        assert surfaced["remediation"] == "STEP PLAN STEP-001", surfaced
+    write(status_path, stagnation_bytes.decode("utf-8"))
+
     # New root after the blocked invocation: repository activity alone must not
     # be mistaken for stagnation.
     execution = start_execution(root, "STEP PLAN STEP-001")
@@ -453,6 +501,64 @@ def integration_tests(root: Path) -> None:
         progressed["progressTelemetry"]["lastDelta"]["classification"]
         == "PROGRESS"
     ), progressed["progressTelemetry"]
+
+    # Corrupt/unsupported progress telemetry fails closed on local-state read.
+    status_path = root / ".harness/local/execution/execution-status.json"
+    valid_bytes = status_path.read_bytes()
+    valid = json.loads(valid_bytes)
+
+    corruptions = []
+
+    bad_schema = json.loads(valid_bytes)
+    bad_schema["executions"][0]["progressTelemetry"]["schemaVersion"] = 99
+    corruptions.append(("schema", bad_schema))
+
+    bad_counter = json.loads(valid_bytes)
+    bad_counter["executions"][0]["progressTelemetry"]["unchangedResumes"] = -1
+    corruptions.append(("counter", bad_counter))
+
+    too_many = json.loads(valid_bytes)
+    sample = too_many["executions"][0]["progressTelemetry"]["samples"][0]
+    too_many["executions"][0]["progressTelemetry"]["samples"] = [
+        dict(sample, capturedAt=f"2026-10-05T00:00:{index:02d}+00:00")
+        for index in range(MAX_PROGRESS_SAMPLES + 1)
+    ]
+    corruptions.append(("sample-count", too_many))
+
+    oversized = json.loads(valid_bytes)
+    oversized["executions"][0]["progressTelemetry"]["padding"] = "x" * (
+        MAX_DETAILS_BYTES + 1
+    )
+    corruptions.append(("oversize", oversized))
+
+    for label, value in corruptions:
+        write(status_path, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+        try:
+            load_status(root)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid progress telemetry accepted: {label}")
+        write(status_path, valid_bytes.decode("utf-8"))
+
+    # Oversized diagnostic envelope is also rejected; it must not become an
+    # unbounded escape hatch around progressTelemetry budgeting.
+    oversized_error = json.loads(valid_bytes)
+    oversized_error["executions"][0]["progressTelemetryError"] = {
+        "reasonCode": "PROGRESS_SNAPSHOT_UNAVAILABLE",
+        "message": "x" * (MAX_DETAILS_BYTES + 1),
+    }
+    write(
+        status_path,
+        json.dumps(oversized_error, ensure_ascii=False, indent=2) + "\n",
+    )
+    try:
+        load_status(root)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("oversized progressTelemetryError was accepted")
+    write(status_path, valid_bytes.decode("utf-8"))
 
 
 def main() -> int:

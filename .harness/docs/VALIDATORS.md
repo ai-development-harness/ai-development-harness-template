@@ -1524,6 +1524,8 @@ Self-test покрывает progress, no-progress, repeated findings, higher-se
 
 Generic long-running detector реализован в `.harness/tools/progress_guard.py`; regression suite `.harness/tools/progress-guard-self-test.py` покрывает STAGNATION/CYCLE/DRIFT, activity-only false-positive guard, execution-groups fingerprint и suppression FIX↔REVIEW. Политика: [`PROGRESS_GUARD.md`](PROGRESS_GUARD.md).
 
+Cross-process integration suite `.harness/tools/reliable-orchestration-fault-self-test.py` проверяет совместную работу state authority, Intent Basis и Progress Guard через реальные process boundaries: crash после durable snapshot, `STEP RUN` resume/stagnation после потери response и concurrent stale completion против current invocation.
+
 
 ---
 

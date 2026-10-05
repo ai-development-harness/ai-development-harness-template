@@ -236,6 +236,50 @@ Synthetic fixture.
 """
 
 
+def task_with_execution_groups(group_path: str) -> str:
+    value = task()
+    metadata_needle = """  planned_at: 2026-10-05T00:00:00+00:00
+---"""
+    metadata_replacement = f"""  planned_at: 2026-10-05T00:00:00+00:00
+  execution_groups:
+    core:
+      title: Core
+      steps:
+        - 1
+        - 2
+      dependsOn: []
+      mutationPaths:
+        - {group_path}
+      verificationResponsibilities:
+        - Verify core behavior
+      parallel: false
+---"""
+    if metadata_needle not in value:
+        raise AssertionError("execution-groups metadata anchor missing")
+    value = value.replace(metadata_needle, metadata_replacement, 1)
+
+    # execution_groups references numbered "### N." plan steps; the base
+    # fixture intentionally uses legacy prose numbering for unrelated tests.
+    plan_needle = """## Implementation plan
+
+1. Capture canonical basis.
+2. Compare it before resume.
+"""
+    plan_replacement = """## Implementation plan
+
+### 1. Capture canonical basis
+
+Capture canonical basis.
+
+### 2. Compare before resume
+
+Compare it before resume.
+"""
+    if plan_needle not in value:
+        raise AssertionError("execution-groups plan anchor missing")
+    return value.replace(plan_needle, plan_replacement, 1)
+
+
 def prepare(root: Path) -> None:
     write(root / ".harness/manifest.yaml", manifest())
     write(root / ".harness/git-policy.toml", '[push]\nremote = "origin"\n')
@@ -351,6 +395,18 @@ def main() -> int:
         plan_stale = resolve_execution(root, execution, mutate=False)
         assert plan_stale["reasonCode"] == "PLAN_BASIS_STALE", plan_stale
         assert plan_stale["remediation"] == "STEP PLAN STEP-001", plan_stale
+        write(step_path, task())
+
+        # Execution-group graph is part of plan_content_hash even when
+        # the human-readable Implementation plan body itself did not change.
+        clear_execution(root)
+        write(step_path, task_with_execution_groups("src/core"))
+        execution = start_review(root)
+        write(step_path, task_with_execution_groups("src/other"))
+        group_stale = resolve_execution(root, execution, mutate=False)
+        assert group_stale["status"] == "BLOCKED", group_stale
+        assert group_stale["reasonCode"] == "PLAN_BASIS_STALE", group_stale
+        assert group_stale["remediation"] == "STEP PLAN STEP-001", group_stale
         write(step_path, task())
 
         # PLAN is allowed to write/replace Implementation plan; only its input
