@@ -58,7 +58,7 @@ Semantic result не меняет canonical artifacts.
 - evidence list;
 - optional uncertainty.
 
-`documented` claim обязан иметь минимум один repository-local artifact/commit source.
+`documented` claim обязан иметь evidence. Repository-local artifact/commit валидируется локально; реально полученный PR/issue/doc source тоже может документировать rationale, но остаётся помечен `supplied-not-locally-verifiable` и не превращается в local proof.
 
 Inference без evidence допустим только как `low` confidence + explicit gap. Такой result не может быть PASS.
 
@@ -145,7 +145,7 @@ Local handoff JSON остаётся transient `.harness/local/**` и не явл
 
 - arbitrary/out-of-budget expansion → BLOCKED;
 - arbitrary commit вне bounded target history → BLOCKED;
-- documented claim без repository-local evidence → BLOCKED;
+- documented claim без evidence → BLOCKED;
 - inference без evidence, но с medium/high confidence → BLOCKED;
 - inference без evidence и без explicit gap → BLOCKED;
 - PASS с ungrounded inference → BLOCKED;
