@@ -127,7 +127,7 @@ python3 .harness/tools/context-contract.py \
 }
 ```
 
-`flow`, `ownership` и `boundaries` при `PASS` должны быть непустыми. `gotchas` и `unknowns` могут быть пустыми.
+`flow`, `ownership` и `boundaries` при `PASS` должны быть непустыми. `gotchas` и `unknowns` могут быть пустыми. Каждый элемент semantic-массивов — объект `{claim, evidence[]}` с непустым claim и хотя бы одним repository evidence path; каждый такой path обязан также присутствовать в top-level `evidencePaths`.
 
 Проверь payload детерминированно:
 
@@ -145,7 +145,7 @@ Validator:
 - считает реальные expansion chars;
 - enforce-ит `simple|complex` budget;
 - запрещает `fullRepositoryPreload=true`;
-- разрешает evidence только из canonical required paths или validated expansions.
+- разрешает top-level и claim-level evidence только из canonical required paths или validated expansions и требует индексировать claim evidence в `evidencePaths`.
 
 Невалидный payload не передавай downstream как grounding result.
 
