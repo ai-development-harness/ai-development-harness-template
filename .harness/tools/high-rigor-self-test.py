@@ -464,6 +464,7 @@ def main() -> int:
         degraded = copy.deepcopy(arena)
         failed = degraded["participants"][2]
         failed["status"] = "unsupported"
+        failed["sessionExecutionId"] = None
         failed["actualModel"] = None
         failed["outputFile"] = None
         failed["error"] = "configured additional model is unavailable"
