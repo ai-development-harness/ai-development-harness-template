@@ -46,6 +46,18 @@ def _list(value: object, *, label: str) -> list[Any]:
     return value
 
 
+def _context_paths(context_contract: dict[str, Any]) -> set[str]:
+    required = _list(context_contract.get("required"), label="context.required")
+    result: set[str] = set()
+    for index, item in enumerate(required):
+        if not isinstance(item, dict):
+            raise BlastRadiusError(f"context.required[{index}] must be an object")
+        result.add(
+            _text(item.get("path"), label=f"context.required[{index}].path")
+        )
+    return result
+
+
 def _revision(value: object, *, label: str) -> dict[str, str | None]:
     if not isinstance(value, dict):
         raise BlastRadiusError(f"{label} must be an object")
@@ -85,15 +97,13 @@ def blast_radius_preflight(root: Path, step_id: str, phase: str) -> dict[str, An
         item for item in impact["affected"]
         if item.get("step") != step_id
     ]
-    verification: dict[str, Any] | None = None
-    if phase == "review":
-        entries = parse_verification(root, step_id)
-        verification = {
-            "commands": [
-                item["value"] for item in entries if item["kind"] == "command"
-            ],
-            "freshness": verification_freshness(root, step_id),
-        }
+    entries = parse_verification(root, step_id)
+    verification: dict[str, Any] = {
+        "commands": [
+            item["value"] for item in entries if item["kind"] == "command"
+        ],
+        "freshness": verification_freshness(root, step_id),
+    }
 
     return {
         "schemaVersion": SCHEMA_VERSION,
@@ -184,6 +194,7 @@ def validate_blast_radius_payload(
 
     limits = SCOPE_LIMITS[scope]
     expansions = _list(payload.get("expansions"), label="expansions")
+    base_context_paths = _context_paths(context_contract)
     grounding_expansions = {
         item["path"] for item in grounding.get("expansions", [])
     }
@@ -195,7 +206,11 @@ def validate_blast_radius_payload(
             raise BlastRadiusError(f"expansions[{index}] must be an object")
         path = _text(item.get("path"), label=f"expansions[{index}].path")
         reason = _text(item.get("reason"), label=f"expansions[{index}].reason")
-        if path in grounding_expansions or path in extra_paths:
+        if (
+            path in base_context_paths
+            or path in grounding_expansions
+            or path in extra_paths
+        ):
             raise BlastRadiusError(f"duplicate/redundant expansion path: {path}")
         try:
             validated = validate_expansion(root, path, reason)
@@ -232,7 +247,12 @@ def validate_blast_radius_payload(
             f"{total_chars}>{limits['maxExpansionChars']}"
         )
 
-    allowed = set(grounding["evidencePaths"]) | extra_paths
+    allowed = (
+        base_context_paths
+        | set(grounding["evidencePaths"])
+        | grounding_expansions
+        | extra_paths
+    )
     hypotheses_raw = _list(payload.get("hypotheses"), label="hypotheses")
     hypotheses: list[dict[str, Any]] = []
     critical_count = 0
@@ -380,25 +400,15 @@ def validate_blast_radius_payload(
                     "PASS requires proven verification-command proof for "
                     f"{item['id']}"
                 )
-        if phase == "review":
-            freshness = (preflight.get("verification") or {}).get("freshness") or {}
-            if freshness.get("status") != "PASS" or freshness.get("fresh") is not True:
+            if proof["command"] not in verification_commands:
                 raise BlastRadiusError(
-                    "review PASS requires fresh generated Verification PASS evidence"
+                    f"{item['id']} proof command is not in STEP Verification"
                 )
-        elif phase == "plan":
-            # PLAN may only claim PASS when the direct proof command already
-            # belongs to current Verification; future/planned proof stays INCONCLUSIVE.
-            current_commands = {
-                item["value"]
-                for item in parse_verification(root, step_id)
-                if item["kind"] == "command"
-            }
-            for item in critical:
-                if item["proof"]["command"] not in current_commands:
-                    raise BlastRadiusError(
-                        "plan PASS proof command must already exist in STEP Verification"
-                    )
+        freshness = (preflight.get("verification") or {}).get("freshness") or {}
+        if freshness.get("status") != "PASS" or freshness.get("fresh") is not True:
+            raise BlastRadiusError(
+                "PASS requires fresh generated Verification PASS evidence"
+            )
 
     if status == "INCONCLUSIVE" and preflight["required"]:
         unresolved = [
