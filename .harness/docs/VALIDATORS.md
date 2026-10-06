@@ -1713,7 +1713,7 @@ python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase plan --json
 python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase review --json
 ```
 
-Validation mode дополнительно принимает Context Contract, validated grounding и semantic payload. Validator revalidates grounding, enforce-ит общий context budget, provenance evidence paths и 1–2 critical hypotheses. На REVIEW semantic `PASS` возможен только при fresh generated Verification PASS и `proven` critical proofs, чьи commands реально присутствуют в STEP Verification.
+Validation mode дополнительно принимает Context Contract, validated grounding и semantic payload. Validator revalidates grounding, enforce-ит общий context budget, provenance evidence paths и 1–2 critical hypotheses. Semantic `PASS` возможен только при `proven` critical proofs, чьи commands реально присутствуют в STEP Verification и имеют fresh generated PASS evidence на current subject revision. Aggregate status `MANUAL_REQUIRED` допустим, если pending manual checks не являются proof этих hypotheses; существующие completion/review gates всё равно обязаны закрыть manual checks отдельно.
 
 ## Exit codes
 
