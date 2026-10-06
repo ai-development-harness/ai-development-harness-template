@@ -30,7 +30,7 @@ from execution_status import (
     review_expectation_for_step,
     stamp_plan,
 )
-from harness_config import planning_review_directory, review_directory
+from harness_config import max_plan_review_cycles, planning_review_directory, review_directory
 from planning_contract import (
     generated_verification_status,
     plan_content_hash,
