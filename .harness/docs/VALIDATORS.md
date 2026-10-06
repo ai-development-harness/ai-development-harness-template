@@ -890,6 +890,38 @@ Context Contract metrics отдельно публикуют `corePrincipleCount
 
 Подробная policy: [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md).
 
+### Structural Enforcement validator
+
+Файлы:
+
+- engine: `.harness/tools/structural_enforcement.py`;
+- CLI: `.harness/tools/structural-enforcement.py`;
+- regression: `.harness/tools/structural-enforcement-self-test.py`.
+
+Scan mode агрегирует Review Contract v2 findings по stable `category + fingerprint` и dedupe-ит duplicate reports той же `reviewed_revision`:
+
+```bash
+python3 .harness/tools/structural-enforcement.py --step STEP-024 --json
+```
+
+Дополнительный structured evidence envelope поддерживает repair/progress stops, audit/reconcile findings, validator failures и durable decisions. Closed source registry не содержит transcript/chat/session.
+
+Proposal validation enforce-ит:
+
+- recurring threshold = 2 distinct factual occurrences;
+- one-off class требует explicit caller `--explicit-single`;
+- exact enforcement ladder `architecture-ownership → schema-type → validator-lint → regression-test → durable-instruction`;
+- каждый weaker level обязан объяснить отказ от всех stronger levels;
+- deterministic mechanism обязан иметь regression fixture contract;
+- `--implemented` требует реально существующий regular fixture;
+- evidence refs обязаны принадлежать выбранному class;
+- architecture-level proposal требует explicit decision route;
+- `automaticMutationAllowed=false` всегда.
+
+Tool не исполняет regression command и не меняет architecture/code; фактический proof остаётся у canonical Verification/CI.
+
+Подробности: [`STRUCTURAL_ENFORCEMENT.md`](STRUCTURAL_ENFORCEMENT.md).
+
 
 ---
 

@@ -27,7 +27,8 @@ description: Perform a read-only evidence-based audit of a STEP or subsystem aga
    - impact/risk;
    - рекомендуемое corrective direction.
 4. Не повышай cosmetic/style difference до substantive drift без влияния на contract, correctness, safety или evidence.
-5. Если найденный defect требует product mutation, изменения requirement/ADR/dependency или отдельного исследования — создай/предложи corrective STEP/RESEARCH/ADR; сам audit это изменение не выполняет.
+5. Если audit finding уже представлен structured evidence и совпадает с повторяющимся error class, передай его internal `structural-enforcement` через normalized evidence envelope. Не реконструируй classKey из audit prose и не используй transcript как evidence.
+6. Если найденный defect требует product mutation, изменения requirement/ADR/dependency или отдельного исследования — создай/предложи corrective STEP/RESEARCH/ADR; сам audit это изменение не выполняет.
 
 ## Report
 
