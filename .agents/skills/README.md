@@ -18,6 +18,7 @@ Harness skills описывают **workflow**, а не конкретный tec
 - `codebase-grounding` — conditional read-only mental-model capability для architecture-sensitive PLAN/AUDIT; не пользовательская команда
 - `semantic-blast-radius` — conditional implicit-impact/proof capability поверх deterministic impact analysis; не пользовательская команда
 - `decision-archaeology` — bounded read-only reconstruction historical rationale с evidence/confidence/conflict contract; не пользовательская команда
+- `core-reasoning-principles` — internal CRP router; Context Contract выдаёт только applicable leaf paths, не весь catalog
 - `project-status`
 - `reconcile-project`
 - `architecture-change`
