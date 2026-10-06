@@ -451,6 +451,26 @@ def main() -> int:
             lambda: validate_trace(root, duplicate_session, requested=True)
         )
 
+        shared_output = copy.deepcopy(arena)
+        shared_output["participants"][1]["outputFile"] = (
+            shared_output["participants"][0]["outputFile"]
+        )
+        expect_rejected(
+            lambda: validate_trace(root, shared_output, requested=True)
+        )
+
+        cross_run = copy.deepcopy(arena)
+        cross_path = local(
+            root,
+            "HR-other-001",
+            "candidate.md",
+            "cross-run output\n",
+        )
+        cross_run["participants"][0]["outputFile"] = cross_path
+        expect_rejected(
+            lambda: validate_trace(root, cross_run, requested=True)
+        )
+
         extra_judge = copy.deepcopy(arena)
         second_judge = copy.deepcopy(extra_judge["participants"][-1])
         second_judge["seatId"] = "judge-2"
