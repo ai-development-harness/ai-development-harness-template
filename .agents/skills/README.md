@@ -15,6 +15,7 @@ Harness skills описывают **workflow**, а не конкретный tec
 - `fix-step`
 - `run-step`
 - `audit-step`
+- `codebase-grounding` — conditional read-only mental-model capability для architecture-sensitive PLAN/AUDIT; не пользовательская команда
 - `project-status`
 - `reconcile-project`
 - `architecture-change`
