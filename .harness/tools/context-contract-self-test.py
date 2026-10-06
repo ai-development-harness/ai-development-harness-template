@@ -377,6 +377,8 @@ def main() -> int:
         assert len(reviewer_crp) < len(catalog)
         assert planner["metrics"]["corePrincipleCount"] == 1
         assert planner["metrics"]["corePrincipleChars"] > 0
+        catalog_chars = sum(int(item["chars"]) for item in catalog)
+        assert reviewer["metrics"]["corePrincipleChars"] < catalog_chars
 
         planner_paths = required_paths(planner)
         reviewer_paths = required_paths(reviewer)
