@@ -472,8 +472,12 @@ def main() -> int:
         assert set(
             (root / "planning/plan-reviews/STEP-001").glob("PLAN-REVIEW-*.md")
         ) == reports_before_limit
-        # Restore the original Ready STEP fixture before unrelated stale-hash
-        # regressions below. The bounded-loop test owns only report history.
+        # Restore the original Ready STEP fixture and its single PASS review
+        # before unrelated regressions below. Synthetic BLOCKED reports belong
+        # only to the bounded-loop scenario and must not affect STEP IMPLEMENT.
+        for report in (root / "planning/plan-reviews/STEP-001").glob("PLAN-REVIEW-*.md"):
+            if report != planning_report:
+                report.unlink()
         step_path.write_text(ready_text, encoding="utf-8", newline="\n")
         step_path.write_text(ready_text.replace("src/group-writer", "src/group-writer-changed"), encoding="utf-8", newline="\n")
         stale_group_errors = validate_planning_contracts(root)
