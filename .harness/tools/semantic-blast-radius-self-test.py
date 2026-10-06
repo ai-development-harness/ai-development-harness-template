@@ -19,6 +19,7 @@ MANIFEST = """sources:
   openQuestions: docs/open-questions
 protocol:
   taskDirectory: planning/tasks
+  reviewDirectory: planning/reviews
 execution:
   verificationCommandTimeoutSeconds: 30
 """
