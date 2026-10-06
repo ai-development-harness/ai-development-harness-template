@@ -95,6 +95,19 @@ def main() -> int:
         ungrounded["evidencePaths"] = ["src/not-read.py"]
         expect_blocked(root, context(), ungrounded)
 
+        nested_ungrounded = payload()
+        nested_ungrounded["flow"] = [
+            {
+                "claim": "handler calls hidden subsystem",
+                "evidence": ["src/not-read.py"],
+            }
+        ]
+        expect_blocked(root, context(), nested_ungrounded)
+
+        missing_from_index = payload()
+        missing_from_index["evidencePaths"] = ["planning/tasks/STEP-001.md"]
+        expect_blocked(root, context(), missing_from_index)
+
         no_reason = payload()
         no_reason["expansions"] = [{"path": "src/service.py", "reason": ""}]
         expect_blocked(root, context(), no_reason)
