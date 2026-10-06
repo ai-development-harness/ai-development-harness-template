@@ -430,6 +430,47 @@ def main() -> int:
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
         assert list(ready["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
+
+        # Regression #235: planning-review rounds are bounded by durable reports,
+        # not session memory. Create two additional blocked rounds; the fourth
+        # attempted review must stop before another immutable report is written.
+        for ordinal in (2, 3):
+            current = read_task(root, "STEP-001")
+            text = current["path"].read_text(encoding="utf-8")
+            text = text.replace("status: ready", "status: draft", 1)
+            text = text.replace("reviewed_report: " + str(current["frontmatter"]["plan"]["reviewed_report"]), "reviewed_report: null", 1)
+            text = text.replace("planned_at: " + str(current["frontmatter"]["plan"]["planned_at"]), "planned_at: null", 1)
+            current["path"].write_text(text, encoding="utf-8", newline="\n")
+            blocked_round = write_planning_review(
+                root,
+                "STEP-001",
+                {
+                    "verdict": "blocked",
+                    "findings": [f"Material blocker round {ordinal}."],
+                    "rationale": "Synthetic bounded planning-review regression.",
+                },
+            )
+            assert blocked_round["status"] == "BLOCKED", blocked_round
+
+        reports_before_limit = set(
+            (root / "planning/plan-reviews/STEP-001").glob("PLAN-REVIEW-*.md")
+        )
+        limited = write_planning_review(
+            root,
+            "STEP-001",
+            {
+                "verdict": "blocked",
+                "findings": ["Remaining material blocker."],
+                "rationale": "Must stop at configured limit.",
+            },
+        )
+        assert limited["status"] == "BLOCKED", limited
+        assert limited["reasonCode"] == "PLAN_REVIEW_LIMIT_REACHED", limited
+        assert limited["planReviewCycles"] == 3, limited
+        assert limited["maxPlanReviewCycles"] == 3, limited
+        assert set(
+            (root / "planning/plan-reviews/STEP-001").glob("PLAN-REVIEW-*.md")
+        ) == reports_before_limit
         ready_text = step_path.read_text(encoding="utf-8")
         step_path.write_text(ready_text.replace("src/group-writer", "src/group-writer-changed"), encoding="utf-8", newline="\n")
         stale_group_errors = validate_planning_contracts(root)
