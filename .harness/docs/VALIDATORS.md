@@ -922,6 +922,43 @@ Tool не исполняет regression command и не меняет architectur
 
 Подробности: [`STRUCTURAL_ENFORCEMENT.md`](STRUCTURAL_ENFORCEMENT.md).
 
+### High-Rigor Arena / Interrogate validator
+
+Файлы:
+
+- engine: `.harness/tools/high_rigor.py`;
+- CLI: `.harness/tools/high-rigor.py`;
+- regression: `.harness/tools/high-rigor-self-test.py`.
+
+Activation mode проверяет `.harness/manifest.yaml → highRigor.*`, phase и deterministic STEP `risk_flags`:
+
+```bash
+python3 .harness/tools/high-rigor.py \
+  --mode arena \
+  --phase plan \
+  --step STEP-024 \
+  --json
+```
+
+`explicit` без `--requested` и `disabled` всегда возвращают `SKIP`; `risk` может вернуть `RUN` только по closed high-risk flags.
+
+Trace validation принимает local run под `.harness/local/high-rigor/**` и recompute-ит exact SHA-256/chars/bytes входов, rubric и outputs. Проверяется:
+
+- configured candidate/reviewer seat count;
+- минимум два independent completed seats;
+- unique completed `sessionExecutionId`;
+- одинаковый shared input для всех candidates/reviewers;
+- одинаковый rubric;
+- per-seat и total char budgets;
+- requested/actual model и visible fallback/dropout;
+- Arena: отдельный judge, completed base candidate, graft/disagreement/verification refs;
+- Interrogate: consensus/disagreement map и lead judgment;
+- `deterministicGatesReplaced=false`.
+
+Runtime/model shortfall возвращает `DEGRADED`, а не скрытый PASS. Core validator не запускает модели и не хранит provider-specific model slugs.
+
+Подробности: [`HIGH_RIGOR.md`](HIGH_RIGOR.md).
+
 
 ---
 
