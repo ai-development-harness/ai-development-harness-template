@@ -17,8 +17,9 @@ Execution Status ведёт global wrapper.
 3. Для каждого исправления сохрани явное соответствие **review finding → изменённый code/test/evidence**, чтобы перед completion можно было проверить, что ничего не потеряно.
 4. Если review фактически требует изменить product contract, Acceptance, architecture decision, dependency graph или добавить отсутствующий prerequisite, не «чинить» это кодом. Заверши как `BLOCKED` и создай/предложи corrective STEP, RESEARCH или ADR согласно типу проблемы.
 5. Передай подтверждённые findings implementer и исправь их вместе с необходимым supporting code в scope. Если command resume-ится после interruption, сначала изучи существующий diff и продолжи только незавершённые findings.
-6. Перед `SUCCESS` убедись, что все applicable findings текущего FAIL review либо исправлены и покрыты evidence, либо корректно переведены в BLOCKED по contract-level причине.
-7. После исправления предложи result `SUCCESS`; dispatcher сам повторно запускает canonical STEP Verification и обновляет generated Evidence. При factual FAIL продолжи FIX; manual checks выполняй только если runner явно вернул `MANUAL_REQUIRED`.
+6. После точечных исправлений перечитай весь изменённый artifact/связанный contract, а не только строки findings. Проверь внутреннюю непротиворечивость, примеры и исключения; каждое утверждение о другом ADR/REQ/code/config подтверждай чтением источника. Исправь все известные findings этого раунда одним проходом, включая non-material/low-severity замечания, если они однозначны и находятся в scope. При обобщении правила явно перечисли исключения. Не расширяй artifact в область другого owner/STEP — вместо этого зафиксируй requirement/prerequisite + owner.
+7. Перед `SUCCESS` убедись, что все applicable findings текущего FAIL review либо исправлены и покрыты evidence, либо корректно переведены в BLOCKED по contract-level причине.
+8. После исправления предложи result `SUCCESS`; dispatcher сам повторно запускает canonical STEP Verification и обновляет generated Evidence. При factual FAIL продолжи FIX; manual checks выполняй только если runner явно вернул `MANUAL_REQUIRED`.
 
 Command завершается только после PASS verification gate. Старый review не изменяй.
 
