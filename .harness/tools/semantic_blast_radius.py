@@ -20,7 +20,11 @@ from context_contracts import ContextContractError, validate_expansion
 from impact_analysis import affected_steps
 from planning_contract import read_task
 from review_contract import repository_revision
-from verification import (\n    parse_verification,\n    verification_command_evidence,\n    verification_freshness,\n)
+from verification import (
+    parse_verification,
+    verification_command_evidence,
+    verification_freshness,
+)
 
 
 SCHEMA_VERSION = 1
