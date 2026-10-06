@@ -79,7 +79,7 @@ def main() -> int:
     changed_fp = normalize_findings([changed])[0]["fingerprint"]
     assert changed_fp != finding["fingerprint"]
 
-    # Review Contract v2 обязан fail-closed отвергать legacy/partial формы.
+    # Review Contract v3 обязан fail-closed отвергать legacy/partial и unverified формы.
     invalid_variants: list[tuple[str, dict[str, object]]] = []
 
     missing_expected = sample()
