@@ -41,6 +41,8 @@ Adaptive decision не использует chat history и не просит м
 
 Contract scope не менялся, repository revision изменилась, но множество material finding fingerprints осталось тем же. FIX что-то изменил в repository, но не устранил ни один зафиксированный дефект.
 
+Это также strong trigger для internal `structural-enforcement`: следующий FIX не должен автоматически повторять локальный patch, если stable finding class уже доказан как recurring. Adaptive stop по-прежнему владеет orchestration decision; structural-enforcement только классифицирует systemic corrective mechanism.
+
 ### NO_PROGRESS
 
 Используется в двух консервативных случаях при неизменном contract scope:
