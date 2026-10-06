@@ -15,8 +15,12 @@ from semantic_blast_radius import (
 from verification import run_step_verification
 
 
-MANIFEST = """protocol:
+MANIFEST = """sources:
+  openQuestions: docs/open-questions
+protocol:
   taskDirectory: planning/tasks
+execution:
+  verificationCommandTimeoutSeconds: 30
 """
 
 STEP = """---
