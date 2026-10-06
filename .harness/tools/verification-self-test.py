@@ -220,7 +220,7 @@ def main() -> int:
         exact = verification_command_evidence(
             root,
             "STEP-001",
-            "python3 verify.py",
+            'python3 -c "print(123)"',
         )
         assert exact["status"] == "PASS" and exact["fresh"] is True, exact
         missing_command = verification_command_evidence(
