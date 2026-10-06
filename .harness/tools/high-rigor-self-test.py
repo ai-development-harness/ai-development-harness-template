@@ -390,6 +390,22 @@ def main() -> int:
         assert risk["reasonCode"] == "RISK_CONDITION"
         assert risk["matchingRiskFlags"] == ["architecture", "public-api"]
 
+        malformed_step = (root / "planning/tasks/STEP-001.md").read_text(encoding="utf-8")
+        write(
+            root,
+            "planning/tasks/STEP-001.md",
+            malformed_step.replace("  - public-api", "  - unknown-risk"),
+        )
+        expect_rejected(
+            lambda: activation(
+                root,
+                mode="arena",
+                phase="plan",
+                step_id="STEP-001",
+            )
+        )
+        write(root, "planning/tasks/STEP-001.md", STEP)
+
         # Disabled cannot be overridden even by explicit request.
         set_policy(root, arena="disabled", interrogate="disabled")
         disabled = activation(
@@ -433,6 +449,15 @@ def main() -> int:
         )
         expect_rejected(
             lambda: validate_trace(root, duplicate_session, requested=True)
+        )
+
+        extra_judge = copy.deepcopy(arena)
+        second_judge = copy.deepcopy(extra_judge["participants"][-1])
+        second_judge["seatId"] = "judge-2"
+        second_judge["sessionExecutionId"] = "session-judge-2"
+        extra_judge["participants"].append(second_judge)
+        expect_rejected(
+            lambda: validate_trace(root, extra_judge, requested=True)
         )
 
         # Runtime/model dropout is explicit DEGRADED, never silent PASS.
