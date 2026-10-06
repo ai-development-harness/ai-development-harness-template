@@ -20,7 +20,7 @@ from context_contracts import ContextContractError, validate_expansion
 from impact_analysis import affected_steps
 from planning_contract import read_task
 from review_contract import repository_revision
-from verification import parse_verification, verification_freshness
+from verification import (\n    parse_verification,\n    verification_command_evidence,\n    verification_freshness,\n)
 
 
 SCHEMA_VERSION = 1
@@ -389,6 +389,7 @@ def validate_blast_radius_payload(
         )
 
     critical = [item for item in hypotheses if item["critical"]]
+    critical_proof_evidence: list[dict[str, Any]] = []
     if status == "PASS" and preflight["required"]:
         for item in critical:
             proof = item["proof"]
@@ -404,10 +405,24 @@ def validate_blast_radius_payload(
                 raise BlastRadiusError(
                     f"{item['id']} proof command is not in STEP Verification"
                 )
-        freshness = (preflight.get("verification") or {}).get("freshness") or {}
-        if freshness.get("status") != "PASS" or freshness.get("fresh") is not True:
-            raise BlastRadiusError(
-                "PASS requires fresh generated Verification PASS evidence"
+            command_evidence = verification_command_evidence(
+                root,
+                step_id,
+                proof["command"],
+            )
+            if (
+                command_evidence.get("fresh") is not True
+                or command_evidence.get("status") != "PASS"
+            ):
+                raise BlastRadiusError(
+                    "PASS requires fresh PASS evidence for exact proof command "
+                    f"{proof['command']!r}"
+                )
+            critical_proof_evidence.append(
+                {
+                    "hypothesisId": item["id"],
+                    **command_evidence,
+                }
             )
 
     if status == "INCONCLUSIVE" and preflight["required"]:
@@ -437,6 +452,7 @@ def validate_blast_radius_payload(
             "riskFlags": preflight["riskFlags"],
             "explicitImpact": preflight["explicitImpact"],
             "verification": preflight["verification"],
+            "criticalProofEvidence": critical_proof_evidence,
         },
         "hypotheses": hypotheses,
         "provenObservations": observations,
