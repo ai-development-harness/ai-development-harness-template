@@ -297,9 +297,14 @@ def _participant(
     runtime_id = _single_line(
         raw.get("runtimeId"), label=f"participants[{index}].runtimeId"
     )
-    session_id = _single_line(
-        raw.get("sessionExecutionId"),
-        label=f"participants[{index}].sessionExecutionId",
+    raw_session_id = raw.get("sessionExecutionId")
+    session_id = (
+        None
+        if raw_session_id is None
+        else _single_line(
+            raw_session_id,
+            label=f"participants[{index}].sessionExecutionId",
+        )
     )
     requested_model = _single_line(
         raw.get("requestedModel"),
@@ -367,6 +372,10 @@ def _participant(
     output_info: dict[str, Any] | None = None
     error: str | None = None
     if status == "completed":
+        if session_id is None:
+            raise HighRigorError(
+                f"participants[{index}] completed seat requires sessionExecutionId"
+            )
         if actual_model is None:
             raise HighRigorError(
                 f"participants[{index}] completed seat requires actualModel"
@@ -733,7 +742,6 @@ def validate_trace(
     if unsupported_seats:
         degradation.append("SEAT_UNSUPPORTED")
 
-    seat_set = set(seat_ids)
     if mode == "arena":
         completed_candidates = {
             str(item["seatId"])
@@ -799,6 +807,10 @@ def validate_trace(
         if isinstance(synthesis_output, dict):
             synthesis_chars = int(synthesis_output.get("chars") or 0)
 
+    if synthesis_chars > int(config["maxOutputCharsPerSeat"]):
+        raise HighRigorError(
+            "lead/synthesis output exceeds configured output budget"
+        )
     total_output_chars += synthesis_chars
     total_chars = total_input_chars + total_output_chars
     if total_chars > int(config["maxTotalChars"]):
