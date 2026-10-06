@@ -29,6 +29,7 @@
 - [`DETERMINISTIC_TEST_HARNESS.md`](DETERMINISTIC_TEST_HARNESS.md) — scripted runtime, adapter conformance и fault injection для orchestration tests.
 - [`PROJECT_STATE.md`](PROJECT_STATE.md) — read-only JSON graph состояния проекта для UI, VSCode Navigator и других клиентов.
 - [`CONTEXT_CONTRACTS.md`](CONTEXT_CONTRACTS.md) — role-specific progressive disclosure: required sections, explicit expansion, runtime-neutral resolver и token-economy metrics.
+- [`CODEBASE_GROUNDING.md`](CODEBASE_GROUNDING.md) — bounded read-only mental model для architecture-sensitive PLAN/AUDIT: flow, ownership, boundaries и validated evidence paths.
 - [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
 - [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md) — optional machine-readable dependency groups внутри Implementation plan, mutation conflict boundaries и sequential scheduling semantics.
 - [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md) — canonical owner изменений REQ/ADR/OQ/STEP, flow-forward/flow-back, deterministic impact propagation и re-plan semantics.
