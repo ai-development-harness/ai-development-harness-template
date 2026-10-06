@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import copy
 
+from context_budget import evaluate_context_budget
 from core_reasoning_principles import (
     NAMESPACE,
     applicability_signals,
@@ -72,15 +73,28 @@ def main() -> int:
     assert all(str(item["id"]).startswith("CRP-") for item in catalog)
     assert all("PRN-" not in str(item["id"]) for item in catalog)
     assert all(int(item["chars"]) <= 4_000 for item in catalog)
+    catalog_chars = sum(int(item["chars"]) for item in catalog)
+
+    # CRP leaves — pull-based surface и не увеличивают always-on AGENTS/CLAUDE budget.
+    always_on = evaluate_context_budget(ROOT)
+    assert always_on["status"] == "PASS", always_on
 
     # Обычный небольшой PLAN не получает ни одного принципа «на всякий случай».
     ordinary = task()
     assert selected_ids(ordinary, role="planner") == []
 
     # REVIEW получает ровно evidence-oriented leaf, а не весь каталог.
-    review_ids = selected_ids(ordinary, role="reviewer")
+    review_selection = select_core_reasoning_principles(
+        ROOT,
+        ordinary,
+        role="reviewer",
+        artifact_count=1,
+        section_count=7,
+    )
+    review_ids = [str(item["id"]) for item in review_selection]
     assert review_ids == ["CRP-003"], review_ids
     assert len(review_ids) < len(catalog)
+    assert sum(int(item["chars"]) for item in review_selection) < catalog_chars
 
     # Большой Context Contract включает только guard-context leaf.
     heavy_ids = selected_ids(
