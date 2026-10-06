@@ -853,7 +853,7 @@ python3 .harness/tools/step-context.py STEP-NNN --phase review --json
 - `.harness/tools/codebase-grounding.py` — CLI wrapper;
 - `.harness/tools/codebase-grounding-self-test.py` — bounded-context regressions.
 
-Validator не строит mental model и не читает repository произвольно. Он принимает уже сформированный semantic payload и Context Contract, затем fail-closed проверяет exact revision, explicit expansions, `simple|complex` budget и provenance `evidencePaths`.
+Validator не строит mental model и не читает repository произвольно. Он принимает уже сформированный semantic payload и Context Contract, затем fail-closed проверяет exact revision, explicit expansions, `simple|complex` budget, top-level `evidencePaths` и claim-level `evidence[]`; claim evidence обязано относиться к доступному context и индексироваться в `evidencePaths`.
 
 ```bash
 python3 .harness/tools/codebase-grounding.py \
