@@ -94,7 +94,10 @@ python3 .harness/tools/context-contract.py \
   "status": "PASS",
   "scope": "simple",
   "target": "конкретная подсистема/flow",
-  "repositoryRevision": "<exact revision from Context Contract>",
+  "repositoryRevision": {
+    "git_head": "<exact HEAD or null>",
+    "worktree_hash": "<exact worktree hash or null>"
+  },
   "flow": [
     {
       "claim": "что происходит",
