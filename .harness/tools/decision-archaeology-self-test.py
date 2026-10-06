@@ -313,13 +313,27 @@ def main() -> int:
             "R-002",
         ]
 
-        # A documented claim cannot be propped up only by connector-supplied
-        # evidence that the local validator cannot verify.
+        # Fetched PR/issue/docs can document rationale even though the local
+        # validator marks them as externally supplied rather than repository-local.
         supplied_only = copy.deepcopy(payload)
         supplied_only["claims"][0]["evidence"] = [
             {"kind": "supplied", "ref": "E-001"}
         ]
-        expect_rejected(root, ctx, supplied_only)
+        supplied_result = validate_decision_archaeology_payload(
+            root,
+            "src/retry.py",
+            "simple",
+            supplied_only,
+            ctx,
+        )
+        assert supplied_result["claims"][0]["basis"] == "documented"
+        assert supplied_result["claims"][0]["evidence"][0]["verification"] == (
+            "supplied-not-locally-verifiable"
+        )
+
+        documented_without_evidence = copy.deepcopy(payload)
+        documented_without_evidence["claims"][0]["evidence"] = []
+        expect_rejected(root, ctx, documented_without_evidence)
 
         # Commit evidence is bounded to history of the concrete target.
         wrong_commit = copy.deepcopy(payload)
@@ -332,6 +346,10 @@ def main() -> int:
         transcript = copy.deepcopy(payload)
         transcript["suppliedEvidence"][0]["sourceKind"] = "transcript"
         expect_rejected(root, ctx, transcript)
+
+        bad_timestamp = copy.deepcopy(payload)
+        bad_timestamp["suppliedEvidence"][0]["observedAt"] = "yesterday"
+        expect_rejected(root, ctx, bad_timestamp)
 
         # No-evidence inference is allowed only as low-confidence,
         # explicit INCONCLUSIVE knowledge gap.
