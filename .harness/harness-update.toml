@@ -52,6 +52,7 @@ harness_owned = [
   ".agents/skills/codebase-grounding/**",
   ".agents/skills/semantic-blast-radius/**",
   ".agents/skills/decision-archaeology/**",
+  ".agents/skills/core-reasoning-principles/**",
   ".agents/skills/project-status/**",
   ".agents/skills/reconcile-project/**",
   ".agents/skills/release-check/**",
