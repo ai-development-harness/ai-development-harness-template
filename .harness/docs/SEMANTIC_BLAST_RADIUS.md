@@ -57,14 +57,16 @@ Deterministic facts возвращаются validator-ом отдельно и 
 
 Required analysis выделяет 1–2 critical hypotheses.
 
-На PLAN future proof может быть `planned`; такой result остаётся `INCONCLUSIVE`, пока obligation не доказан. Planner обязан включить proof surface в Verification/Implementation plan. Даже PLAN не может получить PASS по self-report: нужен fresh generated Verification PASS для exact current subject revision.
+На PLAN future proof может быть `planned`; такой result остаётся `INCONCLUSIVE`, пока obligation не доказан. Planner обязан включить proof surface в Verification/Implementation plan. Даже PLAN не может получить PASS по self-report: exact proof command должна иметь fresh generated PASS evidence для current subject revision.
 
 На REVIEW `PASS` требует для каждой critical hypothesis:
 
 - `proof.status=proven`;
 - `proof.kind=verification-command`;
 - command существует в current STEP Verification;
-- generated Verification evidence имеет fresh PASS для current contract/subject revision.
+- exact proof command имеет fresh generated PASS evidence для current contract/subject revision.
+
+Aggregate Verification может при этом быть `MANUAL_REQUIRED`, если в STEP есть unrelated manual checks: это не обесценивает уже полученное executable proof конкретной critical hypothesis. Manual checks по-прежнему обязательны через существующий completion/review flow и не считаются выполненными blast-radius validator-ом.
 
 Если proof отсутствует, unavailable или stale, blast-radius не может вернуть PASS.
 
