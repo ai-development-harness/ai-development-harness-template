@@ -54,6 +54,7 @@ harness_owned = [
   ".agents/skills/decision-archaeology/**",
   ".agents/skills/core-reasoning-principles/**",
   ".agents/skills/structural-enforcement/**",
+  ".agents/skills/high-rigor/**",
   ".agents/skills/project-status/**",
   ".agents/skills/reconcile-project/**",
   ".agents/skills/release-check/**",

@@ -28,7 +28,8 @@ description: Perform a read-only evidence-based audit of a STEP or subsystem aga
    - рекомендуемое corrective direction.
 4. Не повышай cosmetic/style difference до substantive drift без влияния на contract, correctness, safety или evidence.
 5. Если audit finding уже представлен structured evidence и совпадает с повторяющимся error class, передай его internal `structural-enforcement` через normalized evidence envelope. Не реконструируй classKey из audit prose и не используй transcript как evidence.
-6. Если найденный defect требует product mutation, изменения requirement/ADR/dependency или отдельного исследования — создай/предложи corrective STEP/RESEARCH/ADR; сам audit это изменение не выполняет.
+6. Для спорного/high-risk audit surface проверь optional Interrogate: `python3 .harness/tools/high-rigor.py --mode interrogate --phase audit --step STEP-NNN --json`. При `RUN` reviewers получают один exact read-only audit surface/rubric; consensus/disagreement map используется только как дополнительный semantic signal. Audit evidence/contract остаются authority; `DEGRADED` раскрывай явно.
+7. Если найденный defect требует product mutation, изменения requirement/ADR/dependency или отдельного исследования — создай/предложи corrective STEP/RESEARCH/ADR; сам audit это изменение не выполняет.
 
 ## Report
 

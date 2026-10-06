@@ -26,6 +26,8 @@ description: Decide whether a durable technical change requires an ADR, evolve a
 
 Если Accepted ADR остаётся применим — ссылайся на него, не создавай дубликат.
 
+Для крупного/дорогого architecture choice проверь optional Arena через `python3 .harness/tools/high-rigor.py --mode arena --phase architecture [--step STEP-NNN] --json`. При `RUN` candidates получают один exact decision contract/rubric, отдельный judge выбирает base, а synthesis сохраняет disagreements. Arena не принимает ADR сама и не заменяет Decision Archaeology/Semantic Blast Radius. `DEGRADED` раскрывай как недополученный дополнительный quality signal, а не как blocker/approval сам по себе.
+
 Если durable contract меняется, сначала используй deterministic blast-radius preflight текущего STEP (если STEP context доступен). При material risk flags Semantic Blast Radius обязателен до утверждения safety/compatibility claim: explicit linked impact остаётся за impact-analysis, implicit consumers/contracts — hypotheses с evidence/proof. Неподтверждённый critical assumption не маскируй ADR prose.
 
 Если durable contract меняется:

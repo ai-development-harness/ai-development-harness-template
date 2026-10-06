@@ -14,6 +14,8 @@ Namespace/control plane AI Development Harness. Здесь собраны core d
 
 `review.security` и `review.tests` управляют дополнительными specialized reviewers: `auto` запускает reviewer по фактическим рискам/diff/test surface, `always` — при каждом review-проходе. Режима `never` намеренно нет: настройка может усилить review, но не отключить safety gate.
 
+`highRigor.arena` / `highRigor.interrogate` управляют только optional semantic fan-out: `disabled` полностью выключает capability, `explicit` требует явного запроса, `risk` разрешает запуск по deterministic high-risk STEP flags. `seats` и char budgets ограничивают стоимость/context; consensus никогда не заменяет deterministic gates.
+
 `skills.search.maxResults` задаёт максимальный размер shortlist команды `SKILL FIND`; допустимо от 1 до 10, template default — 5.
 
 Все эти значения проверяются `.harness/tools/validate.py`, поэтому отсутствующая или недопустимая настройка блокирует Harness validation до запуска orchestration.

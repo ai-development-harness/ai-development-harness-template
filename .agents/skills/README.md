@@ -20,6 +20,7 @@ Harness skills описывают **workflow**, а не конкретный tec
 - `decision-archaeology` — bounded read-only reconstruction historical rationale с evidence/confidence/conflict contract; не пользовательская команда
 - `core-reasoning-principles` — internal CRP router; Context Contract выдаёт только applicable leaf paths, не весь catalog
 - `structural-enforcement` — recurring structured corrections → strongest feasible enforcement proposal; не пользовательская команда
+- `high-rigor` — optional Arena/Interrogate fan-out с deterministic activation, exact trace и explicit degradation; не пользовательская команда
 - `project-status`
 - `reconcile-project`
 - `architecture-change`

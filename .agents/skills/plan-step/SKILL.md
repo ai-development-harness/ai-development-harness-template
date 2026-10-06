@@ -67,6 +67,14 @@ python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase plan --json
 
 Architecture-sensitive решение нельзя прятать внутрь Implementation plan. Если durable decision ещё не принят, останови PLAN через ADR/OQ/prerequisite вместо того, чтобы выбирать архитектуру по ходу реализации.
 
+После grounding/blast-radius/architect pass проверь optional High-Rigor Arena:
+
+```bash
+python3 .harness/tools/high-rigor.py --mode arena --phase plan --step STEP-NNN --json
+```
+
+Если preflight вернул `RUN`, используй internal `high-rigor`: все candidates получают один exact compact PLAN/decision contract и один rubric, пишут в отдельные local outputs, затем отдельный readonly judge оценивает candidates. Validated Arena synthesis — дополнительный planning input, но не заменяет Requirements Quality, Semantic Blast Radius, architect pass или independent planning-review. `DEGRADED` явно зафиксируй в planning rationale/handoff и продолжай только обычными существующими gates; не называй его high-rigor PASS. При `SKIP` никаких fan-out agents не создавай.
+
 ## Phase D — semantic plan payload
 
 Не редактируй STEP/frontmatter вручную. Сформируй только semantic JSON:
