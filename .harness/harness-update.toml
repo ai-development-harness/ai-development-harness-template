@@ -51,6 +51,7 @@ harness_owned = [
   ".agents/skills/audit-step/**",
   ".agents/skills/codebase-grounding/**",
   ".agents/skills/semantic-blast-radius/**",
+  ".agents/skills/decision-archaeology/**",
   ".agents/skills/project-status/**",
   ".agents/skills/reconcile-project/**",
   ".agents/skills/release-check/**",
