@@ -1,6 +1,6 @@
 # Provenance
 
-Source: adapted
+Source: project-native
 Repository: `ai-development-harness/ai-development-harness-template`
 Path: `.agents/skills/core-reasoning-principles/`
 Provenance recorded: `2026-10-06`
