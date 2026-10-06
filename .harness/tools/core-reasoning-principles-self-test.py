@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Synthetic regression suite for Core Reasoning Principles selection."""
+from __future__ import annotations
+
+from pathlib import Path
+import copy
+
+from core_reasoning_principles import (
+    NAMESPACE,
+    applicability_signals,
+    load_core_reasoning_principles,
+    select_core_reasoning_principles,
+)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def task(
+    *,
+    step_type: str = "implementation",
+    risk_flags: list[str] | None = None,
+    depends_on: list[str] | None = None,
+    execution_groups: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "frontmatter": {
+            "schema": 1,
+            "id": "STEP-001",
+            "status": "planned",
+            "type": step_type,
+            "priority": "medium",
+            "phase": "P1",
+            "depends_on": depends_on or [],
+            "requirements": [],
+            "adrs": [],
+            "architecture_refs": [],
+            "risk_flags": risk_flags or ["none"],
+            "plan": {
+                "status": "not_planned",
+                "revision": 0,
+                "execution_groups": execution_groups or {},
+            },
+        },
+        "sections": {},
+    }
+
+
+def selected_ids(
+    value: dict[str, object],
+    *,
+    role: str,
+    artifact_count: int = 1,
+    section_count: int = 7,
+) -> list[str]:
+    return [
+        str(item["id"])
+        for item in select_core_reasoning_principles(
+            ROOT,
+            value,
+            role=role,
+            artifact_count=artifact_count,
+            section_count=section_count,
+        )
+    ]
+
+
+def main() -> int:
+    catalog = load_core_reasoning_principles(ROOT)
+    assert len(catalog) == 8, catalog
+    assert all(item["namespace"] == NAMESPACE == "CRP" for item in catalog)
+    assert all(str(item["id"]).startswith("CRP-") for item in catalog)
+    assert all("PRN-" not in str(item["id"]) for item in catalog)
+    assert all(int(item["chars"]) <= 4_000 for item in catalog)
+
+    # Обычный небольшой PLAN не получает ни одного принципа «на всякий случай».
+    ordinary = task()
+    assert selected_ids(ordinary, role="planner") == []
+
+    # REVIEW получает ровно evidence-oriented leaf, а не весь каталог.
+    review_ids = selected_ids(ordinary, role="reviewer")
+    assert review_ids == ["CRP-003"], review_ids
+    assert len(review_ids) < len(catalog)
+
+    # Большой Context Contract включает только guard-context leaf.
+    heavy_ids = selected_ids(
+        ordinary,
+        role="planner",
+        artifact_count=6,
+        section_count=20,
+    )
+    assert heavy_ids == ["CRP-002"], heavy_ids
+
+    # Concurrency выбирает structural shared-state principle.
+    concurrent = task(risk_flags=["concurrency"])
+    assert selected_ids(concurrent, role="planner") == ["CRP-005"]
+
+    # Refactor получает только subtraction + reader-load principles.
+    refactor = task(step_type="refactor")
+    assert selected_ids(refactor, role="planner") == ["CRP-007", "CRP-008"]
+
+    # Bugfix включает structural-learning и premise-challenge leaves.
+    bugfix = task(step_type="bugfix")
+    assert selected_ids(bugfix, role="planner") == ["CRP-001", "CRP-006"]
+
+    # Multi-unit определяется декларативными facts, а не keywords в prose.
+    multi = task(
+        execution_groups={
+            "a": {"depends_on": []},
+            "b": {"depends_on": ["a"]},
+        }
+    )
+    assert selected_ids(multi, role="implementer") == ["CRP-004"]
+
+    migration = task(risk_flags=["data-migration"])
+    assert selected_ids(migration, role="planner") == ["CRP-004"]
+
+    # Несколько signals могут выбрать несколько независимых leaves, но selection
+    # остаётся существенно меньше полного каталога.
+    complex_case = task(
+        step_type="refactor",
+        risk_flags=["architecture", "concurrency"],
+        depends_on=["STEP-010", "STEP-011"],
+    )
+    complex_ids = selected_ids(
+        complex_case,
+        role="reviewer",
+        artifact_count=8,
+        section_count=30,
+    )
+    assert complex_ids == [
+        "CRP-002",
+        "CRP-003",
+        "CRP-004",
+        "CRP-005",
+        "CRP-007",
+        "CRP-008",
+    ], complex_ids
+    assert len(complex_ids) < len(catalog)
+
+    # Applicability itself is deterministic and runtime-neutral.
+    codex_signals = applicability_signals(
+        copy.deepcopy(complex_case),
+        role="reviewer",
+        artifact_count=8,
+        section_count=30,
+    )
+    claude_signals = applicability_signals(
+        copy.deepcopy(complex_case),
+        role="reviewer",
+        artifact_count=8,
+        section_count=30,
+    )
+    assert codex_signals == claude_signals
+
+    print("core-reasoning-principles self-test: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
