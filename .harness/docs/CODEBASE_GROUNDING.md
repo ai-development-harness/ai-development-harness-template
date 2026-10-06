@@ -107,7 +107,7 @@ python3 .harness/tools/codebase-grounding.py \
 Validator fail-closed проверяет:
 
 - schema/status/scope;
-- exact `repositoryRevision`;
+- exact object `repositoryRevision.git_head/worktree_hash`;
 - Context Contract `fullRepositoryPreload=false`;
 - каждый expansion через canonical Context Contract expansion rule;
 - число и character size expansions;
