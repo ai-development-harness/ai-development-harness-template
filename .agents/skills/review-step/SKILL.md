@@ -14,8 +14,20 @@ description: Run an independent read-only review of an exact repository revision
    `deterministic.implementationBaseline` — durable proof HEAD до первой product mutation. При валидном proof gate использует `surfaceMode=implementation-baseline` и проверяет полный `baseline..HEAD + current worktree`; rename/copy учитываются по source и destination path, это работает после нескольких commit, push/PR и restart. Если proof отсутствует/недоступен/non-ancestor, gate явно использует `clean-tree-fallback` и fail-closed требует `security` + `tests`. Harness-owned `.harness/local/**` и `REVIEW-*.md` не меняют surface/basis.
 3. До semantic convergence judgement запусти `python3 .harness/tools/completion-gate.py STEP-NNN --json`. Это deterministic precheck текущего Verification evidence/contract basis и Ready prerequisites. `BLOCKED` не переинтерпретируй reasoning-ом.
    Если Ready plan содержит `plan.execution_groups`, также прочитай `python3 .harness/tools/execution-groups.py STEP-NNN --json`: проверь implementation/evidence относительно group `mutationPaths` и `verificationResponsibilities`. Это не второй code review и не разрешение parallel execution.
-4. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan и applicable active Project Principles с реализацией и tests. Правила повторно берутся из canonical `sources.principles`, а не из памяти prompt/session. Нарушение blocking PRN без explicit approved deviation — material finding; advisory PRN само по себе не превращай в blocker. Material означает, что finding меняет observable implementation behaviour, нарушает Accepted ADR/REQ/STEP contract, создаёт security/correctness/regression risk или оставляет обязательный acceptance/prerequisite без доказуемого owner/path. Wording/style/clarity notes без такого эффекта не являются findings: помести их в rationale. Сделай один полный semantic code-review проход exact revision и собери все material findings; completion не является вторым code review.
-5. Верни structured payload Review Contract v2:
+4. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan и applicable active Project Principles с реализацией и tests. Правила повторно берутся из canonical `sources.principles`, а не из памяти prompt/session. Нарушение blocking PRN без explicit approved deviation — material finding; advisory PRN само по себе не превращай в blocker. Material означает, что finding меняет observable implementation behaviour, нарушает Accepted ADR/REQ/STEP contract, создаёт security/correctness/regression risk или оставляет обязательный acceptance/prerequisite без доказуемого owner/path. Wording/style/clarity notes без такого эффекта не являются findings: помести их в rationale.
+   Перед тем как превратить новую reviewer-derived идею в finding, примени **Evidence Gate**:
+   - прямое доказанное нарушение REQ/ADR/STEP/PRN может использовать `evidenceBasis.kind=contract`;
+   - уже воспроизведённый defect — `kind=reproduced`;
+   - новый придуманный reviewer-ом failure/security scenario сначала является только hypothesis с `kind=inferred`;
+   - для inferred hypothesis перечисли необходимые preconditions и проверь их по реальному repository/runtime state;
+   - если практичен маленький решающий эксперимент, сначала выполни самый дешёвый falsification check: HTTP request, проверка mount/route/config, минимальный function call или существующий test;
+   - actively пытайся опровергнуть собственную гипотезу, а не только найти ей подтверждение;
+   - framework capability сама по себе не доказывает project reachability;
+   - для security scenario нужен project-specific reachable path от entry point/trust boundary до asset/effect;
+   - invalidated/unverified hypothesis **не является finding**, не должна запускать FIX и не требует отдельного durable artifact; при полезности кратко упомяни её в rationale;
+   - не требуй regression test до подтверждения inferred scenario и не расширяй подтверждённый defect на экзотические adjacent cases без отдельного contract/evidence.
+   Сделай один полный semantic code-review проход exact revision и собери все material **evidence-gated** findings; completion не является вторым code review.
+5. Верни structured payload Review Contract v3:
    - `verdict: pass|fail|blocked`;
    - `findings[]` — полный factual contract:
      - `title`, `severity`, `category`;
@@ -23,7 +35,13 @@ description: Run an independent read-only review of an exact repository revision
      - `scenario: {given, when, then}`;
      - `expected`, `observed`, `impact`;
      - `repair: {direction, admissibleAlternatives[]}`;
-     - `constraints[]`, `evidence[]`;
+     - `constraints[]`, обязательный непустой `evidence[]`;
+     - обязательный `evidenceBasis`:
+       - `kind: contract|reproduced|inferred`;
+       - `source` — конкретный contract/reproducer/hypothesis origin;
+       - `preconditions[]` — для `inferred` минимум одна реально проверенная предпосылка;
+       - `verification: {method, result, outcome: confirmed}`.
+       Writer принимает только `outcome=confirmed`; invalidated hypothesis в `findings[]` передавать запрещено.
    - `verificationObservations`;
    - `rationale`;
    - `specializedReviews.security/tests` только для реально выполненных specialized reviews: `status + evidence`;
