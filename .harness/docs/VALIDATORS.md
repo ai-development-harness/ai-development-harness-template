@@ -864,6 +864,32 @@ python3 .harness/tools/codebase-grounding.py \
 
 PASS возвращает normalized payload с `contextBudget.baseMetrics`, фактическим числом expansion files/chars и hard limits. Invalid revision, forbidden expansion, ungrounded evidence path или превышение budget возвращает `BLOCKED`/non-zero.
 
+### Core Reasoning Principles selector
+
+Файлы:
+
+- selector/catalog validator: `.harness/tools/core_reasoning_principles.py`;
+- regression: `.harness/tools/core-reasoning-principles-self-test.py`;
+- leaves: `.agents/skills/core-reasoning-principles/leaves/CRP-*.md`.
+
+Standalone user command отсутствует. Selector вызывается Context Contract resolver-ом и детерминированно возвращает только applicable `CRP-NNN` refs.
+
+Проверяется:
+
+- catalog size 6–10 leaves;
+- stable namespace `CRP`, unique `CRP-NNN` IDs и slugs;
+- required leaf sections `Trigger / applicability`, `Rationale`, `Actionable pattern`;
+- closed-set roles/triggers;
+- max 4 000 chars на leaf;
+- deterministic applicability только из STEP/Context machine facts;
+- ordinary phase не получает весь catalog;
+- CRP остаётся отдельным полем `coreReasoningPrinciples[]` и не смешивается с project-owned `PRN-NNN` в `required`;
+- runtime neutrality: одинаковые facts дают одинаковую selection для Codex/Claude.
+
+Context Contract metrics отдельно публикуют `corePrincipleCount/corePrincipleChars`.
+
+Подробная policy: [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md).
+
 
 ---
 
