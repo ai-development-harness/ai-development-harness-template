@@ -1399,7 +1399,7 @@ python3 .harness/tools/runtime_adapter_contract.py --runtime claude --json
 
 ---
 
-# Review Contract v2 structured findings
+# Review Contract v3 evidence-gated findings
 
 ## Файл / Файлы
 
@@ -1408,11 +1408,13 @@ python3 .harness/tools/runtime_adapter_contract.py --runtime claude --json
 
 ## Роль
 
-`review_findings.py` задаёт machine-readable handoff `REVIEW → FIX`. Новый STEP REVIEW по-прежнему хранится как immutable Markdown, но внутри него есть отдельный canonical JSON-блок `## Machine-readable findings`.
+`review_findings.py` задаёт machine-readable handoff `REVIEW → FIX`. Новый STEP REVIEW хранится как immutable Markdown с canonical JSON-блоком `## Machine-readable findings`.
 
 Human-readable `## Findings` нужен человеку. FIX/orchestration не должен повторно интерпретировать этот prose: он использует deterministic parser.
 
-## Contract finding v2
+Review Contract v3 добавляет **Evidence Gate**: новый reviewer-derived scenario не становится durable finding, пока его необходимые предпосылки и project-specific verification не подтвердили, что проблема действительно существует.
+
+## Contract finding v3
 
 Каждый finding содержит:
 
@@ -1425,10 +1427,19 @@ Human-readable `## Findings` нужен человеку. FIX/orchestration не
 - `impact`;
 - `repair.direction` и `repair.admissibleAlternatives[]`;
 - `constraints[]`;
-- `evidence[]`;
+- обязательный непустой `evidence[]`;
+- обязательный `evidenceBasis`:
+  - `kind: contract|reproduced|inferred`;
+  - `source`;
+  - `preconditions[]`; для `inferred` список не может быть пустым;
+  - `verification.method`;
+  - `verification.result`;
+  - `verification.outcome: confirmed`;
 - deterministic `fingerprint: sha256:...`.
 
-Fingerprint вычисляется из factual identity: `category + location + scenario + expected + observed`. ID, title и wording repair guidance не входят в fingerprint. Поэтому тот же дефект после FIX можно узнать даже при переформулировке текста.
+`invalidated` или `unverified` outcome запрещён в durable finding. Такая гипотеза остаётся ephemeral reasoning и при необходимости кратко упоминается только в rationale текущего review.
+
+Fingerprint вычисляется из factual identity: `category + location + scenario + expected + observed`. `evidenceBasis`, ID, title и wording repair guidance намеренно не входят в fingerprint: дополнительное подтверждение того же дефекта не создаёт новую defect identity.
 
 Duplicate fingerprints в одном report запрещены.
 
@@ -1438,30 +1449,46 @@ Duplicate fingerprints в одном report запрещены.
 python3 .harness/tools/review_findings.py --step STEP-NNN --json
 ```
 
-Команда возвращает latest Review Contract v2 report и normalized findings. Если latest review legacy v1, malformed или fingerprint не совпадает с содержимым, parser возвращает BLOCKED и non-zero exit code.
+Команда возвращает latest **current v3** review и normalized findings. Если latest review historical v1/v2, malformed, не прошёл evidence gate или fingerprint не совпадает с содержимым, deterministic FIX handoff возвращает BLOCKED и требует свежий `STEP REVIEW`.
 
 ## Совместимость
 
-Historical Review Contract v1 reports не переписываются и продолжают валидироваться старым human-readable contract. Writer новых STEP REVIEW всегда добавляет `finding_contract: 2` и canonical JSON section.
+Historical Review Contract v1 reports не переписываются и продолжают валидироваться старым human-readable contract.
 
-FIX не должен угадывать structured fields из legacy report. Для deterministic REVIEW→FIX handoff нужен свежий v2 REVIEW.
+Historical Review Contract v2 machine reports тоже остаются валидной immutable history и могут участвовать в historical/progress inspection.
+
+Writer новых STEP REVIEW всегда добавляет `finding_contract: 3` и machine `schemaVersion: 3`.
+
+FIX намеренно требует свежий v3 report. Это не позволяет старому v2 finding без `evidenceBasis` обойти Evidence Gate после обновления Harness.
 
 ## Fail-closed проверки
 
-Validator `review_contract.py` для v2 дополнительно проверяет:
+Validator `review_contract.py` для v3 дополнительно проверяет:
 
 - наличие и JSON-синтаксис machine section;
-- отсутствие legacy/partial transport forms внутри v2: `location` и `scenario` обязаны быть objects, `expected`/`observed` обязательны, legacy `fixDirection` не принимается;
-- exact schemaVersion;
+- exact agreement `finding_contract` ↔ machine `schemaVersion`;
 - supported fields/enums;
 - id sequence `F-001...`;
+- обязательный непустой evidence;
+- корректный `evidenceBasis`;
+- non-empty preconditions для inferred finding;
+- только `verification.outcome=confirmed`;
 - deterministic fingerprint;
 - отсутствие duplicate fingerprints;
 - совпадение количества human и machine findings;
 - совпадение `Severity` / `Category` между обеими формами;
 - прежние verdict composition rules PASS/FAIL/BLOCKED.
 
-Self-test отдельно доказывает stable fingerprint при rename/repair rewording и его изменение при factual change.
+Self-test отдельно доказывает:
+
+- stable fingerprint при rename/repair rewording;
+- изменение fingerprint при factual change;
+- rejection finding без `evidenceBasis`;
+- rejection inferred finding без preconditions;
+- rejection invalidated hypothesis;
+- чтение historical v2 machine report.
+
+Подробная политика и PEM/Vite example: [`EVIDENCE_GATE.md`](EVIDENCE_GATE.md).
 
 ---
 
@@ -1510,7 +1537,7 @@ Runtime reconciliation Git/provider подробно описан в [`SIDE_EFFE
 
 ## Роль
 
-Сравнивает два consecutive Review Contract v2 report по stable fingerprints, `reviewed_revision`, `contract_basis`, `verification_basis` и optional factual `verification_status`. Возвращает bounded telemetry и conservative stop decision `continue|NO_PROGRESS|REPEATED_FINDINGS|REGRESSION`.
+Сравнивает два consecutive current Review Contract v3 report по stable fingerprints, `reviewed_revision`, `contract_basis`, `verification_basis` и optional factual `verification_status`. Historical v2 остаётся валидной history, но adaptive FIX telemetry требует свежие evidence-gated v3 reports. Возвращает bounded telemetry и conservative stop decision `continue|NO_PROGRESS|REPEATED_FINDINGS|REGRESSION`.
 
 ## Self-test
 
