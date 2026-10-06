@@ -227,15 +227,20 @@ def _verification_before_completion(
         )
 
     manual_results = None
+    product_results = None
     if isinstance(details, dict):
         value = details.get("manualVerification")
         if value is not None:
             manual_results = value
+        product_value = details.get("productVerification")
+        if product_value is not None:
+            product_results = product_value
 
     verification = run_step_verification(
         root,
         step_id,
         manual_results=manual_results,
+        product_results=product_results,
         write_evidence=False,
     )
 
@@ -286,7 +291,7 @@ def _verification_before_completion(
         compact = {
             key: value
             for key, value in (details or {}).items()
-            if key != "manualVerification"
+            if key not in {"manualVerification", "productVerification"}
         }
         compact["verification"] = {
             "status": "PASS",
