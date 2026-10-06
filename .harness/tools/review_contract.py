@@ -49,6 +49,7 @@ from planning_contract import read_task
 from review_gates import required_reviewers
 from review_findings import (
     FINDING_CONTRACT_VERSION,
+    SUPPORTED_FINDING_CONTRACT_VERSIONS,
     FindingContractError,
     parse_machine_findings,
 )
@@ -930,15 +931,19 @@ def validate_review_report(
             for field in ("Location", "Scenario", "Impact", "Fix direction"):
                 if not finding.get(field):
                     errors.append(f"{prefix}: missing {field}")
-    elif finding_contract == FINDING_CONTRACT_VERSION:
+    elif finding_contract in SUPPORTED_FINDING_CONTRACT_VERSIONS:
+        label = f"Review Contract v{finding_contract}"
         try:
-            structured_findings = parse_machine_findings(document)
+            structured_findings = parse_machine_findings(
+                document,
+                expected_version=int(finding_contract),
+            )
         except FindingContractError as exc:
-            errors.append(f"Review Contract v2: {exc}")
+            errors.append(f"{label}: {exc}")
             structured_findings = []
         if len(human_findings) != len(structured_findings):
             errors.append(
-                "Review Contract v2: human and machine finding counts must match"
+                f"{label}: human and machine finding counts must match"
             )
         for index, (human, machine) in enumerate(
             zip(human_findings, structured_findings), 1
@@ -950,7 +955,8 @@ def validate_review_report(
                 errors.append(f"{prefix}: human Category differs from machine finding")
     else:
         errors.append(
-            f"finding_contract must be omitted for legacy v1 or equal {FINDING_CONTRACT_VERSION}"
+            "finding_contract must be omitted for legacy v1 or one of "
+            + str(sorted(SUPPORTED_FINDING_CONTRACT_VERSIONS))
         )
         structured_findings = []
 

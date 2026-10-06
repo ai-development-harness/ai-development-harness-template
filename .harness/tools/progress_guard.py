@@ -27,7 +27,7 @@ from planning_contract import (
 )
 from review_contract import latest_review, repository_activity_fingerprint
 from review_findings import (
-    FINDING_CONTRACT_VERSION,
+    SUPPORTED_FINDING_CONTRACT_VERSIONS,
     FindingContractError,
     parse_machine_findings,
 )
@@ -110,7 +110,7 @@ def _completion_findings(review: dict[str, Any] | None) -> list[str]:
 
 
 def _review_findings(review: dict[str, Any] | None) -> tuple[list[str], str | None]:
-    """Prefer Review Contract v2 fingerprints; legacy history gets one stable hash."""
+    """Prefer structured finding fingerprints; prose-only history gets one stable hash."""
     if not isinstance(review, dict):
         return [], None
     document = review.get("document")
@@ -120,12 +120,19 @@ def _review_findings(review: dict[str, Any] | None) -> tuple[list[str], str | No
     if not isinstance(meta, dict):
         return [], None
 
-    if meta.get("finding_contract") == FINDING_CONTRACT_VERSION:
+    finding_contract = meta.get("finding_contract")
+    if finding_contract in SUPPORTED_FINDING_CONTRACT_VERSIONS:
         try:
-            findings = parse_machine_findings(document)
+            findings = parse_machine_findings(
+                document,
+                expected_version=int(finding_contract),
+            )
         except FindingContractError as exc:
             raise ProgressGuardError(str(exc)) from exc
-        return sorted(str(item["fingerprint"]) for item in findings), "v2"
+        return (
+            sorted(str(item["fingerprint"]) for item in findings),
+            f"v{finding_contract}",
+        )
 
     section = document.get("sections", {}).get("Findings")
     if isinstance(section, str) and section.strip() and section.strip() != "No material findings.":

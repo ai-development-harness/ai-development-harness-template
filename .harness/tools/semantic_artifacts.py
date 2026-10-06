@@ -30,7 +30,7 @@ from execution_status import (
     review_expectation_for_step,
     stamp_plan,
 )
-from harness_config import planning_review_directory, review_directory
+from harness_config import max_plan_review_cycles, planning_review_directory, review_directory
 from planning_contract import (
     generated_verification_status,
     plan_content_hash,
@@ -264,6 +264,29 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
     """Create validated immutable planning review and stamp matching PASS plan."""
     verdict, findings, rationale = _planning_payload(payload)
     task = read_task(root, step_id)
+
+    # planning-review BLOCKED может повторяться после исправления authored/upstream
+    # artifacts и нового PLAN. Без durable cap такой цикл ограничен только терпением
+    # модели/пользователя. Считаем уже созданные валидные reports для STEP и
+    # блокируем очередной semantic round до записи нового report.
+    directory = planning_review_directory(root) / step_id
+    existing_reports = sorted(directory.glob("PLAN-REVIEW-*.md")) if directory.is_dir() else []
+    max_rounds = max_plan_review_cycles(root)
+    if len(existing_reports) >= max_rounds:
+        return {
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "completionResult": "BLOCKED",
+            "reasonCode": "PLAN_REVIEW_LIMIT_REACHED",
+            "stepId": step_id,
+            "planReviewCycles": len(existing_reports),
+            "maxPlanReviewCycles": max_rounds,
+            "findings": findings,
+            "message": (
+                "planning-review cycle limit reached; stop automatic replanning and "
+                "handoff to the user with the remaining findings"
+            ),
+        }
     plan = task["frontmatter"].get("plan")
     if not isinstance(plan, dict) or plan.get("status") != "draft":
         raise SemanticArtifactError("planning review requires plan.status=draft")
@@ -347,11 +370,11 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
 
 
 def _finding(value: Any, index: int) -> dict[str, Any]:
-    """Нормализовать semantic finding в Review Contract v2.
+    """Нормализовать semantic finding в Review Contract v3.
 
-    Старый compact payload остаётся допустимым transport-форматом для
-    совместимости existing agents/tests, но durable report всегда содержит
-    полный v2 object + deterministic fingerprint.
+    Durable finding проходит evidence gate в review_findings.py: inferred risk
+    обязан содержать подтверждённые preconditions/verification, а invalidated
+    hypothesis не может попасть в immutable report.
     """
     try:
         return normalize_finding(value, index)
@@ -479,6 +502,8 @@ def _render_findings(findings: list[dict[str, Any]]) -> str:
         if item["location"].get("line") is not None:
             location += f":{item['location']['line']}"
         scenario = item["scenario"]
+        evidence_basis = item["evidenceBasis"]
+        verification = evidence_basis["verification"]
         chunks.extend(
             [
                 f"### {item['id']} — {item['title']}",
@@ -490,11 +515,19 @@ def _render_findings(findings: list[dict[str, Any]]) -> str:
                 f"**Expected:** {item['expected']}",
                 f"**Observed:** {item['observed']}",
                 f"**Impact:** {item['impact']}",
+                f"**Evidence kind:** {evidence_basis['kind']}",
+                f"**Evidence source:** {evidence_basis['source']}",
+                f"**Verification method:** {verification['method']}",
+                f"**Verification result:** {verification['result']}",
                 f"**Fix direction:** {item['repair']['direction']}",
                 f"**Fingerprint:** {item['fingerprint']}",
                 "",
             ]
         )
+        if evidence_basis["preconditions"]:
+            chunks.append("**Confirmed preconditions:**")
+            chunks.extend(f"- {value}" for value in evidence_basis["preconditions"])
+            chunks.append("")
         alternatives = item["repair"]["admissibleAlternatives"]
         if alternatives:
             chunks.append("**Admissible alternatives:**")

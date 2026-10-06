@@ -355,6 +355,21 @@ def max_fix_review_cycles(root: Path) -> int:
     return value
 
 
+def max_plan_review_cycles(root: Path) -> int:
+    """Safety cap semantic planning-review раундов одного STEP.
+
+    В отличие от FIX↔REVIEW это не CTS loop: PLAN может BLOCKED-нуть после
+    semantic review, пользователь/author исправляет upstream artifact и
+    запускает PLAN снова. Поэтому budget считается по durable immutable
+    planning-review reports для текущего STEP, а не по chat/session memory.
+    """
+    manifest = load_manifest(root)
+    value = require(manifest, "execution.maxPlanReviewCycles")
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 5:
+        raise ConfigError("manifest execution.maxPlanReviewCycles must be an integer from 1 to 5")
+    return value
+
+
 def verification_command_timeout_seconds(root: Path) -> int:
     """Timeout одной executable Verification command."""
     manifest = load_manifest(root)
