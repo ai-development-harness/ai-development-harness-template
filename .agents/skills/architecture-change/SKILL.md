@@ -20,6 +20,8 @@ description: Decide whether a durable technical change requires an ADR, evolve a
 
 Локальный refactor, имя функции, внутренний helper, очевидная implementation detail или механическая перестановка сами по себе ADR не требуют.
 
+Если причина текущего решения неочевидна, Accepted ADR может быть stale, либо есть competing explanations из code/history — до выбора нового architecture direction вызови внутренний read-only capability `decision-archaeology` на конкретном target path. Он обязан отделить documented rationale от inference, сохранить conflicts/gaps и вернуть bounded evidence map. Conversation/session memory не является historical evidence. Validated findings преврати в `Preserve / Change / Avoid / Risk` constraints; unresolved historical ambiguity => OQ/RESEARCH/BLOCKED, а не догадка.
+
 ## Эволюция решения
 
 Если Accepted ADR остаётся применим — ссылайся на него, не создавай дубликат.

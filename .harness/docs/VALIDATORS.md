@@ -1715,6 +1715,39 @@ python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase review --json
 
 Validation mode дополнительно принимает Context Contract, validated grounding и semantic payload. Validator revalidates grounding, enforce-ит общий context budget, provenance evidence paths и 1–2 critical hypotheses. Semantic `PASS` возможен только при `proven` critical proofs, чьи commands реально присутствуют в STEP Verification и имеют fresh generated PASS evidence на current subject revision. Aggregate status `MANUAL_REQUIRED` допустим, если pending manual checks не являются proof этих hypotheses; существующие completion/review gates всё равно обязаны закрыть manual checks отдельно.
 
+### Decision Archaeology validator
+
+Файлы:
+
+- engine: `.harness/tools/decision_archaeology.py`;
+- CLI: `.harness/tools/decision-archaeology.py`;
+- regression: `.harness/tools/decision-archaeology-self-test.py`.
+
+Preflight фиксирует exact repository revision, concrete target path и bounded Git history target-файла. При existing Context Contract current revision обязан совпадать с его `repositoryRevision`.
+
+```bash
+python3 .harness/tools/decision-archaeology.py \
+  --target src/provider/retry.py \
+  --scope simple \
+  --json
+```
+
+Validation mode принимает semantic archaeology payload и optional Context Contract. Validator проверяет:
+
+- `documented | inference` claim boundary;
+- `high | medium | low` confidence;
+- repository-local artifact/commit provenance;
+- commit evidence только из bounded target history;
+- timestamped evidence map;
+- supplied issue/PR/docs evidence как explicit `supplied-not-locally-verifiable`, не как local proof;
+- explicit conflicts и gaps;
+- stale-ADR diagnostic assessments;
+- expansion/history/claim/source budgets.
+
+`PASS` запрещён, если есть inference без historical evidence. Такая inference допустима только как `low` confidence + explicit gap + `INCONCLUSIVE`. Conversation/transcript не является supported evidence category.
+
+Подробная semantic policy: [`DECISION_ARCHAEOLOGY.md`](DECISION_ARCHAEOLOGY.md).
+
 ## Exit codes
 
 - `0` — запрос корректно вычислен, даже если найден stale plan;

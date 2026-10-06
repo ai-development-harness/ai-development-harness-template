@@ -107,6 +107,10 @@ Capability не добавляет новую пользовательскую �
 
 High-risk PLAN/REVIEW может условно вызвать `semantic-blast-radius` после validated Codebase Grounding. Capability не получает отдельный второй context budget: grounding + blast expansions совместно обязаны укладываться в тот же `simple|complex` limit. Explicit dependency impact берётся из deterministic `impact-analysis`, semantic layer работает только с implicit behavior/contracts. Подробности: [`SEMANTIC_BLAST_RADIUS.md`](SEMANTIC_BLAST_RADIUS.md).
 
+## Decision Archaeology
+
+Когда architecture-change/reconcile нужен historical rationale, internal `decision-archaeology` может переиспользовать existing Context Contract как highest-priority canonical evidence set. Concrete target path вне Context Contract считается expansion и расходует тот же bounded budget; дополнительные files требуют explicit reason. Git target history ограничен отдельно, а external issue/PR/docs sources допускаются только как supplied evidence и не становятся repository-local proof. Подробности: [`DECISION_ARCHAEOLOGY.md`](DECISION_ARCHAEOLOGY.md).
+
 ## Fail-closed semantics
 
 Missing linked artifact, unreadable/malformed required artifact, missing
