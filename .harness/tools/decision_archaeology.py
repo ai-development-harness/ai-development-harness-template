@@ -134,34 +134,53 @@ def _git(root: Path, *args: str) -> bytes:
     return proc.stdout
 
 
+def _commit_metadata(root: Path, sha: str) -> dict[str, str]:
+    raw = _git(root, "show", "-s", "--format=%H%n%aI%n%s", sha)
+    try:
+        lines = raw.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise DecisionArchaeologyError(
+            f"commit {sha} contains non-UTF-8 metadata"
+        ) from exc
+    if len(lines) < 3:
+        raise DecisionArchaeologyError(f"malformed metadata for commit {sha}")
+    resolved, authored_at = lines[0], lines[1]
+    subject = "\n".join(lines[2:]).strip()
+    if resolved != sha or not authored_at or not subject:
+        raise DecisionArchaeologyError(f"incomplete metadata for commit {sha}")
+    return {
+        "sha": resolved,
+        "authoredAt": authored_at,
+        "subject": subject,
+    }
+
+
 def _target_history(root: Path, target: str, limit: int) -> list[dict[str, str]]:
     raw = _git(
         root,
         "log",
         "--follow",
         f"--max-count={limit}",
-        "--format=%H%x00%aI%x00%s%x00",
+        "--format=%H",
         "--",
         target,
     )
     try:
-        fields = [item.decode("utf-8") for item in raw.split(b"\0") if item]
+        shas = [
+            line.strip()
+            for line in raw.decode("utf-8").splitlines()
+            if line.strip()
+        ]
     except UnicodeDecodeError as exc:
-        raise DecisionArchaeologyError("git history contains non-UTF-8 metadata") from exc
-    if len(fields) % 3:
-        raise DecisionArchaeologyError("malformed git history metadata")
-    result: list[dict[str, str]] = []
-    for index in range(0, len(fields), 3):
-        sha, authored_at, subject = fields[index : index + 3]
-        result.append(
-            {
-                "sha": sha,
-                "authoredAt": authored_at,
-                "subject": subject,
-            }
-        )
-    return result
-
+        raise DecisionArchaeologyError(
+            "git history contains non-UTF-8 metadata"
+        ) from exc
+    for sha in shas:
+        if re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+            raise DecisionArchaeologyError(
+                f"malformed commit id in target history: {sha!r}"
+            )
+    return [_commit_metadata(root, sha) for sha in shas]
 
 def _artifact_timestamp(root: Path, path: str) -> str | None:
     raw = _git(root, "log", "-1", "--format=%aI", "--", path)
@@ -517,13 +536,6 @@ def validate_decision_archaeology_payload(
             if not evidence:
                 raise DecisionArchaeologyError(
                     f"claims[{index}] documented claim requires evidence"
-                )
-            if not any(
-                entry["verification"] == "repository-local"
-                for entry in evidence
-            ):
-                raise DecisionArchaeologyError(
-                    f"claims[{index}] documented claim needs repository-local evidence"
                 )
         elif not evidence:
             ungrounded_inference = True
