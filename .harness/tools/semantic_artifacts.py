@@ -370,11 +370,11 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
 
 
 def _finding(value: Any, index: int) -> dict[str, Any]:
-    """Нормализовать semantic finding в Review Contract v2.
+    """Нормализовать semantic finding в Review Contract v3.
 
-    Старый compact payload остаётся допустимым transport-форматом для
-    совместимости existing agents/tests, но durable report всегда содержит
-    полный v2 object + deterministic fingerprint.
+    Durable finding проходит evidence gate в review_findings.py: inferred risk
+    обязан содержать подтверждённые preconditions/verification, а invalidated
+    hypothesis не может попасть в immutable report.
     """
     try:
         return normalize_finding(value, index)
@@ -502,6 +502,8 @@ def _render_findings(findings: list[dict[str, Any]]) -> str:
         if item["location"].get("line") is not None:
             location += f":{item['location']['line']}"
         scenario = item["scenario"]
+        evidence_basis = item["evidenceBasis"]
+        verification = evidence_basis["verification"]
         chunks.extend(
             [
                 f"### {item['id']} — {item['title']}",
@@ -513,11 +515,19 @@ def _render_findings(findings: list[dict[str, Any]]) -> str:
                 f"**Expected:** {item['expected']}",
                 f"**Observed:** {item['observed']}",
                 f"**Impact:** {item['impact']}",
+                f"**Evidence kind:** {evidence_basis['kind']}",
+                f"**Evidence source:** {evidence_basis['source']}",
+                f"**Verification method:** {verification['method']}",
+                f"**Verification result:** {verification['result']}",
                 f"**Fix direction:** {item['repair']['direction']}",
                 f"**Fingerprint:** {item['fingerprint']}",
                 "",
             ]
         )
+        if evidence_basis["preconditions"]:
+            chunks.append("**Confirmed preconditions:**")
+            chunks.extend(f"- {value}" for value in evidence_basis["preconditions"])
+            chunks.append("")
         alternatives = item["repair"]["admissibleAlternatives"]
         if alternatives:
             chunks.append("**Admissible alternatives:**")

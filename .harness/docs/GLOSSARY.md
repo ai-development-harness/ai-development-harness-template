@@ -408,9 +408,17 @@ Release-oriented gate: готовность версии/развёртыван�
 
 Review report хранится отдельно и не переписывает task contract.
 
+### Hypothesis
+
+Новая reviewer-derived версия о возможном дефекте/угрозе, которая ещё не доказана для фактического project state. Hypothesis не является finding и сама по себе не разрешает regression test или FIX.
+
+### Evidence Gate
+
+Граница `hypothesis → material finding`. Reviewer сначала проверяет необходимые preconditions и, когда возможно, выполняет самый дешёвый falsification experiment. Только confirmed project-specific scenario становится durable finding. Подробно: [`EVIDENCE_GATE.md`](EVIDENCE_GATE.md).
+
 ### Finding
 
-Конкретная проблема, найденная review/audit. Хороший finding содержит severity, location, scenario/preconditions, impact и fix direction.
+Подтверждённая конкретная проблема, найденная review/audit. Review Contract v3 требует severity, location, scenario/preconditions, impact, evidence и `evidenceBasis`. Invalidated/unverified hypothesis finding-ом не является.
 
 ### Verdict
 

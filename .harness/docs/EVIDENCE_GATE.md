@@ -1,0 +1,206 @@
+# Evidence Gate
+
+Evidence Gate не позволяет reviewer-агенту превратить правдоподобную, но не проверенную гипотезу в defect, regression test и production FIX.
+
+Главное правило:
+
+> Новая reviewer-derived идея сначала является hypothesis. Она становится material finding только после проверки необходимых предпосылок и project-specific evidence.
+
+## Зачем это нужно
+
+LLM легко переносит общие знания о framework/runtime на конкретный проект без проверки фактической topology.
+
+Например reviewer знает, что Vite DEV server умеет раздавать файлы, и делает вывод:
+
+```text
+"Vite может отдать private.pem по прямой ссылке"
+```
+
+Но в реальном проекте может быть:
+
+- `private.pem` существует только внутри backend container;
+- frontend container не имеет volume/mount с этим файлом;
+- файл не находится в frontend root/public;
+- frontend process физически не может его прочитать;
+- `GET /private.pem` возвращает `404`.
+
+В этом случае проблема не существует. Добавлять security tests, Vite hardening и новые отчёты нельзя.
+
+## Поток Evidence Gate
+
+```text
+new inferred risk
+      |
+      v
+  HYPOTHESIS
+      |
+      v
+identify necessary preconditions
+      |
+      v
+check actual repository/runtime state
+      |
+      v
+run cheapest decisive falsification when practical
+      |
+   +--+--+
+   |     |
+invalid confirmed
+   |     |
+   v     v
+ discard OBSERVED
+          |
+          v
+ durable finding
+          |
+          v
+ regression test / FIX
+```
+
+Запрещены прямые переходы:
+
+```text
+HYPOTHESIS -> FIX
+HYPOTHESIS -> regression tests -> hardening
+```
+
+## Evidence kinds
+
+Review Contract v3 использует `evidenceBasis.kind`.
+
+### `contract`
+
+Нарушение прямо следует из явного REQ/ADR/STEP/PRN и подтверждено фактическим состоянием.
+
+Пример: REQ запрещает HTTP-доступ к private key, а существующий endpoint действительно возвращает ключ.
+
+### `reproduced`
+
+Дефект уже воспроизведён конкретным запросом, command, test или function call.
+
+### `inferred`
+
+Reviewer сам вывел потенциальный scenario. Для такого finding обязательны:
+
+- необходимые `preconditions[]`;
+- проверка этих предпосылок по реальному project state;
+- конкретный `verification.method`;
+- фактический `verification.result`;
+- `verification.outcome: confirmed`.
+
+`invalidated` или `unverified` hypothesis не является material finding и не сохраняется в durable findings.
+
+## Cheapest falsification first
+
+До написания нового regression test reviewer должен предпочесть самый дешёвый решающий эксперимент, если он практически доступен.
+
+Типичные примеры:
+
+- один HTTP request;
+- проверка Docker volume/mount;
+- чтение route registration;
+- inspection реального generated config;
+- вызов подозреваемой функции с минимальным input;
+- запуск уже существующего узкого test/reproducer.
+
+Цель — не собрать аргументы в пользу собственной идеи, а сначала попытаться её опровергнуть.
+
+## Security reachability
+
+Для нового security scenario общей возможности framework недостаточно.
+
+```text
+Framework X can do Y
+```
+
+не означает:
+
+```text
+This project exposes Y
+```
+
+Reviewer должен подтвердить project-specific path:
+
+```text
+entry point
+    |
+trust boundary
+    |
+reachable operation
+    |
+asset / security effect
+```
+
+Если обязательное звено отсутствует, hypothesis invalidated.
+
+### Пример с PEM
+
+```text
+Hypothesis:
+Vite DEV может отдать private.pem.
+
+Necessary preconditions:
+1. Frontend process может прочитать private.pem.
+2. HTTP/static routing может адресовать этот файл.
+
+Checks:
+- PEM найден только в backend container.
+- Shared mount отсутствует.
+- PEM отсутствует в frontend root/public.
+- GET /private.pem -> 404.
+
+Conclusion:
+Hypothesis invalidated.
+
+Actions:
+- no durable finding;
+- no regression test;
+- no production FIX;
+- при необходимости одна короткая заметка в rationale.
+```
+
+## Test provenance
+
+Новый regression/security test, появившийся из REVIEW/FIX, должен иметь хотя бы один реальный источник:
+
+- explicit REQ/ADR/STEP invariant;
+- reproduced defect;
+- confirmed Review Contract v3 finding.
+
+Подтверждение одного defect не разрешает автоматически добавлять unrelated exotic scenarios: другие OS, symlink tricks, race conditions, deployment topology и подобное требуют собственного contract/evidence.
+
+## Durable artifacts
+
+Hypothesis — рабочее рассуждение reviewer, а не repository evidence.
+
+Поэтому invalidated hypothesis:
+
+- не создаёт отдельный report;
+- не становится `F-NNN`;
+- не запускает `FIX ↔ REVIEW`;
+- не требует production mutation.
+
+Если факт проверки полезен для человека, reviewer может кратко записать его в rationale текущего review.
+
+## Review Contract v3
+
+Каждый новый material finding содержит:
+
+```json
+{
+  "evidenceBasis": {
+    "kind": "contract|reproduced|inferred",
+    "source": "конкретный источник гипотезы/контракта/reproducer",
+    "preconditions": ["проверенная предпосылка"],
+    "verification": {
+      "method": "решающий check",
+      "result": "фактический результат",
+      "outcome": "confirmed"
+    }
+  }
+}
+```
+
+Canonical writer fail-closed отвергает v3 finding без evidence basis, без evidence или с outcome, отличным от `confirmed`.
+
+Historical Review Contract v1/v2 reports остаются immutable history. Однако новый `STEP FIX` требует свежий evidence-gated v3 review, чтобы старый report не обходил Evidence Gate.

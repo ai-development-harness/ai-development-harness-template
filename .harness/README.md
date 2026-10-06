@@ -14,6 +14,8 @@ Namespace/control plane AI Development Harness. Здесь собраны core d
 
 `review.security` и `review.tests` управляют дополнительными specialized reviewers: `auto` запускает reviewer по фактическим рискам/diff/test surface, `always` — при каждом review-проходе. Режима `never` намеренно нет: настройка может усилить review, но не отключить safety gate.
 
+Material findings проходят [Evidence Gate](docs/EVIDENCE_GATE.md): reviewer-derived риск сначала проверяется как hypothesis по фактическим preconditions/reachability и, когда возможно, дешёвым falsification experiment. Неподтверждённая или опровергнутая гипотеза не должна порождать regression tests, FIX или отдельный durable finding.
+
 `skills.search.maxResults` задаёт максимальный размер shortlist команды `SKILL FIND`; допустимо от 1 до 10, template default — 5.
 
 Все эти значения проверяются `.harness/tools/validate.py`, поэтому отсутствующая или недопустимая настройка блокирует Harness validation до запуска orchestration.
