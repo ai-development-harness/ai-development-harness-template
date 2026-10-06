@@ -60,6 +60,7 @@ from document_contract import DocumentError, split_frontmatter
 from harness_config import (
     ConfigError,
     get,
+    high_rigor_config,
     language_value,
     load_manifest,
     load_update_policy,
@@ -1274,6 +1275,7 @@ def validate_repository_surface(
         verification_command_timeout_seconds(root)
         review_policy(root, "security")
         review_policy(root, "tests")
+        high_rigor_config(root)
         skill_search_max_results(root)
         for repository_key in (
             "gitPolicy", "harnessPolicy", "harnessUpdatePolicy",
