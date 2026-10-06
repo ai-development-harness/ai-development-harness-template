@@ -121,6 +121,10 @@ Validator fail-closed проверяет:
 
 Validated grounding payload передаётся planner/architect как compact handoff. Он не заменяет independent planning-review.
 
+## REVIEW integration
+
+Обычный REVIEW не обязан запускать отдельный grounding pass. Но если conditional high-risk capability (например Semantic Blast Radius) требует mental model, grounding использует reviewer Context Contract из dispatcher handoff и exact reviewed revision. Это не разрешает повторный resolver/full-repository scan.
+
 ## AUDIT integration
 
 Для subsystem audit capability используется, когда finding требует восстановления фактической цепочки исполнения или ownership.
