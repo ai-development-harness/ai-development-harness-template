@@ -36,8 +36,10 @@ Contract также содержит:
 - canonical `command`;
 - exact `repositoryRevision`;
 - `runtimeNeutral=true`;
+- `coreReasoningPrinciples[]` — только applicable Harness-owned `CRP-NNN` leaf refs;
 - tokenizer-neutral metrics `artifactCount`, `sectionCount`,
-  `manifestChars`, `fullRepositoryPreload=false`.
+  `corePrincipleCount`, `corePrincipleChars`, `manifestChars`,
+  `fullRepositoryPreload=false`.
 
 ## Запуск
 
@@ -60,10 +62,13 @@ Claude. Adapter может физически читать ranges/sections ра�
 
 ## Principles
 
-Applicability Project Principle — semantic judgement. Чтобы deterministic
-resolver не угадывал applicability и не пропустил project-wide blocking rule,
-planner/reviewer получают compact section projections active PRN:
-`Rule / Applies to / Exceptions / approved deviation`. Полный PRN не preload-ится.
+Здесь существуют **две разные namespaces**.
+
+Project Principle `PRN-NNN` — project-owned engineering invariant. Его applicability остаётся semantic judgement. Чтобы deterministic resolver не пропустил project-wide blocking rule, planner/reviewer получают compact section projections active PRN: `Rule / Applies to / Exceptions / approved deviation`. Полный PRN не preload-ится.
+
+Core Reasoning Principle `CRP-NNN` — Harness-owned leaf о способе reasoning/execution. Для CRP deterministic selector использует только machine facts STEP/Context и добавляет в `coreReasoningPrinciples[]` только applicable leaf paths. Model не получает весь CRP catalog. CRP не входит в `required`, не участвует в project traceability и не stale-ит Ready plan как PRN.
+
+Подробности: [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md).
 
 ## Optional / expanded context
 
@@ -91,7 +96,7 @@ Common PLAN/IMPLEMENT/REVIEW не должен автоматически заг
 
 - `.harness/tools/**`;
 - unrelated `docs/**`, REQ, ADR или STEP;
-- unrelated `.agents/skills/**`; conditionally invoked core capability разрешён только явным workflow trigger и не preload-ится заранее;
+- unrelated `.agents/skills/**`; из Core Reasoning Principles читаются только exact paths из `coreReasoningPrinciples[]`, conditionally invoked core capability разрешён только явным workflow trigger;
 - весь repository «на всякий случай».
 
 Python source остаётся подробно прокомментированным; token economy достигается
@@ -125,6 +130,8 @@ same STEP
 ├── Codex selection == Claude selection
 ├── unrelated REQ/ADR/docs absent
 ├── required section projection only
+├── CRP namespace isolated from project PRN
+├── ordinary phase receives only applicable CRP leaves, not full catalog
 ├── missing linked REQ → BLOCKED
 └── explicit expansion requires reason
 ```
