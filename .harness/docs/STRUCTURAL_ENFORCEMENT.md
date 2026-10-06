@@ -26,7 +26,7 @@ Internal capability не является новой пользовательс�
 
 ## Источники evidence
 
-Автоматически читаются Review Contract v2 machine findings.
+Автоматически читаются только текущие Review Contract v3 evidence-gated machine findings. Historical v1/v2 review history не повышает frequency: эти отчёты появились до обязательного Evidence Gate и учитываются только как skipped legacy metric.
 
 Дополнительный normalized envelope поддерживает:
 
@@ -175,7 +175,7 @@ python3 .harness/tools/structural-enforcement.py \
 
 ## Fail-closed rules
 
-- malformed Review Contract v2 machine findings → BLOCKED;
+- malformed Review Contract v3 machine findings → BLOCKED;
 - class mixes categories → BLOCKED;
 - single occurrence + PASS proposal without explicit human override → BLOCKED;
 - proposal references evidence from another class → BLOCKED;
