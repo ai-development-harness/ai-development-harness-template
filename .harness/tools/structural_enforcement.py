@@ -828,11 +828,15 @@ def main() -> int:
 
     root = repo_root()
     try:
-        supplied = (
-            None
-            if args.evidence_file is None
-            else _load_json_file(args.evidence_file, label="evidence file")
-        )
+        supplied = None
+        if args.evidence_file is not None:
+            evidence_path = resolve_repo_path(
+                root,
+                args.evidence_file.as_posix(),
+                label="structural enforcement evidence file",
+            )
+            supplied = _load_json_file(evidence_path, label="evidence file")
+
         preflight = build_preflight(
             root,
             step_id=args.step_id,
@@ -841,7 +845,12 @@ def main() -> int:
         if args.payload_file is None:
             result = preflight
         else:
-            payload = _load_json_file(args.payload_file, label="proposal payload")
+            payload_path = resolve_repo_path(
+                root,
+                args.payload_file.as_posix(),
+                label="structural enforcement proposal payload",
+            )
+            payload = _load_json_file(payload_path, label="proposal payload")
             result = validate_proposal(
                 root,
                 preflight,
