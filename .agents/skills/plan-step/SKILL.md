@@ -40,6 +40,8 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
 
 ## Phase C — architecture completeness pass
 
+До architecture completeness оцени, нужна ли bounded mental model существующей реализации. Если ownership/state responsibility неочевидны, есть cross-module/service/API/integration boundary, shared async/concurrent state или plan зависит от runtime/data flow нескольких слоёв — вызови внутренний core capability `codebase-grounding` на **том же** `context.contextContract` из dispatcher handoff. Не запускай новый resolver. Используй validated structured grounding payload как read-only input для planner/architect; capability не строит plan и не принимает architecture decision. Для локального low-risk изменения в одном очевидном модуле отдельный grounding pass не нужен.
+
 До формирования Implementation plan явно проверь применимые архитектурные измерения. Это semantic gate, а не checklist ради checklist: неприменимые пункты не создают искусственных требований.
 
 - module/service/bounded-context boundaries и ownership;
