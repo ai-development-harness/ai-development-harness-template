@@ -46,7 +46,7 @@ Always-on context — Harness instructions, которые runtime получа�
 - Codex: Harness-controlled часть `AGENTS.md`;
 - Claude Code: Harness-controlled часть `AGENTS.md` плюс `CLAUDE.md` adapter.
 
-Generated blocks `PROJECT-CONTEXT` и `SKILL-ROUTING` являются project-owned динамическим контекстом. Gate показывает их размер отдельно, но не включает их в core Harness budget: `PROJECT INIT` не должен становиться невалидным только из-за содержимого конкретного проекта.
+Generated blocks `PROJECT-CONTEXT` и `SKILL-ROUTING` являются project-owned динамическим контекстом. Gate показывает их размер отдельно, но не включает их в core Harness budget: `PROJECT INIT` не должен становиться невалидным только из-за содержимого конкретного проекта. **Project-specific process rules, которые действительно должны быть always-on, размещаются в `PROJECT-CONTEXT`**, а не добавляются в Harness-controlled bootstrap text. Так проект может расширять процесс без повышения core budget.
 
 Локальные/private overrides также не являются частью tracked Harness baseline.
 
