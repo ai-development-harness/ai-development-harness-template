@@ -16,6 +16,8 @@ description: Perform a read-only evidence-based audit of a STEP or subsystem aga
 
 ## Что проверить
 
+Если audit target — subsystem/flow и для finding нужно восстановить фактический runtime/data flow, ownership или integration boundaries, сначала используй внутренний core capability `codebase-grounding`. Capability остаётся read-only и bounded. Если command handoff не содержит Context Contract, для `STEP AUDIT STEP-NNN` разреши planner-style contract один раз через `python3 .harness/tools/context-contract.py STEP-NNN --role planner --json`; дополнительный code context — только explicit expansions. Validated grounding payload используй как compact input аудита, а не как новый source of truth.
+
 1. Определи audit target и applicable contract: STEP/REQ/ADR/architecture refs, acceptance, verification и relevant evidence.
 2. Зафиксируй фактическое состояние code/config/tests/artifacts до любых последующих fixes.
 3. Для каждого material finding опиши:
