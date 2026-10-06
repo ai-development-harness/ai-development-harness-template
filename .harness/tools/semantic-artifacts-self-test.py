@@ -430,6 +430,7 @@ def main() -> int:
         assert ready["frontmatter"]["plan"]["status"] == "ready", ready
         assert ready["frontmatter"]["plan"]["reviewed_report"] == planning_review["report"]
         assert list(ready["frontmatter"]["plan"]["execution_groups"]) == ["writer", "regression", "integration"]
+        ready_text = step_path.read_text(encoding="utf-8")
 
         # Regression #235: planning-review rounds are bounded by durable reports,
         # not session memory. Create two additional blocked rounds; the fourth
@@ -471,7 +472,9 @@ def main() -> int:
         assert set(
             (root / "planning/plan-reviews/STEP-001").glob("PLAN-REVIEW-*.md")
         ) == reports_before_limit
-        ready_text = step_path.read_text(encoding="utf-8")
+        # Restore the original Ready STEP fixture before unrelated stale-hash
+        # regressions below. The bounded-loop test owns only report history.
+        step_path.write_text(ready_text, encoding="utf-8", newline="\n")
         step_path.write_text(ready_text.replace("src/group-writer", "src/group-writer-changed"), encoding="utf-8", newline="\n")
         stale_group_errors = validate_planning_contracts(root)
         assert any("content_hash is stale" in item for item in stale_group_errors), stale_group_errors
