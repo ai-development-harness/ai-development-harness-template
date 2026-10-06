@@ -45,6 +45,26 @@ def _list(value: object, *, label: str) -> list[Any]:
     return value
 
 
+def _revision(value: object, *, label: str) -> dict[str, str | None]:
+    """Normalize canonical repositoryRevision without reducing it to a string."""
+    if not isinstance(value, dict):
+        raise GroundingContractError(f"{label} must be an object")
+    unexpected = sorted(set(value) - {"git_head", "worktree_hash"})
+    if unexpected:
+        raise GroundingContractError(
+            f"{label} has unsupported keys: " + ", ".join(unexpected)
+        )
+    result: dict[str, str | None] = {}
+    for key in ("git_head", "worktree_hash"):
+        item = value.get(key)
+        if item is not None and (not isinstance(item, str) or not item.strip()):
+            raise GroundingContractError(
+                f"{label}.{key} must be null or a non-empty string"
+            )
+        result[key] = item.strip() if isinstance(item, str) else None
+    return result
+
+
 def _required_context_paths(context_contract: dict[str, Any]) -> set[str]:
     required = _list(context_contract.get("required"), label="context.required")
     result: set[str] = set()
@@ -124,11 +144,11 @@ def validate_grounding_payload(
             f"scope must be one of {sorted(SCOPE_LIMITS)}"
         )
     target = _non_empty_string(payload.get("target"), label="target")
-    revision = _non_empty_string(
+    revision = _revision(
         payload.get("repositoryRevision"),
         label="repositoryRevision",
     )
-    expected_revision = _non_empty_string(
+    expected_revision = _revision(
         context_contract.get("repositoryRevision"),
         label="context.repositoryRevision",
     )
