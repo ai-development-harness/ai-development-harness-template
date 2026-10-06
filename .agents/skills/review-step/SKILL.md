@@ -15,8 +15,13 @@ description: Run an independent read-only review of an exact repository revision
 3. До semantic convergence judgement запусти `python3 .harness/tools/completion-gate.py STEP-NNN --json`. Это deterministic precheck текущего Verification evidence/contract basis и Ready prerequisites. `BLOCKED` не переинтерпретируй reasoning-ом.
    Если Ready plan содержит `plan.execution_groups`, также прочитай `python3 .harness/tools/execution-groups.py STEP-NNN --json`: проверь implementation/evidence относительно group `mutationPaths` и `verificationResponsibilities`. Это не второй code review и не разрешение parallel execution.
    Затем выполни `python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase review --json`. Если `required=true`, повторно используй validated grounding на exact reviewed revision и запусти core capability `semantic-blast-radius`. REVIEW `pass` запрещён, пока blast-radius validator не вернул `PASS`: critical hypotheses должны иметь `proven` proof через реально существующие STEP Verification commands и fresh generated Verification PASS. `INCONCLUSIVE` из-за missing/stale executable proof — evidence finding, а не safety PASS. Blast proof проверяет fresh PASS **exact proof commands**; unrelated pending manual Verification checks остаются отдельным blocker существующего completion gate и не считаются закрытыми blast-radius capability.
-4. Независимый reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan и applicable active Project Principles с реализацией и tests. Правила повторно берутся из canonical `sources.principles`, а не из памяти prompt/session. Нарушение blocking PRN без explicit approved deviation — material finding; advisory PRN само по себе не превращай в blocker. Сделай один полный semantic code-review проход exact revision и собери material findings; completion не является вторым code review.
-5. Верни structured payload Review Contract v2:
+4. Перед lead semantic code-review проверь optional High-Rigor Interrogate:
+   ```bash
+   python3 .harness/tools/high-rigor.py --mode interrogate --phase review --step STEP-NNN --json
+   ```
+   Если preflight вернул `RUN`, internal `high-rigor` обязан дать configured independent readonly reviewers **один exact review surface + intent + rubric**, сохранить consensus и disagreements и затем вернуть validated lead synthesis. Interrogate не заменяет Completion Gate, Semantic Blast Radius или mandatory security/test reviewers; consensus не является proof. `DEGRADED` раскрой в rationale/evidence и продолжай только ordinary review gates. При `SKIP` fan-out не выполняй.
+5. Независимый lead reviewer сверяет task/REQ/ADR/OQ/architecture refs/Implementation plan и applicable active Project Principles с реализацией и tests. Правила повторно берутся из canonical `sources.principles`, а не из памяти prompt/session. Нарушение blocking PRN без explicit approved deviation — material finding; advisory PRN само по себе не превращай в blocker. Если Interrogate выполнялся, используй его consensus/disagreement map как adversarial input, но categorization/verdict остаются ответственностью lead reviewer. Сделай один полный semantic code-review проход exact revision и собери material findings; completion не является вторым code review.
+6. Верни structured payload Review Contract v2:
    - `verdict: pass|fail|blocked`;
    - `findings[]` — полный factual contract:
      - `title`, `severity`, `category`;
@@ -36,15 +41,15 @@ description: Run an independent read-only review of an exact repository revision
      `fix` допустим только для missing work внутри текущего scope; contract/prerequisite gap → `blocked`. Out-of-scope obligations не добавляй.
 
    `id` и `fingerprint` модель не придумывает: writer присваивает `F-NNN` и вычисляет stable `sha256:` fingerprint из factual identity finding. Title/prose formatting и repair wording не участвуют в identity, поэтому повтор того же дефекта после FIX распознаётся детерминированно.
-6. Categories:
+7. Categories:
    - `implementation` — реализация/тест не соответствует непротиворечивому contract;
    - `evidence` — acceptance недостаточно доказан;
    - `contract` — STEP/REQ/ADR/dependency/Acceptance противоречив или требует отсутствующего решения.
-7. Routing:
+8. Routing:
    - `pass` — findings нет;
    - `fail` — implementation/evidence findings, исправимые внутри scope;
    - `blocked` — contract defect/missing prerequisite либо blocking evidence condition.
-8. Не создавай review Markdown//frontmatter, timestamp, revision или gate metadata вручную. Передай JSON в:
+9. Не создавай review Markdown//frontmatter, timestamp, revision или gate metadata вручную. Передай JSON в:
 
    ```bash
    python3 .harness/tools/semantic-writer.py step-review STEP-NNN --payload-file '<local-json-or->'
