@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+from verification import run_step_verification, verification_freshness
+
 from project_verification import (
     DRIVER_SKILL_PATH,
     FEATURE_MAP_PATH,
@@ -18,7 +20,9 @@ from project_verification import (
 )
 
 
-MANIFEST = """sources:
+MANIFEST = """execution:
+  verificationCommandTimeoutSeconds: 300
+sources:
   requirements: docs/requirements
 protocol:
   taskDirectory: planning/tasks
@@ -216,6 +220,12 @@ def main() -> int:
         write(root, DRIVER_SKILL_PATH, DRIVER)
         fmap = feature_map(root)
         write(root, FEATURE_MAP_PATH, json.dumps(fmap, ensure_ascii=False, indent=2) + "\n")
+        write(root, ".gitignore", ".harness/local/\n")
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "verify@example.invalid"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "Verification Test"], cwd=root, check=True)
+        subprocess.run(["git", "add", "."], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=root, check=True)
 
         unqualified = validate_feature_map(root, require_qualified=False)
         assert unqualified["status"] == "BLOCKED", unqualified
@@ -241,6 +251,15 @@ def main() -> int:
         assert current["status"] == "PASS", current
         assert current["driver"]["primarySurface"] == "cli"
         assert current["features"][0]["surface"] == "cli"
+
+        # STEP Verification treats product proof as an explicit semantic boundary.
+        pending_run = run_step_verification(
+            root,
+            "STEP-001",
+            write_evidence=False,
+        )
+        assert pending_run["status"] == "MANUAL_REQUIRED", pending_run
+        assert pending_run["productPending"] == ["FEATURE-STATUS"], pending_run
 
         # No supplied proof means semantic handoff, not an invented PASS.
         observed, pending = validate_product_observations(
@@ -268,6 +287,22 @@ def main() -> int:
         assert pending == []
         assert observed[0]["status"] == "PASS"
         assert observed[0]["evidence"][0]["sha256"].startswith("sha256:")
+
+        verified = run_step_verification(
+            root,
+            "STEP-001",
+            product_results=[
+                {
+                    "featureId": "FEATURE-STATUS",
+                    "status": "PASS",
+                    "observed": "app status exited 0 and printed status=ok.",
+                    "evidencePaths": [live_proof],
+                }
+            ],
+        )
+        assert verified["status"] == "PASS", verified
+        freshness = verification_freshness(root, "STEP-001")
+        assert freshness["status"] == "PASS" and freshness["fresh"] is True, freshness
 
         write(root, "outside-proof.txt", "not local proof\n")
         expect_blocked(
