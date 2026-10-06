@@ -71,7 +71,10 @@ def main() -> int:
         required=True,
         choices=["SUCCESS", "PASS", "FAIL", "BLOCKED"],
     )
-    complete.add_argument("--details-json")
+    complete.add_argument(
+        "--details-json",
+        help="Inline JSON object string, not a file path. Example: --details-json '{\"reason\":\"done\"}'",
+    )
 
     resume = sub.add_parser("resume")
     resume.add_argument("--root", dest="root_command")
