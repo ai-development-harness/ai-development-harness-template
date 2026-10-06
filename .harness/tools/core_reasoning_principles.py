@@ -140,6 +140,11 @@ def _load_leaf(root: Path, path: Path) -> dict[str, Any]:
         expected_name = f"{principle_id}-{slug}.md"
         if path.name != expected_name:
             errors.append(f"filename must be {expected_name}")
+        if re.fullmatch(
+            rf"# {re.escape(principle_id)} — .+",
+            str(document.get("h1") or ""),
+        ) is None:
+            errors.append(f"H1 must start with '# {principle_id} — '")
 
     chars = len(document["text"])
     if chars > MAX_LEAF_CHARS:
@@ -175,11 +180,23 @@ def load_core_reasoning_principles(root: Path) -> list[dict[str, Any]]:
             "Core Reasoning Principles catalog directory is missing"
         )
 
-    leaves = [
-        _load_leaf(root, path)
-        for path in sorted(directory.glob("CRP-*.md"))
+    markdown_files = [
+        path
+        for path in sorted(directory.glob("*.md"))
         if path.is_file()
     ]
+    unexpected = [
+        _rel(root, path)
+        for path in markdown_files
+        if re.fullmatch(r"CRP-\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*\.md", path.name)
+        is None
+    ]
+    if unexpected:
+        raise CoreReasoningPrincipleError(
+            "unexpected Core Principle leaf files: " + ", ".join(unexpected)
+        )
+
+    leaves = [_load_leaf(root, path) for path in markdown_files]
     if not MIN_CATALOG_SIZE <= len(leaves) <= MAX_CATALOG_SIZE:
         raise CoreReasoningPrincipleError(
             "Core Reasoning Principles first-iteration catalog must contain "
@@ -222,24 +239,36 @@ def applicability_signals(
     raw_dependencies = meta.get("depends_on")
     plan = meta.get("plan")
 
-    flags = {
-        item
-        for item in raw_flags
-        if isinstance(item, str)
-    } if isinstance(raw_flags, list) else set()
-    dependencies = [
-        item
-        for item in raw_dependencies
-        if isinstance(item, str)
-    ] if isinstance(raw_dependencies, list) else []
+    if (
+        not isinstance(raw_flags, list)
+        or not raw_flags
+        or any(not isinstance(item, str) or not item for item in raw_flags)
+    ):
+        raise CoreReasoningPrincipleError(
+            "task risk_flags must be a non-empty string list"
+        )
+    if (
+        not isinstance(raw_dependencies, list)
+        or any(not isinstance(item, str) or not item for item in raw_dependencies)
+    ):
+        raise CoreReasoningPrincipleError(
+            "task depends_on must be a string list"
+        )
+    if not isinstance(plan, dict):
+        raise CoreReasoningPrincipleError("task plan must be an object")
 
-    execution_group_count = 0
-    if isinstance(plan, dict):
-        groups = plan.get("execution_groups")
-        if isinstance(groups, dict):
-            execution_group_count = len(groups)
-        elif isinstance(groups, list):
-            execution_group_count = len(groups)
+    flags = set(raw_flags)
+    dependencies = list(raw_dependencies)
+
+    groups = plan.get("execution_groups")
+    if groups is None:
+        execution_group_count = 0
+    elif isinstance(groups, dict):
+        execution_group_count = len(groups)
+    else:
+        raise CoreReasoningPrincipleError(
+            "task plan.execution_groups must be an object when present"
+        )
 
     signals: set[str] = set()
 
