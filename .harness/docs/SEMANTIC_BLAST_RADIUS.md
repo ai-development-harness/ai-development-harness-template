@@ -57,7 +57,7 @@ Deterministic facts возвращаются validator-ом отдельно и 
 
 Required analysis выделяет 1–2 critical hypotheses.
 
-На PLAN future proof может быть `planned`; такой result остаётся `INCONCLUSIVE`, пока obligation не доказан. Planner обязан включить proof surface в Verification/Implementation plan.
+На PLAN future proof может быть `planned`; такой result остаётся `INCONCLUSIVE`, пока obligation не доказан. Planner обязан включить proof surface в Verification/Implementation plan. Даже PLAN не может получить PASS по self-report: нужен fresh generated Verification PASS для exact current subject revision.
 
 На REVIEW `PASS` требует для каждой critical hypothesis:
 
