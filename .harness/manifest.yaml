@@ -41,6 +41,32 @@ review:
   # Пример: auto | always.
   tests: auto
 
+# Опциональный режим повышенной строгости. Normal mode не fan-out-ит агентов.
+# Policy: disabled полностью выключает capability; explicit требует явный запрос;
+# risk включает её только при deterministic high-risk STEP flags.
+highRigor:
+  # Arena: несколько независимых candidates + отдельный judge.
+  # Пример: explicit — запуск только по явному запросу.
+  arena: explicit
+  # Interrogate: несколько независимых readonly reviewers + lead synthesis.
+  # Пример: explicit | risk | disabled.
+  interrogate: explicit
+  # Целевое число candidate/reviewer seats.
+  # Пример: 3; допустимо 2..5.
+  seats: 3
+  # Жёсткий ceiling participant seats, не считая отдельного Arena judge.
+  # Пример: 5; допустимо 2..8.
+  maxSeats: 5
+  # Максимальный tokenizer-neutral размер exact input+rubric одного seat.
+  # Пример: 80000 Unicode chars.
+  maxInputCharsPerSeat: 80000
+  # Максимальный размер output одного completed seat.
+  # Пример: 24000 Unicode chars.
+  maxOutputCharsPerSeat: 24000
+  # Общий tokenizer-neutral input+output budget одного high-rigor run.
+  # Пример: 400000 Unicode chars.
+  maxTotalChars: 400000
+
 # Project-specific настройки управления repository skills.
 # Пример: search.maxResults ограничивает размер выдачи SKILL FIND.
 skills:
