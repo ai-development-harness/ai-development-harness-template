@@ -845,6 +845,25 @@ python3 .harness/tools/step-context.py STEP-NNN --phase review --json
 
 `--root <path>` предназначен для tests/tooling; обычный runtime использует repository root, содержащий tool. `--json` выдаёт компактный machine-readable JSON без pretty-print overhead.
 
+### Codebase Grounding payload validator
+
+Файлы:
+
+- `.harness/tools/codebase_grounding.py` — contract engine;
+- `.harness/tools/codebase-grounding.py` — CLI wrapper;
+- `.harness/tools/codebase-grounding-self-test.py` — bounded-context regressions.
+
+Validator не строит mental model и не читает repository произвольно. Он принимает уже сформированный semantic payload и Context Contract, затем fail-closed проверяет exact revision, explicit expansions, `simple|complex` budget, top-level `evidencePaths` и claim-level `evidence[]`; claim evidence обязано относиться к доступному context и индексироваться в `evidencePaths`.
+
+```bash
+python3 .harness/tools/codebase-grounding.py \
+  --context-file '<context-contract-json>' \
+  --payload-file '<grounding-json>' \
+  --json
+```
+
+PASS возвращает normalized payload с `contextBudget.baseMetrics`, фактическим числом expansion files/chars и hard limits. Invalid revision, forbidden expansion, ungrounded evidence path или превышение budget возвращает `BLOCKED`/non-zero.
+
 
 ---
 

@@ -251,7 +251,7 @@ def _build_context_contract(root: Path, step_id: str, role: str) -> dict[str, An
             ".harness/tools/**",
             "planning/** unrelated to current STEP",
             "docs/** unrelated to explicit canonical links",
-            ".agents/skills/** except selected command skill",
+            ".agents/skills/** except selected command skill or explicitly invoked core capability",
         ],
     }
     manifest_chars = len(

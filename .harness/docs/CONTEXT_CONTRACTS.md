@@ -91,11 +91,17 @@ Common PLAN/IMPLEMENT/REVIEW не должен автоматически заг
 
 - `.harness/tools/**`;
 - unrelated `docs/**`, REQ, ADR или STEP;
-- unrelated `.agents/skills/**`;
+- unrelated `.agents/skills/**`; conditionally invoked core capability разрешён только явным workflow trigger и не preload-ится заранее;
 - весь repository «на всякий случай».
 
 Python source остаётся подробно прокомментированным; token economy достигается
 тем, что semantic role получает output tool, а не implementation tool.
+
+## Codebase Grounding
+
+Architecture-sensitive PLAN/AUDIT может условно вызвать core capability `codebase-grounding`. Она использует existing Context Contract как base context, а дополнительные code/tests/config paths получает только через explicit expansions. Для `simple` scope разрешено максимум 6 expansion files / 60 000 chars, для `complex` — 16 / 160 000. Deterministic validator `.harness/tools/codebase-grounding.py` сверяет revision, expansion safety, budget и evidence paths. Подробности: [`CODEBASE_GROUNDING.md`](CODEBASE_GROUNDING.md).
+
+Capability не добавляет новую пользовательскую команду и не превращает semantic inference в authority.
 
 ## Fail-closed semantics
 
