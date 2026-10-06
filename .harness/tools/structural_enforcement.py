@@ -620,7 +620,6 @@ def _proof(
         root,
         fixture,
         label="structural enforcement regression fixture",
-        must_exist=False,
     )
     if require_existing_fixture and (
         not fixture_path.is_file() or fixture_path.is_symlink()
