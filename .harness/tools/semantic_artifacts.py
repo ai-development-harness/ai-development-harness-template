@@ -264,6 +264,29 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
     """Create validated immutable planning review and stamp matching PASS plan."""
     verdict, findings, rationale = _planning_payload(payload)
     task = read_task(root, step_id)
+
+    # planning-review BLOCKED может повторяться после исправления authored/upstream
+    # artifacts и нового PLAN. Без durable cap такой цикл ограничен только терпением
+    # модели/пользователя. Считаем уже созданные валидные reports для STEP и
+    # блокируем очередной semantic round до записи нового report.
+    directory = planning_review_directory(root) / step_id
+    existing_reports = sorted(directory.glob("PLAN-REVIEW-*.md")) if directory.is_dir() else []
+    max_rounds = max_plan_review_cycles(root)
+    if len(existing_reports) >= max_rounds:
+        return {
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "completionResult": "BLOCKED",
+            "reasonCode": "PLAN_REVIEW_LIMIT_REACHED",
+            "stepId": step_id,
+            "planReviewCycles": len(existing_reports),
+            "maxPlanReviewCycles": max_rounds,
+            "findings": findings,
+            "message": (
+                "planning-review cycle limit reached; stop automatic replanning and "
+                "handoff to the user with the remaining findings"
+            ),
+        }
     plan = task["frontmatter"].get("plan")
     if not isinstance(plan, dict) or plan.get("status") != "draft":
         raise SemanticArtifactError("planning review requires plan.status=draft")
