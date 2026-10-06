@@ -696,11 +696,59 @@ def validate_trace(
     if len(seat_ids) != len(set(seat_ids)):
         raise HighRigorError("participant seatId values must be unique")
 
+    run_prefix = f"{LOCAL_ROOT.as_posix()}/{run_id}/"
+    traced_files: list[tuple[str, str]] = [
+        ("sharedInputFile", str(shared_input["path"])),
+        ("rubricFile", str(rubric["path"])),
+    ]
+    for item in normalized:
+        traced_files.append(
+            (f"{item['seatId']}.input", str(item["input"]["path"]))
+        )
+        traced_files.append(
+            (f"{item['seatId']}.rubric", str(item["rubric"]["path"]))
+        )
+        if isinstance(item.get("output"), dict):
+            traced_files.append(
+                (f"{item['seatId']}.output", str(item["output"]["path"]))
+            )
+    for label, rel in traced_files:
+        if not rel.startswith(run_prefix):
+            raise HighRigorError(
+                f"{label} must stay inside the current run directory {run_prefix}"
+            )
+
     completed = [item for item in normalized if item["status"] == "completed"]
     execution_ids = [str(item["sessionExecutionId"]) for item in completed]
     if len(execution_ids) != len(set(execution_ids)):
         raise HighRigorError(
             "completed high-rigor seats require independent sessionExecutionId values"
+        )
+
+    output_paths = [
+        str(item["output"]["path"])
+        for item in completed
+        if isinstance(item.get("output"), dict)
+    ]
+    if len(output_paths) != len(set(output_paths)):
+        raise HighRigorError(
+            "completed high-rigor seats must write separate output files"
+        )
+    protected_inputs = {
+        str(shared_input["path"]),
+        str(rubric["path"]),
+        *[
+            str(item["input"]["path"])
+            for item in normalized
+        ],
+        *[
+            str(item["rubric"]["path"])
+            for item in normalized
+        ],
+    }
+    if set(output_paths).intersection(protected_inputs):
+        raise HighRigorError(
+            "participant output must not overwrite shared/rubric/seat input files"
         )
 
     total_input_chars = sum(
@@ -799,6 +847,7 @@ def validate_trace(
         raise HighRigorError("successful high-rigor run requires synthesis")
 
     synthesis_chars = 0
+    synthesis_path: str | None = None
     if isinstance(synthesis, dict):
         if mode == "arena":
             synthesis_output = synthesis.get("synthesisOutput")
@@ -806,6 +855,15 @@ def validate_trace(
             synthesis_output = synthesis.get("leadOutput")
         if isinstance(synthesis_output, dict):
             synthesis_chars = int(synthesis_output.get("chars") or 0)
+            synthesis_path = str(synthesis_output.get("path"))
+            if not synthesis_path.startswith(run_prefix):
+                raise HighRigorError(
+                    "lead/synthesis output must stay inside the current run directory"
+                )
+            if synthesis_path in protected_inputs or synthesis_path in output_paths:
+                raise HighRigorError(
+                    "lead/synthesis output must use a separate output file"
+                )
 
     if synthesis_chars > int(config["maxOutputCharsPerSeat"]):
         raise HighRigorError(
