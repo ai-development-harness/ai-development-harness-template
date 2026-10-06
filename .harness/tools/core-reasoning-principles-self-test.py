@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 import copy
+import shutil
+import tempfile
 
 from context_budget import evaluate_context_budget
 from core_reasoning_principles import (
+    CoreReasoningPrincipleError,
     NAMESPACE,
     applicability_signals,
     load_core_reasoning_principles,
@@ -151,6 +154,56 @@ def main() -> int:
         "CRP-008",
     ], complex_ids
     assert len(complex_ids) < len(catalog)
+
+    # Malformed canonical facts fail closed instead of silently producing
+    # an empty applicability set.
+    for malformed in (
+        {"risk_flags": "none"},
+        {"depends_on": "STEP-010"},
+        {"plan": []},
+    ):
+        broken = task()
+        frontmatter = broken["frontmatter"]
+        assert isinstance(frontmatter, dict)
+        frontmatter.update(malformed)
+        try:
+            applicability_signals(
+                broken,
+                role="planner",
+                artifact_count=1,
+                section_count=7,
+            )
+        except CoreReasoningPrincipleError:
+            pass
+        else:
+            raise AssertionError("malformed STEP facts must fail closed")
+
+    # Unexpected Markdown inside the leaves directory cannot bypass catalog
+    # validation by using a non-CRP filename.
+    with tempfile.TemporaryDirectory(prefix="crp-catalog-") as tmp:
+        isolated = Path(tmp)
+        destination = (
+            isolated
+            / ".agents"
+            / "skills"
+            / "core-reasoning-principles"
+            / "leaves"
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            ROOT / ".agents/skills/core-reasoning-principles/leaves",
+            destination,
+        )
+        (destination / "notes.md").write_text(
+            "# Hidden rule\n",
+            encoding="utf-8",
+        )
+        try:
+            load_core_reasoning_principles(isolated)
+        except CoreReasoningPrincipleError:
+            pass
+        else:
+            raise AssertionError("unexpected leaf file must fail closed")
 
     # Applicability itself is deterministic and runtime-neutral.
     codex_signals = applicability_signals(
