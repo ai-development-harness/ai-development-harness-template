@@ -96,7 +96,7 @@ def _sha256_bytes(value: bytes) -> str:
     return "sha256:" + hashlib.sha256(value).hexdigest()
 
 
-def _local_file(root: Path, value: object, *, label: str) -> dict[str, Any]:
+def _local_path(root: Path, value: object, *, label: str) -> tuple[Path, str]:
     rel = _single_line(value, label=label, max_chars=1000)
     raw = Path(rel)
     if raw.is_absolute() or ".." in raw.parts:
@@ -111,6 +111,21 @@ def _local_file(root: Path, value: object, *, label: str) -> dict[str, Any]:
         path = resolve_repo_path(root, normalized, label=label)
     except ConfigError as exc:
         raise HighRigorError(str(exc)) from exc
+
+    # Lexical path components are part of the trust boundary. A symlinked
+    # parent could otherwise make a local-looking trace read another file.
+    current = root.resolve()
+    for part in raw.parts:
+        current = current / part
+        if current.is_symlink():
+            raise HighRigorError(
+                f"{label} must not contain symlink components: {normalized}"
+            )
+    return path, normalized
+
+
+def _local_file(root: Path, value: object, *, label: str) -> dict[str, Any]:
+    path, normalized = _local_path(root, value, label=label)
     if not path.is_file() or path.is_symlink():
         raise HighRigorError(f"{label} must be a regular file: {normalized}")
     try:
@@ -139,9 +154,16 @@ def _task_facts(root: Path, step_id: str | None) -> dict[str, Any]:
     if (
         not isinstance(raw_flags, list)
         or not raw_flags
-        or any(not isinstance(item, str) for item in raw_flags)
+        or any(not isinstance(item, str) or not item for item in raw_flags)
     ):
         raise HighRigorError("STEP risk_flags are malformed")
+    unknown_flags = sorted(set(raw_flags) - (RISK_FLAGS | {"none"}))
+    if unknown_flags:
+        raise HighRigorError(
+            "STEP risk_flags contain unsupported values: " + ", ".join(unknown_flags)
+        )
+    if "none" in raw_flags and len(set(raw_flags)) > 1:
+        raise HighRigorError("STEP risk_flags cannot combine none with material risks")
     return {
         "stepId": step_id,
         "stepType": meta.get("type"),
@@ -395,7 +417,6 @@ def _arena_synthesis(
     *,
     completed_candidates: set[str],
     completed_judges: set[str],
-    all_seats: set[str],
 ) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise HighRigorError("arena synthesis must be an object")
@@ -735,12 +756,16 @@ def validate_trace(
             degradation.append("INSUFFICIENT_INDEPENDENT_CANDIDATES")
         if len(completed_judges) != 1:
             degradation.append("INDEPENDENT_JUDGE_UNAVAILABLE")
+        requested_judges = [
+            item for item in normalized if item["role"] == "judge"
+        ]
+        if len(requested_judges) != 1:
+            raise HighRigorError("arena requires exactly one judge seat")
         synthesis = _arena_synthesis(
             root,
             payload.get("synthesis"),
             completed_candidates=completed_candidates,
             completed_judges=completed_judges,
-            all_seats=seat_set,
         ) if completed_candidates and completed_judges else None
     else:
         reviewers = [item for item in normalized if item["role"] == "reviewer"]
@@ -764,6 +789,23 @@ def validate_trace(
     # Synthesis cannot silently disappear in an otherwise successful fan-out.
     if not degradation and synthesis is None:
         raise HighRigorError("successful high-rigor run requires synthesis")
+
+    synthesis_chars = 0
+    if isinstance(synthesis, dict):
+        if mode == "arena":
+            synthesis_output = synthesis.get("synthesisOutput")
+        else:
+            synthesis_output = synthesis.get("leadOutput")
+        if isinstance(synthesis_output, dict):
+            synthesis_chars = int(synthesis_output.get("chars") or 0)
+
+    total_output_chars += synthesis_chars
+    total_chars = total_input_chars + total_output_chars
+    if total_chars > int(config["maxTotalChars"]):
+        raise HighRigorError(
+            f"high-rigor trace exceeds total char budget after synthesis: "
+            f"{total_chars}>{config['maxTotalChars']}"
+        )
 
     result_status = "PASS" if not degradation else "DEGRADED"
     return {
@@ -806,7 +848,9 @@ def validate_trace(
 
 def _load_json(root: Path, value: Path, *, label: str) -> object:
     try:
-        path = resolve_repo_path(root, value.as_posix(), label=label)
+        path, _ = _local_path(root, value.as_posix(), label=label)
+        if not path.is_file() or path.is_symlink():
+            raise HighRigorError(f"{label} must be a regular local file")
         return json.loads(path.read_text(encoding="utf-8"))
     except (ConfigError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise HighRigorError(f"cannot read {label}: {exc}") from exc
