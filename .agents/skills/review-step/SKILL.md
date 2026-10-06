@@ -68,7 +68,7 @@ description: Run an independent read-only review of an exact repository revision
    ```
 
    Dispatcher до reasoning сохраняет exact repository revision + gate basis в active execution. Writer повторно вычисляет factual revision/gate и **отказывается создавать report**, если они отличаются от stamped expectation; модель не передаёт и не выбирает expected revision. После совпадения writer требует результаты mandatory reviewers, создаёт immutable report через exclusive reservation и проверяет его canonical validator-ом.
-   Writer сохраняет findings дважды в одном immutable report: human-readable `## Findings` и canonical `## Machine-readable findings` (Review Contract v2). Validator сверяет обе формы; malformed/duplicate/fingerprint-mismatch fail-closed.
+   Writer сохраняет findings дважды в одном immutable report: human-readable `## Findings` и canonical `## Machine-readable findings` (Review Contract v3). Validator сверяет обе формы; malformed/duplicate/fingerprint-mismatch fail-closed.
    Execution result бери только из `completionResult` writer-а (`PASS|FAIL|BLOCKED`); не вычисляй verdict второй раз после записи report.
    Для semantic PASS writer сам выполняет lifecycle close `status → completed`, доказывает type-specific completion proof и синхронизирует projections. Если proof недостаточен, PASS report остаётся immutable evidence, STEP не закрывается, а `completionResult=BLOCKED`.
 9. Product code не исправляй. При BLOCKED укажи corrective STEP/RESEARCH/ADR в semantic finding/rationale; contract defect не маршрутизируй в FAIL→FIX.
