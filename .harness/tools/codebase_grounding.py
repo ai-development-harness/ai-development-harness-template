@@ -62,6 +62,47 @@ def _required_context_paths(context_contract: dict[str, Any]) -> set[str]:
     return result
 
 
+def _normalize_claim_entries(
+    value: object,
+    *,
+    field: str,
+    allowed_evidence: set[str],
+) -> list[dict[str, Any]]:
+    """Проверить semantic claim envelope, не оценивая истинность самого claim."""
+    items = _list(value, label=field)
+    result: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise GroundingContractError(f"{field}[{index}] must be an object")
+        claim = _non_empty_string(
+            item.get("claim"),
+            label=f"{field}[{index}].claim",
+        )
+        raw_evidence = _list(
+            item.get("evidence"),
+            label=f"{field}[{index}].evidence",
+        )
+        evidence: list[str] = []
+        for evidence_index, raw_path in enumerate(raw_evidence):
+            evidence_path = _non_empty_string(
+                raw_path,
+                label=f"{field}[{index}].evidence[{evidence_index}]",
+            )
+            if evidence_path not in allowed_evidence:
+                raise GroundingContractError(
+                    f"{field}[{index}] evidence was not available to grounding: "
+                    f"{evidence_path}"
+                )
+            if evidence_path not in evidence:
+                evidence.append(evidence_path)
+        if not evidence:
+            raise GroundingContractError(
+                f"{field}[{index}].evidence must be non-empty"
+            )
+        result.append({"claim": claim, "evidence": evidence})
+    return result
+
+
 def validate_grounding_payload(
     root: Path,
     context_contract: dict[str, Any],
@@ -110,15 +151,9 @@ def validate_grounding_payload(
                 f"context.metrics.{key} must be a non-negative integer"
             )
 
-    normalized_sections: dict[str, list[Any]] = {}
+    raw_sections: dict[str, list[Any]] = {}
     for field in REQUIRED_LIST_FIELDS:
-        normalized_sections[field] = _list(payload.get(field), label=field)
-    if payload.get("status") == "PASS":
-        for field in ("flow", "ownership", "boundaries"):
-            if not normalized_sections[field]:
-                raise GroundingContractError(
-                    f"{field} must be non-empty for PASS"
-                )
+        raw_sections[field] = _list(payload.get(field), label=field)
 
     expansions = _list(payload.get("expansions"), label="expansions")
     limits = SCOPE_LIMITS[scope]
@@ -189,6 +224,30 @@ def validate_grounding_payload(
             normalized_evidence.append(path)
     if payload.get("status") == "PASS" and not normalized_evidence:
         raise GroundingContractError("evidencePaths must be non-empty for PASS")
+
+    normalized_sections: dict[str, list[dict[str, Any]]] = {}
+    claim_evidence: set[str] = set()
+    for field in REQUIRED_LIST_FIELDS:
+        normalized = _normalize_claim_entries(
+            raw_sections[field],
+            field=field,
+            allowed_evidence=allowed_evidence,
+        )
+        normalized_sections[field] = normalized
+        for item in normalized:
+            claim_evidence.update(item["evidence"])
+    if payload.get("status") == "PASS":
+        for field in ("flow", "ownership", "boundaries"):
+            if not normalized_sections[field]:
+                raise GroundingContractError(
+                    f"{field} must be non-empty for PASS"
+                )
+    missing_from_index = sorted(claim_evidence - set(normalized_evidence))
+    if missing_from_index:
+        raise GroundingContractError(
+            "claim evidence must also be listed in evidencePaths: "
+            + ", ".join(missing_from_index)
+        )
 
     result: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
