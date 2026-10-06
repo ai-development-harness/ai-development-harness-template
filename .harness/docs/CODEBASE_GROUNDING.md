@@ -93,7 +93,7 @@ Canonical schema описана в `.agents/skills/codebase-grounding/SKILL.md`.
 - `evidencePaths`;
 - `expansions`.
 
-Для PASS `flow`, `ownership` и `boundaries` непустые.
+Для PASS `flow`, `ownership` и `boundaries` непустые. Каждый элемент semantic-массива использует envelope `{claim, evidence[]}`; claim-level evidence должно быть доступно в required context/validated expansions и одновременно перечислено в top-level `evidencePaths`.
 
 ## Deterministic validation
 
