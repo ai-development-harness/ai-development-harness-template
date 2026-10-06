@@ -86,7 +86,7 @@ Writer сам заменяет только `## Implementation plan` / `## Verif
 
 ## Phase E — independent planning-review payload
 
-Передай persisted draft отдельному `reviewer` agent/session, отличному от planner и от architect, если тот привлекался. Planning reviewer выполняет adversarial pass и обязан проверить:
+Передай persisted draft отдельному `reviewer` agent/session, отличному от planner и от architect, если тот привлекался. Если Semantic Blast Radius был required, передай reviewer также его **validated result** как phase-local evidence, чтобы reviewer мог сопоставить unresolved critical proof obligations с persisted Verification/plan. Planning reviewer выполняет adversarial pass и обязан проверить:
 
 - покрывает ли plan все material architecture impacts;
 - не скрыто ли новое durable architecture decision без ADR/OQ/prerequisite;
