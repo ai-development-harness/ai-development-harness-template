@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic regression tests for Review Contract v2 structured findings."""
+"""Synthetic regression tests for Review Contract v3 evidence-gated findings."""
 from __future__ import annotations
 
 import json
@@ -44,6 +44,19 @@ def sample() -> dict[str, object]:
         },
         "constraints": ["Do not bypass CTS."],
         "evidence": ["execution-self-test reproducer"],
+        "evidenceBasis": {
+            "kind": "inferred",
+            "source": "Reviewer-derived resolver-loop hypothesis.",
+            "preconditions": [
+                "A persisted FAIL review exists for STEP-001.",
+                "Resolver consumes that review while selecting the next command.",
+            ],
+            "verification": {
+                "method": "Execute the resolver against the persisted FAIL fixture.",
+                "result": "Resolver returned STEP REVIEW instead of STEP FIX.",
+                "outcome": "confirmed",
+            },
+        },
     }
 
 
@@ -96,7 +109,52 @@ def main() -> int:
         except FindingContractError:
             pass
         else:
-            raise AssertionError(f"{label} was accepted as Review Contract v2")
+            raise AssertionError(f"{label} was accepted as Review Contract v3")
+
+    missing_basis = sample()
+    missing_basis.pop("evidenceBasis")
+    try:
+        normalize_findings([missing_basis])
+    except FindingContractError as exc:
+        assert "evidenceBasis" in str(exc)
+    else:
+        raise AssertionError("finding without evidenceBasis was accepted")
+
+    missing_preconditions = sample()
+    missing_preconditions["evidenceBasis"] = {
+        "kind": "inferred",
+        "source": "Reviewer-derived hypothesis.",
+        "preconditions": [],
+        "verification": {
+            "method": "Run a small reproducer.",
+            "result": "Scenario reproduced.",
+            "outcome": "confirmed",
+        },
+    }
+    try:
+        normalize_findings([missing_preconditions])
+    except FindingContractError as exc:
+        assert "preconditions" in str(exc)
+    else:
+        raise AssertionError("inferred finding without preconditions was accepted")
+
+    invalidated = sample()
+    invalidated["evidenceBasis"] = {
+        "kind": "inferred",
+        "source": "Reviewer-derived hypothesis.",
+        "preconditions": ["The frontend process can read the PEM file."],
+        "verification": {
+            "method": "GET /private.pem and inspect container mounts.",
+            "result": "GET returned 404 and the PEM is backend-only.",
+            "outcome": "invalidated",
+        },
+    }
+    try:
+        normalize_findings([invalidated])
+    except FindingContractError as exc:
+        assert "outcome must be confirmed" in str(exc)
+    else:
+        raise AssertionError("invalidated hypothesis was accepted as durable finding")
 
     try:
         normalize_findings([sample(), sample()])
@@ -113,7 +171,7 @@ def main() -> int:
                 {
                     "schema": 1,
                     "kind": "step_review",
-                    "finding_contract": 2,
+                    "finding_contract": 3,
                     "step_id": "STEP-001",
                 },
                 f"""# STEP REVIEW STEP-001 — 2026-09-30 12:00
@@ -131,8 +189,45 @@ human-readable finding
             ),
             encoding="utf-8",
         )
-        parsed = parse_machine_findings(parse_document(path))
+        parsed = parse_machine_findings(
+            parse_document(path),
+            expected_version=3,
+        )
         assert parsed == [finding], json.dumps(parsed, ensure_ascii=False, indent=2)
+
+        # Historical Review Contract v2 remains parseable as immutable history.
+        legacy = sample()
+        legacy.pop("evidenceBasis")
+        legacy_normalized = normalize_findings([legacy], contract_version=2)[0]
+        legacy_path = Path(tmp) / "legacy-review.md"
+        legacy_path.write_text(
+            render_document(
+                {
+                    "schema": 1,
+                    "kind": "step_review",
+                    "finding_contract": 2,
+                    "step_id": "STEP-001",
+                },
+                f"""# STEP REVIEW STEP-001 — 2026-09-30 11:00
+
+## Findings
+
+human-readable legacy finding
+
+## Machine-readable findings
+
+```json
+{json.dumps({"schemaVersion": 2, "findings": [legacy_normalized]}, ensure_ascii=False, sort_keys=True, indent=2)}
+```
+""",
+            ),
+            encoding="utf-8",
+        )
+        parsed_legacy = parse_machine_findings(
+            parse_document(legacy_path),
+            expected_version=2,
+        )
+        assert parsed_legacy == [legacy_normalized]
 
         text = path.read_text(encoding="utf-8")
         path.write_text(
