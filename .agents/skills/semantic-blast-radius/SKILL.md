@@ -56,7 +56,7 @@ python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase review --json
 
 На PLAN:
 
-- если direct proof уже существует, зафиксируй его только когда canonical generated Verification evidence имеет fresh PASS на текущем subject revision;
+- если direct proof уже существует, зафиксируй его только когда **exact Verification command**, указанный в proof, имеет fresh generated PASS evidence на текущем subject revision; pending unrelated manual checks остаются отдельным completion/review gate;
 - если proof появится только после реализации, поставь `proof.status=planned` и добавь соответствующий command/check в `testSurfaces`;
 - `INCONCLUSIVE` допустим как planning result, но critical proof obligation должен попасть в Verification/Implementation plan до Ready;
 - одного model self-report `proof.status=proven` недостаточно для PASS.
@@ -65,7 +65,7 @@ python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase review --json
 
 - `PASS` допустим только когда каждая critical hypothesis имеет `proof.status=proven`;
 - direct proof должен ссылаться на exact `Verification` command текущего STEP;
-- generated Verification evidence обязано быть fresh PASS на текущем subject revision;
+- exact proof command обязана иметь fresh generated PASS evidence на текущем subject revision; unrelated manual checks не подменяются этим proof и проверяются существующими completion/review gates;
 - отсутствующий/устаревший executable proof => `INCONCLUSIVE`, не PASS.
 
 ## Structured payload
