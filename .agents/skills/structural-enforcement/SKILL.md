@@ -10,7 +10,7 @@ description: Convert repeated structured Harness corrections into the strongest 
 
 ## Evidence boundary
 
-Основной deterministic источник — Review Contract v2 findings:
+Основной deterministic источник — Review Contract v3 evidence-gated findings:
 
 ```bash
 python3 .harness/tools/structural-enforcement.py --step STEP-NNN --json
@@ -29,7 +29,7 @@ Tool агрегирует exact `category + fingerprint` и дедуплицир
 
 Chat, transcript и session memory не являются source kinds и не могут использоваться как primary evidence.
 
-Legacy review prose не реконструируй в machine findings. Если historical report не имеет Review Contract v2, tool его учитывает только как skipped legacy metric.
+Legacy review prose не реконструируй в machine findings. Historical v1/v2 reports не используй для recurrence: они предшествуют Evidence Gate и учитываются только как skipped legacy metric.
 
 ## Recurrence rule
 

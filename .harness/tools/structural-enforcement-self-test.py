@@ -148,7 +148,17 @@ def finding() -> dict[str, object]:
             "admissibleAlternatives": [],
         },
         "constraints": ["Keep one canonical owner."],
-        "evidence": ["src/state.py"],
+        "evidence": ["src/state.py:10 direct state.json write reproduced in fixture"],
+        "evidenceBasis": {
+            "kind": "reproduced",
+            "source": "Synthetic direct-write regression fixture.",
+            "preconditions": [],
+            "verification": {
+                "method": "Inspect the fixture call path and execute the owner-bypass reproducer.",
+                "result": "Caller writes state.json directly instead of using StateStore.update().",
+                "outcome": "confirmed",
+            },
+        },
     }
 
 
@@ -158,7 +168,7 @@ def review(
     name: str,
     revision: str,
     include_finding: bool = True,
-    finding_contract: int = 2,
+    finding_contract: int = 3,
 ) -> None:
     findings = normalize_findings([finding()]) if include_finding else []
     machine = render_machine_findings(findings)

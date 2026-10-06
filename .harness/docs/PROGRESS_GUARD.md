@@ -49,7 +49,7 @@ Material fingerprint строится из уже существующих canon
 - type-specific completion proof;
 - Completion Gate deterministic precheck;
 - Verification freshness/status;
-- Review Contract v2 finding fingerprints;
+- structured Review Contract v2/v3 finding fingerprints;
 - Completion Convergence findings.
 
 Новые project-owned artifacts для этого не создаются.

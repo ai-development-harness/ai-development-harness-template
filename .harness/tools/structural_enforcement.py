@@ -4,7 +4,7 @@
 Модуль разделяет две ответственности:
 
 1. deterministic evidence aggregation:
-   - Review Contract v2 findings агрегируются по stable category/fingerprint;
+   - Review Contract v3 evidence-gated findings агрегируются по stable category/fingerprint;
    - один и тот же finding на той же reviewed revision считается один раз;
    - дополнительные structured signals принимаются только в закрытом envelope;
    - chat/transcript/session memory не являются допустимым source kind;
@@ -143,7 +143,7 @@ def _review_occurrence_id(
     """Deduplicate repeated reports of the same finding on the same subject.
 
     Если report содержит canonical reviewed_revision, identity строится из неё.
-    Если historical v2 report revision не содержит, fallback — immutable report
+    Если structured report revision не содержит, fallback — immutable report
     path: это консервативно считает такой report отдельным occurrence.
     """
     revision_identity: object
@@ -176,10 +176,10 @@ def collect_review_evidence(
     *,
     step_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Collect only Review Contract v2 structured findings.
+    """Collect only current Review Contract v3 evidence-gated findings.
 
     Legacy review history is intentionally skipped, because converting prose to
-    recurring classes would reintroduce semantic guessing. Malformed v2 machine
+    recurring classes would reintroduce semantic guessing. Historical v1/v2 reports are skipped, because they predate the Evidence Gate. Malformed v3 machine
     findings fail closed.
     """
     root = root.resolve()
@@ -231,7 +231,7 @@ def collect_review_evidence(
             findings = parse_machine_findings(document)
         except (ValueError, TypeError) as exc:
             raise StructuralEnforcementError(
-                f"{path.relative_to(root)}: invalid Review Contract v2 findings: {exc}"
+                f"{path.relative_to(root)}: invalid Review Contract v3 findings: {exc}"
             ) from exc
 
         report = path.relative_to(root).as_posix()

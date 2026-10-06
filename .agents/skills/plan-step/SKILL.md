@@ -105,6 +105,12 @@ Writer сам заменяет только `## Implementation plan` / `## Verif
 - не основан ли план на недоказанном предположении о соседней подсистеме.
 - если persisted draft содержит `plan.execution_groups`, прочитай canonical projection через `execution-groups.py STEP-NNN --json` и проверь, что group purpose соответствует связанным plan steps, declared `mutationPaths` достаточно консервативны, `verificationResponsibilities` реально проверяют group outcome, а `parallel=true` не основан только на разных filenames. Deterministic отсутствие overlap — необходимое, но не достаточное semantic доказательство независимости.
 
+Reviewer возвращает только material findings, которые меняют допустимость или содержание реализации. Material finding — это минимум одно из: plan приводит к иному observable implementation behaviour; противоречит Accepted ADR/REQ/STEP contract; оставляет обязательный acceptance/verification/prerequisite без владельца или доказуемого пути выполнения. Wording/style/clarity notes, не меняющие эти свойства, помещай только в `rationale` и не превращай в blocker.
+
+Для `type: adr` planning-review проверяет адекватность плана принятия/фиксации решения, prerequisites, ownership, compatibility и Verification. Сам authored ADR не является вторым объектом full editorial review на каждом PLAN round; формулировки ADR блокируют PLAN только если создают material contradiction/ambiguity по определению выше. ADR остаётся частью context fingerprint, чтобы смысловое изменение корректно stale-ило Ready plan.
+
+Если привлекаешь reviewer/architect/specialized subagent, brief обязан явно сказать: читать только repository files из выданного context; не читать outputs/transcripts/temp files других agents; не ждать и не polling-ить другие reviewers; вернуть свой результат сразу после собственного pass. Параллельные specialized reviewers независимы.
+
 Reviewer возвращает только:
 
 ```json
@@ -117,6 +123,6 @@ Reviewer возвращает только:
 python3 .harness/tools/semantic-writer.py planning-review STEP-NNN --payload-file '<local-json-or->'
 ```
 
-Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready.
+Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready. Количество durable planning-review rounds для одного STEP ограничено `.harness/manifest.yaml → execution.maxPlanReviewCycles`; при `PLAN_REVIEW_LIMIT_REACHED` не запускай очередной auto-fix/re-PLAN. Остановись и передай пользователю оставшиеся findings.
 
 После writer завершай execution только значением `completionResult` из его JSON; для PASS planning review это `SUCCESS`, для blocker — `BLOCKED`. Не переинтерпретируй verdict. Изменение Implementation plan/upstream semantic input позже по-прежнему stale-ит Ready fingerprints. Production code не меняй.

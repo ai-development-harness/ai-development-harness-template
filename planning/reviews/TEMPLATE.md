@@ -1,6 +1,7 @@
 ---
 schema: 1
 kind: step_review
+finding_contract: 3
 step_id: STEP-NNN
 verdict: pass
 reviewer_role: reviewer
@@ -44,8 +45,22 @@ specialized_reviews:
 **Category:** implementation
 **Location:** path:line / component
 **Scenario:** Given / When / Then
+**Expected:** ...
+**Observed:** ...
 **Impact:** ...
+**Evidence kind:** contract | reproduced | inferred
+**Evidence source:** exact REQ/ADR/STEP, reproducer или origin гипотезы
+**Verification method:** самый дешёвый решающий check/reproducer
+**Verification result:** фактический результат проверки
+**Confirmed preconditions:**
+- для inferred finding перечислить проверенные необходимые предпосылки
+**Evidence:**
+- concrete repository/runtime evidence
 **Fix direction:** ...
+
+## Machine-readable findings
+
+Новые reports используют Review Contract v3. Каждый material finding обязан содержать `evidenceBasis` с `verification.outcome: confirmed`. Invalidated/unverified hypotheses сюда не попадают.
 
 ## Verification observations
 

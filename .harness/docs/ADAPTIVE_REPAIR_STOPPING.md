@@ -25,11 +25,11 @@ Hard cap проверяется первым, поэтому существую�
 
 ## Источник данных
 
-Adaptive decision не использует chat history и не просит модель оценить «есть ли прогресс». Сравниваются два immutable Review Contract v2 report:
+Adaptive decision не использует chat history и не просит модель оценить «есть ли прогресс». Сравниваются два immutable Review Contract v3 report:
 
 - предыдущий report берётся из `current.context.reviewReportBefore`, зафиксированного при старте REVIEW;
 - текущий report — новый canonical REVIEW artifact;
-- findings сравниваются по stable `fingerprint` из Review Contract v2;
+- findings сравниваются по stable `fingerprint` из Review Contract v3;
 - repository delta берётся из `reviewed_revision`;
 - semantic scope сравнивается через `contract_basis`.
 
@@ -114,7 +114,7 @@ Telemetry записывается при completion второго и посл�
 ## Граница ответственности
 
 - CTS определяет допустимость REVIEW → FIX;
-- Review Contract v2 определяет finding identity;
+- Review Contract v3 определяет finding identity;
 - `repair_cycle.py` вычисляет delta;
 - `execution_status.py` хранит последнюю telemetry и применяет stop;
 - `maxFixReviewCycles` остаётся hard upper bound.
