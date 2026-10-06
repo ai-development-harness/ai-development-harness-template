@@ -96,6 +96,10 @@ def catalog_directory(root: Path) -> Path:
 
 def _load_leaf(root: Path, path: Path) -> dict[str, Any]:
     """Parse one short CRP leaf and validate the machine-readable envelope."""
+    if path.is_symlink():
+        raise CoreReasoningPrincipleError(
+            f"{_rel(root, path)}: Core Principle leaf must not be a symlink"
+        )
     try:
         document = parse_document(path)
     except (DocumentError, OSError, UnicodeError) as exc:
@@ -106,6 +110,20 @@ def _load_leaf(root: Path, path: Path) -> dict[str, Any]:
     errors = require_schema(document)
     errors.extend(require_nonempty_sections(document, REQUIRED_SECTIONS))
     meta = document["frontmatter"]
+    allowed_meta = {
+        "schema",
+        "namespace",
+        "id",
+        "slug",
+        "status",
+        "roles",
+        "triggers",
+    }
+    unexpected_meta = sorted(set(meta) - allowed_meta)
+    if unexpected_meta:
+        errors.append(
+            "unsupported frontmatter keys: " + ", ".join(unexpected_meta)
+        )
 
     if meta.get("namespace") != NAMESPACE:
         errors.append(f"frontmatter namespace must be {NAMESPACE}")
