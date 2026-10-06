@@ -594,4 +594,4 @@ STEP закрывается только если:
 
 ## Adaptive FIX ↔ REVIEW stopping
 
-После как минимум одного успешного FIX → REVIEW цикла новый `REVIEW=FAIL` может остановить orchestration раньше `maxFixReviewCycles` по deterministic delta двух Review Contract v2 reports. Поддерживаемые stop reasons: `NO_PROGRESS`, `REPEATED_FINDINGS`, `REGRESSION`. Hard cap `FIX_REVIEW_LIMIT_REACHED` сохраняет приоритет и абсолютную верхнюю границу. Подробности: [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).
+После как минимум одного успешного FIX → REVIEW цикла новый `REVIEW=FAIL` может остановить orchestration раньше `maxFixReviewCycles` по deterministic delta двух evidence-gated Review Contract v3 reports. Поддерживаемые stop reasons: `NO_PROGRESS`, `REPEATED_FINDINGS`, `REGRESSION`. Hard cap `FIX_REVIEW_LIMIT_REACHED` сохраняет приоритет и абсолютную верхнюю границу. Подробности: [`ADAPTIVE_REPAIR_STOPPING.md`](ADAPTIVE_REPAIR_STOPPING.md).
