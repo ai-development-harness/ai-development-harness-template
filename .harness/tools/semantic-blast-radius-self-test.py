@@ -80,6 +80,7 @@ Synthetic blast-radius fixture.
 ## Verification
 
 - command: `python3 verify.py`
+- manual: Confirm semantic condition
 
 ## Deliverables
 
@@ -295,7 +296,9 @@ def main() -> int:
         expect_blocked(root, ctx, grd, review_before_evidence, "review")
 
         result = run_step_verification(root, "STEP-001")
-        assert result["status"] == "PASS", result
+        assert result["status"] == "MANUAL_REQUIRED", result
+        assert result["commands"][0]["status"] == "PASS", result
+        assert result["manualPending"] == ["Confirm semantic condition"], result
 
         ctx_after = context(root)
         grd_after = grounding(root)
@@ -308,7 +311,10 @@ def main() -> int:
             review_payload(root),
         )
         assert reviewed["status"] == "PASS", reviewed
-        assert reviewed["deterministic"]["verification"]["freshness"]["fresh"] is True
+        assert reviewed["deterministic"]["verification"]["freshness"]["fresh"] is False
+        proof_evidence = reviewed["deterministic"]["criticalProofEvidence"]
+        assert proof_evidence[0]["status"] == "PASS", proof_evidence
+        assert proof_evidence[0]["fresh"] is True, proof_evidence
 
         wrong_command = review_payload(root)
         wrong_command["hypotheses"][0]["proof"]["command"] = "python3 other.py"
