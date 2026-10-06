@@ -14,6 +14,7 @@ import subprocess
 from typing import Any
 
 from context_contracts import ContextContractError, validate_expansion
+from document_contract import parse_utc_timestamp
 from harness_config import resolve_repo_path
 from review_contract import repository_revision
 
@@ -274,6 +275,10 @@ def _normalize_supplied_evidence(
             item.get("observedAt"),
             label=f"suppliedEvidence[{index}].observedAt",
         )
+        if parse_utc_timestamp(observed_at) is None:
+            raise DecisionArchaeologyError(
+                f"suppliedEvidence[{index}].observedAt must be timezone-aware ISO-8601"
+            )
         title = _text(
             item.get("title"),
             label=f"suppliedEvidence[{index}].title",
