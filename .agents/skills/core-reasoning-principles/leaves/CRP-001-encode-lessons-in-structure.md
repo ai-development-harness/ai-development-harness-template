@@ -25,4 +25,4 @@ Repeated prose reminders are weak enforcement. A recurring failure is better cap
 
 ## Actionable pattern
 
-If the same failure can recur, route the lesson to structure instead of adding another instruction. Prefer an impossible/invalid state, then deterministic validator or lint, then canonical helper, then runtime check. Keep prose only where judgement is irreducible.
+If structured Harness evidence shows the same class recurring, invoke the internal `structural-enforcement` capability instead of adding another instruction. It deterministically proves recurrence and enforces the ladder architecture/ownership → schema/type → validator/lint → regression → durable instruction. Do not infer recurrence from memory or transcript. Prefer prose only where judgement is irreducible.
