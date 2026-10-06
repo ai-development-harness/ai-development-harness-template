@@ -24,6 +24,8 @@ description: Decide whether a durable technical change requires an ADR, evolve a
 
 Если Accepted ADR остаётся применим — ссылайся на него, не создавай дубликат.
 
+Если durable contract меняется, сначала используй deterministic blast-radius preflight текущего STEP (если STEP context доступен). При material risk flags Semantic Blast Radius обязателен до утверждения safety/compatibility claim: explicit linked impact остаётся за impact-analysis, implicit consumers/contracts — hypotheses с evidence/proof. Неподтверждённый critical assumption не маскируй ADR prose.
+
 Если durable contract меняется:
 
 1. не переписывай старый Accepted ADR;
