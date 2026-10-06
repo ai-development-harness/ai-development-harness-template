@@ -56,9 +56,10 @@ python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase review --json
 
 На PLAN:
 
-- если direct proof уже существует, зафиксируй его;
+- если direct proof уже существует, зафиксируй его только когда canonical generated Verification evidence имеет fresh PASS на текущем subject revision;
 - если proof появится только после реализации, поставь `proof.status=planned` и добавь соответствующий command/check в `testSurfaces`;
-- `INCONCLUSIVE` допустим как planning result, но critical proof obligation должен попасть в Verification/Implementation plan до Ready.
+- `INCONCLUSIVE` допустим как planning result, но critical proof obligation должен попасть в Verification/Implementation plan до Ready;
+- одного model self-report `proof.status=proven` недостаточно для PASS.
 
 На REVIEW:
 
