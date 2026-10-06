@@ -18,6 +18,8 @@ description: Build a bounded read-only mental model of a subsystem from determin
 
 Для `STEP PLAN` используй **тот же** `context.contextContract`, который пришёл из canonical dispatcher handoff. Не вызывай повторно `step-context.py` или resolver только ради grounding.
 
+Для `STEP REVIEW`, когда grounding явно затребован downstream capability (например, Semantic Blast Radius), используй **тот же reviewer Context Contract** из canonical dispatcher handoff и exact reviewed revision; новый resolver не запускай.
+
 Для `STEP AUDIT`, если command handoff не содержит Context Contract, разреши его **один раз** через existing read-only tool:
 
 ```bash
