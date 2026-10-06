@@ -33,6 +33,7 @@
 - [`SEMANTIC_BLAST_RADIUS.md`](SEMANTIC_BLAST_RADIUS.md) — conditional implicit-impact analysis поверх deterministic dependency impact с executable proof для critical safety assumptions.
 - [`DECISION_ARCHAEOLOGY.md`](DECISION_ARCHAEOLOGY.md) — bounded reconstruction historical rationale: documented evidence, inference, conflicts, gaps и stale-ADR diagnostics.
 - [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md) — Harness-owned `CRP-NNN` leaves, deterministic applicability и progressive disclosure отдельно от project `PRN-NNN`.
+- [`STRUCTURAL_ENFORCEMENT.md`](STRUCTURAL_ENFORCEMENT.md) — recurring correction aggregation, enforcement ladder, regression-fixture contract и architecture safety routing.
 - [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
 - [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md) — optional machine-readable dependency groups внутри Implementation plan, mutation conflict boundaries и sequential scheduling semantics.
 - [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md) — canonical owner изменений REQ/ADR/OQ/STEP, flow-forward/flow-back, deterministic impact propagation и re-plan semantics.
