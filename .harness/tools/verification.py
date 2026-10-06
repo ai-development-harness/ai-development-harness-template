@@ -181,6 +181,113 @@ def verification_subject_revision(root: Path, step_id: str) -> dict[str, str | N
     return repository_revision(root, ignored_paths={rel})
 
 
+def verification_command_evidence(
+    root: Path,
+    step_id: str,
+    command: str,
+) -> dict[str, Any]:
+    """Return fresh factual evidence for one exact Verification command.
+
+    Unlike verification_freshness(), this helper does not require the aggregate
+    run status to be PASS. A command can be proven PASS while unrelated manual
+    checks are still pending; callers remain responsible for their own manual
+    completion gates.
+    """
+    entries = parse_verification(root, step_id)
+    configured = [
+        item["value"]
+        for item in entries
+        if item["kind"] == "command" and item["value"] == command
+    ]
+    if len(configured) != 1:
+        return {
+            "status": "UNKNOWN",
+            "fresh": False,
+            "reasonCode": (
+                "VERIFICATION_COMMAND_NOT_CONFIGURED"
+                if not configured
+                else "VERIFICATION_COMMAND_AMBIGUOUS"
+            ),
+            "command": command,
+        }
+
+    task_value = read_task(root, step_id)
+    section = task_value["sections"].get("Evidence", "")
+    match = re.search(
+        r"<!-- VERIFICATION-EVIDENCE:START -->(.*?)<!-- VERIFICATION-EVIDENCE:END -->",
+        section,
+        re.S,
+    )
+    if match is None:
+        return {
+            "status": "MISSING",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_EVIDENCE_MISSING",
+            "command": command,
+        }
+    block = match.group(1)
+
+    def field(label: str) -> str | None:
+        found = re.search(rf"(?m)^- {re.escape(label)}: (.+?)\s*$", block)
+        return found.group(1).strip() if found else None
+
+    stored_basis = field("Verification contract basis")
+    stored_head = field("Subject git head")
+    stored_worktree = field("Subject worktree hash")
+    if stored_basis is None or stored_head is None or stored_worktree is None:
+        return {
+            "status": "UNKNOWN",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_FRESHNESS_UNKNOWN",
+            "command": command,
+        }
+
+    current_basis = verification_contract_basis(root, step_id)
+    current_subject = verification_subject_revision(root, step_id)
+    stored_subject = {
+        "git_head": None if stored_head == "none" else stored_head,
+        "worktree_hash": None if stored_worktree == "clean" else stored_worktree,
+    }
+    if stored_basis != current_basis:
+        return {
+            "status": "STALE",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_CONTRACT_STALE",
+            "command": command,
+        }
+    if stored_subject != current_subject:
+        return {
+            "status": "STALE",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_SUBJECT_STALE",
+            "command": command,
+        }
+
+    pattern = re.compile(
+        rf"(?m)^- Command: {re.escape(command)}\s*$"
+        rf"\n  - Status: (PASS|FAIL|BLOCKED)\s*$"
+        rf"\n  - Exit code: (.+?)\s*$"
+    )
+    results = pattern.findall(block)
+    if len(results) != 1:
+        return {
+            "status": "UNKNOWN",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_COMMAND_EVIDENCE_AMBIGUOUS",
+            "command": command,
+        }
+    status, exit_code = results[0]
+    return {
+        "status": status,
+        "fresh": True,
+        "reasonCode": None if status == "PASS" else "VERIFICATION_COMMAND_NOT_PASS",
+        "command": command,
+        "exitCode": exit_code,
+        "contractBasis": current_basis,
+        "subjectRevision": current_subject,
+    }
+
+
 def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
     """Prove generated PASS evidence still belongs to current contract/subject."""
     task_value = read_task(root, step_id)

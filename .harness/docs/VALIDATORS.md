@@ -1698,6 +1698,23 @@ python3 .harness/tools/impact-analysis.py --changed ADR-012 --changed REQ-007 --
 
 Impact analysis read-only: downstream artifacts, reviews и completed history не переписываются.
 
+### Semantic Blast Radius validator
+
+Файлы:
+
+- engine: `.harness/tools/semantic_blast_radius.py`;
+- CLI: `.harness/tools/semantic-blast-radius.py`;
+- regression: `.harness/tools/semantic-blast-radius-self-test.py`.
+
+Preflight возвращает deterministic trigger из STEP `risk_flags`, exact repository revision и explicit downstream STEP surface из existing impact analysis:
+
+```bash
+python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase plan --json
+python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase review --json
+```
+
+Validation mode дополнительно принимает Context Contract, validated grounding и semantic payload. Validator revalidates grounding, enforce-ит общий context budget, provenance evidence paths и 1–2 critical hypotheses. Semantic `PASS` возможен только при `proven` critical proofs, чьи commands реально присутствуют в STEP Verification и имеют fresh generated PASS evidence на current subject revision. Aggregate status `MANUAL_REQUIRED` допустим, если pending manual checks не являются proof этих hypotheses; существующие completion/review gates всё равно обязаны закрыть manual checks отдельно.
+
 ## Exit codes
 
 - `0` — запрос корректно вычислен, даже если найден stale plan;

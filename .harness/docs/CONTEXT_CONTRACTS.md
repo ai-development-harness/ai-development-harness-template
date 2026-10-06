@@ -103,6 +103,10 @@ Architecture-sensitive PLAN/AUDIT может условно вызвать core 
 
 Capability не добавляет новую пользовательскую команду и не превращает semantic inference в authority.
 
+## Semantic Blast Radius
+
+High-risk PLAN/REVIEW может условно вызвать `semantic-blast-radius` после validated Codebase Grounding. Capability не получает отдельный второй context budget: grounding + blast expansions совместно обязаны укладываться в тот же `simple|complex` limit. Explicit dependency impact берётся из deterministic `impact-analysis`, semantic layer работает только с implicit behavior/contracts. Подробности: [`SEMANTIC_BLAST_RADIUS.md`](SEMANTIC_BLAST_RADIUS.md).
+
 ## Fail-closed semantics
 
 Missing linked artifact, unreadable/malformed required artifact, missing

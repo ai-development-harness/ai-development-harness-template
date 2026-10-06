@@ -22,7 +22,10 @@ def context() -> dict[str, object]:
     return {
         "schemaVersion": 1,
         "status": "PASS",
-        "repositoryRevision": "abc123",
+        "repositoryRevision": {
+            "git_head": "abc123",
+            "worktree_hash": "sha256:worktree",
+        },
         "required": [
             {
                 "artifact": "STEP-001",
@@ -45,7 +48,10 @@ def payload() -> dict[str, object]:
         "status": "PASS",
         "scope": "simple",
         "target": "request flow",
-        "repositoryRevision": "abc123",
+        "repositoryRevision": {
+            "git_head": "abc123",
+            "worktree_hash": "sha256:worktree",
+        },
         "flow": [{"claim": "handler calls service", "evidence": ["src/service.py"]}],
         "ownership": [{"claim": "service owns state", "evidence": ["src/service.py"]}],
         "boundaries": [{"claim": "handler/service seam", "evidence": ["src/service.py"]}],
@@ -88,7 +94,10 @@ def main() -> int:
         assert valid["contextBudget"]["baseMetrics"]["fullRepositoryPreload"] is False
 
         stale = payload()
-        stale["repositoryRevision"] = "different"
+        stale["repositoryRevision"] = {
+            "git_head": "different",
+            "worktree_hash": "sha256:worktree",
+        }
         expect_blocked(root, context(), stale)
 
         ungrounded = payload()

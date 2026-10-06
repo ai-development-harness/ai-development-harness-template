@@ -107,7 +107,7 @@ python3 .harness/tools/codebase-grounding.py \
 Validator fail-closed проверяет:
 
 - schema/status/scope;
-- exact `repositoryRevision`;
+- exact object `repositoryRevision.git_head/worktree_hash`;
 - Context Contract `fullRepositoryPreload=false`;
 - каждый expansion через canonical Context Contract expansion rule;
 - число и character size expansions;
@@ -120,6 +120,10 @@ Validator fail-closed проверяет:
 `STEP PLAN` не запускает новый resolver. Planner использует Context Contract из canonical dispatcher handoff и при material trigger вызывает `codebase-grounding` до architecture completeness pass.
 
 Validated grounding payload передаётся planner/architect как compact handoff. Он не заменяет independent planning-review.
+
+## REVIEW integration
+
+Обычный REVIEW не обязан запускать отдельный grounding pass. Но если conditional high-risk capability (например Semantic Blast Radius) требует mental model, grounding использует reviewer Context Contract из dispatcher handoff и exact reviewed revision. Это не разрешает повторный resolver/full-repository scan.
 
 ## AUDIT integration
 

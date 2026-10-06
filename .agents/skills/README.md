@@ -16,6 +16,7 @@ Harness skills описывают **workflow**, а не конкретный tec
 - `run-step`
 - `audit-step`
 - `codebase-grounding` — conditional read-only mental-model capability для architecture-sensitive PLAN/AUDIT; не пользовательская команда
+- `semantic-blast-radius` — conditional implicit-impact/proof capability поверх deterministic impact analysis; не пользовательская команда
 - `project-status`
 - `reconcile-project`
 - `architecture-change`

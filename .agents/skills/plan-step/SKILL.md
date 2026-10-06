@@ -42,6 +42,14 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
 
 До architecture completeness оцени, нужна ли bounded mental model существующей реализации. Если ownership/state responsibility неочевидны, есть cross-module/service/API/integration boundary, shared async/concurrent state или plan зависит от runtime/data flow нескольких слоёв — вызови внутренний core capability `codebase-grounding` на **том же** `context.contextContract` из dispatcher handoff. Не запускай новый resolver. Используй validated structured grounding payload как read-only input для planner/architect; capability не строит plan и не принимает architecture decision. Для локального low-risk изменения в одном очевидном модуле отдельный grounding pass не нужен.
 
+Затем запусти deterministic blast-radius preflight:
+
+```bash
+python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase plan --json
+```
+
+Если `required=true`, validated Codebase Grounding становится обязательным input для внутреннего core capability `semantic-blast-radius`. Он обязан отделить deterministic explicit impact от semantic hypotheses и выделить 1–2 critical safety assumptions. `INCONCLUSIVE` на PLAN допустим только как explicit proof obligation: каждый unresolved critical assumption перенеси в `Verification`/Implementation plan как concrete command/check до Ready. Не выдавай persuasive prose за proof и не запускай capability автоматически при `risk_flags: [none]`.
+
 До формирования Implementation plan явно проверь применимые архитектурные измерения. Это semantic gate, а не checklist ради checklist: неприменимые пункты не создают искусственных требований.
 
 - module/service/bounded-context boundaries и ownership;
@@ -78,13 +86,14 @@ Writer сам заменяет только `## Implementation plan` / `## Verif
 
 ## Phase E — independent planning-review payload
 
-Передай persisted draft отдельному `reviewer` agent/session, отличному от planner и от architect, если тот привлекался. Planning reviewer выполняет adversarial pass и обязан проверить:
+Передай persisted draft отдельному `reviewer` agent/session, отличному от planner и от architect, если тот привлекался. Если Semantic Blast Radius был required, передай reviewer также его **validated result** как phase-local evidence, чтобы reviewer мог сопоставить unresolved critical proof obligations с persisted Verification/plan. Planning reviewer выполняет adversarial pass и обязан проверить:
 
 - покрывает ли plan все material architecture impacts;
 - не скрыто ли новое durable architecture decision без ADR/OQ/prerequisite;
 - учтены ли migration/rollback/failure/recovery/compatibility paths, когда они применимы;
 - не появляется ли hidden ownership conflict или новая cross-STEP dependency;
 - действительно ли Verification доказывает Acceptance;
+- для STEP с material risk flags выполнен ли required Semantic Blast Radius и перенесены ли все unresolved critical proof obligations из PLAN result в Verification/plan;
 - не основан ли план на недоказанном предположении о соседней подсистеме.
 - если persisted draft содержит `plan.execution_groups`, прочитай canonical projection через `execution-groups.py STEP-NNN --json` и проверь, что group purpose соответствует связанным plan steps, declared `mutationPaths` достаточно консервативны, `verificationResponsibilities` реально проверяют group outcome, а `parallel=true` не основан только на разных filenames. Deterministic отсутствие overlap — необходимое, но не достаточное semantic доказательство независимости.
 
