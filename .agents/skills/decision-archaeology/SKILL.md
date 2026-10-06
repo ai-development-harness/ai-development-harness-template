@@ -122,7 +122,7 @@ Validator помечает такой source как `supplied-not-locally-verifi
 }
 ```
 
-`basis=documented` требует repository-local artifact/commit evidence.
+`basis=documented` требует evidence. Это может быть repository-local artifact/commit либо реально полученный external source (PR/issue/doc). External source остаётся явно помеченным как `supplied-not-locally-verifiable`, поэтому его нельзя выдавать за локально проверенный факт.
 
 Inference:
 
