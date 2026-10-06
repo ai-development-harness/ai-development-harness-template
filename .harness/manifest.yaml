@@ -44,6 +44,7 @@ review:
 # Опциональный режим повышенной строгости. Normal mode не fan-out-ит агентов.
 # Policy: disabled полностью выключает capability; explicit требует явный запрос;
 # risk включает её только при deterministic high-risk STEP flags.
+# Пример: arena=explicit, interrogate=explicit, seats=3.
 highRigor:
   # Arena: несколько независимых candidates + отдельный judge.
   # Пример: explicit — запуск только по явному запросу.
