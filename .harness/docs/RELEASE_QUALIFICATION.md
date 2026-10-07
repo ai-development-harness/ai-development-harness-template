@@ -84,7 +84,7 @@ Exit codes:
 
 Этот contract задаёт core deterministic lanes. Release-level orchestration расширяется отдельными слоями:
 
-- initialized downstream upgrade/canary — core #261;
+- initialized downstream upgrade/canary — core #261, canonical runner [`release-upgrade-qualification.py`](../tools/release-upgrade-qualification.py);
 - bounded concurrency/process stress — core #262;
 - reusable multi-lane workflow и private canary checkout — `maintainer-tools#7`;
 - exact-SHA publish hard gate — `maintainer-tools#8`.
@@ -104,3 +104,12 @@ python3 .harness/tools/release-qualification.py \
 ~~~
 
 Команда предназначена для clean checkout. Для обычной разработки продолжай использовать Harness Integrity / `validate.py`; Release Qualification не заменяет pre-commit validation.
+
+
+## Initialized downstream lane
+
+После platform/runtime core lanes release orchestrator обязан отдельно выполнить initialized downstream upgrade через `release-upgrade-qualification.py`.
+
+Runner принимает local authenticated baseline/candidate checkouts, создаёт disposable project clone и ephemeral source mirror, применяет exact release-prepared candidate штатным updater-ом, разрешает reload/schema migration, запускает STATUS/DOCTOR/validator/self-tests, проверяет project-owned preservation и требует repeated APPLY = `NO_UPDATE`.
+
+Подробный contract: [`INITIALIZED_UPGRADE_QUALIFICATION.md`](INITIALIZED_UPGRADE_QUALIFICATION.md).
