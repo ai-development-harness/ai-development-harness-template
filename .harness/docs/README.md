@@ -35,6 +35,7 @@
 - [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md) — Harness-owned `CRP-NNN` leaves, deterministic applicability и progressive disclosure отдельно от project `PRN-NNN`.
 - [`STRUCTURAL_ENFORCEMENT.md`](STRUCTURAL_ENFORCEMENT.md) — recurring correction aggregation, enforcement ladder, regression-fixture contract и architecture safety routing.
 - [`HIGH_RIGOR.md`](HIGH_RIGOR.md) — optional Arena/Interrogate fan-out, activation policy, exact input/result trace, budgets и DEGRADED semantics.
+- [`PROJECT_VERIFICATION.md`](PROJECT_VERIFICATION.md) — project-owned Verification Driver, feature map, qualification, drift detection и `product: FEATURE-*` evidence через реальную пользовательскую поверхность.
 - [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
 - [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md) — optional machine-readable dependency groups внутри Implementation plan, mutation conflict boundaries и sequential scheduling semantics.
 - [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md) — canonical owner изменений REQ/ADR/OQ/STEP, flow-forward/flow-back, deterministic impact propagation и re-plan semantics.

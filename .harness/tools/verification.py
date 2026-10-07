@@ -27,11 +27,16 @@ from typing import Any
 from document_contract import atomic_write_text, markdown_headings
 from harness_config import verification_command_timeout_seconds
 from planning_contract import read_task, task_path
+from project_verification import (
+    ProjectVerificationError,
+    validate_product_observations,
+)
 from review_contract import repository_revision
 
 
 COMMAND_RE = re.compile(r"^- command:\s*\x60([^\x60]+)\x60\s*$")
 MANUAL_RE = re.compile(r"^- manual:\s*(.+?)\s*$")
+PRODUCT_RE = re.compile(r"^- product:\s*(FEATURE-[A-Z0-9][A-Z0-9._-]{1,63})\s*$")
 EVIDENCE_START = "<!-- VERIFICATION-EVIDENCE:START -->"
 EVIDENCE_END = "<!-- VERIFICATION-EVIDENCE:END -->"
 SHELL_CONTROL_TOKENS = {
@@ -74,9 +79,13 @@ def parse_verification(root: Path, step_id: str) -> list[dict[str, str]]:
             else:
                 errors.append(f"line {number}: empty manual check")
             continue
+        product = PRODUCT_RE.fullmatch(line)
+        if product:
+            entries.append({"kind": "product", "value": product.group(1)})
+            continue
         errors.append(
             f"line {number}: unsupported Verification entry; "
-            "use explicit command or manual format"
+            "use explicit command, manual or product format"
         )
 
     if errors:
@@ -101,9 +110,9 @@ def validate_verification_entries(entries: Any) -> list[dict[str, str]]:
             )
         kind = item.get("kind")
         value = item.get("value")
-        if kind not in {"command", "manual"}:
+        if kind not in {"command", "manual", "product"}:
             raise VerificationError(
-                f"verification[{index}].kind must be command or manual"
+                f"verification[{index}].kind must be command, manual or product"
             )
         if not isinstance(value, str) or not value.strip():
             raise VerificationError(
@@ -112,6 +121,10 @@ def validate_verification_entries(entries: Any) -> list[dict[str, str]]:
         value = value.strip()
         if kind == "command":
             _argv(value)
+        if kind == "product" and PRODUCT_RE.fullmatch(f"- product: {value}") is None:
+            raise VerificationError(
+                f"verification[{index}].value must be a FEATURE-* id"
+            )
         normalized.append({"kind": kind, "value": value})
     return normalized
 
@@ -124,8 +137,10 @@ def render_verification_entries(entries: Any) -> str:
     for item in values:
         if item["kind"] == "command":
             lines.append(f"- command: {tick}{item['value']}{tick}")
-        else:
+        elif item["kind"] == "manual":
             lines.append(f"- manual: {item['value']}")
+        else:
+            lines.append(f"- product: {item['value']}")
     return "\n".join(lines)
 
 
@@ -575,6 +590,30 @@ def _evidence_block(result: dict[str, Any]) -> str:
             ]
         )
 
+    lines.extend(["", "### Product verification"])
+    product = result.get("product", [])
+    product_pending = result.get("productPending", [])
+    if not product and not product_pending:
+        lines.append("- none")
+    for item in product:
+        lines.extend(
+            [
+                f"- Feature: {item['featureId']}",
+                f"  - Surface: {item['surface']}",
+                f"  - Status: {item['status']}",
+                "  - Observed: " + json.dumps(item["observed"], ensure_ascii=False),
+                f"  - Driver skill sha256: {item['driverSkillSha256']}",
+                f"  - Feature map basis: {item['featureMapBasis']}",
+                f"  - Source basis: {item['sourceBasis']}",
+            ]
+        )
+        for proof in item.get("evidence", []):
+            lines.append(
+                f"  - Evidence: {proof['path']} {proof['sha256']} ({proof['bytes']} bytes)"
+            )
+    for feature_id in product_pending:
+        lines.extend([f"- Feature: {feature_id}", "  - Status: PENDING"])
+
     lines.extend(["", "### Manual verification"])
     manual = result.get("manual", [])
     pending = result.get("manualPending", [])
@@ -653,6 +692,7 @@ def run_step_verification(
     step_id: str,
     *,
     manual_results: list[dict[str, Any]] | None = None,
+    product_results: list[dict[str, Any]] | None = None,
     write_evidence: bool = True,
 ) -> dict[str, Any]:
     """Run explicit Verification contract and return factual result."""
@@ -660,6 +700,14 @@ def run_step_verification(
         entries = parse_verification(root, step_id)
         timeout = verification_command_timeout_seconds(root)
         manual, pending = _manual_results(entries, manual_results)
+        product_ids = [
+            item["value"] for item in entries if item["kind"] == "product"
+        ]
+        product, product_pending = validate_product_observations(
+            root,
+            product_ids,
+            product_results,
+        )
         revision = repository_revision(root)
         contract_basis = verification_contract_basis(root, step_id)
         subject_revision = verification_subject_revision(root, step_id)
@@ -735,9 +783,11 @@ def run_step_verification(
 
     if any(item["status"] == "FAIL" for item in commands):
         status = "FAIL"
+    elif any(item["status"] == "FAIL" for item in product):
+        status = "FAIL"
     elif any(item["status"] == "FAIL" for item in manual):
         status = "FAIL"
-    elif pending:
+    elif product_pending or pending:
         status = "MANUAL_REQUIRED"
     else:
         status = "PASS"
@@ -752,6 +802,8 @@ def run_step_verification(
         "subjectRevision": subject_revision,
         "timeoutSeconds": timeout,
         "commands": commands,
+        "product": product,
+        "productPending": product_pending,
         "manual": manual,
         "manualPending": pending,
     }
