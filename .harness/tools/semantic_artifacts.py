@@ -25,6 +25,8 @@ from document_contract import (
     render_document,
 )
 from execution_status import (
+    active_execution_for_command,
+    execution_state_lock,
     implementation_baseline_for_step,
     record_review_report,
     review_expectation_for_step,
@@ -35,6 +37,7 @@ from planning_contract import (
     generated_verification_status,
     plan_content_hash,
     planning_context_basis,
+    planning_review_reports,
     read_task,
     validate_planning_review_report,
 )
@@ -261,59 +264,72 @@ def _planning_payload(payload: Any) -> tuple[str, list[str], str]:
 
 
 def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
-    """Create validated immutable planning review and stamp matching PASS plan."""
+    """Create one execution-bound planning review and stamp matching PASS plan."""
     verdict, findings, rationale = _planning_payload(payload)
-    task = read_task(root, step_id)
 
-    # planning-review BLOCKED может повторяться после исправления authored/upstream
-    # artifacts и нового PLAN. Без durable cap такой цикл ограничен только терпением
-    # модели/пользователя. Считаем уже созданные валидные reports для STEP и
-    # блокируем очередной semantic round до записи нового report.
-    directory = planning_review_directory(root) / step_id
-    existing_reports = sorted(directory.glob("PLAN-REVIEW-*.md")) if directory.is_dir() else []
-    max_rounds = max_plan_review_cycles(root)
-    if len(existing_reports) >= max_rounds:
-        return {
-            "schemaVersion": 1,
-            "status": "BLOCKED",
-            "completionResult": "BLOCKED",
-            "reasonCode": "PLAN_REVIEW_LIMIT_REACHED",
-            "stepId": step_id,
-            "planReviewCycles": len(existing_reports),
-            "maxPlanReviewCycles": max_rounds,
-            "findings": findings,
-            "message": (
-                "planning-review cycle limit reached; stop automatic replanning and "
-                "handoff to the user with the remaining findings"
-            ),
-        }
-    plan = task["frontmatter"].get("plan")
-    if not isinstance(plan, dict) or plan.get("status") != "draft":
-        raise SemanticArtifactError("planning review requires plan.status=draft")
+    # Budget belongs to one active STEP PLAN execution episode. Immutable reports
+    # keep execution_id as durable provenance; historical episodes never consume
+    # budget of a new explicit PLAN.
+    with execution_state_lock(root):
+        execution = active_execution_for_command(root, f"STEP PLAN {step_id}")
+        if execution is None:
+            raise SemanticArtifactError(
+                f"planning review requires an active STEP PLAN {step_id} execution; "
+                "start it through harness-dispatch.py"
+            )
+        execution_id = str(execution["executionId"])
+        existing_reports = [
+            item
+            for item in planning_review_reports(root, step_id)
+            if item["document"]["frontmatter"].get("execution_id") == execution_id
+        ]
+        max_rounds = max_plan_review_cycles(root)
+        if len(existing_reports) >= max_rounds:
+            return {
+                "schemaVersion": 1,
+                "status": "BLOCKED",
+                "completionResult": "BLOCKED",
+                "reasonCode": "PLAN_REVIEW_LIMIT_REACHED",
+                "stepId": step_id,
+                "executionId": execution_id,
+                "planReviewCycles": len(existing_reports),
+                "maxPlanReviewCycles": max_rounds,
+                "findings": findings,
+                "message": (
+                    "planning-review cycle limit reached for the current STEP PLAN "
+                    "execution; stop automatic replanning and handoff to the user"
+                ),
+            }
 
-    basis = planning_context_basis(root, step_id)
-    plan_hash = plan_content_hash(root, step_id)
-    directory = planning_review_directory(root) / step_id
+        task = read_task(root, step_id)
+        plan = task["frontmatter"].get("plan")
+        if not isinstance(plan, dict) or plan.get("status") != "draft":
+            raise SemanticArtifactError("planning review requires plan.status=draft")
 
-    def content_factory(created_at: str) -> str:
-        display = created_at.replace("T", " ")[:16]
-        frontmatter = {
-            "schema": 1,
-            "kind": "planning_review",
-            "step_id": step_id,
-            "verdict": verdict,
-            "reviewer_role": "reviewer",
-            "finding_count": len(findings),
-            "context_basis": basis,
-            "plan_content_hash": plan_hash,
-            "created_at": created_at,
-        }
-        findings_text = (
-            "\n".join(f"- {item}" for item in findings)
-            if findings
-            else "- Material semantic contradictions не обнаружены."
-        )
-        body = f"""# Planning Review {step_id} — {display}
+        basis = planning_context_basis(root, step_id)
+        plan_hash = plan_content_hash(root, step_id)
+        directory = planning_review_directory(root) / step_id
+
+        def content_factory(created_at: str) -> str:
+            display = created_at.replace("T", " ")[:16]
+            frontmatter = {
+                "schema": 1,
+                "kind": "planning_review",
+                "step_id": step_id,
+                "execution_id": execution_id,
+                "verdict": verdict,
+                "reviewer_role": "reviewer",
+                "finding_count": len(findings),
+                "context_basis": basis,
+                "plan_content_hash": plan_hash,
+                "created_at": created_at,
+            }
+            findings_text = (
+                "\n".join(f"- {item}" for item in findings)
+                if findings
+                else "- Material semantic contradictions не обнаружены."
+            )
+            body = f"""# Planning Review {step_id} — {display}
 
 ## Scope checked
 
@@ -332,42 +348,44 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
 
 {rationale}
 """
-        return render_document(frontmatter, body)
+            return render_document(frontmatter, body)
 
-    path, _created_at = create_durable_report(
-        "PLAN-REVIEW-",
-        directory=directory,
-        content_factory=content_factory,
-    )
-    errors = validate_planning_review_report(
-        root, path, expected_step_id=step_id
-    )
-    if errors:
-        path.unlink(missing_ok=True)
-        raise SemanticArtifactError(
-            "generated planning review failed canonical validation: " + "; ".join(errors)
+        path, _created_at = create_durable_report(
+            "PLAN-REVIEW-",
+            directory=directory,
+            content_factory=content_factory,
         )
+        errors = validate_planning_review_report(
+            root, path, expected_step_id=step_id
+        )
+        if errors:
+            path.unlink(missing_ok=True)
+            raise SemanticArtifactError(
+                "generated planning review failed canonical validation: " + "; ".join(errors)
+            )
 
-    result: dict[str, Any] = {
-        "schemaVersion": 1,
-        "status": "PASS" if verdict == "pass" else "BLOCKED",
-        "completionResult": "SUCCESS" if verdict == "pass" else "BLOCKED",
-        "stepId": step_id,
-        "verdict": verdict,
-        "report": path.relative_to(root).as_posix(),
-        "contextBasis": basis,
-        "planContentHash": plan_hash,
-    }
-    if verdict == "pass":
-        try:
-            result["plan"] = stamp_plan(root, step_id)
-        except (OSError, ValueError) as exc:
-            result["status"] = "BLOCKED"
-            result["completionResult"] = "BLOCKED"
-            result["reasonCode"] = "PLAN_STAMP_BLOCKED"
-            result["message"] = str(exc)
-    return result
-
+        result: dict[str, Any] = {
+            "schemaVersion": 1,
+            "status": "PASS" if verdict == "pass" else "BLOCKED",
+            "completionResult": "SUCCESS" if verdict == "pass" else "BLOCKED",
+            "stepId": step_id,
+            "executionId": execution_id,
+            "planReviewCycles": len(existing_reports) + 1,
+            "maxPlanReviewCycles": max_rounds,
+            "verdict": verdict,
+            "report": path.relative_to(root).as_posix(),
+            "contextBasis": basis,
+            "planContentHash": plan_hash,
+        }
+        if verdict == "pass":
+            try:
+                result["plan"] = stamp_plan(root, step_id)
+            except (OSError, ValueError) as exc:
+                result["status"] = "BLOCKED"
+                result["completionResult"] = "BLOCKED"
+                result["reasonCode"] = "PLAN_STAMP_BLOCKED"
+                result["message"] = str(exc)
+        return result
 
 def _finding(value: Any, index: int) -> dict[str, Any]:
     """Нормализовать semantic finding в Review Contract v3.
