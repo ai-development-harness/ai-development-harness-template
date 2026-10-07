@@ -23,6 +23,23 @@ python3 .harness/tools/run-self-tests.py
 
 `run-self-tests.py` автоматически обнаруживает все `.harness/tools/*-self-test.py`, выполняет их в стабильном порядке и не требует ручного добавления нового regression-файла в workflow. `--list` показывает discovery surface, `--json` возвращает compact aggregate result.
 
+## Harness Integrity и Release Qualification
+
+Harness Integrity остаётся baseline commit-level gate. Он отвечает за structural/repository correctness текущего checkout и запускается на обычных PR/push.
+
+Release Qualification — отдельный release-level contract для **exact candidate SHA**. Canonical executable:
+
+```bash
+python3 .harness/tools/release-qualification.py \
+  --lane current \
+  --expect-sha "$(git rev-parse HEAD)" \
+  --json
+```
+
+Один executable используется для `current`, `minimum` и `windows` lanes. External release workflow выбирает runner/Python и вызывает этот же entrypoint; core gate list не копируется в maintainer workflow.
+
+PASS Harness Integrity не означает PASS Release Qualification. Release-level result дополнительно собирает downstream upgrade/canary, stress и exact-SHA publish evidence. Подробно: [`RELEASE_QUALIFICATION.md`](RELEASE_QUALIFICATION.md).
+
 GitHub Actions official actions pinned по immutable commit SHA, соответствующим используемому major tag. Harness Integrity запускается для Pull Request в `main`; push-проверка также выполняется только для `main`. Workflow concurrency группируется по номеру Pull Request или ref: новый commit в Pull Request отменяет его устаревший run, а проверки push в `main` не отменяются — каждый merge commit проверяется до конца.
 
 Pull Request проверяется собственным validator-ом из своего же дерева, поэтому изменения trust boundary (`.harness/tools/**`, policy TOML, `.claude/settings.json`, `.codex/**`, `.github/**`) шаг `Flag Harness trust boundary changes` помечает warning-аннотациями для обязательного ручного review (см. `THREAT_MODEL.md`).

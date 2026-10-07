@@ -1904,3 +1904,52 @@ Validation mode принимает semantic archaeology payload и optional Cont
 - `2` — argparse error.
 
 Подробная lifecycle policy: [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md).
+
+
+---
+
+# Release Qualification entrypoint
+
+## Файл / Файлы
+
+- `.harness/tools/release-qualification.py`
+- `.harness/tools/release-qualification-self-test.py`
+
+## Роль
+
+Canonical deterministic entrypoint release-level проверки exact candidate checkout. Он не заменяет Harness Integrity: release orchestrator вызывает один и тот же executable в platform/runtime lanes и агрегирует результат с downstream/stress gates.
+
+## CLI
+
+```bash
+python3 .harness/tools/release-qualification.py \
+  --lane current \
+  --expect-sha '<exact-candidate-sha>' \
+  --expected-python 3.13 \
+  --json
+```
+
+`--lane` обязателен:
+
+- `current` — validator + полный discoverable self-test suite;
+- `minimum` — тот же core contract строго на Python 3.11;
+- `windows` — validator + targeted Windows-specific boundaries.
+
+`--expect-sha` обязателен и должен совпадать с фактическим `git rev-parse HEAD`. `--expected-python` опционально закрепляет exact major.minor runtime caller-а.
+
+## Exit codes
+
+- `0` — PASS;
+- `1` — qualification gate FAIL либо checkout был мутирован во время qualification;
+- `2` — BLOCKED до gates: SHA/runtime/platform mismatch, dirty checkout или недоступный Git state.
+
+## Fail-closed свойства
+
+- evidence всегда относится к exact repository revision;
+- dirty checkout не квалифицируется;
+- после gates повторно проверяется tracked/untracked state;
+- stdout/stderr в compact JSON представлены hash + byte count, полный вывод остаётся job log;
+- Windows lane нельзя случайно запустить на POSIX;
+- minimum lane нельзя засчитать не на Python 3.11.
+
+Подробный release contract: [`RELEASE_QUALIFICATION.md`](RELEASE_QUALIFICATION.md).
