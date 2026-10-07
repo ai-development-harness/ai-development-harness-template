@@ -17,7 +17,7 @@ from planning_contract import (
     read_task,
 )
 from project_state import build_project_state
-from self_test_fixture import isolate_project_artifacts
+from self_test_fixture import copy_effective_harness_checkout, isolate_project_artifacts
 from execution_status import complete_command, start_execution
 from semantic_artifacts import write_plan_draft, write_planning_review
 from step_next import resolve_step_action
@@ -27,23 +27,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
 def copy_tracked(target: Path) -> None:
-    raw = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=SOURCE_ROOT,
-        stdout=subprocess.PIPE,
-        check=True,
-    ).stdout
-    for token in raw.split(b"\0"):
-        if not token:
-            continue
-        rel = token.decode("utf-8")
-        source = SOURCE_ROOT / rel
-        if not source.is_file():
-            continue
-        destination = target / rel
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-
+    copy_effective_harness_checkout(SOURCE_ROOT, target)
 
 def write(path: Path, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
