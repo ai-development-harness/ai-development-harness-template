@@ -158,8 +158,15 @@ def main() -> int:
         assert clean_gate["status"] == "FAIL", clean_gate
         (root / "qualification-mutation.txt").unlink()
 
+        write_tool(
+            root,
+            "run-self-tests.py",
+            "import sys\\nraise SystemExit(0)\\n",
+        )
+        restored_sha = commit_all(root, "restore passing gate")
+
         min_expect = 0 if sys.version_info[:2] == (3, 11) else 2
-        minimum = invoke(root, mutation_sha, lane="minimum", expect=min_expect)
+        minimum = invoke(root, restored_sha, lane="minimum", expect=min_expect)
         if min_expect == 0:
             assert minimum["status"] == "PASS", minimum
         else:
@@ -167,7 +174,7 @@ def main() -> int:
             assert minimum["reason"] == "MINIMUM_LANE_REQUIRES_PYTHON_3_11", minimum
 
         windows_expect = 0 if sys.platform.startswith("win") else 2
-        windows = invoke(root, mutation_sha, lane="windows", expect=windows_expect)
+        windows = invoke(root, restored_sha, lane="windows", expect=windows_expect)
         if windows_expect == 0:
             assert windows["status"] == "PASS", windows
         else:
