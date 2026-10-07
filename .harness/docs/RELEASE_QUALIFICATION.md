@@ -32,7 +32,7 @@ python3 .harness/tools/release-qualification.py \
 
 | Lane | Назначение |
 |---|---|
-| `current` | основной supported Linux/Python runtime: validator + полный discoverable synthetic suite |
+| `current` | основной supported Linux/Python runtime: validator + полный discoverable synthetic suite + mandatory bounded stress suite (20 iterations) |
 | `minimum` | та же deterministic surface строго на Python 3.11 |
 | `windows` | validator + targeted Windows-specific process/locking/update boundaries |
 
@@ -85,7 +85,7 @@ Exit codes:
 Этот contract задаёт core deterministic lanes. Release-level orchestration расширяется отдельными слоями:
 
 - initialized downstream upgrade/canary — core #261, canonical runner [`release-upgrade-qualification.py`](../tools/release-upgrade-qualification.py);
-- bounded concurrency/process stress — core #262;
+- bounded concurrency/process stress — core #262, canonical runner `run-stress-tests.py` + `.harness/stress-tests.json`;
 - reusable multi-lane workflow и private canary checkout — `maintainer-tools#7`;
 - exact-SHA publish hard gate — `maintainer-tools#8`.
 
@@ -113,3 +113,16 @@ python3 .harness/tools/release-qualification.py \
 Runner принимает local authenticated baseline/candidate checkouts, создаёт disposable project clone и ephemeral source mirror, применяет exact release-prepared candidate штатным updater-ом, разрешает reload/schema migration, запускает STATUS/DOCTOR/validator/self-tests, проверяет project-owned preservation и требует repeated APPLY = `NO_UPDATE`.
 
 Подробный contract: [`INITIALIZED_UPGRADE_QUALIFICATION.md`](INITIALIZED_UPGRADE_QUALIFICATION.md).
+
+
+## Bounded stress gate
+
+Current release lane обязательно запускает:
+
+```bash
+python3 .harness/tools/run-stress-tests.py --iterations 20
+```
+
+Stress manifest содержит только concurrency/process-sensitive scenarios; обычный regression suite не повторяется 20 раз. Failure/timeout любого scenario делает current lane FAIL. Автоматический retry отсутствует.
+
+Подробно: [`STRESS_SUITE.md`](STRESS_SUITE.md).

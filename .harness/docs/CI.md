@@ -100,3 +100,12 @@ python3 .harness/tools/validate.py --mode commit
 ## Настройка
 
 `.harness/harness-policy.toml` определяет required files/skills/agents/commands, forbidden tracked globs, managed formatting paths, максимальный размер tracked file и список self-documented YAML/TOML configs. Для этих configs validator требует комментарий и либо пример, либо описание формата непосредственно рядом с каждым параметром. Ослабляй правило только осознанно; если project действительно должен хранить необычный артефакт, добавь узкое исключение вместо отключения всего класса checks.
+
+
+## Bounded stress CI
+
+Concurrency/process-sensitive regressions вынесены в `.harness/stress-tests.json` и запускаются единым `run-stress-tests.py`.
+
+Обычный Harness Integrity использует лёгкий explicit budget, чтобы не умножать стоимость каждого PR. Release Qualification/current всегда запускает полный bounded budget 20 iterations. Это не retry mechanism: первый non-zero/timeout scenario делает gate красным.
+
+Первый scenario общего stress contract — regression #256 для concurrent authority fixture cleanup.

@@ -82,7 +82,7 @@ def _gate(
 def _lane_commands(lane: str) -> list[tuple[str, list[str]]]:
     py = sys.executable
     if lane in {"current", "minimum"}:
-        return [
+        commands = [
             (
                 "validate-ci",
                 [py, ".harness/tools/validate.py", "--mode", "ci"],
@@ -92,6 +92,19 @@ def _lane_commands(lane: str) -> list[tuple[str, list[str]]]:
                 [py, ".harness/tools/run-self-tests.py"],
             ),
         ]
+        if lane == "current":
+            commands.append(
+                (
+                    "bounded-stress-suite",
+                    [
+                        py,
+                        ".harness/tools/run-stress-tests.py",
+                        "--iterations",
+                        "20",
+                    ],
+                )
+            )
+        return commands
     if lane == "windows":
         targeted = [
             "harness-config-self-test.py",

@@ -1992,3 +1992,31 @@ python3 .harness/tools/release-upgrade-qualification.py \
 - source baseline/candidate host checkouts остаются неизменными.
 
 Подробно: [`INITIALIZED_UPGRADE_QUALIFICATION.md`](INITIALIZED_UPGRADE_QUALIFICATION.md).
+
+
+---
+
+# Bounded Stress Suite
+
+## Файл / Файлы
+
+- `.harness/stress-tests.json`
+- `.harness/tools/run-stress-tests.py`
+- `.harness/tools/run-stress-tests-self-test.py`
+
+## Роль
+
+Отдельный runner для intermittent concurrency/process/locking/cleanup regressions. Первый scenario — regression #256 concurrent authority fixture cleanup.
+
+## CLI
+
+```bash
+python3 .harness/tools/run-stress-tests.py --iterations 5
+python3 .harness/tools/run-stress-tests.py --json
+```
+
+Без `--iterations` используется release default из manifest: 20.
+
+Runner запускает каждый manifest scenario ровно один раз с bounded iteration count, не делает retry-on-failure, завершает process tree при timeout и сохраняет diagnostic hashes/byte counts/tails для failed scenario.
+
+Release Qualification/current всегда использует 20 iterations. Обычный PR CI использует explicit lightweight budget.
