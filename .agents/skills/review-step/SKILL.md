@@ -32,6 +32,7 @@ description: Run an independent read-only review of an exact repository revision
    - для security scenario нужен project-specific reachable path от entry point/trust boundary до asset/effect;
    - invalidated/unverified hypothesis **не является finding**, не должна запускать FIX и не требует отдельного durable artifact; при полезности кратко упомяни её в rationale;
    - не требуй regression test до подтверждения inferred scenario и не расширяй подтверждённый defect на экзотические adjacent cases без отдельного contract/evidence.
+   Если STEP Acceptance содержит measurable performance claim либо Evidence Gate подтвердил performance finding, подключи internal `benchmark-methodology`. Проверь raw benchmark evidence deterministic tool-ом `.harness/tools/benchmark-methodology.py`: exact command/environment/revision, correctness counts, repeated samples, work proof, observed variation, bottleneck/sanity/end-to-end relevance. Один/два run или effect внутри observed variation дают `INCONCLUSIVE`, а не regression/improvement finding. Если performance Acceptance зависит от claim, reviewer не может выдать PASS при `INCONCLUSIVE`; `microbenchmark-only` evidence не доказывает end-to-end claim.
    Сделай один полный semantic code-review проход exact revision и собери все material **evidence-gated** findings; completion не является вторым code review.
 6. Верни structured payload Review Contract v3:
    - `verdict: pass|fail|blocked`;
