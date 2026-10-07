@@ -41,6 +41,7 @@ cp PROJECT_BRIEF.example.md PROJECT_BRIEF.local.md
 - `sources.*`;
 - `protocol.*`;
 - `execution.maxFixReviewCycles`;
+- `execution.maxPlanReviewCycles`;
 - `execution.verificationCommandTimeoutSeconds`;
 - `review.security/tests`;
 - `skills.search.maxResults`.
