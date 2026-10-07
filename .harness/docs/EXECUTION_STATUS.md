@@ -452,6 +452,8 @@ planning-review.plan_content_hash = current content_hash
 
 `context_basis` schema v4 включает semantic STEP/dependency contracts, semantic linked REQ/ADR, explicit architecture refs и relevant OQ. Dependency completion state, reverse traceability и scheduling metadata не входят в fingerprint; completion proof проверяется отдельным runtime precondition непосредственно перед IMPLEMENT.
 
+Каждый новый planning-review, созданный writer-ом, сохраняет `execution_id` active `STEP PLAN`. `execution.maxPlanReviewCycles` считается только по immutable reports с тем же `execution_id`: restart той же execution сохраняет budget, а новый explicit `STEP PLAN` создаёт новый planning episode и не наследует historical counter.
+
 Изменение текста Implementation plan инвалидирует `content_hash` даже при неизменном context.
 
 ### STEP REVIEW
