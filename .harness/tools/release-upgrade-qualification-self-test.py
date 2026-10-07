@@ -247,7 +247,18 @@ def main() -> int:
         assert failed["reasonCode"] == "PROJECT_OWNED_STATE_CHANGED", failed
         assert git(bad, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
-        not_prepared = git(source, "rev-parse", "v0.11.2")
+        write(
+            source,
+            ".harness/harness-update-graph.json",
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "latest": "v0.11.2",
+                    "transitions": [],
+                }
+            ),
+        )
+        not_prepared = commit_all(source, "candidate metadata mismatch")
         blocked = invoke(root, baseline, baseline_sha, source, not_prepared, expect=1)
         assert blocked["status"] == "FAIL", blocked
         assert blocked["reasonCode"] == "CANDIDATE_NOT_RELEASE_PREPARED", blocked
