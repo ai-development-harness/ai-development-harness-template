@@ -22,6 +22,7 @@ from harness_config import (
     update_report_directory,
 )
 from projection_contract import write_projections
+from template_contract import template_targets
 
 
 def _remove_files(directory: Path, pattern: str, *, keep: set[str] | None = None) -> None:
@@ -75,6 +76,22 @@ def _reset_project_lifecycle(root: Path) -> None:
         atomic_write_text(path, updated)
 
 
+def _restore_pre_init_templates(root: Path) -> None:
+    """Восстановить exact protocol templates только внутри synthetic fixture.
+
+    После PROJECT INIT templates становятся project-owned и могут законно
+    отличаться от текущих protocol definitions. Но isolate_project_artifacts()
+    переводит временную копию обратно в pre-INIT, где validator требует exact
+    bootstrap baseline. Поэтому fixture должна нормализовать templates через
+    единственный configured source of truth, не меняя host checkout.
+    """
+    for path, expected in template_targets(root).items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        current = path.read_text(encoding="utf-8") if path.is_file() else None
+        if current != expected:
+            atomic_write_text(path, expected)
+
+
 def isolate_project_artifacts(root: Path) -> None:
     """Удалить inherited project artifacts из synthetic fixture.
 
@@ -106,4 +123,5 @@ def isolate_project_artifacts(root: Path) -> None:
         _clear_generated_directory(directory)
 
     _reset_project_lifecycle(root)
+    _restore_pre_init_templates(root)
     write_projections(root)
