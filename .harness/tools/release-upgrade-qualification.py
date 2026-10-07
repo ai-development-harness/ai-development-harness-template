@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from typing import Sequence
 
 
@@ -108,7 +109,7 @@ def _git_show(root: Path, revision: str, path: str) -> bytes:
     return proc.stdout
 
 
-def _candidate_identity(source: Path, candidate_sha: str) -> tuple[str, str]:
+def _candidate_identity(source: Path, candidate_sha: str) -> tuple[str, str, str]:
     exact_sha = _resolve_commit(source, candidate_sha)
     try:
         lock = json.loads(
@@ -143,7 +144,29 @@ def _candidate_identity(source: Path, candidate_sha: str) -> tuple[str, str]:
             "CANDIDATE_NOT_RELEASE_PREPARED",
             f"candidate graph latest {graph.get('latest')!r} != {tag!r}",
         )
-    return exact_sha, tag
+
+    policy_raw = _git_show(
+        source,
+        exact_sha,
+        ".harness/harness-update.toml",
+    )
+    try:
+        policy = tomllib.loads(policy_raw.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise QualificationError("CANDIDATE_POLICY_INVALID", str(exc)) from exc
+    source_policy = policy.get("source")
+    default_branch = (
+        source_policy.get("default_branch")
+        if isinstance(source_policy, dict)
+        else None
+    )
+    if not isinstance(default_branch, str) or not default_branch.strip():
+        raise QualificationError(
+            "CANDIDATE_POLICY_INVALID",
+            "candidate source.default_branch must be non-empty string",
+        )
+    default_branch = default_branch.strip()
+    return exact_sha, tag, default_branch
 
 
 def _baseline_tag(project: Path) -> str:
@@ -164,6 +187,7 @@ def _prepare_mirror(
     candidate_sha: str,
     candidate_tag: str,
     baseline_tag: str,
+    default_branch: str,
     target: Path,
 ) -> None:
     proc = _run(
@@ -175,7 +199,31 @@ def _prepare_mirror(
             "SOURCE_MIRROR_FAILED",
             proc.stderr.strip() or "cannot create candidate mirror",
         )
-    _git(target, "update-ref", "refs/heads/main", candidate_sha)
+    branch_ref = f"refs/heads/{default_branch}"
+    remote_branch_ref = f"refs/remotes/origin/{default_branch}"
+    check_ref = _run(
+        ["git", "check-ref-format", branch_ref],
+        cwd=target,
+    )
+    if check_ref.returncode != 0:
+        raise QualificationError(
+            "CANDIDATE_POLICY_INVALID",
+            f"invalid source.default_branch: {default_branch!r}",
+        )
+
+    # git clone --mirror сохраняет refs/remotes/origin/* source checkout.
+    # Updater resolve_branch() предпочитает remote-tracking ref локальному
+    # refs/heads/*, поэтому оба candidate-routing refs обязаны быть exact SHA.
+    _git(target, "update-ref", branch_ref, candidate_sha)
+    _git(target, "update-ref", remote_branch_ref, candidate_sha)
+    for ref in (remote_branch_ref, branch_ref):
+        observed = _resolve_commit(target, ref)
+        if observed != candidate_sha:
+            raise QualificationError(
+                "SOURCE_MIRROR_FAILED",
+                f"candidate routing ref {ref} resolved to {observed}, expected {candidate_sha}",
+            )
+
     try:
         existing = _resolve_commit(target, f"refs/tags/{candidate_tag}")
     except QualificationError:
@@ -358,7 +406,10 @@ def qualify(
         candidate_host_status = _status(candidate_source)
         if candidate_host_status:
             raise QualificationError("CHECKOUT_NOT_CLEAN", "candidate source checkout is dirty")
-        exact_candidate, candidate_tag = _candidate_identity(candidate_source, candidate_sha)
+        exact_candidate, candidate_tag, default_branch = _candidate_identity(
+            candidate_source,
+            candidate_sha,
+        )
         baseline_tag = _baseline_tag(baseline_project)
         protected_before = _capture_protected(baseline_project)
 
@@ -371,6 +422,7 @@ def qualify(
                 exact_candidate,
                 candidate_tag,
                 baseline_tag,
+                default_branch,
                 mirror,
             )
             _clone_baseline(baseline_project, exact_baseline, work)
