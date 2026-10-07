@@ -35,6 +35,7 @@
 - [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md) — Harness-owned `CRP-NNN` leaves, deterministic applicability и progressive disclosure отдельно от project `PRN-NNN`.
 - [`STRUCTURAL_ENFORCEMENT.md`](STRUCTURAL_ENFORCEMENT.md) — recurring correction aggregation, enforcement ladder, regression-fixture contract и architecture safety routing.
 - [`HIGH_RIGOR.md`](HIGH_RIGOR.md) — optional Arena/Interrogate fan-out, activation policy, exact input/result trace, budgets и DEGRADED semantics.
+- [`BENCHMARK_METHODOLOGY.md`](BENCHMARK_METHODOLOGY.md) — optional performance methodology, reproducible evidence contract, repeated-run statistics и deterministic PASS/INCONCLUSIVE gate.
 - [`PR_MAINTENANCE.md`](PR_MAINTENANCE.md) — read-only provider snapshot, CI/review feedback triage, reviewability guidance и bounded PR babysit без mutation authority.
 - [`PROJECT_VERIFICATION.md`](PROJECT_VERIFICATION.md) — project-owned Verification Driver, feature map, qualification, drift detection и `product: FEATURE-*` evidence через реальную пользовательскую поверхность.
 - [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
