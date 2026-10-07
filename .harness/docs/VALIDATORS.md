@@ -959,6 +959,33 @@ Runtime/model shortfall возвращает `DEGRADED`, а не скрытый 
 
 Подробности: [`HIGH_RIGOR.md`](HIGH_RIGOR.md).
 
+---
+
+# 9D. Benchmark Methodology evidence gate
+
+## Файлы
+
+- engine: `.harness/tools/benchmark_methodology.py`
+- CLI: `.harness/tools/benchmark-methodology.py`
+- regression: `.harness/tools/benchmark-methodology-self-test.py`
+
+## Роль
+
+Проверяет достаточность performance evidence, не исполняя benchmark за модель. Вход — закрытый JSON contract с заранее сформулированным claim, exact revisions/argv/environment, raw samples, correctness counts и work-proof files.
+
+Validator вычисляет median/range/variation для baseline/candidate, direction-normalized effect и консервативный noise band. Work-proof files проверяются как regular non-symlink repository paths и получают SHA-256.
+
+## Результаты
+
+- `PASS` — сравнение сопоставимо, correctness не нарушен, есть минимум 3 runs на arm, effect превышает observed variation и declared minimum effect, bottleneck/sanity/end-to-end checks выполнены;
+- `INCONCLUSIVE` — evidence structurally valid, но недостаточен для claim: one/two-run ballpark, effect внутри variation, command/environment mismatch, correctness failure, missing relevance proof и т. п.;
+- `BLOCKED` — malformed/unsupported/unverifiable evidence contract.
+
+`INCONCLUSIVE` является валидным factual outcome и имеет exit code 0: caller обязан трактовать его буквально и не превращать reasoning-ом в performance PASS. Если STEP Acceptance зависит от quantitative claim, обычный Verification/Review остаётся незавершённым до достаточного evidence.
+
+Microbenchmark может доказать только narrow claim. Когда end-to-end relevance проверена и отсутствует, PASS возвращает `claimRestriction=microbenchmark-only` и warning `MICROBENCHMARK_ONLY`.
+
+Подробности: [`BENCHMARK_METHODOLOGY.md`](BENCHMARK_METHODOLOGY.md).
 
 ---
 
