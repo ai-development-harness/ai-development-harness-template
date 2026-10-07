@@ -35,7 +35,7 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
    - architecture prerequisite имеет explicit ref;
    - OPEN OQ/TBD не блокирует решение.
 4. Прочитай active Project Principles из configured `sources.principles` и semantic-оценкой определи применимость к этому STEP. Applicable `blocking` PRN без explicit approved deviation является blocker до Ready plan; `advisory` PRN сам по себе не блокирует. Active blocking principles входят в deterministic planning basis, поэтому изменение правила stale-ит Ready plan.
-5. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
+5. Verification contract оформляй machine-executable: `- command: \`...\`` для автоматизируемой проверки; `- manual: ...` только для действительно semantic/visual проверки; `- product: FEATURE-*` для Acceptance, которое нужно доказать через реальную пользовательскую поверхность project-owned Verification Driver. `product` допустим только если `.agents/skills/verify-product/SKILL.md` и `docs/verification/feature-map.json` существуют, driver qualified, а feature entry связывает exact REQ/STEP Acceptance. Shell operators/pipes не используй — сложную проверку вынеси в repository script.
 6. Contract conflict, missing prerequisite/decision или impossible acceptance => `BLOCKED`. Не расширяй contract догадкой.
 
 ## Phase C — architecture completeness pass
@@ -81,7 +81,7 @@ python3 .harness/tools/high-rigor.py --mode arena --phase plan --step STEP-NNN -
 
 - `implementationPlan` — непустой массив шагов;
 - каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`;
-- `verification` — массив `{"kind":"command|manual","value":"..."}`;
+- `verification` — массив `{"kind":"command|manual|product","value":"..."}`; для `product` value — canonical `FEATURE-*` из `docs/verification/feature-map.json`;
 - optional `executionGroups` — machine-readable DAG поверх 1-based элементов `implementationPlan`. Добавляй groups только когда декомпозиция действительно полезна и conflict boundary можно выразить явно. Каждая group содержит `id`, human-readable `title`, `steps[]`, `dependsOn[]`, non-empty `mutationPaths[]`, non-empty `verificationResponsibilities[]`, `parallel`. Если groups заданы, они покрывают каждый implementation step ровно один раз. `parallel=true` допустим только для кандидата с доказуемо непересекающимся declared mutation surface; это **не** команда на запуск concurrent agents.
 
 Сохрани payload только под `.harness/local/**` либо передай через stdin и вызови:
