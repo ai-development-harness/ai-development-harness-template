@@ -348,6 +348,37 @@ def main() -> int:
         require_failure(validate(root), "harness-policy: required_files must be a string array")
         harness_policy_path.write_text(harness_policy_original, encoding="utf-8")
 
+        # Regression #275: required Harness file обязан быть installable через
+        # ровно один updater ownership class.
+        update_policy_path = root / ".harness/harness-update.toml"
+        update_policy_original = update_policy_path.read_text(encoding="utf-8")
+        update_policy_path.write_text(
+            update_policy_original.replace(
+                '  ".harness/stress-tests.json",\n',
+                "",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        require_failure(
+            validate(root),
+            "required file is not covered by updater ownership: .harness/stress-tests.json",
+        )
+
+        update_policy_path.write_text(
+            update_policy_original.replace(
+                'shared = [\n',
+                'shared = [\n  ".harness/stress-tests.json",\n',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        require_failure(
+            validate(root),
+            "required file matches multiple updater ownership classes: .harness/stress-tests.json",
+        )
+        update_policy_path.write_text(update_policy_original, encoding="utf-8")
+
         # Codex role config не может выйти за canonical .codex/agents даже если
         # target существует и resolve() успешно его находит.
         codex_path = root / ".codex/config.toml"

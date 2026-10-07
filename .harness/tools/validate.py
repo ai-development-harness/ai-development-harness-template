@@ -321,6 +321,64 @@ def match_any(path: str, patterns: list[str]) -> bool:
     return False
 
 
+def validate_required_file_update_ownership(
+    root: Path,
+    harness_policy: dict,
+    errors: list[str],
+) -> None:
+    """Required Harness files должны распространяться updater-ом ровно одним ownership class."""
+
+    required_files = harness_policy.get("required_files", [])
+    if not isinstance(required_files, list):
+        return
+
+    try:
+        update_policy = load_update_policy(root)
+    except ConfigError as exc:
+        errors.append(f"harness-update ownership: {exc}")
+        return
+
+    ownership = update_policy.get("ownership")
+    if not isinstance(ownership, dict):
+        errors.append("harness-update ownership must be a table")
+        return
+
+    classes = ("harness_owned", "shared", "marker_merge")
+    patterns_by_class: dict[str, list[str]] = {}
+    invalid = False
+    for class_name in classes:
+        patterns = ownership.get(class_name)
+        if not isinstance(patterns, list) or not all(
+            isinstance(item, str) and item for item in patterns
+        ):
+            errors.append(
+                f"harness-update ownership.{class_name} must be a string array"
+            )
+            invalid = True
+            continue
+        patterns_by_class[class_name] = list(patterns)
+    if invalid:
+        return
+
+    for path in required_files:
+        if not isinstance(path, str) or not path:
+            continue
+        matches = [
+            class_name
+            for class_name, patterns in patterns_by_class.items()
+            if any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+        ]
+        if not matches:
+            errors.append(
+                f"required file is not covered by updater ownership: {path}"
+            )
+        elif len(matches) > 1:
+            errors.append(
+                "required file matches multiple updater ownership classes: "
+                f"{path}: {', '.join(matches)}"
+            )
+
+
 # Private key любого PEM/PGP типа (plain, RSA, EC, DSA, OPENSSH, ENCRYPTED, PGP BLOCK).
 PRIVATE_KEY_PATTERN = re.compile(rb"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----")
 
@@ -1614,6 +1672,10 @@ def main() -> int:
             print(f"  - {item}")
         return 1
     max_tracked_file_size_mb = policy["max_tracked_file_size_mb"]
+
+    # Cross-contract release safety: required files обязаны быть installable
+    # existing projects через updater ownership.
+    validate_required_file_update_ownership(root, policy, errors)
 
     # Always-on context — такой же deterministic repository invariant, как protocol files.
     # Generated project marker blocks исключаются самим gate, поэтому PROJECT INIT
