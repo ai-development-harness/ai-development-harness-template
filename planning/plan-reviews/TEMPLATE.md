@@ -2,6 +2,7 @@
 schema: 1
 kind: planning_review
 step_id: STEP-NNN
+execution_id: exec-...
 verdict: pass
 reviewer_role: reviewer
 finding_count: 0
