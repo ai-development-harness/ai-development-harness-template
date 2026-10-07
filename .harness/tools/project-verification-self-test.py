@@ -26,6 +26,7 @@ sources:
   requirements: docs/requirements
 protocol:
   taskDirectory: planning/tasks
+  reviewDirectory: planning/reviews
 """
 
 REQ = """---
