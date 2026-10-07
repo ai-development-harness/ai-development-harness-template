@@ -11,6 +11,7 @@ is the only durable handoff. They complement unit/policy self-tests with:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -217,6 +218,12 @@ def prepare(root: Path) -> None:
     run(root, "git", "init", "-q", "-b", "main")
     run(root, "git", "config", "user.email", "fault-test@example.invalid")
     run(root, "git", "config", "user.name", "Fault Hardening Test")
+    # Synthetic repositories must not inherit background Git housekeeping.
+    # `git commit` may launch `git maintenance run --auto --detach`; that
+    # detached process can outlive the direct command and race cleanup of the
+    # TemporaryDirectory even after all explicit test workers were reaped.
+    run(root, "git", "config", "gc.auto", "0")
+    run(root, "git", "config", "maintenance.auto", "false")
     run(root, "git", "add", ".")
     run(root, "git", "commit", "-qm", "fault fixture")
 
@@ -659,36 +666,70 @@ def test_stale_continuation_mutation_binding(root: Path) -> None:
     assert running[0]["current"]["attempt"] == 1, running[0]
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Cross-process reliable orchestration regressions."
+    )
+    parser.add_argument(
+        "--authority-stress-iterations",
+        type=int,
+        default=1,
+        help=(
+            "Repeat only the concurrent authority fixture cleanup this many "
+            "times when combined with --authority-stress-only."
+        ),
+    )
+    parser.add_argument(
+        "--authority-stress-only",
+        action="store_true",
+        help="Run only the concurrent authority cleanup stress scenario.",
+    )
+    args = parser.parse_args()
+    if args.authority_stress_iterations < 1:
+        parser.error("--authority-stress-iterations must be >= 1")
+    return args
+
+
+def _run_authority_scenario(iterations: int) -> None:
+    for iteration in range(iterations):
+        prefix = f"harness-fault-authority-{iteration:03d}-"
+        with tempfile.TemporaryDirectory(prefix=prefix) as tmp:
+            root = Path(tmp)
+            prepare(root)
+            test_concurrent_stale_complete_vs_current_resume(root)
+
+
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="harness-fault-intent-") as tmp:
-        root = Path(tmp)
-        prepare(root)
-        test_crash_after_intent_snapshot(root)
+    args = _parse_args()
 
-    with tempfile.TemporaryDirectory(prefix="harness-fault-progress-") as tmp:
-        root = Path(tmp)
-        prepare(root)
-        test_step_run_progress_survives_process_loss(root)
+    if not args.authority_stress_only:
+        with tempfile.TemporaryDirectory(prefix="harness-fault-intent-") as tmp:
+            root = Path(tmp)
+            prepare(root)
+            test_crash_after_intent_snapshot(root)
 
-    with tempfile.TemporaryDirectory(prefix="harness-fault-authority-") as tmp:
-        root = Path(tmp)
-        prepare(root)
-        test_concurrent_stale_complete_vs_current_resume(root)
+        with tempfile.TemporaryDirectory(prefix="harness-fault-progress-") as tmp:
+            root = Path(tmp)
+            prepare(root)
+            test_step_run_progress_survives_process_loss(root)
 
-    with tempfile.TemporaryDirectory(prefix="harness-fault-atomic-authority-") as tmp:
-        root = Path(tmp)
-        prepare(root)
-        test_atomic_completion_binding(root)
+    _run_authority_scenario(args.authority_stress_iterations)
 
-    with tempfile.TemporaryDirectory(prefix="harness-fault-continuation-authority-") as tmp:
-        root = Path(tmp)
-        prepare(root)
-        test_stale_continuation_mutation_binding(root)
+    if not args.authority_stress_only:
+        with tempfile.TemporaryDirectory(prefix="harness-fault-atomic-authority-") as tmp:
+            root = Path(tmp)
+            prepare(root)
+            test_atomic_completion_binding(root)
 
-    with tempfile.TemporaryDirectory(prefix="harness-fault-evidence-authority-") as tmp:
-        root = Path(tmp)
-        prepare(root)
-        test_stale_verification_evidence_publication(root)
+        with tempfile.TemporaryDirectory(prefix="harness-fault-continuation-authority-") as tmp:
+            root = Path(tmp)
+            prepare(root)
+            test_stale_continuation_mutation_binding(root)
+
+        with tempfile.TemporaryDirectory(prefix="harness-fault-evidence-authority-") as tmp:
+            root = Path(tmp)
+            prepare(root)
+            test_stale_verification_evidence_publication(root)
 
     print("RELIABLE ORCHESTRATION FAULT SELF-TEST: PASS")
     return 0

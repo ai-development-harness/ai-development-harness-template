@@ -313,3 +313,15 @@ jobs:
         run: |
           python3 .harness/tools/validate.py --mode ci
           python3 .harness/tools/run-self-tests.py
+
+      # Targeted regression #256: repeatedly create, race and destroy the exact
+      # concurrent authority Git fixture on the originally affected runtime.
+      # Пример: отдельный step после полного Python 3.11 synthetic suite.
+      - name: Stress concurrent authority fixture cleanup
+        # Background Git maintenance is disabled locally by the fixture itself;
+        # every iteration must still reap both workers and remove the temp repo.
+        # Пример: 20 fresh fixtures подряд обязаны завершиться без ENOTEMPTY.
+        run: |
+          python3 .harness/tools/reliable-orchestration-fault-self-test.py \
+            --authority-stress-only \
+            --authority-stress-iterations 20
