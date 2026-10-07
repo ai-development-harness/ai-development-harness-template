@@ -68,17 +68,56 @@ python3 .harness/tools/release-qualification.py \
   "repositoryRevision": "<sha>",
   "python": "3.13.0",
   "platform": "linux",
+  "durationMs": 91234,
   "gates": []
 }
 ~~~
 
-Для каждого gate сохраняются status, exit code, SHA-256 stdout/stderr и размер вывода. Полный stdout/stderr остаётся в job logs; compact result не копирует потенциально большой вывод.
+Для каждого gate сохраняются:
+
+- `status` — `PASS | FAIL | TIMEOUT`;
+- `exitCode` — integer для завершившегося process или `null` при timeout;
+- `timeoutSeconds` — применённый внешний budget;
+- `durationMs` — фактическая monotonic duration;
+- SHA-256 stdout/stderr и размер вывода.
+
+На уровне всего lane также сохраняется `durationMs`. Поэтому release evidence показывает не только факт PASS/FAIL, но и конкретный gate, который начал деградировать по времени.
+
+Полный stdout/stderr остаётся в job logs; compact result не копирует потенциально большой вывод.
 
 Exit codes:
 
 - `0` — PASS;
-- `1` — один или несколько qualification gates FAIL;
+- `1` — один или несколько qualification gates FAIL или TIMEOUT;
 - `2` — qualification BLOCKED до запуска gates: wrong SHA/runtime/platform, dirty checkout или недоступный Git state.
+
+## Bounded execution
+
+Обычный qualification gate имеет внешний timeout **300 секунд** по умолчанию. Он применяется самим canonical runner, а не только CI workflow.
+
+При timeout:
+
+1. runner завершает process tree, а не только непосредственный Python process;
+2. автоматический retry не выполняется;
+3. gate получает `status=TIMEOUT`, `exitCode=null`;
+4. stdout/stderr, собранные до timeout, всё равно хэшируются и учитываются в evidence;
+5. весь lane становится `FAIL`.
+
+Git/preflight subprocess также bounded отдельным коротким budget, поэтому `git rev-parse` / `git status` не могут удерживать qualification бесконечно.
+
+Stress runner имеет собственный scenario timeout 300 секунд. Поэтому внешний timeout для `bounded-stress-suite` не меньше **330 секунд**: дополнительные 30 секунд предназначены для process-tree cleanup и записи machine-readable evidence.
+
+Для controlled regression/self-test timeout можно уменьшить:
+
+~~~bash
+python3 .harness/tools/release-qualification.py \
+  --lane current \
+  --expect-sha "$(git rev-parse HEAD)" \
+  --gate-timeout-seconds 30 \
+  --json
+~~~
+
+Допустимый диапазон `--gate-timeout-seconds`: 1..1800. Увеличение этого параметра не отключает outer timeout release workflow; workflow-level timeout является независимым safety net.
 
 ## Что входит в #260
 
@@ -86,7 +125,7 @@ Exit codes:
 
 - initialized downstream upgrade/canary — core #261, canonical runner [`release-upgrade-qualification.py`](../tools/release-upgrade-qualification.py);
 - bounded concurrency/process stress — core #262, canonical runner `run-stress-tests.py` + `.harness/stress-tests.json`;
-- reusable multi-lane workflow и private canary checkout — `maintainer-tools#7`;
+- reusable multi-lane workflow и public canary checkout — `maintainer-tools#7`;
 - exact-SHA publish hard gate — `maintainer-tools#8`.
 
 Ни один из этих внешних layers не должен объявляться пройденным только потому, что `current` lane дала PASS.
