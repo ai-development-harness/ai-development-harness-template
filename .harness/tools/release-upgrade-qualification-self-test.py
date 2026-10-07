@@ -145,7 +145,7 @@ candidate_oid = subprocess.run(
     check=True,
 ).stdout.strip()
 routing_oid = subprocess.run(
-    ["git", "-C", args.source_url, "rev-parse", "refs/remotes/origin/main^{commit}"],
+    ["git", "-C", args.source_url, "rev-parse", "refs/remotes/origin/main^{{commit}}"],
     text=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
