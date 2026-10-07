@@ -71,8 +71,16 @@ def candidate_source(root: Path) -> tuple[str, str]:
         ".harness/harness-update-graph.json",
         json.dumps({"schemaVersion": 1, "latest": "v0.11.2", "transitions": []}),
     )
+    write(
+        root,
+        ".harness/harness-update.toml",
+        '[source]\ndefault_branch = "main"\n',
+    )
     stable = commit_all(root, "stable")
     git(root, "tag", "v0.11.2", stable)
+    # Regression #272: mirror clone must not preserve this stale ref as the
+    # updater-visible default branch after candidate preparation.
+    git(root, "update-ref", "refs/remotes/origin/main", stable)
 
     write(
         root,
@@ -126,7 +134,26 @@ parser.add_argument("--source-url", required=True)
 parser.add_argument("--json", action="store_true")
 args = parser.parse_args()
 
+import subprocess
+
 root = Path(__file__).resolve().parents[2]
+candidate_oid = subprocess.run(
+    ["git", "-C", args.source_url, "rev-parse", f"refs/tags/{{args.to}}^{{{{commit}}}}"],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    check=True,
+).stdout.strip()
+routing_oid = subprocess.run(
+    ["git", "-C", args.source_url, "rev-parse", "refs/remotes/origin/main^{{commit}}"],
+    text=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    check=True,
+).stdout.strip()
+if routing_oid != candidate_oid:
+    print(json.dumps({{"status":"BLOCKED","reasonCode":"NO_UPDATE_PATH"}}))
+    raise SystemExit(2)
 local = root / ".harness" / "local"
 local.mkdir(parents=True, exist_ok=True)
 reload_marker = local / "reload-seen"
