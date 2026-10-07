@@ -320,4 +320,5 @@ jobs:
       - name: Run bounded stress smoke suite
         # Любой intermittent failure остаётся failure; runner не делает retry.
         # Regression #256 является первым scenario canonical stress manifest.
+        # Пример: explicit PR budget = 5, release default остаётся 20.
         run: python3 .harness/tools/run-stress-tests.py --iterations 5
