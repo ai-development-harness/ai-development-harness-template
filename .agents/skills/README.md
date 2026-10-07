@@ -2,7 +2,7 @@
 
 Harness skills описывают **workflow**, а не конкретный technology stack.
 
-Каждый skill bundle хранит provenance в соседнем `UPSTREAM.md`. Для встроенных core skills это `Source: project-native`: внешний upstream отсутствует, а references/rationale фиксируют, почему workflow существует и на какие canonical Harness contracts опирается.
+Каждый skill bundle хранит человекочитаемый provenance в соседнем `UPSTREAM.md`. Для встроенных core skills это `Source: project-native`. Third-party skills дополнительно имеют deterministic `PROVENANCE.json` с exact BASE/installed hashes и fork/update metadata; его создаёт `.harness/tools/skill-provenance.py`, а не модель вручную.
 
 
 Основные:
