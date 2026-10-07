@@ -12,9 +12,6 @@ on:
     # Пример: main.
     branches:
       - main
-      # Временная integration base для release-hardening epic #264; перед итоговым PR в main удалить.
-      # Пример: issue branch → release/release-qualification-hardening.
-      - release/release-qualification-hardening
   # После merge PR GitHub создаёт push в main — это отдельная финальная проверка.
   # Пример: squash merge PR → push нового commit в main → Harness Integrity.
   push:
