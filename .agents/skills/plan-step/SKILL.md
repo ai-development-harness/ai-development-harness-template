@@ -104,6 +104,6 @@ Reviewer возвращает только:
 python3 .harness/tools/semantic-writer.py planning-review STEP-NNN --payload-file '<local-json-or->'
 ```
 
-Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready. Количество durable planning-review rounds для одного STEP ограничено `.harness/manifest.yaml → execution.maxPlanReviewCycles`; при `PLAN_REVIEW_LIMIT_REACHED` не запускай очередной auto-fix/re-PLAN. Остановись и передай пользователю оставшиеся findings.
+Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready. Количество durable planning-review rounds внутри текущей active `STEP PLAN` execution ограничено `.harness/manifest.yaml → execution.maxPlanReviewCycles`; historical reports прошлых explicit PLAN invocations budget новой execution не расходуют. При `PLAN_REVIEW_LIMIT_REACHED` не запускай очередной auto-fix/re-PLAN. Остановись и передай пользователю оставшиеся findings.
 
 После writer завершай execution только значением `completionResult` из его JSON; для PASS planning review это `SUCCESS`, для blocker — `BLOCKED`. Не переинтерпретируй verdict. Изменение Implementation plan/upstream semantic input позже по-прежнему stale-ит Ready fingerprints. Production code не меняй.
