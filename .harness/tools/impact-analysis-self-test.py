@@ -18,6 +18,7 @@ from planning_contract import (
 )
 from project_state import build_project_state
 from self_test_fixture import isolate_project_artifacts
+from execution_status import complete_command, start_execution
 from semantic_artifacts import write_plan_draft, write_planning_review
 from step_next import resolve_step_action
 
@@ -240,6 +241,7 @@ TBD.
 
 
 def make_ready(root: Path, step_id: str) -> dict:
+    execution = start_execution(root, f"STEP PLAN {step_id}")
     draft = write_plan_draft(
         root,
         step_id,
@@ -269,6 +271,13 @@ def make_ready(root: Path, step_id: str) -> dict:
     task = read_task(root, step_id)
     assert task["frontmatter"]["plan"]["status"] == "ready", task
     assert task["frontmatter"]["plan"]["context_components"], task
+    complete_command(
+        root,
+        execution["rootCommand"],
+        f"STEP PLAN {step_id}",
+        "SUCCESS",
+        expected_execution_id=execution["executionId"],
+    )
     return review
 
 
