@@ -60,6 +60,11 @@ def copy_tracked(target: Path) -> None:
     copy_effective_harness_checkout(SOURCE_ROOT, target)
     isolate_project_artifacts(target)
 
+
+# #110 (setext heading) исправлен и перенесён в repository-hardening-self-test.py.
+KNOWN_ISSUES: list[tuple[int, str, Callable[[Path], None]]] = []
+
+
 def main() -> int:
     failed = False
     for number, title, case in KNOWN_ISSUES:
