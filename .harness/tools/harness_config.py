@@ -360,7 +360,8 @@ def max_plan_review_cycles(root: Path) -> int:
 
     Budget сохраняется через immutable reports, связанные с exact execution_id.
     Historical reports прошлых explicit PLAN invocations остаются evidence, но
-    не расходуют budget новой execution.
+    не расходуют budget новой execution. Restart/resume той же execution budget
+    сохраняет.
     """
     manifest = load_manifest(root)
     value = require(manifest, "execution.maxPlanReviewCycles")
@@ -393,6 +394,73 @@ def review_policy(root: Path, kind: str) -> str:
     if value not in {"auto", "always"}:
         raise ConfigError(f"manifest review.{kind} must be auto or always")
     return value
+
+
+_HIGH_RIGOR_DEFAULTS: dict[str, Any] = {
+    "arena": "disabled",
+    "interrogate": "disabled",
+    "seats": 3,
+    "maxSeats": 5,
+    "maxInputCharsPerSeat": 80000,
+    "maxOutputCharsPerSeat": 24000,
+    "maxTotalChars": 400000,
+}
+
+
+def high_rigor_config(root: Path) -> dict[str, Any]:
+    """Validated project policy for optional provider-neutral fan-out.
+
+    Legacy projects without the section stay safe: capability is disabled.
+    Once highRigor exists, all keys are required and unknown keys fail closed.
+    """
+    manifest = load_manifest(root)
+    value = get(manifest, "highRigor")
+    if value is None:
+        return dict(_HIGH_RIGOR_DEFAULTS)
+    if not isinstance(value, dict):
+        raise ConfigError("manifest highRigor must be a mapping")
+
+    expected = set(_HIGH_RIGOR_DEFAULTS)
+    unknown = sorted(set(value) - expected)
+    missing = sorted(expected - set(value))
+    if unknown:
+        raise ConfigError(
+            "manifest highRigor has unsupported keys: " + ", ".join(unknown)
+        )
+    if missing:
+        raise ConfigError(
+            "manifest highRigor is missing keys: " + ", ".join(missing)
+        )
+
+    result = dict(value)
+    for mode in ("arena", "interrogate"):
+        if result[mode] not in {"disabled", "explicit", "risk"}:
+            raise ConfigError(
+                f"manifest highRigor.{mode} must be disabled|explicit|risk"
+            )
+
+    for key, minimum, maximum in (
+        ("seats", 2, 5),
+        ("maxSeats", 2, 8),
+        ("maxInputCharsPerSeat", 1000, 500000),
+        ("maxOutputCharsPerSeat", 1000, 200000),
+        ("maxTotalChars", 10000, 2000000),
+    ):
+        item = result[key]
+        if isinstance(item, bool) or not isinstance(item, int) or not minimum <= item <= maximum:
+            raise ConfigError(
+                f"manifest highRigor.{key} must be an integer from {minimum} to {maximum}"
+            )
+
+    if result["seats"] > result["maxSeats"]:
+        raise ConfigError("manifest highRigor.seats must not exceed highRigor.maxSeats")
+    if result["maxTotalChars"] < (
+        result["seats"] * result["maxInputCharsPerSeat"]
+    ):
+        raise ConfigError(
+            "manifest highRigor.maxTotalChars must cover at least seats * maxInputCharsPerSeat"
+        )
+    return result
 
 
 def skill_search_max_results(root: Path) -> int:

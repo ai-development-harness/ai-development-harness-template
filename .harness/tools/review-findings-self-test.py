@@ -66,29 +66,29 @@ def assert_planning_evidence_gate_surfaces() -> None:
     required_markers = {
         ".agents/skills/plan-step/SKILL.md": [
             "Evidence Gate действует уже на стадии PLAN",
-            "Framework/platform capability сама по себе не является основанием",
+            "bounded proof/falsification obligation",
             "Неподтверждённая hypothesis сама по себе не может BLOCK-ировать PLAN",
         ],
         ".agents/skills/implement-step/SKILL.md": [
             "Новый regression/security test должен иметь provenance",
-            "не реализуй его «потому что он уже в плане»",
+            "bounded falsification/evidence check",
             "STEP PLAN STEP-NNN",
         ],
         ".codex/agents/planner.toml": [
             "Evidence Gate действует уже при PLAN",
-            "invalidated/unverified hypothesis отбрасывается",
+            "bounded proof/falsification obligation",
         ],
         ".claude/agents/planner.md": [
             "Evidence Gate действует уже при PLAN",
-            "invalidated/unverified hypothesis отбрасывается",
+            "bounded proof/falsification obligation",
         ],
         ".codex/agents/architect.toml": [
             "считай hypothesis",
-            "не должна превращаться в blocker, hardening, test requirement или новый ADR",
+            "bounded proof obligation",
         ],
         ".claude/agents/architect.md": [
             "считай hypothesis",
-            "не должна превращаться в blocker, hardening, test requirement или новый ADR",
+            "bounded proof obligation",
         ],
     }
     for rel, markers in required_markers.items():

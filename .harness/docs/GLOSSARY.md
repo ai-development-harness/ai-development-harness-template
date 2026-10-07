@@ -202,6 +202,16 @@ Canonical machine `type` определяет семантику выполне�
 
 ## Идентификаторы и артефакты
 
+### CRP — Core Reasoning Principle
+
+Harness-owned leaf capability `CRP-NNN`, описывающая **как** semantic agent должен рассуждать или организовывать работу при конкретном deterministic trigger. CRP не является пользовательской командой, project artifact или source of product/architecture truth.
+
+CRP доставляется через `Context Contract → coreReasoningPrinciples[]` только при применимости и не участвует в project traceability/planning freshness.
+
+### PRN — Project Principle
+
+Project-owned инженерный инвариант `PRN-NNN`, действующий на множество решений конкретного проекта. В отличие от CRP, PRN является canonical project artifact, может быть `blocking|advisory`, участвует в project governance и active blocking PRN входит в planning context basis.
+
 ### REQ — Requirement
 
 **REQ** — устойчивое проверяемое требование к продукту или системе: что должно быть истинно с точки зрения поведения, качества, безопасности, совместимости или другого продукта-контракта.

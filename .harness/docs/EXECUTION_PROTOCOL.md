@@ -268,9 +268,9 @@ Production code mutation запрещена.
 1. Legacy active schema = blocker; сначала `PROJECT RECONCILE`.
 2. Static gate восстанавливает STEP, semantic contracts прямых dependencies, linked REQ/ADR, explicit `architecture_refs` и relevant canonical OQ. Completion dependency на стадии PLAN не требуется.
 3. Semantic gate проверяет внутреннюю непротиворечивость contract, feasibility Acceptance/Verification, prerequisites и ownership.
-4. **Evidence Gate действует уже на PLAN.** Новый security/failure/edge scenario без explicit project contract или reproduced evidence сначала является hypothesis. Проверить необходимые preconditions и, когда практично, выполнить cheapest decisive falsification. Framework/platform capability сама по себе не разрешает plan action, regression/security test, hardening или blocker. Invalidated/unverified hypothesis отбрасывается.
+4. **Evidence Gate действует уже на PLAN.** Новый security/failure/edge scenario без explicit project contract или reproduced evidence сначала является hypothesis. Неподтверждённая hypothesis может породить только bounded proof/falsification obligation — concrete check в Verification/plan. До confirmation framework/platform capability сама по себе не разрешает production mutation, regression/security test, hardening, ADR/OQ/prerequisite или blocker. Invalidated hypothesis отбрасывается; confirmed scenario может влиять на plan пропорционально contract.
 5. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
-6. После PASS запиши содержательный `Implementation plan` как draft. Test/hardening work должен быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario.
+6. После PASS запиши содержательный `Implementation plan` как draft. Production test/hardening work должен быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario; unresolved hypothesis допускается только как bounded proof obligation.
 7. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
    - `contextBasis` schema v4 — semantic STEP/dependency contracts + semantic linked REQ/ADR + referenced architecture sections + relevant OQ; priority/phase, reverse traceability и dependency completion state исключены;
    - `planContentHash` — нормализованный текст самого Implementation plan.
@@ -292,7 +292,7 @@ Execution tracking уже ведётся root execution wrapper. До semantic h
 5. Выполнить scope/mutation policy.
 6. Не реализовывать future/unrelated work.
 7. Добавить/обновить только tests с реальным provenance: explicit contract, reproduced defect или confirmed project-specific scenario.
-8. Если Ready plan содержит test/hardening, основанный только на unverified/invalidated hypothesis, не реализовывать его автоматически: вернуть `BLOCKED` и handoff к свежему `STEP PLAN STEP-NNN`.
+8. Если Ready plan содержит unresolved hypothesis/proof obligation, выполнить только запланированный bounded falsification/evidence check. Не материализовать production hardening/test из hypothesis автоматически: invalidated scenario отбросить; confirmed scenario, требующий новой production mutation, вернуть `BLOCKED` с handoff к свежему `STEP PLAN STEP-NNN`.
 9. При готовности реализации предложить command result `SUCCESS`; dispatcher сам запускает explicit `- command:` entries из `## Verification` без shell и обновляет generated Evidence.
 10. `VERIFICATION_FAIL` возвращает factual command result в тот же IMPLEMENT; `VERIFICATION_MANUAL_REQUIRED` требует только listed manual checks; `VERIFICATION_BLOCKED` не обходится reasoning-ом.
 11. Не ставить `Выполнено` до required review PASS.

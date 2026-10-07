@@ -12,7 +12,14 @@ import hashlib
 import os
 import time
 
-from verification import CAPTURE_TAIL_BYTES, EVIDENCE_START, _run_command, run_step_verification, verification_freshness
+from verification import (
+    CAPTURE_TAIL_BYTES,
+    EVIDENCE_START,
+    _run_command,
+    run_step_verification,
+    verification_command_evidence,
+    verification_freshness,
+)
 
 
 from self_test_fixture import isolate_project_artifacts
@@ -209,6 +216,20 @@ def main() -> int:
         assert "Status: PASS" in evidence
         fresh = verification_freshness(root, "STEP-001")
         assert fresh["status"] == "PASS" and fresh["fresh"] is True, fresh
+
+        exact = verification_command_evidence(
+            root,
+            "STEP-001",
+            'python3 -c "print(123)"',
+        )
+        assert exact["status"] == "PASS" and exact["fresh"] is True, exact
+        missing_command = verification_command_evidence(
+            root,
+            "STEP-001",
+            "python3 missing.py",
+        )
+        assert missing_command["fresh"] is False, missing_command
+        assert missing_command["reasonCode"] == "VERIFICATION_COMMAND_NOT_CONFIGURED"
 
         # Product/worktree mutation outside STEP makes previously PASS evidence stale.
         probe = root / "src/freshness-probe.txt"

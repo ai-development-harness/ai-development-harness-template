@@ -845,6 +845,147 @@ python3 .harness/tools/step-context.py STEP-NNN --phase review --json
 
 `--root <path>` предназначен для tests/tooling; обычный runtime использует repository root, содержащий tool. `--json` выдаёт компактный machine-readable JSON без pretty-print overhead.
 
+### Codebase Grounding payload validator
+
+Файлы:
+
+- `.harness/tools/codebase_grounding.py` — contract engine;
+- `.harness/tools/codebase-grounding.py` — CLI wrapper;
+- `.harness/tools/codebase-grounding-self-test.py` — bounded-context regressions.
+
+Validator не строит mental model и не читает repository произвольно. Он принимает уже сформированный semantic payload и Context Contract, затем fail-closed проверяет exact revision, explicit expansions, `simple|complex` budget, top-level `evidencePaths` и claim-level `evidence[]`; claim evidence обязано относиться к доступному context и индексироваться в `evidencePaths`.
+
+```bash
+python3 .harness/tools/codebase-grounding.py \
+  --context-file '<context-contract-json>' \
+  --payload-file '<grounding-json>' \
+  --json
+```
+
+PASS возвращает normalized payload с `contextBudget.baseMetrics`, фактическим числом expansion files/chars и hard limits. Invalid revision, forbidden expansion, ungrounded evidence path или превышение budget возвращает `BLOCKED`/non-zero.
+
+### Core Reasoning Principles selector
+
+Файлы:
+
+- selector/catalog validator: `.harness/tools/core_reasoning_principles.py`;
+- regression: `.harness/tools/core-reasoning-principles-self-test.py`;
+- leaves: `.agents/skills/core-reasoning-principles/leaves/CRP-*.md`.
+
+Standalone user command отсутствует. Selector вызывается Context Contract resolver-ом и детерминированно возвращает только applicable `CRP-NNN` refs.
+
+Проверяется:
+
+- catalog size 6–10 leaves;
+- stable namespace `CRP`, unique `CRP-NNN` IDs и slugs;
+- required leaf sections `Trigger / applicability`, `Rationale`, `Actionable pattern`;
+- closed-set roles/triggers;
+- max 4 000 chars на leaf;
+- deterministic applicability только из STEP/Context machine facts;
+- ordinary phase не получает весь catalog;
+- CRP остаётся отдельным полем `coreReasoningPrinciples[]` и не смешивается с project-owned `PRN-NNN` в `required`;
+- runtime neutrality: одинаковые facts дают одинаковую selection для Codex/Claude.
+
+Context Contract metrics отдельно публикуют `corePrincipleCount/corePrincipleChars`.
+
+Подробная policy: [`CORE_REASONING_PRINCIPLES.md`](CORE_REASONING_PRINCIPLES.md).
+
+### Structural Enforcement validator
+
+Файлы:
+
+- engine: `.harness/tools/structural_enforcement.py`;
+- CLI: `.harness/tools/structural-enforcement.py`;
+- regression: `.harness/tools/structural-enforcement-self-test.py`.
+
+Scan mode агрегирует Review Contract v2 findings по stable `category + fingerprint` и dedupe-ит duplicate reports той же `reviewed_revision`:
+
+```bash
+python3 .harness/tools/structural-enforcement.py --step STEP-024 --json
+```
+
+Дополнительный structured evidence envelope поддерживает repair/progress stops, audit/reconcile findings, validator failures и durable decisions. Closed source registry не содержит transcript/chat/session.
+
+Proposal validation enforce-ит:
+
+- recurring threshold = 2 distinct factual occurrences;
+- one-off class требует explicit caller `--explicit-single`;
+- exact enforcement ladder `architecture-ownership → schema-type → validator-lint → regression-test → durable-instruction`;
+- каждый weaker level обязан объяснить отказ от всех stronger levels;
+- deterministic mechanism обязан иметь regression fixture contract;
+- `--implemented` требует реально существующий regular fixture;
+- evidence refs обязаны принадлежать выбранному class;
+- architecture-level proposal требует explicit decision route;
+- `automaticMutationAllowed=false` всегда.
+
+Tool не исполняет regression command и не меняет architecture/code; фактический proof остаётся у canonical Verification/CI.
+
+Подробности: [`STRUCTURAL_ENFORCEMENT.md`](STRUCTURAL_ENFORCEMENT.md).
+
+### High-Rigor Arena / Interrogate validator
+
+Файлы:
+
+- engine: `.harness/tools/high_rigor.py`;
+- CLI: `.harness/tools/high-rigor.py`;
+- regression: `.harness/tools/high-rigor-self-test.py`.
+
+Activation mode проверяет `.harness/manifest.yaml → highRigor.*`, phase и deterministic STEP `risk_flags`:
+
+```bash
+python3 .harness/tools/high-rigor.py \
+  --mode arena \
+  --phase plan \
+  --step STEP-024 \
+  --json
+```
+
+`explicit` без `--requested` и `disabled` всегда возвращают `SKIP`; `risk` может вернуть `RUN` только по closed high-risk flags.
+
+Trace validation принимает local run под `.harness/local/high-rigor/**` и recompute-ит exact SHA-256/chars/bytes входов, rubric и outputs. Проверяется:
+
+- configured candidate/reviewer seat count;
+- минимум два independent completed seats;
+- unique completed `sessionExecutionId`;
+- одинаковый shared input для всех candidates/reviewers;
+- одинаковый rubric;
+- per-seat и total char budgets;
+- requested/actual model и visible fallback/dropout;
+- Arena: отдельный judge, completed base candidate, graft/disagreement/verification refs;
+- Interrogate: consensus/disagreement map и lead judgment;
+- `deterministicGatesReplaced=false`.
+
+Runtime/model shortfall возвращает `DEGRADED`, а не скрытый PASS. Core validator не запускает модели и не хранит provider-specific model slugs.
+
+Подробности: [`HIGH_RIGOR.md`](HIGH_RIGOR.md).
+
+---
+
+# 9D. Benchmark Methodology evidence gate
+
+## Файлы
+
+- engine: `.harness/tools/benchmark_methodology.py`
+- CLI: `.harness/tools/benchmark-methodology.py`
+- regression: `.harness/tools/benchmark-methodology-self-test.py`
+
+## Роль
+
+Проверяет достаточность performance evidence, не исполняя benchmark за модель. Вход — закрытый JSON contract с заранее сформулированным claim, exact revisions/argv/environment, raw samples, correctness counts и work-proof files.
+
+Validator вычисляет median/range/variation для baseline/candidate, direction-normalized effect и консервативный noise band. Work-proof files проверяются как regular non-symlink repository paths и получают SHA-256.
+
+## Результаты
+
+- `PASS` — сравнение сопоставимо, correctness не нарушен, есть минимум 3 runs на arm, effect превышает observed variation и declared minimum effect, bottleneck/sanity/end-to-end checks выполнены;
+- `INCONCLUSIVE` — evidence structurally valid, но недостаточен для claim: one/two-run ballpark, effect внутри variation, command/environment mismatch, correctness failure, missing relevance proof и т. п.;
+- `BLOCKED` — malformed/unsupported/unverifiable evidence contract.
+
+`INCONCLUSIVE` является валидным factual outcome и имеет exit code 0: caller обязан трактовать его буквально и не превращать reasoning-ом в performance PASS. Если STEP Acceptance зависит от quantitative claim, обычный Verification/Review остаётся незавершённым до достаточного evidence.
+
+Microbenchmark может доказать только narrow claim. Когда end-to-end relevance проверена и отсутствует, PASS возвращает `claimRestriction=microbenchmark-only` и warning `MICROBENCHMARK_ONLY`.
+
+Подробности: [`BENCHMARK_METHODOLOGY.md`](BENCHMARK_METHODOLOGY.md).
 
 ---
 
@@ -1705,6 +1846,56 @@ python3 .harness/tools/impact-analysis.py --changed ADR-012 --changed REQ-007 --
 - legacy Ready plan без component fingerprints остаётся fail-safe stale с generic `PLANNING_CONTEXT changed`.
 
 Impact analysis read-only: downstream artifacts, reviews и completed history не переписываются.
+
+### Semantic Blast Radius validator
+
+Файлы:
+
+- engine: `.harness/tools/semantic_blast_radius.py`;
+- CLI: `.harness/tools/semantic-blast-radius.py`;
+- regression: `.harness/tools/semantic-blast-radius-self-test.py`.
+
+Preflight возвращает deterministic trigger из STEP `risk_flags`, exact repository revision и explicit downstream STEP surface из existing impact analysis:
+
+```bash
+python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase plan --json
+python3 .harness/tools/semantic-blast-radius.py STEP-024 --phase review --json
+```
+
+Validation mode дополнительно принимает Context Contract, validated grounding и semantic payload. Validator revalidates grounding, enforce-ит общий context budget, provenance evidence paths и 1–2 critical hypotheses. Semantic `PASS` возможен только при `proven` critical proofs, чьи commands реально присутствуют в STEP Verification и имеют fresh generated PASS evidence на current subject revision. Aggregate status `MANUAL_REQUIRED` допустим, если pending manual checks не являются proof этих hypotheses; существующие completion/review gates всё равно обязаны закрыть manual checks отдельно.
+
+### Decision Archaeology validator
+
+Файлы:
+
+- engine: `.harness/tools/decision_archaeology.py`;
+- CLI: `.harness/tools/decision-archaeology.py`;
+- regression: `.harness/tools/decision-archaeology-self-test.py`.
+
+Preflight фиксирует exact repository revision, concrete target path и bounded Git history target-файла. При existing Context Contract current revision обязан совпадать с его `repositoryRevision`.
+
+```bash
+python3 .harness/tools/decision-archaeology.py \
+  --target src/provider/retry.py \
+  --scope simple \
+  --json
+```
+
+Validation mode принимает semantic archaeology payload и optional Context Contract. Validator проверяет:
+
+- `documented | inference` claim boundary;
+- `high | medium | low` confidence;
+- repository-local artifact/commit provenance;
+- commit evidence только из bounded target history;
+- timestamped evidence map;
+- supplied issue/PR/docs evidence как explicit `supplied-not-locally-verifiable`, не как local proof;
+- explicit conflicts и gaps;
+- stale-ADR diagnostic assessments;
+- expansion/history/claim/source budgets.
+
+`PASS` запрещён, если есть inference без historical evidence. Такая inference допустима только как `low` confidence + explicit gap + `INCONCLUSIVE`. Conversation/transcript не является supported evidence category.
+
+Подробная semantic policy: [`DECISION_ARCHAEOLOGY.md`](DECISION_ARCHAEOLOGY.md).
 
 ## Exit codes
 
