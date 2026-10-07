@@ -111,7 +111,7 @@ def updater_source(*, mutate_project_owned: bool) -> str:
     mutation = ""
     if mutate_project_owned:
         mutation = (
-            "Path('planning/reviews/TEMPLATE.md').write_text("
+            "        Path('planning/reviews/TEMPLATE.md').write_text("
             "'mutated by updater\\n', encoding='utf-8')\n"
         )
     return f"""#!/usr/bin/env python3
@@ -143,7 +143,7 @@ else:
         lock["release"] = args.to.removeprefix("v")
         lock["source"]["ref"] = args.to
         lock_path.write_text(json.dumps(lock), encoding="utf-8")
-        {mutation}        result = {{"status": "UPDATED", "current": args.to}}
+{mutation}        result = {{"status": "UPDATED", "current": args.to}}
 
 print(json.dumps(result))
 """
