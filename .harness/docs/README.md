@@ -59,6 +59,7 @@
 - [`CI.md`](CI.md) — Harness Integrity CI и граница между Harness CI и product CI.
 - [`VALIDATORS.md`](VALIDATORS.md) — единый справочник Python-валидаторов, validation gates, CLI-ключей, exit codes и примеров запуска.
 - [`RELEASE_QUALIFICATION.md`](RELEASE_QUALIFICATION.md) — exact-SHA release qualification, platform/runtime lanes и граница с обычным Harness Integrity.
+- [`INITIALIZED_UPGRADE_QUALIFICATION.md`](INITIALIZED_UPGRADE_QUALIFICATION.md) — previous stable → exact candidate на disposable initialized downstream state с preservation/no-op proof.
 - [`MAINTENANCE.md`](MAINTENANCE.md) — как изменять Harness, не смешивая protocol layer с product knowledge.
 - [`UPDATES.md`](UPDATES.md) — release/lock/ownership/legacy-adoption lifecycle self-update.
 

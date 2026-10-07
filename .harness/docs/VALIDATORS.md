@@ -1953,3 +1953,42 @@ python3 .harness/tools/release-qualification.py \
 - minimum lane нельзя засчитать не на Python 3.11.
 
 Подробный release contract: [`RELEASE_QUALIFICATION.md`](RELEASE_QUALIFICATION.md).
+
+
+---
+
+# Initialized Upgrade Qualification
+
+## Файл / Файлы
+
+- `.harness/tools/release-upgrade-qualification.py`
+- `.harness/tools/release-upgrade-qualification-self-test.py`
+
+## Роль
+
+Проверяет upgrade already initialized downstream baseline до exact release-prepared candidate SHA. Работает только с local checkouts и disposable clones; network/private authentication принадлежит external release workflow.
+
+## CLI
+
+```bash
+python3 .harness/tools/release-upgrade-qualification.py \
+  --baseline-project /path/to/release-canary \
+  --baseline-sha '<exact-baseline-sha>' \
+  --candidate-source /path/to/harness-candidate \
+  --candidate-sha '<exact-candidate-sha>' \
+  --json
+```
+
+## PASS contract
+
+- exact clean baseline/candidate inputs;
+- candidate tree имеет согласованные release lock + update graph;
+- previous stable → candidate выполняет реальный UPDATE, не первичный NO_UPDATE;
+- reload boundaries разрешаются bounded repeats;
+- pending project schema мигрирует deterministic owner-ом;
+- STATUS/DOCTOR/validator/full self-tests PASS;
+- Accepted ADR, INIT reports и canary project-owned customization сохранены;
+- повторный APPLY возвращает реальный `NO_UPDATE` без repository mutation;
+- source baseline/candidate host checkouts остаются неизменными.
+
+Подробно: [`INITIALIZED_UPGRADE_QUALIFICATION.md`](INITIALIZED_UPGRADE_QUALIFICATION.md).
