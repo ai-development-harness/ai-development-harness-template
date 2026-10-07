@@ -83,6 +83,7 @@ def invoke(
     *,
     lane: str = "current",
     expected_python: str | None = None,
+    gate_timeout_seconds: int | None = None,
     expect: int = 0,
 ) -> dict[str, object]:
     cmd = [
@@ -96,8 +97,23 @@ def invoke(
     ]
     if expected_python is not None:
         cmd.extend(["--expected-python", expected_python])
+    if gate_timeout_seconds is not None:
+        cmd.extend(["--gate-timeout-seconds", str(gate_timeout_seconds)])
     proc = run(cmd, cwd=root, expect=expect)
     return json.loads(proc.stdout)
+
+
+def assert_timing_evidence(payload: dict[str, object]) -> None:
+    duration = payload.get("durationMs")
+    assert isinstance(duration, int) and duration >= 0, payload
+    gates = payload.get("gates")
+    assert isinstance(gates, list), payload
+    for gate in gates:
+        assert isinstance(gate, dict), gate
+        gate_duration = gate.get("durationMs")
+        timeout = gate.get("timeoutSeconds")
+        assert isinstance(gate_duration, int) and gate_duration >= 0, gate
+        assert isinstance(timeout, int) and timeout >= 1, gate
 
 
 def main() -> int:
@@ -115,10 +131,16 @@ def main() -> int:
             "bounded-stress-suite",
             "checkout-clean-after",
         ], payload
+        assert_timing_evidence(payload)
+        stress_gate = next(
+            item for item in payload["gates"] if item["id"] == "bounded-stress-suite"
+        )
+        assert stress_gate["timeoutSeconds"] == 330, stress_gate
 
         mismatch = invoke(root, "0" * 40, expect=2)
         assert mismatch["status"] == "BLOCKED", mismatch
         assert mismatch["reason"] == "REVISION_MISMATCH", mismatch
+        assert isinstance(mismatch.get("durationMs"), int), mismatch
 
         bad_python = "0.0"
         runtime_mismatch = invoke(
@@ -143,7 +165,34 @@ def main() -> int:
         gate = next(
             item for item in failed["gates"] if item["id"] == "synthetic-self-tests"
         )
+        assert gate["status"] == "FAIL", gate
         assert gate["exitCode"] == 7, gate
+        assert gate["timeoutSeconds"] == 300, gate
+        assert_timing_evidence(failed)
+
+        # Реальный timeout должен стать machine-readable failure без retry.
+        write_tool(
+            root,
+            "run-self-tests.py",
+            "import time\ntime.sleep(2)\n",
+        )
+        timeout_sha = commit_all(root, "timeout gate")
+        timed_out = invoke(
+            root,
+            timeout_sha,
+            gate_timeout_seconds=1,
+            expect=1,
+        )
+        assert timed_out["status"] == "FAIL", timed_out
+        timeout_gate = next(
+            item for item in timed_out["gates"]
+            if item["id"] == "synthetic-self-tests"
+        )
+        assert timeout_gate["status"] == "TIMEOUT", timeout_gate
+        assert timeout_gate["exitCode"] is None, timeout_gate
+        assert timeout_gate["timeoutSeconds"] == 1, timeout_gate
+        assert timeout_gate["durationMs"] >= 900, timeout_gate
+        assert_timing_evidence(timed_out)
 
         write_tool(
             root,
@@ -158,6 +207,7 @@ def main() -> int:
             item for item in mutation["gates"] if item["id"] == "checkout-clean-after"
         )
         assert clean_gate["status"] == "FAIL", clean_gate
+        assert_timing_evidence(mutation)
         (root / "qualification-mutation.txt").unlink()
 
         write_tool(
@@ -176,6 +226,7 @@ def main() -> int:
         minimum = invoke(root, restored_sha, lane="minimum", expect=min_expect)
         if min_expect == 0:
             assert minimum["status"] == "PASS", minimum
+            assert_timing_evidence(minimum)
         else:
             assert minimum["status"] == "BLOCKED", minimum
             assert minimum["reason"] == "MINIMUM_LANE_REQUIRES_PYTHON_3_11", minimum
@@ -184,6 +235,7 @@ def main() -> int:
         windows = invoke(root, restored_sha, lane="windows", expect=windows_expect)
         if windows_expect == 0:
             assert windows["status"] == "PASS", windows
+            assert_timing_evidence(windows)
         else:
             assert windows["status"] == "BLOCKED", windows
             assert windows["reason"] == "WINDOWS_LANE_REQUIRES_WINDOWS", windows
