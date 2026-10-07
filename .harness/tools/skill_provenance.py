@@ -79,14 +79,29 @@ def _skill_dir(root: Path, slug: str) -> Path:
 
 def _local_dir(root: Path, value: str, label: str) -> Path:
     raw = Path(_text(value, label))
-    candidate = (root / raw).resolve() if not raw.is_absolute() else raw.resolve()
-    allowed = (root / ".harness" / "local").resolve()
+    base = root.resolve()
+    lexical = raw if raw.is_absolute() else base / raw
+    lexical = Path(str(lexical.absolute()))
+    allowed = base / ".harness" / "local"
     try:
-        candidate.relative_to(allowed)
+        relative = lexical.relative_to(base)
+        lexical.relative_to(allowed)
     except ValueError as exc:
         raise SkillProvenanceError(f"{label} must stay under .harness/local/**") from exc
-    if not candidate.is_dir() or candidate.is_symlink():
+
+    cursor = base
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise SkillProvenanceError(f"{label} path must not contain symlinks")
+
+    if not lexical.is_dir():
         raise SkillProvenanceError(f"{label} must be a real directory")
+    candidate = lexical.resolve(strict=True)
+    try:
+        candidate.relative_to(allowed.resolve())
+    except ValueError as exc:
+        raise SkillProvenanceError(f"{label} escapes .harness/local/**") from exc
     return candidate
 
 
@@ -385,21 +400,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Record skill provenance and build read-only future update plans."
     )
-    parser.add_argument("--pretty", action="store_true")
     sub = parser.add_subparsers(dest="operation", required=True)
 
     record = sub.add_parser("record-install")
     record.add_argument("skill")
     record.add_argument("--payload-file", required=True)
+    record.add_argument("--pretty", action="store_true")
 
     plan = sub.add_parser("plan")
     plan.add_argument("skill")
     plan.add_argument("--candidate-dir")
     plan.add_argument("--candidate-revision")
     plan.add_argument("--unavailable", action="store_true")
+    plan.add_argument("--pretty", action="store_true")
 
     status = sub.add_parser("status")
     status.add_argument("skill")
+    status.add_argument("--pretty", action="store_true")
 
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[2]
