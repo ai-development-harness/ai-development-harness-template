@@ -4,14 +4,14 @@ description: Read provider facts for an existing Pull Request, perform bounded s
 ---
 # pr-maintenance
 
-Internal semantic capability for an **already existing PR**. It is not a new user command and never owns Git mutation.
+Internal semantic capability for an **already existing Pull Request**. It is not a new user command and never owns Git mutation.
 
 Use it when the user asks to:
 
-- diagnose/fix failing PR CI;
+- diagnose/fix failing Pull Request CI;
 - process review comments or review requests;
-- make the PR easier to review;
-- boundedly watch/re-check an active PR.
+- make the Pull Request easier to review;
+- boundedly watch/re-check an active Pull Request.
 
 ## Hard boundary
 
@@ -29,7 +29,7 @@ Mutations remain owned by existing workflows:
 code/task fix   → STEP/FIX/QUICK FIX as appropriate
 commit          → GIT COMMIT
 publish         → GIT PUSH
-PR create/reuse → GIT PR
+Pull Request create/reuse → GIT PR
 finish merged   → GIT PR FINISH
 ```
 
@@ -79,14 +79,14 @@ Deduplicate repeated comments by meaning, but keep every external provider ID th
 
 Mode: `reviewability`.
 
-Produce concise reviewer guidance from current PR facts:
+Produce concise reviewer guidance from current Pull Request facts:
 
 - intent/what changed;
 - highest-risk surfaces;
 - relevant Verification evidence/checks;
 - generated/mechanical paths that can be skimmed.
 
-`generatedOrMechanicalPaths` may contain only paths actually present in the provider PR diff. This output is guidance, not a review verdict.
+`generatedOrMechanicalPaths` may contain only paths actually present in the provider Pull Request diff. This output is guidance, not a review verdict.
 
 ## Bounded babysit
 
@@ -99,7 +99,7 @@ One invocation may refresh provider state at most 3 times (`refreshCount=0..3`).
 - provider capability is unavailable;
 - budget is exhausted.
 
-Do not busy-poll. Do not auto-merge. If the PR becomes merged, use normal `GIT PR FINISH` when requested/appropriate.
+Do not busy-poll. Do not auto-merge. If the Pull Request becomes merged, use normal `GIT PR FINISH` when requested/appropriate.
 
 ## Semantic payload
 
