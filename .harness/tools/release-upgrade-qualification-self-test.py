@@ -138,7 +138,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[2]
 candidate_oid = subprocess.run(
-    ["git", "-C", args.source_url, "rev-parse", f"refs/tags/{{args.to}}^{{commit}}"],
+    ["git", "-C", args.source_url, "rev-parse", f"refs/tags/{{args.to}}^{{{{commit}}}}"],
     text=True,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
