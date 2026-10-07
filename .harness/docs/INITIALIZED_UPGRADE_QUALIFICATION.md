@@ -125,3 +125,8 @@ JSON result schema v1 имеет kind `harness_initialized_upgrade_qualification
 - `maintainer-tools` владеет authenticated private checkout, exact input selection, artifacts/Checks и publish hard gate.
 
 Private App access проверяется в maintainer-tools #7, а не внутри core runner.
+
+
+## Candidate mirror routing refs
+
+The qualification mirror normalizes both local and remote-tracking refs for the configured candidate default branch to the exact candidate SHA so stale refs cannot shadow candidate update metadata.
