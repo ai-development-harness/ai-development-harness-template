@@ -268,15 +268,16 @@ Production code mutation запрещена.
 1. Legacy active schema = blocker; сначала `PROJECT RECONCILE`.
 2. Static gate восстанавливает STEP, semantic contracts прямых dependencies, linked REQ/ADR, explicit `architecture_refs` и relevant canonical OQ. Completion dependency на стадии PLAN не требуется.
 3. Semantic gate проверяет внутреннюю непротиворечивость contract, feasibility Acceptance/Verification, prerequisites и ownership.
-4. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
-5. После PASS запиши содержательный `Implementation plan` как draft.
-6. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
+4. **Evidence Gate действует уже на PLAN.** Новый security/failure/edge scenario без explicit project contract или reproduced evidence сначала является hypothesis. Проверить необходимые preconditions и, когда практично, выполнить cheapest decisive falsification. Framework/platform capability сама по себе не разрешает plan action, regression/security test, hardening или blocker. Invalidated/unverified hypothesis отбрасывается.
+5. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
+6. После PASS запиши содержательный `Implementation plan` как draft. Test/hardening work должен быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario.
+7. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
    - `contextBasis` schema v4 — semantic STEP/dependency contracts + semantic linked REQ/ADR + referenced architecture sections + relevant OQ; priority/phase, reverse traceability и dependency completion state исключены;
    - `planContentHash` — нормализованный текст самого Implementation plan.
-7. **Каждый** PLAN обязан пройти independent semantic planning-review. Immutable schema-v1 report в configured `protocol.planningReviewDirectory` хранит verdict + оба fingerprints.
-8. Только matching PASS разрешает `execution-state.py stamp-plan STEP-NNN`. Stamp atomically пишет `plan.status=ready`, revision, context/content hashes, reviewed report и timestamp.
-9. Изменение plan body делает stale content hash; изменение relevant upstream input делает stale context basis.
-10. Resolver признаёт interrupted PLAN завершённым только при полном совпадении Ready metadata и matching PASS report.
+8. **Каждый** PLAN обязан пройти independent semantic planning-review. Reviewer также применяет Evidence Gate: speculative work в draft является defect плана, а новая неподтверждённая hypothesis reviewer-а сама по себе не может BLOCK-ировать PLAN. Immutable schema-v1 report в configured `protocol.planningReviewDirectory` хранит verdict + оба fingerprints.
+9. Только matching PASS разрешает `execution-state.py stamp-plan STEP-NNN`. Stamp atomically пишет `plan.status=ready`, revision, context/content hashes, reviewed report и timestamp.
+10. Изменение plan body делает stale content hash; изменение relevant upstream input делает stale context basis.
+11. Resolver признаёт interrupted PLAN завершённым только при полном совпадении Ready metadata и matching PASS report.
 
 Single PLAN после SUCCESS останавливается; продолжение к IMPLEMENT возможно только explicit chain/STEP RUN.
 
@@ -290,11 +291,12 @@ Execution tracking уже ведётся root execution wrapper. До semantic h
 4. При `RESUME` сначала исследовать существующий diff/Evidence и продолжить недостающее, не переделывая готовую работу.
 5. Выполнить scope/mutation policy.
 6. Не реализовывать future/unrelated work.
-7. Добавить/обновить tests.
-8. При готовности реализации предложить command result `SUCCESS`; dispatcher сам запускает explicit `- command:` entries из `## Verification` без shell и обновляет generated Evidence.
-9. `VERIFICATION_FAIL` возвращает factual command result в тот же IMPLEMENT; `VERIFICATION_MANUAL_REQUIRED` требует только listed manual checks; `VERIFICATION_BLOCKED` не обходится reasoning-ом.
-10. Не ставить `Выполнено` до required review PASS.
-11. Command завершается только после PASS deterministic/manual Verification contract.
+7. Добавить/обновить только tests с реальным provenance: explicit contract, reproduced defect или confirmed project-specific scenario.
+8. Если Ready plan содержит test/hardening, основанный только на unverified/invalidated hypothesis, не реализовывать его автоматически: вернуть `BLOCKED` и handoff к свежему `STEP PLAN STEP-NNN`.
+9. При готовности реализации предложить command result `SUCCESS`; dispatcher сам запускает explicit `- command:` entries из `## Verification` без shell и обновляет generated Evidence.
+10. `VERIFICATION_FAIL` возвращает factual command result в тот же IMPLEMENT; `VERIFICATION_MANUAL_REQUIRED` требует только listed manual checks; `VERIFICATION_BLOCKED` не обходится reasoning-ом.
+11. Не ставить `Выполнено` до required review PASS.
+12. Command завершается только после PASS deterministic/manual Verification contract.
 
 Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN` **только после PASS Intent Basis guard**. Изменившийся REQ/ADR/STEP/Project Principle или Ready plan делает старую semantic execution stale и маршрутизирует к `STEP PLAN STEP-NNN`.
 

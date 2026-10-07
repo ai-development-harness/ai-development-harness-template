@@ -1,10 +1,10 @@
 # Evidence Gate
 
-Evidence Gate не позволяет reviewer-агенту превратить правдоподобную, но не проверенную гипотезу в defect, regression test и production FIX.
+Evidence Gate не позволяет planner/reviewer/implementer превратить правдоподобную, но не проверенную гипотезу в plan requirement, defect, regression test, hardening или production FIX.
 
 Главное правило:
 
-> Новая reviewer-derived идея сначала является hypothesis. Она становится material finding только после проверки необходимых предпосылок и project-specific evidence.
+> Новая agent-derived идея о failure/security/edge scenario сначала является hypothesis. Она может повлиять на plan, стать material finding или породить test/FIX только после проверки необходимых предпосылок и project-specific evidence.
 
 ## Зачем это нужно
 
@@ -159,9 +159,31 @@ Actions:
 - при необходимости одна короткая заметка в rationale.
 ```
 
+## Planning / implementation boundary
+
+Evidence Gate применяется **до** появления speculative work в Ready plan, а не только после IMPLEMENT на REVIEW:
+
+- architecture completeness выявляет применимые dimensions, но не требует защиту от каждого теоретически возможного scenario;
+- новый scenario без explicit contract/reproducer сначала проверяется как hypothesis;
+- invalidated/unverified hypothesis нельзя превращать в plan action, `tests[]`, hardening, ADR/OQ/prerequisite или planning blocker;
+- planning reviewer обязан отклонять speculative work в draft plan и сам не может BLOCK-ировать PLAN новой неподтверждённой hypothesis;
+- если такой пункт всё же дошёл до IMPLEMENT, implementer не реализует его автоматически и возвращает `BLOCKED → STEP PLAN`.
+
+Это закрывает обходной путь:
+
+```text
+HYPOTHESIS -> PLAN -> tests/hardening -> IMPLEMENT
+```
+
+так же, как Review Contract v3 закрывает:
+
+```text
+HYPOTHESIS -> finding -> FIX
+```
+
 ## Test provenance
 
-Новый regression/security test, появившийся из REVIEW/FIX, должен иметь хотя бы один реальный источник:
+Новый regression/security test, появившийся из PLAN/IMPLEMENT/REVIEW/FIX, должен иметь хотя бы один реальный источник:
 
 - explicit REQ/ADR/STEP invariant;
 - reproduced defect;

@@ -42,6 +42,8 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
 
 До формирования Implementation plan явно проверь применимые архитектурные измерения. Это semantic gate, а не checklist ради checklist: неприменимые пункты не создают искусственных требований.
 
+**Evidence Gate действует уже на стадии PLAN.** Новый security/failure/edge scenario, который не следует прямо из REQ/ADR/STEP/PRN и не воспроизведён фактическим project state, сначала является hypothesis. Проверь необходимые preconditions и, когда практично, выполни самый дешёвый falsification check. Framework/platform capability сама по себе не является основанием для plan action, regression/security test, hardening или blocker. Invalidated/unverified hypothesis отбрасывается и не попадает в Implementation plan. Architecture completeness означает проверку применимых рисков, а не генерацию защит «на всякий случай».
+
 - module/service/bounded-context boundaries и ownership;
 - data model, persistence, migrations, rollback и backward compatibility;
 - public/internal API, protocol/schema compatibility;
@@ -62,7 +64,7 @@ Architecture-sensitive решение нельзя прятать внутрь I
 Не редактируй STEP/frontmatter вручную. Сформируй только semantic JSON:
 
 - `implementationPlan` — непустой массив шагов;
-- каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`;
+- каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`; каждый новый regression/security test и risk-driven hardening action должен быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario; speculative hypothesis в payload запрещена;
 - `verification` — массив `{"kind":"command|manual","value":"..."}`;
 - optional `executionGroups` — machine-readable DAG поверх 1-based элементов `implementationPlan`. Добавляй groups только когда декомпозиция действительно полезна и conflict boundary можно выразить явно. Каждая group содержит `id`, human-readable `title`, `steps[]`, `dependsOn[]`, non-empty `mutationPaths[]`, non-empty `verificationResponsibilities[]`, `parallel`. Если groups заданы, они покрывают каждый implementation step ровно один раз. `parallel=true` допустим только для кандидата с доказуемо непересекающимся declared mutation surface; это **не** команда на запуск concurrent agents.
 
@@ -83,7 +85,9 @@ Writer сам заменяет только `## Implementation plan` / `## Verif
 - учтены ли migration/rollback/failure/recovery/compatibility paths, когда они применимы;
 - не появляется ли hidden ownership conflict или новая cross-STEP dependency;
 - действительно ли Verification доказывает Acceptance;
-- не основан ли план на недоказанном предположении о соседней подсистеме.
+- не основан ли план на недоказанном предположении о соседней подсистеме;
+- не добавляет ли plan speculative test/hardening только из общей возможности framework/platform;
+- для любого нового reviewer-derived security/failure scenario сначала примени Evidence Gate: preconditions → cheapest practical falsification → confirmed либо discard. Неподтверждённая hypothesis сама по себе не может BLOCK-ировать PLAN.
 - если persisted draft содержит `plan.execution_groups`, прочитай canonical projection через `execution-groups.py STEP-NNN --json` и проверь, что group purpose соответствует связанным plan steps, declared `mutationPaths` достаточно консервативны, `verificationResponsibilities` реально проверяют group outcome, а `parallel=true` не основан только на разных filenames. Deterministic отсутствие overlap — необходимое, но не достаточное semantic доказательство независимости.
 
 Reviewer возвращает только material findings, которые меняют допустимость или содержание реализации. Material finding — это минимум одно из: plan приводит к иному observable implementation behaviour; противоречит Accepted ADR/REQ/STEP contract; оставляет обязательный acceptance/verification/prerequisite без владельца или доказуемого пути выполнения. Wording/style/clarity notes, не меняющие эти свойства, помещай только в `rationale` и не превращай в blocker.
