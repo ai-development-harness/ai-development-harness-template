@@ -724,6 +724,12 @@ def validate_planning_review_report(
         errors.append("verdict must be pass|blocked")
     if meta.get("reviewer_role") != "reviewer":
         errors.append("reviewer_role must be reviewer (independent from planner)")
+    execution_id = meta.get("execution_id")
+    if execution_id is not None and (
+        not isinstance(execution_id, str)
+        or re.fullmatch(r"exec-[0-9a-f]{32}", execution_id) is None
+    ):
+        errors.append("execution_id must be an exact Harness execution id when present")
     if not _valid_sha256(meta.get("context_basis")):
         errors.append("context_basis must be sha256")
     if not _valid_sha256(meta.get("plan_content_hash")):
