@@ -53,6 +53,8 @@ python3 .harness/tools/semantic-blast-radius.py STEP-NNN --phase plan --json
 
 До формирования Implementation plan явно проверь применимые архитектурные измерения. Это semantic gate, а не checklist ради checklist: неприменимые пункты не создают искусственных требований.
 
+**Evidence Gate действует уже на стадии PLAN.** Новый security/failure/edge scenario без explicit REQ/ADR/STEP/PRN или reproduced project evidence сначала является hypothesis. Semantic Blast Radius/architect/reviewer могут сохранить такую hypothesis только как bounded proof/falsification obligation: concrete check в Verification/plan, который подтвердит или опровергнет необходимые preconditions. До confirmation запрещено превращать hypothesis в production mutation, regression/security test, hardening, ADR/OQ/prerequisite или planning blocker. Framework/platform capability сама по себе не является project-specific evidence. Invalidated hypothesis отбрасывается; confirmed scenario может влиять на plan только в пределах contract.
+
 - module/service/bounded-context boundaries и ownership;
 - data model, persistence, migrations, rollback и backward compatibility;
 - public/internal API, protocol/schema compatibility;
@@ -81,7 +83,7 @@ python3 .harness/tools/high-rigor.py --mode arena --phase plan --step STEP-NNN -
 Не редактируй STEP/frontmatter вручную. Сформируй только semantic JSON:
 
 - `implementationPlan` — непустой массив шагов;
-- каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`;
+- каждый шаг: `title`, непустой `actions[]`, optional `files[]`, `tests[]`, `risks[]`; production action и новый regression/security test должны быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario; unverified hypothesis допустима только как bounded proof/falsification obligation, а не как mutation/test/hardening;
 - `verification` — массив `{"kind":"command|manual|product","value":"..."}`; для `product` value — canonical `FEATURE-*` из `docs/verification/feature-map.json`;
 - optional `executionGroups` — machine-readable DAG поверх 1-based элементов `implementationPlan`. Добавляй groups только когда декомпозиция действительно полезна и conflict boundary можно выразить явно. Каждая group содержит `id`, human-readable `title`, `steps[]`, `dependsOn[]`, non-empty `mutationPaths[]`, non-empty `verificationResponsibilities[]`, `parallel`. Если groups заданы, они покрывают каждый implementation step ровно один раз. `parallel=true` допустим только для кандидата с доказуемо непересекающимся declared mutation surface; это **не** команда на запуск concurrent agents.
 
@@ -103,7 +105,9 @@ Writer сам заменяет только `## Implementation plan` / `## Verif
 - не появляется ли hidden ownership conflict или новая cross-STEP dependency;
 - действительно ли Verification доказывает Acceptance;
 - для STEP с material risk flags выполнен ли required Semantic Blast Radius и перенесены ли все unresolved critical proof obligations из PLAN result в Verification/plan;
-- не основан ли план на недоказанном предположении о соседней подсистеме.
+- не основан ли plan на недоказанном предположении о соседней подсистеме;
+- не превратил ли planner/architect/Semantic Blast Radius unverified hypothesis в production work, regression/security test, hardening, ADR/OQ/prerequisite или blocker вместо bounded proof/falsification obligation;
+- любой новый reviewer-derived security/failure scenario сначала проходит Evidence Gate: preconditions → cheapest practical falsification → confirmed либо discard. Неподтверждённая hypothesis сама по себе не может BLOCK-ировать PLAN.
 - если persisted draft содержит `plan.execution_groups`, прочитай canonical projection через `execution-groups.py STEP-NNN --json` и проверь, что group purpose соответствует связанным plan steps, declared `mutationPaths` достаточно консервативны, `verificationResponsibilities` реально проверяют group outcome, а `parallel=true` не основан только на разных filenames. Deterministic отсутствие overlap — необходимое, но не достаточное semantic доказательство независимости.
 
 Reviewer возвращает только material findings, которые меняют допустимость или содержание реализации. Material finding — это минимум одно из: plan приводит к иному observable implementation behaviour; противоречит Accepted ADR/REQ/STEP contract; оставляет обязательный acceptance/verification/prerequisite без владельца или доказуемого пути выполнения. Wording/style/clarity notes, не меняющие эти свойства, помещай только в `rationale` и не превращай в blocker.
@@ -124,6 +128,6 @@ Reviewer возвращает только:
 python3 .harness/tools/semantic-writer.py planning-review STEP-NNN --payload-file '<local-json-or->'
 ```
 
-Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready. Количество durable planning-review rounds для одного STEP ограничено `.harness/manifest.yaml → execution.maxPlanReviewCycles`; при `PLAN_REVIEW_LIMIT_REACHED` не запускай очередной auto-fix/re-PLAN. Остановись и передай пользователю оставшиеся findings.
+Writer сам вычисляет current `context_basis` / `plan_content_hash`, резервирует immutable `PLAN-REVIEW-<timestamp>.md`, валидирует report и при PASS вызывает canonical Ready stamp. BLOCKED report остаётся durable evidence, plan не становится Ready. Количество durable planning-review rounds внутри текущей active `STEP PLAN` execution ограничено `.harness/manifest.yaml → execution.maxPlanReviewCycles`; historical reports прошлых explicit PLAN invocations budget новой execution не расходуют. При `PLAN_REVIEW_LIMIT_REACHED` не запускай очередной auto-fix/re-PLAN. Остановись и передай пользователю оставшиеся findings.
 
 После writer завершай execution только значением `completionResult` из его JSON; для PASS planning review это `SUCCESS`, для blocker — `BLOCKED`. Не переинтерпретируй verdict. Изменение Implementation plan/upstream semantic input позже по-прежнему stale-ит Ready fingerprints. Production code не меняй.

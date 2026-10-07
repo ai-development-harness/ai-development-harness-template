@@ -60,7 +60,45 @@ def sample() -> dict[str, object]:
     }
 
 
+def assert_planning_evidence_gate_surfaces() -> None:
+    """Не позволить Evidence Gate снова сузиться только до REVIEW/FIX."""
+
+    required_markers = {
+        ".agents/skills/plan-step/SKILL.md": [
+            "Evidence Gate действует уже на стадии PLAN",
+            "bounded proof/falsification obligation",
+            "Неподтверждённая hypothesis сама по себе не может BLOCK-ировать PLAN",
+        ],
+        ".agents/skills/implement-step/SKILL.md": [
+            "Новый regression/security test должен иметь provenance",
+            "bounded falsification/evidence check",
+            "STEP PLAN STEP-NNN",
+        ],
+        ".codex/agents/planner.toml": [
+            "Evidence Gate действует уже при PLAN",
+            "bounded proof/falsification obligation",
+        ],
+        ".claude/agents/planner.md": [
+            "Evidence Gate действует уже при PLAN",
+            "bounded proof/falsification obligation",
+        ],
+        ".codex/agents/architect.toml": [
+            "считай hypothesis",
+            "bounded proof obligation",
+        ],
+        ".claude/agents/architect.md": [
+            "считай hypothesis",
+            "bounded proof obligation",
+        ],
+    }
+    for rel, markers in required_markers.items():
+        content = (ROOT / rel).read_text(encoding="utf-8")
+        for marker in markers:
+            assert marker in content, f"{rel}: missing planning Evidence Gate marker: {marker}"
+
+
 def main() -> int:
+    assert_planning_evidence_gate_surfaces()
     finding = normalize_findings([sample()])[0]
     assert finding["id"] == "F-001"
     assert finding["fingerprint"].startswith("sha256:")

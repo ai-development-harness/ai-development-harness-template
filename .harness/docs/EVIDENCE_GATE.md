@@ -1,10 +1,10 @@
 # Evidence Gate
 
-Evidence Gate не позволяет reviewer-агенту превратить правдоподобную, но не проверенную гипотезу в defect, regression test и production FIX.
+Evidence Gate не позволяет planner/reviewer/implementer превратить правдоподобную, но не проверенную гипотезу в plan requirement, defect, regression test, hardening или production FIX.
 
 Главное правило:
 
-> Новая reviewer-derived идея сначала является hypothesis. Она становится material finding только после проверки необходимых предпосылок и project-specific evidence.
+> Новая agent-derived идея о failure/security/edge scenario сначала является hypothesis. Она может повлиять на plan, стать material finding или породить test/FIX только после проверки необходимых предпосылок и project-specific evidence.
 
 ## Зачем это нужно
 
@@ -159,9 +159,32 @@ Actions:
 - при необходимости одна короткая заметка в rationale.
 ```
 
+## Planning / implementation boundary
+
+Evidence Gate применяется **до** появления speculative work в Ready plan, а не только после IMPLEMENT на REVIEW:
+
+- architecture completeness выявляет применимые dimensions, но не требует защиту от каждого теоретически возможного scenario;
+- новый scenario без explicit contract/reproducer сначала проверяется как hypothesis;
+- unverified hypothesis может породить только bounded proof/falsification obligation — concrete check в Verification/plan, который решает вопрос без product hardening;
+- до confirmation hypothesis нельзя превращать в production mutation, regression/security test, hardening, ADR/OQ/prerequisite или planning blocker;
+- planning reviewer обязан отклонять speculative production work в draft plan и сам не может BLOCK-ировать PLAN новой неподтверждённой hypothesis;
+- если proof obligation дошёл до IMPLEMENT, implementer выполняет только этот check: invalidated scenario отбрасывается; confirmed scenario, требующий новой production mutation, возвращается в fresh `STEP PLAN`.
+
+Это закрывает обходной путь:
+
+```text
+HYPOTHESIS -> PLAN -> production tests/hardening -> IMPLEMENT
+```
+
+Допустимый planning path выглядит как `HYPOTHESIS → bounded falsification check → invalidated | confirmed`. Только confirmed scenario может породить production work. Review Contract v3 аналогично закрывает:
+
+```text
+HYPOTHESIS -> finding -> FIX
+```
+
 ## Test provenance
 
-Новый regression/security test, появившийся из REVIEW/FIX, должен иметь хотя бы один реальный источник:
+Новый regression/security test, появившийся из PLAN/IMPLEMENT/REVIEW/FIX, должен иметь хотя бы один реальный источник:
 
 - explicit REQ/ADR/STEP invariant;
 - reproduced defect;

@@ -10,11 +10,13 @@ Namespace/control plane AI Development Harness. Здесь собраны core d
 
 `.harness/manifest.yaml → execution.maxFixReviewCycles` задаёт максимальное число циклов `FIX → REVIEW` внутри одного `STEP RUN STEP`. Допустимый диапазон — от 1 до 5 включительно; template default — 3.
 
+`execution.maxPlanReviewCycles` ограничивает planning-review rounds внутри одной active `STEP PLAN` execution. Historical reports прошлых explicit PLAN invocations остаются evidence, но budget новой execution не расходуют. Допустимый диапазон — 1..5; template default — 3.
+
 `execution.verificationCommandTimeoutSeconds` ограничивает одну deterministic STEP Verification command; допустимо 1..3600 секунд, template default — 300. Verification запускается argv-напрямую без shell.
 
 `review.security` и `review.tests` управляют дополнительными specialized reviewers: `auto` запускает reviewer по фактическим рискам/diff/test surface, `always` — при каждом review-проходе. Режима `never` намеренно нет: настройка может усилить review, но не отключить safety gate.
 
-Material findings проходят [Evidence Gate](docs/EVIDENCE_GATE.md): reviewer-derived риск сначала проверяется как hypothesis по фактическим preconditions/reachability и, когда возможно, дешёвым falsification experiment. Неподтверждённая или опровергнутая гипотеза не должна порождать regression tests, FIX или отдельный durable finding.
+Planning и review проходят [Evidence Gate](docs/EVIDENCE_GATE.md): новый failure/security scenario сначала проверяется как hypothesis по фактическим preconditions/reachability. До confirmation он может породить только bounded proof/falsification obligation, но не production hardening, regression/security test, FIX или blocker. Invalidated hypothesis отбрасывается.
 
 `highRigor.arena` / `highRigor.interrogate` управляют только optional semantic fan-out: `disabled` полностью выключает capability, `explicit` требует явного запроса, `risk` разрешает запуск по deterministic high-risk STEP flags. `seats` и char budgets ограничивают стоимость/context; consensus никогда не заменяет deterministic gates.
 

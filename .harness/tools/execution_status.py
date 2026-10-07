@@ -1667,6 +1667,22 @@ def _active_execution_for_command(
     return matches[0] if matches else None
 
 
+def active_execution_for_command(
+    root: Path,
+    command: str,
+) -> dict[str, Any] | None:
+    """Вернуть snapshot единственной active execution для canonical command.
+
+    Semantic writers используют этот read-only boundary, чтобы durable artifact
+    был связан с exact execution episode, а не с chat/session memory или всей
+    историей STEP.
+    """
+    normalized = normalize_single_command(root, command)["normalized"]
+    status = load_status(root)
+    execution = _active_execution_for_command(status, normalized)
+    return deepcopy(execution) if execution is not None else None
+
+
 def read_side_effect_checkpoint(
     root: Path,
     command: str,

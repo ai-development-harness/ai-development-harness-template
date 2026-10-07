@@ -1046,7 +1046,7 @@ python3 .harness/tools/verify-step.py STEP-NNN --manual-json '[{"check":"...","s
 Поддерживаются:
 
 - `plan-draft` — structured Implementation plan + Verification → mutation только соответствующих STEP sections и `plan.status=draft`;
-- `planning-review` — verdict/findings/rationale → immutable planning-review с exact fingerprints; PASS atomically handoff-ится в canonical Ready stamp;
+- `planning-review` — verdict/findings/rationale → immutable planning-review с exact fingerprints и `execution_id` active `STEP PLAN`; per-execution budget `execution.maxPlanReviewCycles` fail-closed блокирует следующий round после достижения лимита, historical reports других execution в счётчик не входят; PASS atomically handoff-ится в canonical Ready stamp;
 - `step-review` — structured findings/verdict/specialized results → immutable STEP review с exact repository revision и deterministic gate metadata.
 
 ## Payload boundary

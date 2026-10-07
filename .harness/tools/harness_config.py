@@ -356,12 +356,12 @@ def max_fix_review_cycles(root: Path) -> int:
 
 
 def max_plan_review_cycles(root: Path) -> int:
-    """Safety cap semantic planning-review раундов одного STEP.
+    """Safety cap semantic planning-review раундов одной STEP PLAN execution.
 
-    В отличие от FIX↔REVIEW это не CTS loop: PLAN может BLOCKED-нуть после
-    semantic review, пользователь/author исправляет upstream artifact и
-    запускает PLAN снова. Поэтому budget считается по durable immutable
-    planning-review reports для текущего STEP, а не по chat/session memory.
+    Budget сохраняется через immutable reports, связанные с exact execution_id.
+    Historical reports прошлых explicit PLAN invocations остаются evidence, но
+    не расходуют budget новой execution. Restart/resume той же execution budget
+    сохраняет.
     """
     manifest = load_manifest(root)
     value = require(manifest, "execution.maxPlanReviewCycles")
