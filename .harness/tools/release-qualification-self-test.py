@@ -161,7 +161,12 @@ def main() -> int:
         write_tool(
             root,
             "run-self-tests.py",
-            "import sys\\nraise SystemExit(0)\\n",
+            "import sys\nraise SystemExit(0)\n",
+        )
+        run(
+            [sys.executable, ".harness/tools/run-self-tests.py"],
+            cwd=root,
+            expect=0,
         )
         restored_sha = commit_all(root, "restore passing gate")
 
