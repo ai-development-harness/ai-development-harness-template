@@ -21,6 +21,7 @@ Harness skills описывают **workflow**, а не конкретный tec
 - `core-reasoning-principles` — internal CRP router; Context Contract выдаёт только applicable leaf paths, не весь catalog
 - `structural-enforcement` — recurring structured corrections → strongest feasible enforcement proposal; не пользовательская команда
 - `high-rigor` — optional Arena/Interrogate fan-out с deterministic activation, exact trace и explicit degradation; не пользовательская команда
+- `benchmark-methodology` — optional performance evidence methodology + deterministic sufficiency gate; не пользовательская команда
 - `pr-maintenance` — read-only PR facts + bounded semantic CI/review triage поверх существующего Git/PR lifecycle; не пользовательская команда
 
 Отдельно от Harness-owned core skills проект может иметь **project-owned Verification Driver** `.agents/skills/verify-product/SKILL.md`. Его структура и qualification контролируются `.harness/tools/project-verification.py`, а machine-readable feature map хранится в `docs/verification/feature-map.json`. Этот skill не входит в `required_skills` и не обновляется Harness updater-ом как Core.
