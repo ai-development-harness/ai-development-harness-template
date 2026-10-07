@@ -48,6 +48,7 @@
 - [`WORKFLOW.md`](WORKFLOW.md) — устройство orchestration и durable handoff между стадиями.
 - [`REPORTING.md`](REPORTING.md) — требования к итоговым отчётам.
 - [`SKILL_MANAGEMENT.md`](SKILL_MANAGEMENT.md) — поиск, inspection, установка и создание skills.
+- [`SKILL_PROVENANCE.md`](SKILL_PROVENANCE.md) — deterministic provenance, intentional fork detection и read-only update planning для third-party skills.
 - [`GITHUB_TEMPLATES.md`](GITHUB_TEMPLATES.md) — регенерация Issue Forms и PR template по текущему стеку проекта.
 
 ## Repository operations
