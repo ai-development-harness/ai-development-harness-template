@@ -75,6 +75,7 @@ Validator проверяет protocol/repository invariants, но **не зам�
 - schema и обязательные ключи `.harness/harness-policy.toml`;
 - tracked files через реальный Git index;
 - update graph и release metadata consistency;
+- cross-contract `required_files ↔ updater ownership`: каждый обязательный Harness file должен совпадать ровно с одним из `harness_owned | shared | marker_merge`;
 - обязательные protocol files, skills, agents и commands;
 - для каждого `required_skills` — соседний `UPSTREAM.md` с `Source: project-native`, чтобы core workflow не терял provenance;
 - active project document model;
