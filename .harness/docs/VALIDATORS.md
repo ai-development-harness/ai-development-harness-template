@@ -1904,3 +1904,119 @@ Validation mode принимает semantic archaeology payload и optional Cont
 - `2` — argparse error.
 
 Подробная lifecycle policy: [`EVOLUTION_SEMANTICS.md`](EVOLUTION_SEMANTICS.md).
+
+
+---
+
+# Release Qualification entrypoint
+
+## Файл / Файлы
+
+- `.harness/tools/release-qualification.py`
+- `.harness/tools/release-qualification-self-test.py`
+
+## Роль
+
+Canonical deterministic entrypoint release-level проверки exact candidate checkout. Он не заменяет Harness Integrity: release orchestrator вызывает один и тот же executable в platform/runtime lanes и агрегирует результат с downstream/stress gates.
+
+## CLI
+
+```bash
+python3 .harness/tools/release-qualification.py \
+  --lane current \
+  --expect-sha '<exact-candidate-sha>' \
+  --expected-python 3.13 \
+  --json
+```
+
+`--lane` обязателен:
+
+- `current` — validator + полный discoverable self-test suite;
+- `minimum` — тот же core contract строго на Python 3.11;
+- `windows` — validator + targeted Windows-specific boundaries.
+
+`--expect-sha` обязателен и должен совпадать с фактическим `git rev-parse HEAD`. `--expected-python` опционально закрепляет exact major.minor runtime caller-а.
+
+## Exit codes
+
+- `0` — PASS;
+- `1` — qualification gate FAIL либо checkout был мутирован во время qualification;
+- `2` — BLOCKED до gates: SHA/runtime/platform mismatch, dirty checkout или недоступный Git state.
+
+## Fail-closed свойства
+
+- evidence всегда относится к exact repository revision;
+- dirty checkout не квалифицируется;
+- после gates повторно проверяется tracked/untracked state;
+- stdout/stderr в compact JSON представлены hash + byte count, полный вывод остаётся job log;
+- Windows lane нельзя случайно запустить на POSIX;
+- minimum lane нельзя засчитать не на Python 3.11.
+
+Подробный release contract: [`RELEASE_QUALIFICATION.md`](RELEASE_QUALIFICATION.md).
+
+
+---
+
+# Initialized Upgrade Qualification
+
+## Файл / Файлы
+
+- `.harness/tools/release-upgrade-qualification.py`
+- `.harness/tools/release-upgrade-qualification-self-test.py`
+
+## Роль
+
+Проверяет upgrade already initialized downstream baseline до exact release-prepared candidate SHA. Работает только с local checkouts и disposable clones; network/private authentication принадлежит external release workflow.
+
+## CLI
+
+```bash
+python3 .harness/tools/release-upgrade-qualification.py \
+  --baseline-project /path/to/release-canary \
+  --baseline-sha '<exact-baseline-sha>' \
+  --candidate-source /path/to/harness-candidate \
+  --candidate-sha '<exact-candidate-sha>' \
+  --json
+```
+
+## PASS contract
+
+- exact clean baseline/candidate inputs;
+- candidate tree имеет согласованные release lock + update graph;
+- previous stable → candidate выполняет реальный UPDATE, не первичный NO_UPDATE;
+- reload boundaries разрешаются bounded repeats;
+- pending project schema мигрирует deterministic owner-ом;
+- STATUS/DOCTOR/validator/full self-tests PASS;
+- Accepted ADR, INIT reports и canary project-owned customization сохранены;
+- повторный APPLY возвращает реальный `NO_UPDATE` без repository mutation;
+- source baseline/candidate host checkouts остаются неизменными.
+
+Подробно: [`INITIALIZED_UPGRADE_QUALIFICATION.md`](INITIALIZED_UPGRADE_QUALIFICATION.md).
+
+
+---
+
+# Bounded Stress Suite
+
+## Файл / Файлы
+
+- `.harness/stress-tests.json`
+- `.harness/tools/run-stress-tests.py`
+- `.harness/tools/run-stress-tests-self-test.py`
+
+## Роль
+
+Отдельный runner для intermittent concurrency/process/locking/cleanup regressions. Первый scenario — regression #256 concurrent authority fixture cleanup.
+
+## CLI
+
+```bash
+python3 .harness/tools/run-stress-tests.py --iterations 5
+python3 .harness/tools/run-stress-tests.py --json
+```
+
+Без `--iterations` используется release default из manifest: 20.
+
+Runner запускает каждый manifest scenario ровно один раз с bounded iteration count, не делает retry-on-failure, завершает process tree при timeout и сохраняет diagnostic hashes/byte counts/tails для failed scenario.
+
+Release Qualification/current всегда использует 20 iterations. Обычный PR CI использует explicit lightweight budget.

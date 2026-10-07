@@ -9,6 +9,7 @@ version = 1
 required_files = [
   "AGENTS.md",
   ".harness/harness-update-graph.json",
+  ".harness/stress-tests.json",
   ".harness/command-transitions.json",
   ".harness/reasoning-boundaries.json",
   ".harness/runtime-adapter-contract.json",
@@ -67,6 +68,9 @@ required_files = [
   ".harness/docs/EXECUTION_GROUPS.md",
   ".harness/docs/EVOLUTION_SEMANTICS.md",
   ".harness/docs/MULTI_PROJECT_CONTEXTS.md",
+  ".harness/docs/RELEASE_QUALIFICATION.md",
+  ".harness/docs/STRESS_SUITE.md",
+  ".harness/docs/INITIALIZED_UPGRADE_QUALIFICATION.md",
   ".github/pull_request_template.md",
   ".harness/tools/validate.py",
   ".harness/tools/harness_config.py",
@@ -208,7 +212,13 @@ required_files = [
   ".harness/tools/harness-update.py",
   ".harness/tools/harness-update-self-test.py",
   ".harness/tools/update-migration-self-test.py",
+  ".harness/tools/release-qualification.py",
+  ".harness/tools/release-qualification-self-test.py",
+  ".harness/tools/release-upgrade-qualification.py",
+  ".harness/tools/release-upgrade-qualification-self-test.py",
   ".harness/tools/run-self-tests.py",
+  ".harness/tools/run-stress-tests.py",
+  ".harness/tools/run-stress-tests-self-test.py",
   ".gitmessage",
 ]
 
