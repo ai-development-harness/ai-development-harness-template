@@ -198,6 +198,7 @@ def _github_snapshot(root: Path, ctx: Any, pr: dict[str, Any]) -> dict[str, Any]
     for item in check_runs:
         if item.get("id") is None:
             continue
+        output = item.get("output") if isinstance(item.get("output"), dict) else {}
         checks.append({
             "factId": f"check:{item.get('id')}",
             "providerId": item.get("id"),
@@ -206,6 +207,9 @@ def _github_snapshot(root: Path, ctx: Any, pr: dict[str, Any]) -> dict[str, Any]
             "status": str(item.get("status") or "").upper(),
             "conclusion": str(item.get("conclusion") or "").upper() or None,
             "url": item.get("html_url") or item.get("details_url"),
+            "outputTitle": _optional_text(output.get("title"), max_chars=2000),
+            "outputSummary": _optional_text(output.get("summary"), max_chars=12000),
+            "outputText": _optional_text(output.get("text"), max_chars=12000),
         })
     for item in statuses:
         if item.get("id") is None:
@@ -219,6 +223,7 @@ def _github_snapshot(root: Path, ctx: Any, pr: dict[str, Any]) -> dict[str, Any]
             "status": "COMPLETED",
             "conclusion": state,
             "url": item.get("target_url"),
+            "description": _optional_text(item.get("description"), max_chars=4000),
         })
 
     files = [{
