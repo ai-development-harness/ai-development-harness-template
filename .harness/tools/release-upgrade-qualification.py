@@ -249,7 +249,8 @@ def _json_result(proc: subprocess.CompletedProcess[str], stage: str) -> dict[str
     except json.JSONDecodeError as exc:
         raise QualificationError(
             "INVALID_STAGE_RESULT",
-            f"{stage} did not return JSON: {proc.stdout[:200]!r}",
+            f"{stage} did not return JSON: stdout={proc.stdout[:200]!r} "
+            f"stderr={proc.stderr[:400]!r}",
         ) from exc
     if not isinstance(value, dict):
         raise QualificationError("INVALID_STAGE_RESULT", f"{stage} JSON must be object")
