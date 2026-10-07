@@ -18,7 +18,7 @@ from command_transitions import load_transition_table, validate_transition_table
 from execution_status import load_status
 
 
-from self_test_fixture import isolate_project_artifacts
+from self_test_fixture import copy_effective_harness_checkout, isolate_project_artifacts
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
@@ -41,32 +41,13 @@ def run(root: Path, *args: str) -> None:
 
 
 def copy_tracked(target: Path) -> None:
-    raw = subprocess.run(
-        ["git", "ls-files", "-z"],
-        cwd=SOURCE_ROOT,
-        stdout=subprocess.PIPE,
-        check=True,
-    ).stdout
-    for token in raw.split(b"\0"):
-        if not token:
-            continue
-        rel = token.decode("utf-8")
-        source = SOURCE_ROOT / rel
-        # Tracked path, удалённый из working tree, но не из index (обычный `rm`
-        # без `git rm`), fixture не нужен — пропускаем вместо traceback.
-        if not source.is_file():
-            continue
-        destination = target / rel
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
-
+    copy_effective_harness_checkout(SOURCE_ROOT, target)
     isolate_project_artifacts(target)
     run(target, "git", "init", "-q", "-b", "main")
     run(target, "git", "config", "user.email", "dispatcher@example.invalid")
     run(target, "git", "config", "user.name", "Dispatcher Test")
     run(target, "git", "add", ".")
     run(target, "git", "commit", "-qm", "fixture")
-
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-dispatcher-") as tmp:
