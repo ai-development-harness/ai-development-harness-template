@@ -60,6 +60,7 @@ def bootstrap(root: Path) -> str:
     pass_script = "import sys\nraise SystemExit(0)\n"
     write_tool(root, "validate.py", pass_script)
     write_tool(root, "run-self-tests.py", pass_script)
+    write_tool(root, "run-stress-tests.py", pass_script)
     for name in (
         "harness-config-self-test.py",
         "document-contract-self-test.py",
@@ -111,6 +112,7 @@ def main() -> int:
         assert [item["id"] for item in payload["gates"]] == [
             "validate-ci",
             "synthetic-self-tests",
+            "bounded-stress-suite",
             "checkout-clean-after",
         ], payload
 
