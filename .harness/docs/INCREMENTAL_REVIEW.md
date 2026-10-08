@@ -84,6 +84,37 @@ cache is a cache miss and runs the commands normally. The cache is deleted after
 an aggregate PASS/FAIL. No external/integration result is reused by default.
 This is **manual-stage continuation**, not a global test-result cache.
 
+## Selective Verification during FIX
+
+`python3 .harness/tools/verify-selected.py STEP-NNN --command '<configured command>'`
+executes only exact user-selected commands from the canonical Verification
+contract, up to eight at a time, before FIX completion. It returns
+`completionProof=false` and never writes generated STEP Evidence. Each
+command must leave the repository revision and Git refs unchanged. A typo,
+failure or mutation blocks the targeted feedback. Dispatcher still runs the
+**full** Verification contract on FIX SUCCESS; selective debugging cannot
+forge a final PASS.
+
+## Read-only gate reuse
+
+The ordinary semantic PLAN/REVIEW integrity preflight calls
+`python3 .harness/tools/gate-reuse.py`, which executes
+`validate.py --mode manual` on a cache miss. A PASS is reusable for at most
+120 seconds with exact repository revision, validator SHA-256, runtime
+environment and invocation mode. FAIL/BLOCKED is never cached, and a mutated
+repository invalidates the result. This is not a bypass for Completion Gate,
+security reviewers or the writer's exact revision/gate comparison.
+
+## Context snapshots and rejected hypotheses
+
+`context-reuse.py record STEP-NNN --role reviewer --payload-file
+.harness/local/<payload>.json` accepts a small summary, exact source paths,
+and up to five falsified hypotheses with their evidence. Normal STEP context
+resolves the current hashes before providing a `REUSE_CANDIDATE` hint.
+Changing any cited source invalidates both the summary and prior negative
+hypotheses. These are **not** durable source-of-truth project artifacts and
+cannot independently prove any acceptance or security claim.
+
 ## Further incremental work
 
 Context Contracts, Codebase Grounding and Semantic Blast Radius retain their
