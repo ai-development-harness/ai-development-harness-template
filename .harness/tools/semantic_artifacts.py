@@ -663,6 +663,23 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             if fix_scope.get("mode") == "fix_delta"
             else "Initial full implementation review"
         )
+        fix_delta_section = ""
+        if fix_scope.get("mode") == "fix_delta":
+            durable_delta = {
+                "schemaVersion": 1,
+                "mode": "fix_delta",
+                "sourceReport": fix_scope["sourceReport"],
+                "beforeTree": fix_scope["beforeTree"],
+                "afterTree": fix_scope["afterTree"],
+                "changedPaths": fix_scope["changedPaths"],
+                "previousFingerprints": fix_scope["previousFingerprints"],
+                "fixDeltaCausality": data.get("fixDeltaCausality") or {},
+            }
+            fix_delta_section = (
+                "\n## FIX delta provenance\n\n```json\n"
+                + json.dumps(durable_delta, sort_keys=True, ensure_ascii=False, indent=2)
+                + "\n```\n"
+            )
         body = f"""# STEP REVIEW {step_id} — {display}
 
 ## Scope checked
@@ -691,7 +708,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
 ## Verdict rationale
 
 {data["rationale"]}
-{completion_section}"""
+{completion_section}{fix_delta_section}"""
         return render_document(frontmatter, body)
 
     path, _created_at = create_durable_report(
