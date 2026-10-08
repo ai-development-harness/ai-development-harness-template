@@ -24,7 +24,7 @@ python3 .harness/tools/requirements-quality.py --payload-file '<local-json-or->'
 
 1. Запусти:
    ```bash
-   python3 .harness/tools/validate.py --mode manual
+   python3 .harness/tools/gate-reuse.py
    ```
 2. Используй только `context`, уже возвращённый canonical dispatcher handoff: `context.contextContract.required` задаёт exact artifacts/sections, а deterministic facts остаются в том же handoff. Если `context.contextContract.coreReasoningPrinciples` непуст, прочитай **только** перечисленные `path` leaves и примени их к reasoning; не сканируй каталог CRP. `CRP-NNN` — Harness-owned reasoning rule и не является project `PRN-NNN`; Project Principles по-прежнему приходят отдельными canonical artifacts. Повторно `step-context.py`/resolver не вызывай. Не preload-ь unrelated docs/REQ/ADR; затем исследуй только действительно relevant code/tests/config. Completion dependency для PLAN не вычисляй.
 3. Проверь semantic consistency:
