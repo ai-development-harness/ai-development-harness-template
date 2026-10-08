@@ -191,6 +191,7 @@ def main() -> int:
             ],
         )
         assert passed["status"] == "PASS", passed
+        assert passed["automatedResumed"] is True, passed
         assert passed["commands"][0]["exitCode"] == 0, passed
         assert passed["manual"][0]["status"] == "PASS", passed
         evidence = step.read_text(encoding="utf-8")
@@ -237,6 +238,22 @@ def main() -> int:
         contract_stale = verification_freshness(root, "STEP-001")
         assert contract_stale["reasonCode"] == "VERIFICATION_CONTRACT_STALE", contract_stale
         step.write_text(original_text, encoding="utf-8", newline="\n")
+
+        # A modified subject invalidates cached automation even if manual
+        # observations arrive unchanged.
+        reset(root)
+        unconfirmed = run_step_verification(root, "STEP-001")
+        assert unconfirmed["status"] == "MANUAL_REQUIRED", unconfirmed
+        (root / "new-file.py").write_text("subject changed\\n", encoding="utf-8")
+        stale_continuation = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Confirmed again.",
+            }],
+        )
+        assert stale_continuation["automatedResumed"] is False, stale_continuation
+        (root / "new-file.py").unlink()
 
         # Non-zero exit is factual FAIL, not LLM interpretation.
         reset(root)
