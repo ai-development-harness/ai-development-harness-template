@@ -6,6 +6,8 @@ description: Produce, independently review, fingerprint and persist a concrete i
 
 Используй для `STEP PLAN STEP-NNN`. Используй `context.contextContract` как минимальный runtime-neutral набор artifacts/sections; legacy `readPaths` остаётся compatibility surface и не означает «прочитать файл целиком». Дополнительный context загружай только через explicit expansion с material reason; `.harness/tools/**` не входит в normal semantic context. Human-readable prose Implementation plan и planning-review пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys не локализуй.
 
+Если `context.contextReuse.status=REUSE_CANDIDATE`, используй summary как только навигационную подсказку к прежним подтверждённым источникам. Точные source hashes уже проверены Core; не перечитывай их целиком без нового вопроса, но спорные предпосылки перепроверяй из source of truth. При `STALE/MISSING` не доверяй прежнему reasoning. Результат значимого bounded grounding можешь зафиксировать через `context-reuse.py record` с явными source paths и коротким summary (не в transcript). Отвергнутые гипотезы можно сохранить там же только с concrete falsification evidence, чтобы другой агент не исследовал их заново при неизменных источниках. Эти заметки не являются grounds для PASS/BLOCKED.
+
 Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
 ## Phase A — requirements quality / clarification
