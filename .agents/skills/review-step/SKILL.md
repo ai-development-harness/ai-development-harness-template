@@ -6,6 +6,8 @@ description: Run an independent read-only review of an exact repository revision
 
 Используй для `STEP REVIEW STEP-NNN`. Human-readable findings/evidence/verdict rationale пиши на `.harness/manifest.yaml → language.documentation` с fallback на `language.default`; protocol headings/keys/enums не локализуй.
 
+Если `context.contextReuse.status=REUSE_CANDIDATE`, используй предыдущую source-pinned сводку и отвергнутые hypotheses как экономию повторного исследования, а не как proof. Проверяй новые material facts из repository; при `STALE` делай targeted refresh. После review допустимо сохранить короткую навигационную сводку через `context-reuse.py record` для следующей сессии; не дублируй immutable report или полный STEP. Source files и Evidence Gate всегда приоритетнее summary.
+
 1. До reasoning запусти deterministic integrity gate и убедись, что STEP имеет current Ready plan:
    ```bash
    python3 .harness/tools/validate.py --mode manual
