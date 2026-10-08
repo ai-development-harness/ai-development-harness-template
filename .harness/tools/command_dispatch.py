@@ -59,7 +59,7 @@ from planning_contract import step_completion_proof
 from step_context import build_step_context
 from step_next import resolve_step_action, resolve_step_next
 from verification import run_step_verification, write_verification_evidence
-from fix_delta import capture_fix, complete_fix, review_scope, FixDeltaError
+from fix_delta import capture_fix, complete_fix, review_scope, request_full_review, FixDeltaError
 
 
 SCHEMA_VERSION = 1
@@ -457,6 +457,8 @@ def _semantic_handoff(
         result["intentBasis"] = intent_basis
     if context is not None and route.get("operation") == "REVIEW":
         try:
+            if os.environ.get("HARNESS_REVIEW_FULL") == "1":
+                request_full_review(root, route["target"])
             result["fixReview"] = review_scope(root, route["target"])
         except (FixDeltaError, OSError, ValueError) as exc:
             raise DispatchError("FIX_DELTA_BLOCKED", str(exc)) from exc
