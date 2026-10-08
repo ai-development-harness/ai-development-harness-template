@@ -10,7 +10,7 @@ description: Run an independent read-only review of an exact repository revision
 
 1. До reasoning запусти deterministic integrity gate и убедись, что STEP имеет current Ready plan:
    ```bash
-   python3 .harness/tools/validate.py --mode manual
+   python3 .harness/tools/gate-reuse.py
    ```
 2. **Сначала проверь handoff `fixReview.mode`.** `initial` — первичный полный аудит. `fix_delta` — строго ограниченное повторное ревью исправлений: прочитай `fixReview.sourceReport`, все `previousFingerprints` и exact Git patch по `patchPath`. Разрешённые проверки: закрытие предыдущих findings, соответствующие тесты, прямые поведенческие последствия изменённых строк и необходимый соседний код для их понимания. Не начинай новый аудит неизменённой реализации. Проблему вне delta сообщи пользователю отдельно, но не превращай её в очередной FIX. `full_explicit` — полный повторный аудит по явному запросу пользователя. При отсутствии или недостоверности baseline не расширяй молча scope: Core обязан вернуть BLOCKED.
    Все обязательные lead/security/tests reviewers должны получить те же `fixReview.mode`, `sourceReport`, `patchPath`, `changedPaths` и fingerprints; ни один reviewer не должен независимо переоткрывать старый STEP scope. Убедись, что `reviewMode` не изменился после resume.
