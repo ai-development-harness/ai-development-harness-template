@@ -106,10 +106,20 @@ def complete_fix(root: Path, step_id: str, execution_id: str) -> None:
     _save(root, step_id, data)
 
 
+def request_full_review(root: Path, step_id: str) -> None:
+    """Persist an explicitly requested full audit across dispatcher/writer processes."""
+    data = _load(root, step_id)
+    if data is not None:
+        data["fullExplicit"] = True
+        _save(root, step_id, data)
+
+
 def review_scope(root: Path, step_id: str) -> dict[str, Any]:
     data = _load(root, step_id)
     if not data or not data.get("complete"):
         return {"mode": "initial"}
+    if data.get("fullExplicit"):
+        return {"mode": "full_explicit", "sourceReport": data["sourceReport"]}
     if data.get("afterSubject") != verification_subject_revision(root, step_id):
         raise FixDeltaError("FIX subject changed after completion; stale delta baseline")
     before = data.get("beforeTree")
