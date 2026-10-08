@@ -59,6 +59,7 @@ from planning_contract import step_completion_proof
 from step_context import build_step_context
 from step_next import resolve_step_action, resolve_step_next
 from verification import run_step_verification, write_verification_evidence
+from fix_delta import capture_fix, complete_fix, review_scope, FixDeltaError
 
 
 SCHEMA_VERSION = 1
@@ -387,6 +388,14 @@ def _semantic_handoff(
                 f"{command}: deterministic STEP context is not PASS",
             )
 
+        # A FIX baseline is captured before any product mutation, including dirty
+        # worktrees. Resuming the same execution never moves that baseline.
+        if route.get("operation") == "FIX":
+            try:
+                capture_fix(root, target, str(execution.get("executionId") or ""))
+            except (FixDeltaError, OSError, ValueError) as exc:
+                raise DispatchError("FIX_BASELINE_BLOCKED", str(exc)) from exc
+
         # STEP REVIEW semantic reasoning must be bound to the exact deterministic
         # revision/gate that was handed to the reviewer. Persist this proof in
         # execution state before returning the handoff; the model never supplies
@@ -446,6 +455,11 @@ def _semantic_handoff(
     )
     if isinstance(intent_basis, dict):
         result["intentBasis"] = intent_basis
+    if context is not None and route.get("operation") == "REVIEW":
+        try:
+            result["fixReview"] = review_scope(root, route["target"])
+        except (FixDeltaError, OSError, ValueError) as exc:
+            raise DispatchError("FIX_DELTA_BLOCKED", str(exc)) from exc
     if context is not None:
         result["context"] = context
     return result
@@ -1108,6 +1122,13 @@ def complete_dispatch(
             expected_execution_id=execution_id,
             details=completion_details,
         )
+        # Mark the FIX delta usable only after successful Verification and
+        # accepted execution completion; never after BLOCKED/manual pending.
+        completed_route = route_command(root, command)
+        if (completed_route.get("domain") == "STEP"
+                and completed_route.get("operation") == "FIX"
+                and result in {"SUCCESS", "PASS"}):
+            complete_fix(root, completed_route["target"], execution_id)
         resolved = resolve_execution(root, execution)
     except (OSError, ValueError) as exc:
         details_value = getattr(exc, "details", None)
