@@ -123,6 +123,16 @@ def main() -> int:
             fix_delta.request_full_review(root, "STEP-001")
             assert fix_delta.review_scope(root, "STEP-001")["mode"] == "full_explicit"
             fix_delta.clear_scope(root, "STEP-001")
+
+            # A real FIX must not silently start delta review without a
+            # confirmed immutable FAIL report. This is deliberately NOT
+            # bypassed by the Verification-only synthetic test.
+            fix_delta.latest_structured_findings = original
+            try:
+                fix_delta.capture_fix(root, "STEP-001", "exec-no-review")
+                raise AssertionError("FIX accepted missing FAIL review")
+            except ValueError:
+                pass
         finally:
             fix_delta.latest_structured_findings = original
             fix_delta.verification_subject_revision = original_subject
