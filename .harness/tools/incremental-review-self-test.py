@@ -88,6 +88,41 @@ def main() -> int:
                 pass
             fix_delta.clear_scope(root, "STEP-001")
             assert fix_delta.review_scope(root, "STEP-001")["mode"] == "initial"
+
+            # CTS FIX has no contextPhase. The dispatcher must capture before
+            # handing semantic work to the model (regression for issue #281).
+            import command_dispatch
+            skill = root / ".agents/skills/fix-step/SKILL.md"
+            skill.parent.mkdir(parents=True, exist_ok=True)
+            skill.write_text("fixture", encoding="utf-8")
+            saved_route = command_dispatch.route_command
+            saved_capture = command_dispatch.capture_fix
+            seen = []
+            command_dispatch.route_command = lambda *_: {
+                "command": "STEP FIX STEP-001",
+                "dispatch": {"kind": "semantic", "skill": "fix-step"},
+                "domain": "STEP", "operation": "FIX",
+                "target": "STEP-001", "input": None, "authority": {},
+            }
+            command_dispatch.capture_fix = lambda *_: seen.append("pre-FIX")
+            try:
+                response = command_dispatch._semantic_handoff(
+                    root, {"rootCommand": "STEP FIX STEP-001", "executionId": "exec-42"},
+                    "STEP FIX STEP-001",
+                )
+                assert response["status"] == "SEMANTIC", response
+                assert seen == ["pre-FIX"], seen
+            finally:
+                command_dispatch.route_command = saved_route
+                command_dispatch.capture_fix = saved_capture
+
+            # Deliberate full audit persists across independent writer calls.
+            fix_delta.verification_subject_revision = lambda *_: {"subject": "postfix"}
+            fix_delta.capture_fix(root, "STEP-001", "exec-2")
+            fix_delta.complete_fix(root, "STEP-001", "exec-2")
+            fix_delta.request_full_review(root, "STEP-001")
+            assert fix_delta.review_scope(root, "STEP-001")["mode"] == "full_explicit"
+            fix_delta.clear_scope(root, "STEP-001")
         finally:
             fix_delta.latest_structured_findings = original
             fix_delta.verification_subject_revision = original_subject
