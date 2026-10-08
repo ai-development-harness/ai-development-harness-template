@@ -99,8 +99,13 @@ def capture_fix(root: Path, step_id: str, execution_id: str) -> dict[str, Any]:
 
 def complete_fix(root: Path, step_id: str, execution_id: str) -> None:
     data = _load(root, step_id)
-    if data is None or data.get("executionId") != execution_id:
-        raise FixDeltaError("FIX completion has no matching baseline")
+    # Legacy/diagnostic low-level completions may predate this protocol.
+    # They cannot claim a delta review, but must not lose FIX completion.
+    # The subsequent reviewer falls back to full initial scope.
+    if data is None:
+        return
+    if data.get("executionId") != execution_id:
+        raise FixDeltaError("FIX completion baseline belongs to another execution")
     data["afterSubject"] = verification_subject_revision(root, step_id)
     data["complete"] = True
     _save(root, step_id, data)
