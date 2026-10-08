@@ -111,7 +111,10 @@ def reuse_pending(
         return None
     if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
         return None
-    age = time.time() - cached.get("recordedAt", -float("inf"))
+    recorded_at = cached.get("recordedAt")
+    if not isinstance(recorded_at, (int, float)) or isinstance(recorded_at, bool):
+        return None
+    age = time.time() - recorded_at
     if not (0 <= age <= RESUME_TTL_SECONDS):
         return None
     if (cached.get("stepId") != step_id
