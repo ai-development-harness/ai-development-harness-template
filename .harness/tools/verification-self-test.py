@@ -351,34 +351,34 @@ def main() -> int:
         from unittest.mock import patch
         with patch("command_dispatch.capture_fix", return_value={"testOnly": True}):
             dispatch = start_dispatch(root, "STEP FIX STEP-001")
-        assert dispatch["status"] == "SEMANTIC", dispatch
-        first_complete = complete_dispatch(
-            root,
-            dispatch["rootCommand"],
-            dispatch["command"],
-            "SUCCESS",
-            execution_id=dispatch["executionId"],
-        )
-        assert first_complete["status"] == "SEMANTIC", first_complete
-        assert first_complete["reasonCode"] == "VERIFICATION_MANUAL_REQUIRED", first_complete
+            assert dispatch["status"] == "SEMANTIC", dispatch
+            first_complete = complete_dispatch(
+                root,
+                dispatch["rootCommand"],
+                dispatch["command"],
+                "SUCCESS",
+                execution_id=dispatch["executionId"],
+            )
+            assert first_complete["status"] == "SEMANTIC", first_complete
+            assert first_complete["reasonCode"] == "VERIFICATION_MANUAL_REQUIRED", first_complete
 
-        final = complete_dispatch(
-            root,
-            dispatch["rootCommand"],
-            dispatch["command"],
-            "SUCCESS",
-            execution_id=dispatch["executionId"],
-            details={
-                "manualVerification": [
-                    {
-                        "check": "Подтвердить semantic condition",
-                        "status": "PASS",
-                        "observed": "Confirmed by semantic reviewer.",
-                    }
-                ]
-            },
-        )
-        assert final["status"] == "DONE", final
+            final = complete_dispatch(
+                root,
+                dispatch["rootCommand"],
+                dispatch["command"],
+                "SUCCESS",
+                execution_id=dispatch["executionId"],
+                details={
+                    "manualVerification": [
+                        {
+                            "check": "Подтвердить semantic condition",
+                            "status": "PASS",
+                            "observed": "Confirmed by semantic reviewer.",
+                        }
+                    ]
+                },
+            )
+            assert final["status"] == "DONE", final
 
     print("VERIFICATION SELF-TEST: PASS")
     return 0
