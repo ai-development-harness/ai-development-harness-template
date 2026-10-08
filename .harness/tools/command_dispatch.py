@@ -365,6 +365,17 @@ def _semantic_handoff(
             f"dispatch skill does not exist: {skill}",
         )
 
+    # FIX has no contextPhase in the canonical CTS: capture at the
+    # semantic-dispatch boundary, not inside phase-specific context resolution.
+    # No implementation mutations may occur before this exact pre-FIX tree.
+    if route.get("domain") == "STEP" and route.get("operation") == "FIX":
+        try:
+            capture_fix(
+                root, str(route["target"]), str(execution.get("executionId") or ""),
+            )
+        except (FixDeltaError, OSError, ValueError) as exc:
+            raise DispatchError("FIX_BASELINE_BLOCKED", str(exc)) from exc
+
     context: dict[str, Any] | None = None
     context_phase = dispatch.get("contextPhase")
     if context_phase is not None:
@@ -388,14 +399,6 @@ def _semantic_handoff(
                 "STEP_CONTEXT_BLOCKED",
                 f"{command}: deterministic STEP context is not PASS",
             )
-
-        # A FIX baseline is captured before any product mutation, including dirty
-        # worktrees. Resuming the same execution never moves that baseline.
-        if route.get("operation") == "FIX":
-            try:
-                capture_fix(root, target, str(execution.get("executionId") or ""))
-            except (FixDeltaError, OSError, ValueError) as exc:
-                raise DispatchError("FIX_BASELINE_BLOCKED", str(exc)) from exc
 
         # STEP REVIEW semantic reasoning must be bound to the exact deterministic
         # revision/gate that was handed to the reviewer. Persist this proof in
