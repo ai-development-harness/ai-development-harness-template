@@ -1,137 +1,201 @@
-# Incremental FIX Review and Verification Continuation
+# Инкрементальный REVIEW после FIX и продолжение Verification
 
-## Purpose
+## Назначение
 
-A first `STEP REVIEW` remains a full independent semantic review. After a
-successful `STEP FIX`, a subsequent `STEP REVIEW` must **close only the
-previous confirmed findings and check direct regressions of that FIX**.
-Independent security/test reviewers retain their mandatory gates, but receive
-the same scoped patch. A pre-existing issue in untouched behavior is reported
-separately and does not silently expand the current repair cycle.
+Первый `STEP REVIEW` остаётся полноценным независимым семантическим ревью.
+После успешного `STEP FIX` следующий `STEP REVIEW` должен **проверить закрытие
+ранее подтверждённых findings и непосредственные регрессии, вызванные FIX**.
 
-## Durable exact baseline
+Обязательные проверки независимых security/test reviewers сохраняются, но все
+reviewers получают один и тот же ограниченный patch. Обнаруженную проблему в
+неизменённом поведении сообщай отдельно: она не должна автоматически расширять
+текущий цикл исправлений.
 
-`.harness/tools/fix_delta.py` captures a Git **tree** before the semantic FIX
-starts, using an alternate temporary index. The ordinary index/worktree is not
-modified. Tracked staged/unstaged and non-ignored untracked content are
-represented in the tree; Git-ignored local/secrets content is excluded. The
-tree object remains available in local Git object storage until normal GC. Do
-not run Git garbage collection between a FIX and its corresponding REVIEW.
+## Точный сохраняемый baseline
 
-Local metadata:
+`.harness/tools/fix_delta.py` до начала семантического FIX сохраняет Git
+**tree** через временный альтернативный index. Обычные Git index и worktree
+при этом не изменяются. Snapshot включает отслеживаемые staged/unstaged
+изменения и неигнорируемые untracked файлы; игнорируемые Git локальные файлы
+и секреты исключаются.
+
+Git tree остаётся в локальном хранилище Git-объектов до обычной сборки мусора
+(GC). **Не запускай Git GC между FIX и соответствующим REVIEW.**
+
+Локальные файлы состояния:
 
 ```text
 .harness/local/execution/fix-delta/STEP-NNN.json
 .harness/local/execution/fix-delta/STEP-NNN.patch
 ```
 
-These files are operational, untracked, not project evidence. They are bound to
-the exact FIX execution ID, the source immutable FAIL report, findings'
-fingerprints, pre-FIX tree, and post-FIX subject revision. Restart/resume of
-the **same** FIX must not replace its initial snapshot. A new FIX refreshes it.
+Это операционное состояние, не отслеживаемое Git и не являющееся проектным
+Evidence. Оно привязано к конкретному `executionId` FIX, исходному
+неизменяемому FAIL-отчёту, fingerprints findings, pre-FIX Git tree и
+post-FIX revision объекта проверки. Возобновление **того же** FIX не должно
+перезаписывать исходный snapshot. Новый FIX создаёт новый baseline.
 
-`fixReview` in the canonical reviewer handoff:
+Поле `fixReview` в canonical handoff reviewer:
 
-- `mode=initial`: no completed FIX delta, run ordinary full review.
-- `mode=fix_delta`: inspect source report, previous fingerprints, exact patch,
-  and affected tests/direct behavior. Read neighboring code only when needed
-  to understand the changes, not to reopen a whole-system audit.
-- `mode=full_explicit`: a new full audit **requested by the user**. The invoking
-  process must set `HARNESS_REVIEW_FULL=1` at `harness-dispatch.py start`.
-  This override is persisted across separate writer processes.
+- `mode=initial` — завершённого FIX delta нет; выполняется обычное полное ревью.
+- `mode=fix_delta` — проверяются исходный отчёт, прежние fingerprints, точный
+  patch, затронутые тесты и непосредственные последствия изменений. Соседний
+  код разрешено читать только для понимания исправления, а не ради нового
+  аудита всего проекта.
+- `mode=full_explicit` — повторное полное ревью **по явному запросу
+  пользователя**. При запуске `harness-dispatch.py start` вызывающий процесс
+  должен установить `HARNESS_REVIEW_FULL=1`. Этот выбор сохраняется между
+  отдельными процессами writer.
 
-A stale post-FIX subject, lost baseline Git tree, malformed local state or
-oversized patch is a **blocker**, not permission to silently widen review.
-Patch files are bounded to 1 MiB; pathological diffs require separate
-resolution.
+Устаревшая post-FIX revision, потерянный Git tree, повреждённое локальное
+состояние или слишком большой patch приводят к **BLOCKED**, а не к молчаливому
+расширению границ REVIEW. Максимальный размер patch — 1 MiB; чрезмерно большие
+изменения требуют отдельного разрешения ситуации.
 
-## Guarding new findings
+## Контроль новых findings
 
-For `fix_delta`, the canonical writer compares submitted fingerprints with
-those of the prior FAIL review. A persisting original finding may remain.
-Each genuinely new finding must be located on a changed path and must provide
-`fixDeltaCausality: {"F-NNN": "concrete causal evidence linking the FIX change
-to the observed regression"}` in the semantic-writer JSON payload.
-A matching filename alone is not evidence; the reviewer must establish the
-actual changed operation and result through Evidence Gate. The writer checks
-the bounded structural contract; semantic truth still requires independent
-reviewer judgment. Unconfirmed hypotheses never become findings.
+В режиме `fix_delta` canonical writer сравнивает fingerprints переданных
+findings с findings предыдущего FAIL-отчёта. Неустранённый исходный finding
+может оставаться в отчёте.
 
-Successful report publication consumes the local delta state. Historical
-immutable reports and the original full implementation baseline remain
-unchanged. This is deliberately **not** a replacement for Completion Gate,
-plan freshness, specialized review, or Verification gates.
+Каждый действительно новый finding обязан относиться к изменённому пути
+и содержать в JSON payload команды `semantic-writer` явное причинное
+обоснование связи между изменением FIX и выявленной регрессией:
 
-## Automated Verification manual continuation
+```json
+{
+  "fixDeltaCausality": {
+    "F-NNN": "Конкретное подтверждённое объяснение того, как изменение FIX вызвало регрессию."
+  }
+}
+```
 
-`.harness/tools/verification_resume.py` retains the command-level PASS
-result only if the aggregate Verification is `MANUAL_REQUIRED`. When explicit
-manual or real-product observations arrive, automated results can be
-reused *only* if all guards match:
+Одного совпадения имени файла недостаточно. Reviewer должен подтвердить
+затронутую операцию и её фактический результат через Evidence Gate.
+Writer проверяет ограниченный структурный контракт; истинность семантического
+вывода по-прежнему оценивает независимый reviewer. Неподтверждённые гипотезы
+не превращаются в findings.
 
-- exact STEP ID and Verification contract basis;
-- subject Git+worktree revision excluding generated STEP evidence;
-- exact command list/order, timeout, Python and relevant executable/environment
-  identity;
-- every command previously PASS with exit code zero;
-- recorded evidence age <= 30 minutes;
-- no excluded high-risk STEP flags (`external-integration`,
-  `security-sensitive`, `data-migration`, `destructive`,
-  `release-critical`).
+После успешной публикации отчёта локальное состояние delta удаляется.
+Исторические неизменяемые отчёты и исходный implementation baseline
+сохраняются. Этот механизм **не заменяет** Completion Gate, проверку
+актуальности плана, специализированное ревью или Verification gates.
 
-A changed input, FAIL, expired result, unknown executable identity or malformed
-cache is a cache miss and runs the commands normally. The cache is deleted after
-an aggregate PASS/FAIL. No external/integration result is reused by default.
-This is **manual-stage continuation**, not a global test-result cache.
+## Продолжение Verification после ручных проверок
 
-## Selective Verification during FIX
+`.harness/tools/verification_resume.py` сохраняет результат PASS отдельных
+автоматических команд, только если итоговый статус Verification —
+`MANUAL_REQUIRED`. После получения ручных или product observations
+автоматические результаты разрешено переиспользовать **только при одновременном
+выполнении всех условий**:
 
-`python3 .harness/tools/verify-selected.py STEP-NNN --command '<configured command>'`
-executes only exact user-selected commands from the canonical Verification
-contract, up to eight at a time, before FIX completion. It returns
-`completionProof=false` and never writes generated STEP Evidence. Each
-command must leave the repository revision and Git refs unchanged. A typo,
-failure or mutation blocks the targeted feedback. Dispatcher still runs the
-**full** Verification contract on FIX SUCCESS; selective debugging cannot
-forge a final PASS.
+- точное совпадение STEP ID и Verification contract basis;
+- неизменная Git/worktree revision проверяемого объекта, без учёта
+  сгенерированного STEP Evidence;
+- точное совпадение списка и порядка команд, timeout, версии Python
+  и идентичности исполняемых файлов/окружения;
+- все предыдущие команды завершились PASS с нулевым exit code;
+- с момента сохранения результатов прошло не более 30 минут;
+- у STEP нет исключающих повторное использование risk flags:
+  `external-integration`, `security-sensitive`, `data-migration`,
+  `destructive`, `release-critical`.
 
-## Read-only gate reuse
+Изменённые входные данные, FAIL, истёкший срок, неизвестная идентичность
+исполняемого файла или некорректный cache означают cache miss: команды
+запускаются заново. После итогового PASS/FAIL cache удаляется. По умолчанию
+результаты внешних и интеграционных проверок не переиспользуются.
 
-The ordinary semantic PLAN/REVIEW integrity preflight calls
-`python3 .harness/tools/gate-reuse.py`, which executes
-`validate.py --mode manual` on a cache miss. A PASS is reusable for at most
-120 seconds with exact repository revision, validator SHA-256, runtime
-environment and invocation mode. FAIL/BLOCKED is never cached, and a mutated
-repository invalidates the result. This is not a bypass for Completion Gate,
-security reviewers or the writer's exact revision/gate comparison.
+Это **продолжение этапа ручного подтверждения**, а не глобальный cache
+результатов тестирования.
 
-## Context snapshots and rejected hypotheses
+## Выборочная Verification во время FIX
 
-`context-reuse.py record STEP-NNN --role reviewer --payload-file
-.harness/local/<payload>.json` accepts a small summary, exact source paths,
-and up to five falsified hypotheses with their evidence. Normal STEP context
-resolves the current hashes before providing a `REUSE_CANDIDATE` hint.
-Changing any cited source invalidates both the summary and prior negative
-hypotheses. These are **not** durable source-of-truth project artifacts and
-cannot independently prove any acceptance or security claim.
+Команда:
 
-## Further incremental work
+```bash
+python3 .harness/tools/verify-selected.py STEP-NNN --command '<configured command>'
+```
 
-Context Contracts, Codebase Grounding and Semantic Blast Radius retain their
-existing exact-input freshness rules; reviewers should reuse valid bounded
-results rather than reconstruct unrelated architecture. Arbitrary test
-selection by filenames or untrusted model guesses is **not authorized**:
-selective checks require an explicit verified dependency-to-test map and must
-fall back to full Verification when coverage is uncertain. Security preflight,
-completion and freshness gates are never skipped based on LLM memory.
+до завершения FIX запускает только указанные пользователем команды
+из canonical Verification contract — не более восьми за вызов.
 
-## Release checks
+Результат содержит `completionProof=false` и не записывает сгенерированный
+STEP Evidence. Каждая команда обязана оставить Git refs и revision
+репозитория неизменными. Неизвестная команда, ошибка выполнения или
+модификация репозитория блокируют выборочную проверку.
 
-Run `python3 .harness/tools/run-self-tests.py` and
-`python3 .harness/tools/validate.py --mode ci`. Regression must cover:
+При `FIX SUCCESS` dispatcher всё равно выполняет **полный** Verification
+contract. Выборочное тестирование не может подделать итоговый PASS.
 
-- original/persisted/closed findings, in-delta regression and outside finding;
-- dirty/staged/untracked baselines, replay of the same FIX and stale subjects;
-- manual continuation reuse, changed subject, contract, environment and
-  timeout invalidation; no reuse after FAIL or in high-risk STEPs;
-- required reviewer symmetry and full explicit override.
+## Переиспользование read-only gates
+
+Обычный integrity preflight семантических PLAN/REVIEW вызывает:
+
+```bash
+python3 .harness/tools/gate-reuse.py
+```
+
+При cache miss эта команда запускает `validate.py --mode manual`.
+Успешный PASS можно переиспользовать не более 120 секунд только при
+совпадении точной revision репозитория, SHA-256 валидатора, runtime environment
+и режима вызова.
+
+FAIL/BLOCKED не кэшируются; изменение репозитория делает ранее полученный
+результат недействительным. Этот механизм не обходит Completion Gate,
+security reviewers и проверку соответствия revision/gate в canonical writer.
+
+## Снимки контекста и опровергнутые гипотезы
+
+Команда:
+
+```bash
+python3 .harness/tools/context-reuse.py record STEP-NNN --role reviewer --payload-file .harness/local/<payload>.json
+```
+
+принимает краткую сводку, точные пути к исходным файлам и до пяти
+опровергнутых гипотез с доказательствами их опровержения.
+
+При обычном построении STEP context Core проверяет текущие hashes исходных
+файлов и только после этого может вернуть подсказку
+`REUSE_CANDIDATE`. Изменение любого указанного источника инвалидирует
+и сводку, и ранее опровергнутые гипотезы.
+
+Эти данные **не являются** сохраняемыми проектными артефактами — источниками
+истины. Сами по себе они не доказывают выполнение acceptance criteria
+или требования безопасности.
+
+## Дальнейшая инкрементальная оптимизация
+
+Context Contracts, Codebase Grounding и Semantic Blast Radius сохраняют
+существующие правила проверки актуальности по точным входным данным.
+Reviewer должен переиспользовать действительные ограниченные результаты,
+а не заново исследовать несвязанную архитектуру.
+
+Произвольный выбор тестов по именам файлов или недостоверным предположениям
+модели **запрещён**. Для выборочной проверки нужна явная подтверждённая
+карта зависимостей «изменение → тест». При неопределённом покрытии
+выполняется полная Verification.
+
+Security preflight, Completion Gate и freshness gates нельзя пропускать
+на основании памяти LLM.
+
+## Проверки перед релизом
+
+Запусти:
+
+```bash
+python3 .harness/tools/run-self-tests.py
+python3 .harness/tools/validate.py --mode ci
+```
+
+Regression-тесты должны охватывать:
+
+- исходные, сохранившиеся и закрытые findings; регрессии внутри FIX delta
+  и findings за её пределами;
+- dirty/staged/untracked baselines, повторное использование baseline
+  того же FIX и устаревшие post-FIX revisions;
+- продолжение после ручной Verification, изменение revision, контракта,
+  окружения и timeout; запрет повторного использования после FAIL
+  и для high-risk STEPs;
+- одинаковые границы для всех обязательных reviewers и явный запуск
+  полного повторного аудита.
