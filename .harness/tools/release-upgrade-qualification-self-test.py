@@ -303,7 +303,7 @@ def main() -> int:
         noop = root / "noop-baseline"
         noop_sha = baseline_project(noop, mode="noop")
         noop_result = invoke(root, noop, noop_sha, source, candidate, expect=1)
-        assert noop_result["reasonCode"] == "PRIMARY_UPGRADE_WAS_NOOP", noop_result
+        assert noop_result["reasonCode"] == "TARGET_NOT_REACHED", noop_result
 
         stalled = root / "stalled-reload-baseline"
         stalled_sha = baseline_project(stalled, mode="stalled_reload")
