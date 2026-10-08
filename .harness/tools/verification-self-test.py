@@ -343,7 +343,14 @@ def main() -> int:
         # Dispatcher enforces the runner before FIX/IMPLEMENT SUCCESS. Manual
         # pending returns the same semantic command; confirmed checks allow DONE.
         reset(root)
-        dispatch = start_dispatch(root, "STEP FIX STEP-001")
+        # This fixture isolates Verification, not REVIEW/FIX provenance.
+        # FIX normally requires an immutable FAIL review; the actual baseline
+        # capture has its own regression suite (incremental-review-self-test).
+        # Bypass only the snapshot boundary here so that the manual
+        # Verification continuation remains independently testable.
+        from unittest.mock import patch
+        with patch("command_dispatch.capture_fix", return_value={"testOnly": True}):
+            dispatch = start_dispatch(root, "STEP FIX STEP-001")
         assert dispatch["status"] == "SEMANTIC", dispatch
         first_complete = complete_dispatch(
             root,
