@@ -157,14 +157,14 @@ def enforce_findings(scope: dict[str, Any], findings: list[dict[str, Any]],
         if fingerprint in old:
             continue  # persisted original finding
         path = finding["location"]["path"]
-        justification = supplied.get(fingerprint)
+        justification = supplied.get(finding["id"])
         if path not in changed:
             raise FixDeltaError(
                 f"new finding {fingerprint} outside FIX delta: {path}"
             )
         if not isinstance(justification, str) or len(justification.strip()) < 30:
             raise FixDeltaError(
-                f"new finding {fingerprint} requires concrete FIX causal evidence"
+                f"new finding {finding['id']} requires concrete FIX causal evidence"
             )
 
 
