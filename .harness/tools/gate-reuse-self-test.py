@@ -36,7 +36,7 @@ def main() -> int:
             state["exit"] = 1
             assert gate_reuse.validate_once(root)["status"] == "BLOCKED"
             assert gate_reuse.validate_once(root)["status"] == "BLOCKED"
-            assert len(calls) == 6, calls
+            assert len(calls) == 5, calls
         finally:
             gate_reuse.repository_revision = original_revision
             gate_reuse.subprocess.run = original_run
