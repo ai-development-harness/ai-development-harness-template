@@ -40,7 +40,7 @@ def validate_once(root: Path) -> dict[str, Any]:
         try:
             cached = json.loads(path.read_text(encoding="utf-8"))
             age = time.time() - cached.get("recordedAt", 0)
-            if cached.get("basis") == basis and isinstance(age, (int, float)) and 0 <= age <= TTL_SECONDS:
+            if cached.get("schemaVersion") == 1 and cached.get("basis") == basis and isinstance(age, (int, float)) and 0 <= age <= TTL_SECONDS:
                 return {"status": "PASS", "reused": True, "basis": basis}
         except (OSError, ValueError, TypeError):
             pass
