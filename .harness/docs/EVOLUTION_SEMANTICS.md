@@ -116,6 +116,56 @@ Git push/PR/других side effects в эту задачу **не входят
 формализация missing links в canonical REQ/ADR/STEP. Никаких новых
 пользовательских обязательств при переключении Claude Code ↔ Codex нет.
 
+## Enforcement актуальности завершённых зависимостей (#295)
+
+`--preview` остаётся **только read-only**. Дополнительная защита на
+execution boundary переиспользует уже существующие механизмы:
+
+- `step_completion_proof()` проверяет, соответствует ли последний trusted
+  REVIEW зафиксированному в нём `contract_basis` текущему semantic snapshot
+  REQ/ADR/OQ/STEP/PRN. Проверка выполняется для REVIEW, в котором сохранён
+  этот отпечаток; исторические legacy reports не переписываются.
+- Если completed STEP зависит от другого STEP, он проверяет актуальность
+  его completion proof **транзитивно**. Циклы, отсутствующие зависимости и
+  ошибочные документы не превращаются в PASS.
+- `verification_context_basis()` содержит hash подтверждённых
+  `step_completion_proof` прямых dependencies. Это отдельно от Ready plan:
+  PLAN всё ещё разрешено готовить **до** завершения зависимостей.
+- При невыполненных/устаревших prerequisites Verification возвращает
+  `VERIFICATION_DEPENDENCY_UNPROVEN`, вместо того чтобы запускать новые
+  проверки и создавать ложный PASS.
+- Когда upstream proof изменится, старое Verification Evidence downstream
+  получит `VERIFICATION_CONTEXT_STALE`, пока не будет выполнена новая
+  Verification.
+
+**Пример:**
+
+```text
+STEP-001 completed (для REQ-001 v1) → STEP-002 completed
+                     |
+                     └─ REQ-001 изменён до v2
+
+STEP-001: completion-contract-stale
+STEP-002: dependency-incomplete:STEP-001
+Verification STEP-002: stale или BLOCKED
+STEP-003 (несвязанный): остаётся действительным
+```
+
+| Ситуация | Что было | Что стало |
+| --- | --- | --- |
+| Изменение REQ после ранее выполненного REVIEW | Исторический PASS мог использоваться как текущий | Сохранённый `contract_basis` проверяется заново и помечается stale |
+| У downstream STEP нет прямой ссылки на изменившийся REQ | Собственный план мог оставаться fresh | Completion chain и Verification пересматривают upstream proof |
+| Изменена только административная metadata REQ/STEP | Возможна ненужная повторная работа | Semantic snapshot не включает нерелевантные поля |
+| Исторический REVIEW без `contract_basis` | Legacy migration semantics | Сохраняются, без ложного заявления о современном proof |
+| Неизвестный dependency/цикл | В сложных сценариях могла теряться причина | Причина сохраняется и не вызывает повторного запуска side effect |
+
+Enforcement не удаляет прежние Evidence/Review, не снимает автоматически
+`status: completed`, не запускает Git mutation и не зависит от Claude/Codex.
+Исторические завершения остаются историей, но их stale proof не разрешает
+новую downstream execution. Для legacy proof без semantic basis следует
+использовать существующие миграционные механизмы и обычное REVIEW при
+возникновении новых требований; он не получает поддельную историю.
+
 ## Semantic blast radius
 
 Deterministic impact analysis отвечает только за **explicit** canonical links/fingerprints. Для STEP с material `risk_flags` planner/reviewer дополнительно запускает internal `semantic-blast-radius`: explicit impact остаётся immutable fact, а model judgement используется только для implicit API/data/behavior contracts, indirect consumers, compatibility/concurrency/runtime assumptions и необходимого proof surface.
