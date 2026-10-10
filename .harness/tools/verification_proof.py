@@ -42,6 +42,35 @@ def _safe_proof_path(root: Path, step_id: str) -> Path:
     return path
 
 
+def _consistent_status(result: dict[str, Any]) -> bool:
+    """Сводный PASS не может противоречить результатам команды/наблюдения."""
+    groups = (result.get("commands"), result.get("manual"), result.get("product"))
+    if any(not isinstance(group, list) for group in groups):
+        return False
+    for item in groups[0]:
+        if not isinstance(item, dict) or item.get("status") not in {"PASS", "FAIL"}:
+            return False
+        if item["status"] == "PASS" and item.get("exitCode") != 0:
+            return False
+    for group in groups[1:]:
+        if any(
+            not isinstance(item, dict) or item.get("status") not in {"PASS", "FAIL"}
+            for item in group
+        ):
+            return False
+    manual_pending = result.get("manualPending")
+    product_pending = result.get("productPending")
+    if not isinstance(manual_pending, list) or not isinstance(product_pending, list):
+        return False
+    all_checks = [item for group in groups for item in group]
+    derived = (
+        "FAIL" if any(item["status"] == "FAIL" for item in all_checks)
+        else "MANUAL_REQUIRED" if manual_pending or product_pending
+        else "PASS"
+    )
+    return derived == result.get("status")
+
+
 def record_verification_proof(
     root: Path,
     step_id: str,
@@ -56,8 +85,8 @@ def record_verification_proof(
     """
     path = _safe_proof_path(root, step_id)
     status = result.get("status")
-    if status not in {"PASS", "FAIL", "MANUAL_REQUIRED"}:
-        raise ValueError("cannot attest invalid verification status")
+    if status not in {"PASS", "FAIL", "MANUAL_REQUIRED"} or not _consistent_status(result):
+        raise ValueError("verification result is inconsistent with its commands/observations")
     record = {
         "schemaVersion": PROOF_VERSION,
         "producer": "deterministic-step-verification",
