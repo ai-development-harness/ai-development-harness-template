@@ -187,7 +187,7 @@ def _checkpoint_marker_exists(root: Path) -> bool:
         raise ExecutionCheckpointError(
             "UNAVAILABLE", f"cannot read checkpoint marker: {exc}",
         ) from exc
-    if content != b"checkpoint-ever-written-v1\\n".replace(b"\\n", b"\n"):
+    if content != b"checkpoint-ever-written-v1\n":
         raise ExecutionCheckpointError(
             "INCOMPATIBLE", "checkpoint marker content is invalid",
         )
@@ -206,7 +206,7 @@ def _mark_checkpoint_known(root: Path) -> None:
     marker.parent.mkdir(parents=True, exist_ok=True)
     try:
         with marker.open("xb") as fh:
-            fh.write(b"checkpoint-ever-written-v1\\n".replace(b"\\n", b"\n"))
+            fh.write(b"checkpoint-ever-written-v1\n")
             fh.flush()
             os.fsync(fh.fileno())
     except FileExistsError:
