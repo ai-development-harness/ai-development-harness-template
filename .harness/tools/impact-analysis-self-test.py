@@ -305,7 +305,7 @@ def main() -> int:
                 path,
                 path.read_text(encoding="utf-8").replace(
                     "depends_on: []",
-                    f"depends_on:\\n  - {parent}".replace("\\n", "\n"),
+                    f"depends_on:\n  - {parent}",
                     1,
                 ),
             )
