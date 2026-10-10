@@ -125,6 +125,47 @@ def main() -> int:
         assert not list(path.parent.glob("execution-status.json.*.tmp"))
         assert load_status(root) == empty_status()
 
+        # Маркер вне .harness/local отличает новое checkout от ранее
+        # работавшего проекта с временно пропавшим каталогом/томом.
+        marker = root / ".harness/.execution-checkpoint-known"
+        assert marker.is_file()
+        original_bytes = path.read_bytes()
+        original_directory = path.parent
+        hidden = original_directory.with_name("execution-hidden")
+        original_directory.rename(hidden)
+        try:
+            rejected(root, "UNAVAILABLE")
+            try:
+                save_status(root, empty_status())
+            except ExecutionCheckpointError as exc:
+                assert exc.kind == "UNAVAILABLE", exc
+            else:
+                raise AssertionError("lost execution directory was initialized again")
+            assert not original_directory.exists()
+        finally:
+            hidden.rename(original_directory)
+        assert path.read_bytes() == original_bytes
+        assert load_status(root) == empty_status()
+
+        local = root / ".harness/local"
+        missing_local = root / ".harness/local-hidden"
+        local.rename(missing_local)
+        try:
+            rejected(root, "UNAVAILABLE")
+            assert not local.exists()
+        finally:
+            missing_local.rename(local)
+        assert load_status(root) == empty_status()
+
+        # В реальном fresh checkout маркера нет; это разрешённый init без
+        # дополнительных действий и без привязки к выбранному runtime.
+        with tempfile.TemporaryDirectory(prefix="fresh-checkout-") as fresh_tmp:
+            fresh_root = Path(fresh_tmp)
+            assert load_status(fresh_root) == empty_status()
+            save_status(fresh_root, empty_status())
+            assert (fresh_root / ".harness/.execution-checkpoint-known").is_file()
+            assert load_status(fresh_root) == empty_status()
+
     print("CHECKPOINT RECOVERY SELF-TEST: PASS")
     return 0
 
