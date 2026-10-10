@@ -59,7 +59,7 @@ from harness_ux import (
 from planning_contract import step_completion_proof
 from step_context import build_step_context
 from step_next import resolve_step_action, resolve_step_next
-from verification import run_step_verification, write_verification_evidence
+from verification import run_step_verification, write_verification_evidence, verification_freshness
 from fix_delta import capture_fix, complete_fix, review_scope, request_full_review, FixDeltaError
 
 
@@ -283,7 +283,7 @@ def _verification_before_completion(
                 verification = {
                     **verification,
                     "status": "BLOCKED",
-                    "reasonCode": "EVIDENCE_WRITE_FAILED",
+                    "reasonCode": getattr(exc, "code", "EVIDENCE_WRITE_FAILED"),
                     "message": str(exc),
                 }
 
@@ -1120,14 +1120,33 @@ def complete_dispatch(
         if early is not None:
             return early
 
-        execution = complete_command(
-            root,
-            root_command,
-            command,
-            result,
-            expected_execution_id=execution_id,
-            details=completion_details,
-        )
+        # Не оставляем окно между публикацией Verification и фиксацией SUCCESS.
+        # Lock reentrant: complete_command использует ту же state transaction.
+        with execution_state_lock(root):
+            completed_route = route_command(root, command)
+            if (
+                result in {"SUCCESS", "PASS"}
+                and completed_route.get("domain") == "STEP"
+                and completed_route.get("operation") in {"IMPLEMENT", "FIX"}
+            ):
+                fresh = verification_freshness(root, str(completed_route["target"]))
+                if not fresh.get("fresh"):
+                    return {
+                        "schemaVersion": SCHEMA_VERSION,
+                        "status": "BLOCKED",
+                        "rootCommand": root_command,
+                        "command": command,
+                        "reasonCode": fresh.get("reasonCode", "VERIFICATION_EVIDENCE_STALE"),
+                        "verificationFreshness": fresh,
+                    }
+            execution = complete_command(
+                root,
+                root_command,
+                command,
+                result,
+                expected_execution_id=execution_id,
+                details=completion_details,
+            )
         # Mark the FIX delta usable only after successful Verification and
         # accepted execution completion; never after BLOCKED/manual pending.
         completed_route = route_command(root, command)
