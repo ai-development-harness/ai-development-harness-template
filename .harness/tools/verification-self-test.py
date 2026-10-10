@@ -11,7 +11,9 @@ from command_dispatch import complete_dispatch, start_dispatch
 import hashlib
 import os
 import time
+from unittest.mock import patch
 
+from document_contract import atomic_write_text
 from verification import (
     CAPTURE_TAIL_BYTES,
     EVIDENCE_START,
@@ -202,6 +204,37 @@ def main() -> int:
         fresh = verification_freshness(root, "STEP-001")
         assert fresh["status"] == "PASS" and fresh["fresh"] is True, fresh
 
+        # Редактируемый STEP не является доверенным источником результатов.
+        # Замена PASS/FAIL или manual observations должна инвалидировать
+        # независимый proof, даже если код и acceptance остались неизменными.
+        trusted_text = step.read_text(encoding="utf-8")
+        for tampered in (
+            trusted_text.replace("- Status: PASS", "- Status: FAIL", 1),
+            trusted_text.replace("Condition observed.", "Imagined observation.", 1),
+        ):
+            step.write_text(tampered, encoding="utf-8", newline="\n")
+            altered = verification_freshness(root, "STEP-001")
+            assert altered["fresh"] is False, altered
+            assert altered["reasonCode"] == "VERIFICATION_PROOF_MISMATCH", altered
+        step.write_text(trusted_text, encoding="utf-8", newline="\n")
+
+        # В другом checkout локальный proof не копируется: старый PASS должен
+        # быть UNKNOWN, а обычная Verification автоматически восстановит proof.
+        producer_proof = root / ".harness/local/verification-proofs/STEP-001.json"
+        assert producer_proof.is_file()
+        producer_proof.unlink()
+        unproven = verification_freshness(root, "STEP-001")
+        assert unproven["reasonCode"] == "VERIFICATION_PROOF_MISSING", unproven
+        renewed = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Condition observed.",
+            }],
+        )
+        assert renewed["status"] == "PASS" and producer_proof.is_file(), renewed
+        assert verification_freshness(root, "STEP-001")["fresh"] is True
+
         exact = verification_command_evidence(
             root,
             "STEP-001",
@@ -339,6 +372,38 @@ def main() -> int:
             raise AssertionError("stale PASS was written into STEP Evidence")
         assert EVIDENCE_START not in step.read_text(encoding="utf-8")
 
+        # Между чтением STEP и os.replace другой writer изменил Acceptance.
+        # Оптимистичная проверка обязана сохранить его изменение, а не
+        # перезаписать старым STEP вместе с Evidence.
+        reset(root)
+        ready_for_race = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Race test.",
+            }],
+            write_evidence=False,
+        )
+        assert ready_for_race["status"] == "PASS", ready_for_race
+
+        def competing_editor(path, content, *, expected_bytes=None):
+            assert expected_bytes is not None
+            newer = path.read_bytes().replace(
+                b"- Verification PASS.", b"- Updated acceptance by another agent.",
+            )
+            path.write_bytes(newer)
+            return atomic_write_text(path, content, expected_bytes=expected_bytes)
+
+        with patch("verification.atomic_write_text", side_effect=competing_editor):
+            try:
+                write_verification_evidence(root, "STEP-001", ready_for_race)
+            except VerificationInputsStale:
+                pass
+            else:
+                raise AssertionError("concurrent STEP edit was overwritten")
+        assert b"- Updated acceptance by another agent." in step.read_bytes()
+        assert EVIDENCE_START not in step.read_text(encoding="utf-8")
+
         # Non-zero exit is factual FAIL, not LLM interpretation.
         reset(root)
         step.write_text(
@@ -349,6 +414,22 @@ def main() -> int:
         failed = run_step_verification(root, "STEP-001")
         assert failed["status"] == "FAIL", failed
         assert failed["commands"][0]["exitCode"] == 7, failed
+
+        # Подмена итогового FAIL на PASS не делает проваленный тест успешным.
+        failed_block = step.read_text(encoding="utf-8")
+        assert "- Status: FAIL" in failed_block
+        step.write_text(
+            failed_block.replace("- Status: FAIL", "- Status: PASS", 1),
+            encoding="utf-8", newline="\n",
+        )
+        forged = verification_freshness(root, "STEP-001")
+        assert forged["fresh"] is False, forged
+        assert forged["reasonCode"] == "VERIFICATION_PROOF_MISMATCH", forged
+        command_forged = verification_command_evidence(
+            root, "STEP-001", 'python3 -c "import sys; sys.exit(7)"',
+        )
+        assert command_forged["fresh"] is False, command_forged
+        assert command_forged["reasonCode"] == "VERIFICATION_PROOF_MISMATCH", command_forged
 
         # Verification is required to be read-only. Unexpected repository
         # mutation becomes BLOCKED and generated Evidence is not forged.
@@ -432,7 +513,6 @@ def main() -> int:
         # capture has its own regression suite (incremental-review-self-test).
         # Bypass only the snapshot boundary here so that the manual
         # Verification continuation remains independently testable.
-        from unittest.mock import patch
         with patch("command_dispatch.capture_fix", return_value={"testOnly": True}):
             dispatch = start_dispatch(root, "STEP FIX STEP-001")
             assert dispatch["status"] == "SEMANTIC", dispatch
