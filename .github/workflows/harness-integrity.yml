@@ -10,6 +10,7 @@ on:
   pull_request:
     # Feature branches используются как промежуточный integration target:
     # на них нужен тот же deterministic gate до финального PR в main.
+    # Пример: main или feature/orchestration-reliability-2026-10.
     branches:
       - main
       - 'feature/**'
