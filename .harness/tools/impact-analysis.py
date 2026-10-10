@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from impact_analysis import affected_steps, invalidation_preview, plan_staleness
+from impact_analysis import affected_steps, selective_invalidation_preview, plan_staleness
 
 
 def main() -> int:
@@ -35,7 +35,7 @@ def main() -> int:
             }
         elif args.changed:
             result = (
-                invalidation_preview(root, args.changed)
+                selective_invalidation_preview(root, args.changed)
                 if args.preview else affected_steps(root, args.changed)
             )
         else:
