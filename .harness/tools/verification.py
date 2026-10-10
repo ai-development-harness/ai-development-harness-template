@@ -24,9 +24,9 @@ import threading
 import time
 from typing import Any
 
-from document_contract import atomic_write_text, markdown_headings
+from document_contract import atomic_write_text, markdown_headings, stable_hash
 from harness_config import verification_command_timeout_seconds
-from planning_contract import read_task, task_path
+from planning_contract import read_task, task_path, planning_context_basis, plan_content_hash
 from project_verification import (
     ProjectVerificationError,
     validate_product_observations,
@@ -47,6 +47,12 @@ SHELL_CONTROL_TOKENS = {
 
 class VerificationError(ValueError):
     """Invalid or unprovable Verification contract."""
+
+
+class VerificationInputsStale(VerificationError):
+    """Входы Verification изменились после фактического запуска проверок."""
+
+    code = "VERIFICATION_INPUTS_STALE"
 
 
 def utc_now() -> str:
@@ -191,6 +197,38 @@ def verification_contract_basis(root: Path, step_id: str) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def verification_context_basis(root: Path, step_id: str) -> str:
+    """Контракт STEP/REQ/ADR, план и timeout, независимо от generated Evidence.
+
+    Subject revision исключает STEP, иначе запись Evidence сама сбивала бы PASS.
+    Поэтому используем существующие planning fingerprints для semantic fields.
+    """
+    return stable_hash({
+        "schemaVersion": 1,
+        "planningContextBasis": planning_context_basis(root, step_id),
+        "planContentHash": plan_content_hash(root, step_id),
+        "timeoutSeconds": verification_command_timeout_seconds(root),
+    })
+
+
+def _resume_contract_basis(contract: str, context: str) -> str:
+    """Кэш ручной стадии не переживает изменение acceptance или плана."""
+    return stable_hash({"verificationContract": contract, "verificationContext": context})
+
+
+def _stale_inputs_reason(root: Path, step_id: str, result: dict[str, Any]) -> str | None:
+    """Проверка входов непосредственно перед сохранением результата."""
+    if result.get("contractBasis") != verification_contract_basis(root, step_id):
+        return "Verification command contract changed"
+    if result.get("contextBasis") != verification_context_basis(root, step_id):
+        return "STEP/REQ/ADR/plan verification context changed"
+    if result.get("subjectRevision") != verification_subject_revision(root, step_id):
+        return "Verification subject changed"
+    if result.get("revision") != repository_revision(root):
+        return "Repository changed during verification"
+    return None
+
+
 def verification_subject_revision(root: Path, step_id: str) -> dict[str, str | None]:
     """Revision product/config surface without mutable STEP Evidence container."""
     rel = task_path(root, step_id).resolve().relative_to(root.resolve()).as_posix()
@@ -248,9 +286,10 @@ def verification_command_evidence(
         return found.group(1).strip() if found else None
 
     stored_basis = field("Verification contract basis")
+    stored_context = field("Verification context basis")
     stored_head = field("Subject git head")
     stored_worktree = field("Subject worktree hash")
-    if stored_basis is None or stored_head is None or stored_worktree is None:
+    if stored_basis is None or stored_context is None or stored_head is None or stored_worktree is None:
         return {
             "status": "UNKNOWN",
             "fresh": False,
@@ -259,6 +298,7 @@ def verification_command_evidence(
         }
 
     current_basis = verification_contract_basis(root, step_id)
+    current_context = verification_context_basis(root, step_id)
     current_subject = verification_subject_revision(root, step_id)
     stored_subject = {
         "git_head": None if stored_head == "none" else stored_head,
@@ -269,6 +309,13 @@ def verification_command_evidence(
             "status": "STALE",
             "fresh": False,
             "reasonCode": "VERIFICATION_CONTRACT_STALE",
+            "command": command,
+        }
+    if stored_context != current_context:
+        return {
+            "status": "STALE",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_CONTEXT_STALE",
             "command": command,
         }
     if stored_subject != current_subject:
@@ -323,9 +370,10 @@ def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
 
     status = field("Status") or "UNKNOWN"
     stored_basis = field("Verification contract basis")
+    stored_context = field("Verification context basis")
     stored_head = field("Subject git head")
     stored_worktree = field("Subject worktree hash")
-    if stored_basis is None or stored_head is None or stored_worktree is None:
+    if stored_basis is None or stored_context is None or stored_head is None or stored_worktree is None:
         return {
             "status": status,
             "fresh": False,
@@ -333,6 +381,7 @@ def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
         }
 
     current_basis = verification_contract_basis(root, step_id)
+    current_context = verification_context_basis(root, step_id)
     current_subject = verification_subject_revision(root, step_id)
     stored_subject = {
         "git_head": None if stored_head == "none" else stored_head,
@@ -345,6 +394,14 @@ def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
             "reasonCode": "VERIFICATION_CONTRACT_STALE",
             "storedContractBasis": stored_basis,
             "currentContractBasis": current_basis,
+        }
+    if stored_context != current_context:
+        return {
+            "status": status,
+            "fresh": False,
+            "reasonCode": "VERIFICATION_CONTEXT_STALE",
+            "storedContextBasis": stored_context,
+            "currentContextBasis": current_context,
         }
     if stored_subject != current_subject:
         return {
@@ -570,6 +627,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Git head: {revision.get('git_head') or 'none'}",
         f"- Worktree hash: {revision.get('worktree_hash') or 'clean'}",
         f"- Verification contract basis: {result['contractBasis']}",
+        f"- Verification context basis: {result['contextBasis']}",
         f"- Subject git head: {result['subjectRevision'].get('git_head') or 'none'}",
         f"- Subject worktree hash: {result['subjectRevision'].get('worktree_hash') or 'clean'}",
         "",
@@ -672,6 +730,9 @@ def _replace_evidence_block(text: str, block: str) -> str:
 
 
 def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
+    stale_reason = _stale_inputs_reason(root, step_id, result)
+    if stale_reason is not None:
+        raise VerificationInputsStale(stale_reason)
     path = task_path(root, step_id)
     text = path.read_text(encoding="utf-8")
     atomic_write_text(
@@ -712,6 +773,7 @@ def run_step_verification(
         )
         revision = repository_revision(root)
         contract_basis = verification_contract_basis(root, step_id)
+        context_basis = verification_context_basis(root, step_id)
         subject_revision = verification_subject_revision(root, step_id)
     except (OSError, ValueError) as exc:
         return {
@@ -722,11 +784,12 @@ def run_step_verification(
             "message": str(exc),
         }
 
+    resume_basis = _resume_contract_basis(contract_basis, context_basis)
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
     reused = None
     if manual_results is not None or product_results is not None:
         reused = reuse_pending(
-            root, step_id, contract=contract_basis,
+            root, step_id, contract=resume_basis,
             subject=subject_revision, names=command_names, timeout=timeout,
         )
     commands: list[dict[str, Any]] = list(reused) if reused is not None else []
@@ -801,9 +864,30 @@ def run_step_verification(
     else:
         status = "PASS"
 
+    # Проверки могли занять минуты. Устаревшие результаты нельзя сохранять.
+    inputs = {
+        "contractBasis": contract_basis,
+        "contextBasis": context_basis,
+        "subjectRevision": subject_revision,
+        "revision": revision,
+    }
+    try:
+        stale_reason = _stale_inputs_reason(root, step_id, inputs)
+    except (OSError, ValueError) as exc:
+        stale_reason = str(exc)
+    if stale_reason is not None:
+        return {
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "stepId": step_id,
+            "reasonCode": "VERIFICATION_INPUTS_STALE",
+            "message": stale_reason,
+            "commands": commands,
+        }
+
     if status == "MANUAL_REQUIRED" and reused is None:
         remember_pending(
-            root, step_id, contract=contract_basis,
+            root, step_id, contract=resume_basis,
             subject=subject_revision, commands=commands, timeout=timeout,
         )
     elif status != "MANUAL_REQUIRED":
@@ -817,6 +901,7 @@ def run_step_verification(
         "runAt": utc_now(),
         "revision": revision,
         "contractBasis": contract_basis,
+        "contextBasis": context_basis,
         "subjectRevision": subject_revision,
         "timeoutSeconds": timeout,
         "commands": commands,
@@ -832,7 +917,7 @@ def run_step_verification(
             return {
                 **result,
                 "status": "BLOCKED",
-                "reasonCode": "EVIDENCE_WRITE_FAILED",
+                "reasonCode": getattr(exc, "code", "EVIDENCE_WRITE_FAILED"),
                 "message": str(exc),
             }
     return result
@@ -845,6 +930,7 @@ __all__ = [
     "run_step_verification",
     "write_verification_evidence",
     "verification_contract_basis",
+    "verification_context_basis",
     "verification_freshness",
     "verification_subject_revision",
     "validate_verification_entries",
