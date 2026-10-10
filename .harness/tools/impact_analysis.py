@@ -453,11 +453,18 @@ def selective_invalidation_preview(root: Path, changed: list[str]) -> dict[str, 
         })
 
     states = ("preserved", "revalidate", "invalidated", "ambiguous")
+    # Проблема в несвязанном STEP не должна блокировать целевой dry-run.
+    # Для затронутых узлов, напротив, ambiguity остаётся fail-closed.
+    affected = [item for item in steps if item["dependencyPath"]]
+    existing = [
+        item for item in steps
+        if not item["dependencyPath"] and item["decision"] != "preserved"
+    ]
     return {
         "schemaVersion": SCHEMA_VERSION,
         "status": (
             "BLOCKED" if unresolved or any(
-                item["decision"] == "ambiguous" for item in steps
+                item["decision"] == "ambiguous" for item in affected
             ) else "PASS"
         ),
         "mode": "dry-run",
@@ -470,11 +477,8 @@ def selective_invalidation_preview(root: Path, changed: list[str]) -> dict[str, 
         "steps": steps,
         # Только действительно связанные с входным --changed STEP.
         # Уже stale/повреждённые, но несвязанные узлы — отдельная диагностика.
-        "affected": [item for item in steps if item["dependencyPath"]],
-        "preExistingConcerns": [
-            item for item in steps
-            if not item["dependencyPath"] and item["decision"] != "preserved"
-        ],
+        "affected": affected,
+        "preExistingConcerns": existing,
         "externalSideEffectsExecuted": False,
         "notice": (
             "Read-only impact estimate; never authorizes reuse of stale evidence "
