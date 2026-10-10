@@ -1358,6 +1358,7 @@ __all__ = [
     "canonical_adr_path",
     "canonical_requirement_path",
     "dependency_ids",
+    "dependency_completion_basis",
     "init_review_basis",
     "latest_matching_init_review",
     "latest_matching_planning_review",
