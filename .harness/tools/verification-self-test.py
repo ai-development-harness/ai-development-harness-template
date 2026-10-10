@@ -19,6 +19,8 @@ from verification import (
     run_step_verification,
     verification_command_evidence,
     verification_freshness,
+    write_verification_evidence,
+    VerificationInputsStale,
 )
 
 
@@ -239,6 +241,42 @@ def main() -> int:
         assert contract_stale["reasonCode"] == "VERIFICATION_CONTRACT_STALE", contract_stale
         step.write_text(original_text, encoding="utf-8", newline="\n")
 
+        # Раньше изменения Acceptance criteria не инвалидировали PASS:
+        # STEP целиком исключён из subject revision, а Verification commands
+        # не менялись. Новый context basis обязан обнаружить этот случай.
+        amended = original_text.replace(
+            "- Verification PASS.",
+            "- Verification PASS, включая новое обязательное условие.",
+        )
+        step.write_text(amended, encoding="utf-8", newline="\n")
+        scope_stale = verification_freshness(root, "STEP-001")
+        assert scope_stale["reasonCode"] == "VERIFICATION_CONTEXT_STALE", scope_stale
+        command_stale = verification_command_evidence(
+            root, "STEP-001", 'python3 -c "print(123)"',
+        )
+        assert command_stale["reasonCode"] == "VERIFICATION_CONTEXT_STALE", command_stale
+        step.write_text(original_text, encoding="utf-8", newline="\n")
+
+        # План входит в scope, а чисто административное изменение priority нет.
+        step.write_text(original_text.replace("Synthetic.\n\n## Evidence", "Revised plan.\n\n## Evidence"),
+                        encoding="utf-8", newline="\n")
+        assert verification_freshness(root, "STEP-001")["reasonCode"] == "VERIFICATION_CONTEXT_STALE"
+        step.write_text(original_text.replace("priority: medium", "priority: high"),
+                        encoding="utf-8", newline="\n")
+        assert verification_freshness(root, "STEP-001")["fresh"] is True
+        step.write_text(original_text, encoding="utf-8", newline="\n")
+
+        # Старый блок без context proof должен быть UNKNOWN, а не PASS.
+        legacy = original_text.replace(
+            next(line for line in original_text.splitlines()
+                 if line.startswith("- Verification context basis: ")),
+            "",
+        )
+        step.write_text(legacy, encoding="utf-8", newline="\n")
+        legacy_freshness = verification_freshness(root, "STEP-001")
+        assert legacy_freshness["reasonCode"] == "VERIFICATION_FRESHNESS_UNKNOWN", legacy_freshness
+        step.write_text(original_text, encoding="utf-8", newline="\n")
+
         # A modified subject invalidates cached automation even if manual
         # observations arrive unchanged.
         reset(root)
@@ -254,6 +292,52 @@ def main() -> int:
         )
         assert stale_continuation["automatedResumed"] is False, stale_continuation
         (root / "new-file.py").unlink()
+
+        # Если во время ручного подтверждения изменился STEP contract,
+        # прежний автоматический PASS не переиспользуем.
+        reset(root)
+        pending = run_step_verification(root, "STEP-001")
+        assert pending["status"] == "MANUAL_REQUIRED", pending
+        pending_text = step.read_text(encoding="utf-8")
+        step.write_text(
+            pending_text.replace("- Verification PASS.", "- Revised acceptance."),
+            encoding="utf-8", newline="\n",
+        )
+        confirmed = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Re-checked new acceptance.",
+            }],
+        )
+        assert confirmed["status"] == "PASS", confirmed
+        assert confirmed["automatedResumed"] is False, confirmed
+
+        # Direct evidence writer не должен сохранять результат для старой
+        # ревизии, даже если проверки уже завершились успешно.
+        reset(root)
+        ready = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Confirmed.",
+            }],
+            write_evidence=False,
+        )
+        assert ready["status"] == "PASS", ready
+        step.write_text(
+            step.read_text(encoding="utf-8").replace(
+                "- Verification PASS.", "- Verification PASS with amended scope."
+            ),
+            encoding="utf-8", newline="\n",
+        )
+        try:
+            write_verification_evidence(root, "STEP-001", ready)
+        except VerificationInputsStale:
+            pass
+        else:
+            raise AssertionError("stale PASS was written into STEP Evidence")
+        assert EVIDENCE_START not in step.read_text(encoding="utf-8")
 
         # Non-zero exit is factual FAIL, not LLM interpretation.
         reset(root)
@@ -379,6 +463,40 @@ def main() -> int:
                 },
             )
             assert final["status"] == "DONE", final
+
+            # Race после публикации Evidence, но до complete_command:
+            # если изменились acceptance, dispatcher не принимает старый PASS.
+            reset(root)
+            next_dispatch = start_dispatch(root, "STEP FIX STEP-001")
+            assert next_dispatch["status"] == "SEMANTIC", next_dispatch
+
+            def write_then_change(root_value, step_id, verification):
+                write_verification_evidence(root_value, step_id, verification)
+                path = root_value / "planning/tasks/STEP-001.md"
+                path.write_text(
+                    path.read_text(encoding="utf-8").replace(
+                        "- Verification PASS.", "- Verification PASS with new acceptance."
+                    ),
+                    encoding="utf-8", newline="\n",
+                )
+
+            with patch("command_dispatch.write_verification_evidence", side_effect=write_then_change):
+                stale_completion = complete_dispatch(
+                    root,
+                    next_dispatch["rootCommand"],
+                    next_dispatch["command"],
+                    "SUCCESS",
+                    execution_id=next_dispatch["executionId"],
+                    details={
+                        "manualVerification": [{
+                            "check": "Подтвердить semantic condition",
+                            "status": "PASS",
+                            "observed": "Confirmed before concurrent change.",
+                        }]
+                    },
+                )
+            assert stale_completion["status"] == "BLOCKED", stale_completion
+            assert stale_completion["reasonCode"] == "VERIFICATION_CONTEXT_STALE", stale_completion
 
     print("VERIFICATION SELF-TEST: PASS")
     return 0
