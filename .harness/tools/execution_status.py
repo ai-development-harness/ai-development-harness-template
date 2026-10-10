@@ -226,6 +226,19 @@ def execution_state_lock(root: Path):
     # отправить даже lock-файл за пределы project operational storage.
     _checkpoint_exists(root)
     lock_path = root / LOCK_PATH
+    try:
+        lock_info = lock_path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot inspect checkpoint lock: {exc}",
+        ) from exc
+    else:
+        if not stat.S_ISREG(lock_info.st_mode):
+            raise ExecutionCheckpointError(
+                "INCOMPATIBLE", f"checkpoint lock is not a regular file: {lock_path}",
+            )
     key = str(lock_path.resolve())
     process_lock = _process_lock(key)
 
@@ -1581,8 +1594,15 @@ def _compact_status(root: Path, value: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
+@execution_state_mutation
 def save_status(root: Path, value: dict[str, Any]) -> None:
-    """Compact + validate + atomic write current local execution state."""
+    """Compact + validate + atomic write current local execution state.
+
+    Даже прямой вызов public writer не вправе перезаписать битое или
+    недоступное существующее состояние. Caller обычно уже читал state
+    под lock, но повторная проверка защищает самостоятельные вызовы API.
+    """
+    load_status(root)
     compacted = _compact_status(root, value)
     errors = _validate_v2_status(compacted)
     if errors:
