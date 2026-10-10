@@ -462,6 +462,13 @@ def step_completion_proof(
                 if isinstance(source, dict) else {}
             )
             reviewed_basis = report_meta.get("contract_basis")
+            reviewed_deps = report_meta.get("dependency_completion_basis")
+            if isinstance(reviewed_deps, str) and _valid_sha256(reviewed_deps):
+                current_deps = dependency_completion_basis(
+                    root, step_id, _ancestors=_ancestors,
+                )
+                if current_deps != reviewed_deps:
+                    reasons.append(f"completion-dependency-proof-stale:{step_id}")
             if isinstance(reviewed_basis, str) and _valid_sha256(reviewed_basis):
                 try:
                     current_basis = planning_context_basis(root, step_id)
@@ -517,6 +524,40 @@ def step_completion_proof(
         "snapshot": snapshot,
         "proof_hash": stable_hash(snapshot),
     }
+
+
+def dependency_completion_basis(
+    root: Path,
+    step_id: str,
+    *,
+    _ancestors: frozenset[str] = frozenset(),
+) -> str | None:
+    """Durable fingerprint upstream completion proofs at REVIEW time.
+
+    Planning context intentionally tracks dependency *contract*, not its
+    completion lifecycle. This independent proof basis is required only when
+    the STEP declares dependencies, so unrelated STEP evidence remains stable.
+    Each dependency proof uses the existing canonical step_completion_proof;
+    historical reports without this field retain legacy semantics.
+    """
+    task = read_task(root, step_id)
+    dependencies = sorted(set(dependency_ids(task)))
+    if not dependencies:
+        return None
+    records: list[dict[str, Any]] = []
+    for dep_id in dependencies:
+        try:
+            proof = step_completion_proof(
+                root, dep_id, _ancestors=_ancestors | {step_id},
+            )
+        except (OSError, ValueError) as exc:
+            records.append({"step": dep_id, "status": "unprovable", "reason": str(exc)})
+        else:
+            records.append({
+                "step": dep_id, "complete": proof["complete"],
+                "proof_hash": proof["proof_hash"],
+            })
+    return stable_hash({"schemaVersion": 1, "dependencyProofs": records})
 
 
 def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
