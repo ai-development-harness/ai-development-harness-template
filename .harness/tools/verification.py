@@ -237,13 +237,18 @@ def verification_context_basis(root: Path, step_id: str) -> str:
     Subject revision исключает STEP, иначе запись Evidence сама сбивала бы PASS.
     Поэтому используем существующие planning fingerprints для semantic fields.
     """
-    return stable_hash({
+    basis = {
         "schemaVersion": 1,
         "planningContextBasis": planning_context_basis(root, step_id),
         "planContentHash": plan_content_hash(root, step_id),
-        "dependencyCompletion": verification_dependency_facts(root, step_id),
         "timeoutSeconds": verification_command_timeout_seconds(root),
-    })
+    }
+    dependencies = verification_dependency_facts(root, step_id)
+    if dependencies:
+        # STEP без depends_on должен иметь прежний basis byte-for-byte:
+        # обновление Harness не требует ложной повторной Verification.
+        basis["dependencyCompletion"] = dependencies
+    return stable_hash(basis)
 
 
 def _resume_contract_basis(contract: str, context: str) -> str:
