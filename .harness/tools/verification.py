@@ -24,7 +24,7 @@ import threading
 import time
 from typing import Any
 
-from document_contract import atomic_write_text, markdown_headings, stable_hash
+from document_contract import DocumentWriteConflict, atomic_write_text, markdown_headings, stable_hash
 from harness_config import verification_command_timeout_seconds
 from planning_contract import read_task, task_path, planning_context_basis, plan_content_hash
 from project_verification import (
@@ -33,6 +33,7 @@ from project_verification import (
 )
 from review_contract import repository_revision
 from verification_resume import remember_pending, reuse_pending, forget_pending
+from verification_proof import record_verification_proof, verification_proof_error
 
 
 COMMAND_RE = re.compile(r"^- command:\s*\x60([^\x60]+)\x60\s*$")
@@ -326,6 +327,17 @@ def verification_command_evidence(
             "command": command,
         }
 
+    proof_error = verification_proof_error(
+        root, step_id, block=block, status=field("Status") or "UNKNOWN",
+    )
+    if proof_error is not None:
+        return {
+            "status": "UNKNOWN",
+            "fresh": False,
+            "reasonCode": proof_error,
+            "command": command,
+        }
+
     pattern = re.compile(
         rf"(?m)^- Command: {re.escape(command)}\s*$"
         rf"\n  - Status: (PASS|FAIL|BLOCKED)\s*$"
@@ -411,6 +423,9 @@ def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
             "storedSubjectRevision": stored_subject,
             "currentSubjectRevision": current_subject,
         }
+    proof_error = verification_proof_error(root, step_id, block=block, status=status)
+    if proof_error is not None:
+        return {"status": status, "fresh": False, "reasonCode": proof_error}
     return {
         "status": status,
         "fresh": status == "PASS",
@@ -730,15 +745,51 @@ def _replace_evidence_block(text: str, block: str) -> str:
 
 
 def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
-    stale_reason = _stale_inputs_reason(root, step_id, result)
-    if stale_reason is not None:
-        raise VerificationInputsStale(stale_reason)
-    path = task_path(root, step_id)
-    text = path.read_text(encoding="utf-8")
-    atomic_write_text(
-        path,
-        _replace_evidence_block(text, _evidence_block(result)),
-    )
+    """Записать Evidence и независимый proof только для того же STEP snapshot.
+
+    Execution lock сериализует два канонических writer-а; optimistic CAS
+    обнаруживает несовместимое редактирование STEP до atomic replace.
+    """
+    # Локальный импорт устраняет цикл execution_status → completion_gate →
+    # verification; общая блокировка работает и для standalone verify-step.
+    from execution_status import execution_state_lock
+
+    with execution_state_lock(root):
+        stale_reason = _stale_inputs_reason(root, step_id, result)
+        if stale_reason is not None:
+            raise VerificationInputsStale(stale_reason)
+        path = task_path(root, step_id)
+        original = path.read_bytes()
+        updated = _replace_evidence_block(
+            original.decode("utf-8"),
+            _evidence_block(result),
+        )
+        try:
+            atomic_write_text(path, updated, expected_bytes=original)
+        except DocumentWriteConflict as exc:
+            raise VerificationInputsStale(str(exc)) from exc
+
+        # Запись STEP и операционного proof не составляет одну filesystem
+        # transaction. Если crash произошёл между ними, без proof старый PASS
+        # считается UNKNOWN и штатная Verification повторяется.
+        if path.read_bytes() != updated.encode("utf-8"):
+            raise VerificationInputsStale("STEP changed after Evidence publication")
+        if (
+            result.get("contractBasis") != verification_contract_basis(root, step_id)
+            or result.get("contextBasis") != verification_context_basis(root, step_id)
+            or result.get("subjectRevision") != verification_subject_revision(root, step_id)
+        ):
+            raise VerificationInputsStale("verification inputs changed after Evidence publication")
+
+        match = re.search(
+            rf"{re.escape(EVIDENCE_START)}(.*?){re.escape(EVIDENCE_END)}",
+            updated, re.S,
+        )
+        if match is None:
+            raise VerificationError("generated Evidence block is missing after publication")
+        record_verification_proof(
+            root, step_id, block=match.group(1), result=result,
+        )
 
 
 def write_verification_evidence(
