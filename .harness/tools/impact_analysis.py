@@ -9,7 +9,6 @@ downstream artifacts and never promotes code to source of truth.
 from __future__ import annotations
 
 from collections import deque
-from collections import deque
 from pathlib import Path
 import re
 from typing import Any
@@ -275,112 +274,6 @@ def _canonical_change_exists(root: Path, changed_id: str) -> bool:
 
 
 def selective_invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
-    """Dry-run: какие результаты можно оставить, а какие нельзя переиспользовать.
-
-    Используем authoritative affected_steps/plan_staleness из #174, а не
-    второй набор fingerprints. Из dependency graph рассчитываем последствия
-    транзитивно. Функция только читает files и не запускает команды/side effects.
-    """
-    baseline = affected_steps(root, changed)
-    direct = {item["step"]: item for item in baseline["affected"]}
-    tasks = {
-        path.stem: read_task(root, path.stem)
-        for path in sorted(task_directory(root).glob("STEP-*.md"))
-        if path.name != "TEMPLATE.md"
-    }
-    reverse: dict[str, set[str]] = {step_id: set() for step_id in tasks}
-    missing: dict[str, list[str]] = {}
-    indegree: dict[str, int] = {}
-    for step_id, task in tasks.items():
-        dependencies = sorted(set(dependency_ids(task)))
-        missing[step_id] = [item for item in dependencies if item not in tasks]
-        known = [item for item in dependencies if item in tasks]
-        indegree[step_id] = len(known)
-        for parent in known:
-            reverse[parent].add(step_id)
-
-    # Kahn: если остались вершины, они входят в цикл ИЛИ зависят от цикла.
-    # Все такие узлы лучше не объявлять безопасными до ручной диагностики.
-    queue = deque(sorted(step for step, degree in indegree.items() if degree == 0))
-    while queue:
-        parent = queue.popleft()
-        for child in sorted(reverse[parent]):
-            indegree[child] -= 1
-            if indegree[child] == 0:
-                queue.append(child)
-    cycles_or_blocked = {step for step, degree in indegree.items() if degree > 0}
-
-    # Кратчайший наблюдаемый путь влияния от напрямую затронутого STEP.
-    paths: dict[str, list[str]] = {step: [step] for step in sorted(direct)}
-    frontier = deque(sorted(direct))
-    while frontier:
-        parent = frontier.popleft()
-        for child in sorted(reverse.get(parent, ())):
-            if child not in paths:
-                paths[child] = [*paths[parent], child]
-                frontier.append(child)
-
-    unresolved = sorted(
-        item for item in baseline["changed"]
-        if not _canonical_change_exists(root, item)
-    )
-    items: list[dict[str, Any]] = []
-    for step_id, task in sorted(tasks.items()):
-        direct_item = direct.get(step_id)
-        path = paths.get(step_id)
-        stale = plan_staleness(root, step_id)
-        blockers: list[str] = []
-        if missing[step_id]:
-            blockers.append("missing dependency: " + ", ".join(missing[step_id]))
-        if step_id in cycles_or_blocked:
-            blockers.append("cyclic or cycle-blocked dependency graph")
-        if unresolved:
-            blockers.append("changed artifact could not be resolved")
-
-        if blockers:
-            decision = "ambiguous"
-        elif stale["status"] == "stale":
-            decision = "invalidated"
-        elif direct_item is not None or path is not None:
-            # Даже когда Ready plan ещё fresh, downstream dependencies требуют
-            # проверки фактических postconditions, но не автоматического replay.
-            decision = "revalidate"
-        else:
-            decision = "preserved"
-
-        causes = list(direct_item.get("reasons", [])) if direct_item else []
-        if path is not None and len(path) > 1:
-            causes.append("dependency impact: " + " → ".join(path))
-        causes.extend(blockers)
-        items.append({
-            "step": step_id,
-            "decision": decision,
-            "planFreshness": stale["status"],
-            "causes": sorted(set(causes)),
-            "dependencyPath": path or [],
-            "suggestedAction": (
-                stale["action"] if decision == "invalidated"
-                else "review downstream dependencies" if decision in {"revalidate", "ambiguous"}
-                else None
-            ),
-        })
-
-    return {
-        "schemaVersion": SCHEMA_VERSION,
-        "status": "BLOCKED" if unresolved or any(item["decision"] == "ambiguous" for item in items) else "PASS",
-        "mode": "dry-run",
-        "changed": baseline["changed"],
-        "unresolvedChanges": unresolved,
-        "steps": items,
-        "summary": {
-            decision: sum(1 for item in items if item["decision"] == decision)
-            for decision in ("preserved", "revalidate", "invalidated", "ambiguous")
-        },
-        "externalSideEffectsExecuted": False,
-    }
-
-
-def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
     """Только read-only прогноз влияния с транзитивными STEP dependencies.
 
     Это объясняющая проекция поверх канонических связей, не новый freshness
@@ -395,6 +288,9 @@ def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
     names = sorted(set(value.strip() for value in changed))
     changed_keys = {_changed_component_key(name) for name in names}
     changed_ids = set(names)
+    # Источник изменения должен существовать как canonical artifact. Если
+    # его не удалось прочитать, нельзя объявлять несвязанные STEP безопасными.
+    unresolved = sorted(name for name in names if not _canonical_change_exists(root, name))
 
     tasks: dict[str, dict[str, Any]] = {}
     dependencies: dict[str, list[str]] = {}
@@ -472,6 +368,12 @@ def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
                     f"unverified dependency upstream: {parent}"
                 )
                 unverified.append(child)
+
+    if unresolved:
+        for step_id in tasks:
+            problems.setdefault(step_id, []).append(
+                "changed artifact could not be resolved: " + ", ".join(unresolved)
+            )
 
     # Обратные связи нужны, чтобы изменение STEP-001 было видно в STEP-006,
     # даже если собственный planning fingerprint STEP-006 пока остался fresh.
@@ -553,9 +455,14 @@ def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
     states = ("preserved", "revalidate", "invalidated", "ambiguous")
     return {
         "schemaVersion": SCHEMA_VERSION,
-        "status": "PASS",
+        "status": (
+            "BLOCKED" if unresolved or any(
+                item["decision"] == "ambiguous" for item in steps
+            ) else "PASS"
+        ),
         "mode": "dry-run",
         "changed": names,
+        "unresolvedChanges": unresolved,
         "summary": {
             state: sum(item["decision"] == state for item in steps)
             for state in states
@@ -568,6 +475,7 @@ def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
             item for item in steps
             if not item["dependencyPath"] and item["decision"] != "preserved"
         ],
+        "externalSideEffectsExecuted": False,
         "notice": (
             "Read-only impact estimate; never authorizes reuse of stale evidence "
             "or retries side effects. Existing canonical freshness guards apply."
@@ -579,7 +487,6 @@ __all__ = [
     "ImpactAnalysisError",
     "affected_steps",
     "compare_component_sets",
-    "invalidation_preview",
     "plan_staleness",
     "selective_invalidation_preview",
 ]
