@@ -12,6 +12,7 @@ import tempfile
 from unittest.mock import patch
 
 from planning_contract import (
+    dependency_completion_basis,
     planning_context_basis,
     step_completion_proof,
 )
@@ -166,16 +167,27 @@ def main() -> int:
             for n in range(1, 4)
         }
 
+        # Только snapshot из настоящего REVIEW, а не изменяемый current state,
+        # может подтвердить повторную проверку downstream after upstream re-plan.
+        dependency_review_basis: str | None = None
+        review_paths = {
+            f"STEP-{n:03d}": root / f"planning/reviews/STEP-{n:03d}/REVIEW-proof.md"
+            for n in range(1, 4)
+        }
+
         def trusted(_root: Path, step_id: str, **_kwargs):
+            meta = {"contract_basis": basis[step_id]}
+            if step_id == "STEP-002" and dependency_review_basis is not None:
+                meta["dependency_completion_basis"] = dependency_review_basis
             return {
-                "path": root / f"planning/reviews/{step_id}/REVIEW-proof.md",
+                "path": review_paths[step_id],
                 "verdict": "PASS",
-                "document": {
-                    "frontmatter": {"contract_basis": basis[step_id]},
-                },
+                "document": {"frontmatter": meta},
             }
 
         with patch("review_contract.latest_trusted_review", side_effect=trusted):
+            dependency_review_basis = dependency_completion_basis(root, "STEP-002")
+            assert dependency_review_basis is not None
             for number in range(1, 4):
                 assert step_completion_proof(root, f"STEP-{number:03d}")["complete"]
 
@@ -204,6 +216,32 @@ def main() -> int:
             assert verification_context_basis(root, "STEP-002") != before_dependency
             assert verification_context_basis(root, "STEP-003") == before_unrelated
             assert step_completion_proof(root, "STEP-003")["complete"]
+
+            # После новой upstream Verification/REVIEW прежний downstream PASS
+            # не должен снова стать valid. Его immutable REVIEW помнит старый
+            # dependency completion basis, даже если upstream снова complete.
+            first_review_basis = basis["STEP-001"]
+            first_review_path = review_paths["STEP-001"]
+            basis["STEP-001"] = planning_context_basis(root, "STEP-001")
+            new_report = root / "planning/reviews/STEP-001/REVIEW-new-approval.md"
+            write(root, "planning/reviews/STEP-001/REVIEW-new-approval.md",
+                  "New independent REVIEW of revised REQ-001.\n")
+            review_paths["STEP-001"] = new_report
+            assert step_completion_proof(root, "STEP-001")["complete"]
+            old_child = step_completion_proof(root, "STEP-002")
+            assert not old_child["complete"], old_child
+            assert "completion-dependency-proof-stale:STEP-002" in old_child["reasons"], old_child
+
+            # Независимый REVIEW downstream вправе связаться с новым proof.
+            dependency_review_basis = dependency_completion_basis(root, "STEP-002")
+            assert dependency_review_basis is not None
+            assert step_completion_proof(root, "STEP-002")["complete"]
+
+            # Вернуть исторические proof snapshots для следующих сценариев.
+            basis["STEP-001"] = first_review_basis
+            review_paths["STEP-001"] = first_review_path
+            req.write_text(old, encoding="utf-8", newline="\n")
+            dependency_review_basis = dependency_completion_basis(root, "STEP-002")
 
             # Изменение обратной traceability metadata не меняет semantic
             # contract: связанный STEP не инвалидируется без основания.
