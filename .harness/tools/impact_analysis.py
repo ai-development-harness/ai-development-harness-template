@@ -459,6 +459,20 @@ def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
             "cyclic dependency or descendant of dependency cycle"
         )
 
+    # Если upstream STEP нельзя проверить (битый/отсутствующий contract),
+    # то downstream также не может получить решение preserved по умолчанию.
+    unverified = deque(sorted(problems))
+    visited_unverified = set(problems)
+    while unverified:
+        parent = unverified.popleft()
+        for child in sorted(downstream.get(parent, set())):
+            if child not in visited_unverified:
+                visited_unverified.add(child)
+                problems.setdefault(child, []).append(
+                    f"unverified dependency upstream: {parent}"
+                )
+                unverified.append(child)
+
     # Обратные связи нужны, чтобы изменение STEP-001 было видно в STEP-006,
     # даже если собственный planning fingerprint STEP-006 пока остался fresh.
     paths: dict[str, list[str]] = {}
