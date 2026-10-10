@@ -74,7 +74,10 @@ python3 .harness/tools/impact-analysis.py --changed ADR-002 --preview --json
 В `steps[]` перечислены все известные STEP, включая незатронутые; каждый
 получает `decision`, `dependencyPath`, причины, текущее состояние плана
 и решения по review/verification/completion evidence. `affected[]` содержит
-только позиции, не признанные `preserved`. Результат основан на canonical
+только STEP, связанные с указанными изменениями. Старые проблемы
+других, несвязанных STEP не скрываются, но вынесены в
+`preExistingConcerns[]`, чтобы не раздувать текущую область работ.
+Результат основан на canonical
 связях REQ/ADR/OQ/PRN/STEP из planning snapshot, `depends_on` и
 существующей `plan_staleness()`, **не на истории переписки с моделью**.
 
