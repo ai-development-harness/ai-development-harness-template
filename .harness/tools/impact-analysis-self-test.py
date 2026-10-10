@@ -523,6 +523,16 @@ def main() -> int:
             {"component": "PLANNING_CONTEXT", "change": "changed"}
         ], legacy
 
+        # Другой stale STEP не должен искусственно расширять площадь
+        # влияния изменённого REQ-001, но ошибка видна отдельным разделом.
+        scoped = invalidation_preview(root, ["REQ-001"])
+        assert "STEP-005" not in {
+            item["step"] for item in scoped["affected"]
+        }, scoped
+        assert "STEP-005" in {
+            item["step"] for item in scoped["preExistingConcerns"]
+        }, scoped
+
         # Error cases: cycles and missing dependencies must not be silently
         # called preserved, even when no upstream semantic hash changed.
         six = root / "planning/tasks/STEP-006.md"
