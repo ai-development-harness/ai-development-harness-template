@@ -36,6 +36,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 import threading
@@ -149,6 +150,59 @@ def empty_status() -> dict[str, Any]:
     }
 
 
+class ExecutionCheckpointError(ValueError):
+    """Причина невозможности безопасного чтения persisted execution state.
+
+    Отсутствие state допускает новую сессию. Любой другой сбой не должен
+    превратиться в пустую историю команд и потерять recovery proofs.
+    """
+
+    def __init__(self, kind: str, message: str):
+        self.kind = kind
+        self.code = "EXECUTION_STATE_" + kind
+        super().__init__(f"{self.code}: {message}")
+
+
+def _checkpoint_exists(root: Path) -> bool:
+    """Отличить настоящий fresh start от недоступного/опасного пути state.
+
+    Path.is_file() возвращает False и для dangling symlink, и для директории:
+    трактовать это как отсутствие checkpoint небезопасно. Проверяем lexical
+    layout: symlink внутри служебного каталога тоже нельзя разыменовывать.
+    """
+    parent = root
+    for part in Path(STATUS_PATH).parts[:-1]:
+        parent = parent / part
+        try:
+            info = parent.lstat()
+        except FileNotFoundError:
+            # Отсутствующий предок разрешён только при fresh start.
+            return False
+        except OSError as exc:
+            raise ExecutionCheckpointError(
+                "UNAVAILABLE", f"cannot inspect state directory {parent}: {exc}",
+            ) from exc
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise ExecutionCheckpointError(
+                "INCOMPATIBLE", f"state directory is not a real directory: {parent}",
+            )
+
+    path = status_path(root)
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot inspect checkpoint {path}: {exc}",
+        ) from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise ExecutionCheckpointError(
+            "INCOMPATIBLE", f"checkpoint is not a regular file: {path}",
+        )
+    return True
+
+
 def _process_lock(key: str) -> threading.RLock:
     """Вернуть process-local reentrant lock для одного project state path."""
     with _PROCESS_LOCKS_GUARD:
@@ -168,6 +222,9 @@ def execution_state_lock(root: Path):
     helpers вызывают друг друга и resolver recovery может записать state внутри
     уже открытой transaction.
     """
+    # Проверяем путь до создания/advisory lock: иначе symlink parent мог бы
+    # отправить даже lock-файл за пределы project operational storage.
+    _checkpoint_exists(root)
     lock_path = root / LOCK_PATH
     key = str(lock_path.resolve())
     process_lock = _process_lock(key)
@@ -1327,32 +1384,46 @@ def _migrate_status_v1(value: dict[str, Any]) -> dict[str, Any]:
 def load_status(root: Path) -> dict[str, Any]:
     path = status_path(root)
     with execution_state_lock(root):
-        if not path.is_file():
+        if not _checkpoint_exists(root):
             return empty_status()
         try:
             with path.open("r", encoding="utf-8") as fh:
                 value = json.load(fh)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"execution-status: cannot parse JSON: {exc}") from exc
-        # Не-object root (array/string) — повреждённый state, а не AttributeError (#117).
+            raise ExecutionCheckpointError(
+                "CORRUPTED", f"cannot parse checkpoint JSON: {exc}",
+            ) from exc
+        except OSError as exc:
+            # File vanished or storage became unavailable after lstat:
+            # это не доказанное NOT_FOUND, поэтому не создаём пустой state.
+            raise ExecutionCheckpointError(
+                "UNAVAILABLE", f"cannot read checkpoint: {exc}",
+            ) from exc
         if not isinstance(value, dict):
-            raise ValueError("execution-status: root must be a JSON object")
+            raise ExecutionCheckpointError("CORRUPTED", "checkpoint root must be an object")
+        if value.get("schemaVersion") not in {
+            LEGACY_STATUS_SCHEMA_VERSION, STATUS_SCHEMA_VERSION,
+        }:
+            raise ExecutionCheckpointError(
+                "INCOMPATIBLE",
+                f"unsupported schemaVersion {value.get('schemaVersion')!r}",
+            )
 
         if value.get("schemaVersion") == LEGACY_STATUS_SCHEMA_VERSION:
             errors = _validate_v1_status(value)
             if errors:
-                raise ValueError("; ".join(errors))
+                raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
             migrated = _migrate_status_v1(value)
             compacted = _compact_status(root, migrated)
             errors = _validate_v2_status(compacted)
             if errors:
-                raise ValueError("; ".join(errors))
+                raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
             _atomic_write_json(path, compacted)
             return compacted
 
         errors = _validate_v2_status(value)
         if errors:
-            raise ValueError("; ".join(errors))
+            raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
         return value
 
 
@@ -1372,6 +1443,9 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
             fh.write(content)
             fh.flush()
             os.fsync(fh.fileno())
+        # Повторная проверка после fsync: если файл заменили symlink
+        # между чтением и записью, os.replace не должен скрыть инцидент.
+        _checkpoint_exists(path.parents[3])
         os.replace(tmp, path)
     finally:
         if tmp.exists():
