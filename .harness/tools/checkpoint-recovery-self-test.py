@@ -52,6 +52,13 @@ def main() -> int:
         ):
             path.write_bytes(payload)
             rejected(root, kind)
+            # Даже прямой save_status не должен затереть corrupted checkpoint.
+            try:
+                save_status(root, empty_status())
+            except ExecutionCheckpointError as exc:
+                assert exc.kind == kind, (kind, exc.kind)
+            else:
+                raise AssertionError("direct writer overwrote corrupt state")
             assert path.read_bytes() == payload
         path.write_bytes(original)
 
@@ -92,6 +99,7 @@ def main() -> int:
         external_dir = root / "external-store"
         external_dir.mkdir()
         path.unlink()
+        (path.parent / "execution-status.lock").unlink(missing_ok=True)
         path.parent.rmdir()
         try:
             path.parent.symlink_to(external_dir, target_is_directory=True)
