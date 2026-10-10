@@ -36,6 +36,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import tempfile
 import threading
@@ -84,6 +85,9 @@ from side_effect_recovery import validate_checkpoint as validate_side_effect_che
 # STEP, Git, Harness update и остальные namespaces.
 STATUS_PATH = ".harness/local/execution/execution-status.json"
 LOCK_PATH = ".harness/local/execution/execution-status.lock"
+# Маркер находится вне disappearing .harness/local, иначе его потеря
+# не отличалась бы от fresh checkout. Файл local-only и Git-ignored.
+CHECKPOINT_MARKER_PATH = ".harness/.execution-checkpoint-known"
 UPDATE_JOURNAL_PATH = ".harness/local/update-journal/journal.json"
 UPDATE_JOURNAL_DIR = ".harness/local/update-journal"
 UPDATE_TRANSACTION_ENV = "HARNESS_UPDATE_TRANSACTION"
@@ -149,6 +153,124 @@ def empty_status() -> dict[str, Any]:
     }
 
 
+class ExecutionCheckpointError(ValueError):
+    """Причина невозможности безопасного чтения persisted execution state.
+
+    Отсутствие state допускает новую сессию. Любой другой сбой не должен
+    превратиться в пустую историю команд и потерять recovery proofs.
+    """
+
+    def __init__(self, kind: str, message: str):
+        self.kind = kind
+        self.code = "EXECUTION_STATE_" + kind
+        super().__init__(f"execution-status: {self.code}: {message}")
+
+
+def _checkpoint_marker_exists(root: Path) -> bool:
+    """Есть ли независимый маркер хотя бы одной успешной попытки записи state."""
+    marker = root / CHECKPOINT_MARKER_PATH
+    try:
+        info = marker.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot inspect checkpoint marker: {exc}",
+        ) from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise ExecutionCheckpointError(
+            "INCOMPATIBLE", f"checkpoint marker is not a regular file: {marker}",
+        )
+    try:
+        content = marker.read_bytes()
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot read checkpoint marker: {exc}",
+        ) from exc
+    if content != b"checkpoint-ever-written-v1\n":
+        raise ExecutionCheckpointError(
+            "INCOMPATIBLE", "checkpoint marker content is invalid",
+        )
+    return True
+
+
+def _mark_checkpoint_known(root: Path) -> None:
+    """Зафиксировать прошлое существование state *перед* первой записью.
+
+    Если создание JSON сорвётся, остаёмся fail-closed: следующий запуск
+    не вправе предположить, что состояние было совершенно пустым.
+    """
+    if _checkpoint_marker_exists(root):
+        return
+    marker = root / CHECKPOINT_MARKER_PATH
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with marker.open("xb") as fh:
+            fh.write(b"checkpoint-ever-written-v1\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+    except FileExistsError:
+        if not _checkpoint_marker_exists(root):
+            raise ExecutionCheckpointError(
+                "UNAVAILABLE", "checkpoint marker appeared concurrently",
+            )
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot persist checkpoint marker: {exc}",
+        ) from exc
+
+
+def _fresh_start_allowed(root: Path) -> bool:
+    """Нет файла: разрешить fresh state только если его раньше не создавали."""
+    if _checkpoint_marker_exists(root):
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE",
+            "checkpoint disappeared after prior execution; restore local "
+            "state or reconcile side effects before starting again",
+        )
+    return False
+
+
+def _checkpoint_exists(root: Path) -> bool:
+    """Отличить настоящий fresh start от недоступного/опасного пути state.
+
+    Path.is_file() возвращает False и для dangling symlink, и для директории:
+    трактовать это как отсутствие checkpoint небезопасно. Проверяем lexical
+    layout: symlink внутри служебного каталога тоже нельзя разыменовывать.
+    """
+    parent = root
+    for part in Path(STATUS_PATH).parts[:-1]:
+        parent = parent / part
+        try:
+            info = parent.lstat()
+        except FileNotFoundError:
+            # У пропавшего родительского каталога может быть история.
+            return _fresh_start_allowed(root)
+        except OSError as exc:
+            raise ExecutionCheckpointError(
+                "UNAVAILABLE", f"cannot inspect state directory {parent}: {exc}",
+            ) from exc
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+            raise ExecutionCheckpointError(
+                "INCOMPATIBLE", f"state directory is not a real directory: {parent}",
+            )
+
+    path = status_path(root)
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return _fresh_start_allowed(root)
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot inspect checkpoint {path}: {exc}",
+        ) from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise ExecutionCheckpointError(
+            "INCOMPATIBLE", f"checkpoint is not a regular file: {path}",
+        )
+    return True
+
+
 def _process_lock(key: str) -> threading.RLock:
     """Вернуть process-local reentrant lock для одного project state path."""
     with _PROCESS_LOCKS_GUARD:
@@ -168,7 +290,23 @@ def execution_state_lock(root: Path):
     helpers вызывают друг друга и resolver recovery может записать state внутри
     уже открытой transaction.
     """
+    # Проверяем путь до создания/advisory lock: иначе symlink parent мог бы
+    # отправить даже lock-файл за пределы project operational storage.
+    _checkpoint_exists(root)
     lock_path = root / LOCK_PATH
+    try:
+        lock_info = lock_path.lstat()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ExecutionCheckpointError(
+            "UNAVAILABLE", f"cannot inspect checkpoint lock: {exc}",
+        ) from exc
+    else:
+        if not stat.S_ISREG(lock_info.st_mode):
+            raise ExecutionCheckpointError(
+                "INCOMPATIBLE", f"checkpoint lock is not a regular file: {lock_path}",
+            )
     key = str(lock_path.resolve())
     process_lock = _process_lock(key)
 
@@ -1327,38 +1465,61 @@ def _migrate_status_v1(value: dict[str, Any]) -> dict[str, Any]:
 def load_status(root: Path) -> dict[str, Any]:
     path = status_path(root)
     with execution_state_lock(root):
-        if not path.is_file():
+        if not _checkpoint_exists(root):
             return empty_status()
         try:
             with path.open("r", encoding="utf-8") as fh:
                 value = json.load(fh)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"execution-status: cannot parse JSON: {exc}") from exc
-        # Не-object root (array/string) — повреждённый state, а не AttributeError (#117).
+            raise ExecutionCheckpointError(
+                "CORRUPTED", f"cannot parse checkpoint JSON: {exc}",
+            ) from exc
+        except OSError as exc:
+            # File vanished or storage became unavailable after lstat:
+            # это не доказанное NOT_FOUND, поэтому не создаём пустой state.
+            raise ExecutionCheckpointError(
+                "UNAVAILABLE", f"cannot read checkpoint: {exc}",
+            ) from exc
         if not isinstance(value, dict):
-            raise ValueError("execution-status: root must be a JSON object")
+            raise ExecutionCheckpointError("CORRUPTED", "checkpoint root must be an object")
+        if value.get("schemaVersion") not in {
+            LEGACY_STATUS_SCHEMA_VERSION, STATUS_SCHEMA_VERSION,
+        }:
+            raise ExecutionCheckpointError(
+                "INCOMPATIBLE",
+                f"unsupported schemaVersion {value.get('schemaVersion')!r}",
+            )
 
         if value.get("schemaVersion") == LEGACY_STATUS_SCHEMA_VERSION:
             errors = _validate_v1_status(value)
             if errors:
-                raise ValueError("; ".join(errors))
+                raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
             migrated = _migrate_status_v1(value)
             compacted = _compact_status(root, migrated)
             errors = _validate_v2_status(compacted)
             if errors:
-                raise ValueError("; ".join(errors))
+                raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
+            _mark_checkpoint_known(root)
             _atomic_write_json(path, compacted)
             return compacted
 
         errors = _validate_v2_status(value)
         if errors:
-            raise ValueError("; ".join(errors))
+            raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
+        # При переходе с прежней версии Harness state уже может существовать
+        # без маркера. Механически добавляем его под тем же OS lock.
+        _mark_checkpoint_known(root)
         return value
 
 
 
 # Записать JSON crash-safe способом через temporary file, fsync и atomic os.replace. Это защищает от половины файла при process/session crash.
-def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+def _atomic_write_json(
+    path: Path,
+    value: dict[str, Any],
+    *,
+    allow_initial_creation: bool = False,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
     fd, tmp_name = tempfile.mkstemp(
@@ -1372,6 +1533,22 @@ def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
             fh.write(content)
             fh.flush()
             os.fsync(fh.fileno())
+        # При первой записи маркер уже существует, но status JSON ещё нет.
+        # Для всех остальных операций исчезновение файла — ошибка recovery.
+        if allow_initial_creation:
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                raise ExecutionCheckpointError(
+                    "UNAVAILABLE", "checkpoint appeared during initial creation",
+                )
+        else:
+            if not _checkpoint_exists(path.parents[3]):
+                raise ExecutionCheckpointError(
+                    "UNAVAILABLE", "checkpoint vanished before atomic replacement",
+                )
         os.replace(tmp, path)
     finally:
         if tmp.exists():
@@ -1507,15 +1684,28 @@ def _compact_status(root: Path, value: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
+@execution_state_mutation
 def save_status(root: Path, value: dict[str, Any]) -> None:
-    """Compact + validate + atomic write current local execution state."""
+    """Compact + validate + atomic write current local execution state.
+
+    Даже прямой вызов public writer не вправе перезаписать битое или
+    недоступное существующее состояние. Caller обычно уже читал state
+    под lock, но повторная проверка защищает самостоятельные вызовы API.
+    """
+    load_status(root)
+    creating = not _checkpoint_exists(root)
     compacted = _compact_status(root, value)
     errors = _validate_v2_status(compacted)
     if errors:
         raise ValueError("; ".join(errors))
     value.clear()
     value.update(compacted)
-    _atomic_write_json(status_path(root), value)
+    _mark_checkpoint_known(root)
+    _atomic_write_json(
+        status_path(root),
+        value,
+        allow_initial_creation=creating,
+    )
 
 
 

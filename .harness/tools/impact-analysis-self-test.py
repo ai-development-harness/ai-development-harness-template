@@ -10,7 +10,7 @@ import tempfile
 import harness_ux as harness_ux_module
 from command_dispatch import start_dispatch
 from document_contract import render_document
-from impact_analysis import affected_steps, plan_staleness
+from impact_analysis import affected_steps, selective_invalidation_preview, plan_staleness
 from planning_contract import (
     planning_context_basis,
     planning_context_components,
@@ -284,7 +284,7 @@ def main() -> int:
         )
         write(manifest_path, manifest)
 
-        for number in range(1, 6):
+        for number in range(1, 8):
             req_id = f"REQ-{number:03d}"
             step_id = f"STEP-{number:03d}"
             adr_id = "ADR-001" if number == 3 else None
@@ -295,6 +295,19 @@ def main() -> int:
             write(
                 root / f"planning/tasks/{step_id}.md",
                 step(step_id, req_id, adr_id=adr_id),
+            )
+
+        # STEP-006/007 — цепочка зависимостей с собственной REQ у каждого.
+        # Изменение REQ-001 напрямую затрагивает STEP-001, косвенно — 006/007.
+        for step_id, parent in (("STEP-006", "STEP-001"), ("STEP-007", "STEP-006")):
+            path = root / f"planning/tasks/{step_id}.md"
+            write(
+                path,
+                path.read_text(encoding="utf-8").replace(
+                    "depends_on: []",
+                    f"depends_on:\n  - {parent}",
+                    1,
+                ),
             )
 
         write(
@@ -313,6 +326,8 @@ def main() -> int:
             "STEP-003",
             "STEP-004",
             "STEP-005",
+            "STEP-006",
+            "STEP-007",
         )}
 
         first_task = read_task(root, "STEP-001")
@@ -348,6 +363,33 @@ def main() -> int:
 
         affected = affected_steps(root, ["REQ-001"])
         assert [item["step"] for item in affected["affected"]] == ["STEP-001"], affected
+
+        # #287: имеющийся affected_steps сохраняет прямую семантику (#174).
+        # Новый dry-run дополнительно учитывает транзитивные depends_on,
+        # не объявляя существующий план ребёнка stale без фактического proof.
+        preview = selective_invalidation_preview(root, ["REQ-001"])
+        decisions = {item["step"]: item for item in preview["steps"]}
+        assert preview["mode"] == "dry-run", preview
+        assert {item["step"] for item in preview["affected"]} == {
+            "STEP-001", "STEP-006", "STEP-007",
+        }, preview
+        assert decisions["STEP-001"]["decision"] == "invalidated", preview
+        assert decisions["STEP-006"]["decision"] == "revalidate", preview
+        assert decisions["STEP-007"]["decision"] == "revalidate", preview
+        assert decisions["STEP-007"]["dependencyPath"] == [
+            "STEP-001", "STEP-006", "STEP-007",
+        ], preview
+        assert decisions["STEP-002"]["decision"] == "preserved", preview
+        # Oracle для synthetic graph: нет false negative и false positive.
+        assert preview["summary"] == {
+            "preserved": 4, "revalidate": 2, "invalidated": 1, "ambiguous": 0
+        }, preview
+
+        # Повторный анализ не меняет tracked STEP/REQ и immutable REVIEW.
+        before_preview = first_report.read_bytes()
+        again = selective_invalidation_preview(root, ["REQ-001"])
+        assert again == preview
+        assert first_report.read_bytes() == before_preview
 
         # PROJECT STATE and PROJECT STATUS surfaces explain cause + remediation.
         project_state = build_project_state(root)
@@ -439,6 +481,10 @@ def main() -> int:
         } in adr_stale["causes"], adr_stale
         replacement = affected_steps(root, ["ADR-002"])
         assert any(item["step"] == "STEP-003" for item in replacement["affected"]), replacement
+        adr_preview = selective_invalidation_preview(root, ["ADR-002"])
+        adr_decision = {item["step"]: item for item in adr_preview["steps"]}
+        assert adr_decision["STEP-003"]["decision"] == "invalidated", adr_preview
+        assert adr_decision["STEP-002"]["decision"] == "preserved", adr_preview
 
         # Task-local contract edit invalidates only its own STEP component.
         step4 = root / "planning/tasks/STEP-004.md"
@@ -476,6 +522,50 @@ def main() -> int:
         assert legacy["causes"] == [
             {"component": "PLANNING_CONTEXT", "change": "changed"}
         ], legacy
+
+        # Другой stale STEP не должен искусственно расширять площадь
+        # влияния изменённого REQ-001, но ошибка видна отдельным разделом.
+        scoped = selective_invalidation_preview(root, ["REQ-001"])
+        assert "STEP-005" not in {
+            item["step"] for item in scoped["affected"]
+        }, scoped
+        assert "STEP-005" in {
+            item["step"] for item in scoped["preExistingConcerns"]
+        }, scoped
+
+        # Error cases: cycles and missing dependencies must not be silently
+        # called preserved, even when no upstream semantic hash changed.
+        six = root / "planning/tasks/STEP-006.md"
+        six.write_text(
+            six.read_text(encoding="utf-8").replace("- STEP-001", "- STEP-007", 1),
+            encoding="utf-8", newline="\n",
+        )
+        cyclic = selective_invalidation_preview(root, ["STEP-006"])
+        cycle_decisions = {item["step"]: item for item in cyclic["steps"]}
+        assert cycle_decisions["STEP-006"]["decision"] == "ambiguous", cyclic
+        assert cycle_decisions["STEP-007"]["decision"] == "ambiguous", cyclic
+        assert any("cyclic" in reason for reason in cycle_decisions["STEP-006"]["reasons"])
+
+        seven = root / "planning/tasks/STEP-007.md"
+        seven.write_text(
+            seven.read_text(encoding="utf-8").replace("- STEP-006", "- STEP-999", 1),
+            encoding="utf-8", newline="\n",
+        )
+        missing = selective_invalidation_preview(root, ["STEP-999"])
+        missing_decisions = {item["step"]: item for item in missing["steps"]}
+        assert missing_decisions["STEP-007"]["decision"] == "ambiguous", missing
+        assert any("missing dependency" in reason
+                   for reason in missing_decisions["STEP-007"]["reasons"]), missing
+
+        # Не связанный с REQ-002 повреждённый STEP-007 остаётся
+        # диагностикой, но не превращает корректный scoped preview в BLOCKED.
+        scoped_clean = selective_invalidation_preview(root, ["REQ-002"])
+        assert scoped_clean["status"] == "PASS", scoped_clean
+        assert {item["step"] for item in scoped_clean["affected"]} == {"STEP-002"}, scoped_clean
+        assert any(
+            item["step"] == "STEP-007" and item["decision"] == "ambiguous"
+            for item in scoped_clean["preExistingConcerns"]
+        ), scoped_clean
 
         # Analysis never rewrites immutable historical planning review.
         assert first_report.read_bytes() == first_report_bytes
