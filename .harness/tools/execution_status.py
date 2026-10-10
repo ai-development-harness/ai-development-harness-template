@@ -160,7 +160,7 @@ class ExecutionCheckpointError(ValueError):
     def __init__(self, kind: str, message: str):
         self.kind = kind
         self.code = "EXECUTION_STATE_" + kind
-        super().__init__(f"{self.code}: {message}")
+        super().__init__(f"execution-status: {self.code}: {message}")
 
 
 def _checkpoint_exists(root: Path) -> bool:
