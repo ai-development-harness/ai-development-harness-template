@@ -561,7 +561,13 @@ def invalidation_preview(root: Path, changed: list[str]) -> dict[str, Any]:
             for state in states
         },
         "steps": steps,
-        "affected": [item for item in steps if item["decision"] != "preserved"],
+        # Только действительно связанные с входным --changed STEP.
+        # Уже stale/повреждённые, но несвязанные узлы — отдельная диагностика.
+        "affected": [item for item in steps if item["dependencyPath"]],
+        "preExistingConcerns": [
+            item for item in steps
+            if not item["dependencyPath"] and item["decision"] != "preserved"
+        ],
         "notice": (
             "Read-only impact estimate; never authorizes reuse of stale evidence "
             "or retries side effects. Existing canonical freshness guards apply."
