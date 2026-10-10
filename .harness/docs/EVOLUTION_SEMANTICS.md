@@ -123,8 +123,11 @@ execution boundary переиспользует уже существующие 
 
 - `step_completion_proof()` проверяет, соответствует ли последний trusted
   REVIEW зафиксированному в нём `contract_basis` текущему semantic snapshot
-  REQ/ADR/OQ/STEP/PRN. Проверка выполняется для REVIEW, в котором сохранён
-  этот отпечаток; исторические legacy reports не переписываются.
+  REQ/ADR/OQ/STEP/PRN. Новый REVIEW также сохраняет
+  `dependency_completion_basis` — отпечатки *фактических upstream completion
+  proofs на момент проверки*. Изменение upstream, а затем новый upstream
+  REVIEW не делают старый downstream REVIEW действительным вновь.
+  Исторические legacy reports не переписываются.
 - Если completed STEP зависит от другого STEP, он проверяет актуальность
   его completion proof **транзитивно**. Циклы, отсутствующие зависимости и
   ошибочные документы не превращаются в PASS.
