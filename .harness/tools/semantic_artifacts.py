@@ -34,6 +34,7 @@ from execution_status import (
 )
 from harness_config import max_plan_review_cycles, planning_review_directory, review_directory
 from planning_contract import (
+    dependency_completion_basis,
     generated_verification_status,
     plan_content_hash,
     planning_context_basis,
@@ -624,6 +625,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         except CompletionGateError as exc:
             raise SemanticArtifactError(str(exc)) from exc
     directory = review_directory(root) / step_id
+    dependency_basis = dependency_completion_basis(root, step_id)
 
     def content_factory(created_at: str) -> str:
         display = created_at.replace("T", " ")[:16]
@@ -641,6 +643,8 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "verification_status": generated_verification_status(read_task(root, step_id)),
             "specialized_reviews": specialized,
         }
+        if dependency_basis is not None:
+            frontmatter["dependency_completion_basis"] = dependency_basis
         if convergence is not None:
             frontmatter["completion_contract"] = 1
             frontmatter["completion_result"] = str(
