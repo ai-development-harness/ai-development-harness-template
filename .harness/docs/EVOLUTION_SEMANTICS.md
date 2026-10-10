@@ -60,6 +60,59 @@ python3 .harness/tools/impact-analysis.py --changed REQ-007 --json
 
 Impact tool ничего не мутирует.
 
+## Консервативная предварительная оценка последствий (#287)
+
+Существующая команда `impact-analysis.py --changed` по-прежнему показывает
+прямые затронутые STEP. Для **прогноза транзитивного влияния** добавлен
+неизменяющий проект режим:
+
+```bash
+python3 .harness/tools/impact-analysis.py --changed REQ-001 --preview --json
+python3 .harness/tools/impact-analysis.py --changed ADR-002 --preview --json
+```
+
+В `steps[]` перечислены все известные STEP, включая незатронутые; каждый
+получает `decision`, `dependencyPath`, причины, текущее состояние плана
+и решения по review/verification/completion evidence. `affected[]` содержит
+только STEP, связанные с указанными изменениями. Старые проблемы
+других, несвязанных STEP не скрываются, но вынесены в
+`preExistingConcerns[]`, чтобы не раздувать текущую область работ.
+Результат основан на canonical
+связях REQ/ADR/OQ/PRN/STEP из planning snapshot, `depends_on` и
+существующей `plan_staleness()`, **не на истории переписки с моделью**.
+
+| Решение | Что означает | Дальнейшее действие |
+| --- | --- | --- |
+| `preserved` | Указанное изменение не затрагивает STEP через известные зависимости | Ничего сбрасывать не нужно; обычные freshness gates продолжают действовать |
+| `revalidate` | У upstream STEP есть изменения, но собственный plan basis ещё не доказан устаревшим | Перепроверить зависимости и текущие review/verification evidence |
+| `invalidated` | План STEP уже имеет несовпадение canonical planning basis | Повторить обычный `STEP PLAN` и дальнейшую проверку |
+| `ambiguous` | Цикл, отсутствующий dependency или ошибка чтения/контракта не дают доказать безопасность | Сначала исправить/разобрать граф зависимостей; автоматически не продолжать |
+
+Например:
+
+```text
+REQ-001 изменился
+  └── STEP-001: invalidated  (прямой REQ)
+         └── STEP-006: revalidate  (зависимость STEP-001)
+                └── STEP-007: revalidate  (зависимость STEP-006)
+
+STEP-002: preserved (нет связи)
+```
+
+**Важные ограничения.** Это dry-run прогноз, а не разрешение повторно
+использовать старый PASS/DONE. Исторические reports, STEP statuses и
+`execution-status.json` не переписываются. Даже `preserved` не обходит
+действующую проверку current revision, Review Contract, Verification и
+Completion Gate. Автоматический selective replay и повторное исполнение
+Git push/PR/других side effects в эту задачу **не входят**.
+
+Прогноз консервативный: явная транзитивная зависимость может требовать
+перепроверки даже без фактического изменения поведения (ложноположительный
+результат). Неучтённые неявные связи между модулями не выявляются одним
+`depends_on`; для них уже предусмотрен `semantic-blast-radius` и
+формализация missing links в canonical REQ/ADR/STEP. Никаких новых
+пользовательских обязательств при переключении Claude Code ↔ Codex нет.
+
 ## Semantic blast radius
 
 Deterministic impact analysis отвечает только за **explicit** canonical links/fingerprints. Для STEP с material `risk_flags` planner/reviewer дополнительно запускает internal `semantic-blast-radius`: explicit impact остаётся immutable fact, а model judgement используется только для implicit API/data/behavior contracts, indirect consumers, compatibility/concurrency/runtime assumptions и необходимого proof surface.
