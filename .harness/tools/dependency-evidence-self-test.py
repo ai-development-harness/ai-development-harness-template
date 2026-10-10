@@ -224,6 +224,26 @@ def main() -> int:
             assert "dependency-cycle:" in str(cyclic["reasons"]), cyclic
             assert step_completion_proof(root, "STEP-003")["complete"]
 
+            # Missing upstream STEP не должен давать ложный completion PASS
+            # и не должен затрагивать несвязанный STEP-003.
+            first.write_text(
+                first.read_text(encoding="utf-8").replace(
+                    "depends_on:\n  - STEP-002", "depends_on: []", 1,
+                ),
+                encoding="utf-8", newline="\n",
+            )
+            second = root / "planning/tasks/STEP-002.md"
+            second.write_text(
+                second.read_text(encoding="utf-8").replace(
+                    "  - STEP-001", "  - STEP-999", 1,
+                ),
+                encoding="utf-8", newline="\n",
+            )
+            missing = step_completion_proof(root, "STEP-002")
+            assert not missing["complete"], missing
+            assert "dependency-unprovable:STEP-999" in str(missing["reasons"]), missing
+            assert step_completion_proof(root, "STEP-003")["complete"]
+
     print("DEPENDENCY EVIDENCE ENFORCEMENT SELF-TEST: PASS")
     return 0
 
