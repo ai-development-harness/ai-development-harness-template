@@ -557,6 +557,16 @@ def main() -> int:
         assert any("missing dependency" in reason
                    for reason in missing_decisions["STEP-007"]["reasons"]), missing
 
+        # Не связанный с REQ-002 повреждённый STEP-007 остаётся
+        # диагностикой, но не превращает корректный scoped preview в BLOCKED.
+        scoped_clean = selective_invalidation_preview(root, ["REQ-002"])
+        assert scoped_clean["status"] == "PASS", scoped_clean
+        assert {item["step"] for item in scoped_clean["affected"]} == {"STEP-002"}, scoped_clean
+        assert any(
+            item["step"] == "STEP-007" and item["decision"] == "ambiguous"
+            for item in scoped_clean["preExistingConcerns"]
+        ), scoped_clean
+
         # Analysis never rewrites immutable historical planning review.
         assert first_report.read_bytes() == first_report_bytes
 
