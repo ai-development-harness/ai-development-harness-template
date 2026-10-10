@@ -10,7 +10,7 @@ import tempfile
 import harness_ux as harness_ux_module
 from command_dispatch import start_dispatch
 from document_contract import render_document
-from impact_analysis import affected_steps, invalidation_preview, plan_staleness
+from impact_analysis import affected_steps, selective_invalidation_preview, plan_staleness
 from planning_contract import (
     planning_context_basis,
     planning_context_components,
@@ -367,7 +367,7 @@ def main() -> int:
         # #287: имеющийся affected_steps сохраняет прямую семантику (#174).
         # Новый dry-run дополнительно учитывает транзитивные depends_on,
         # не объявляя существующий план ребёнка stale без фактического proof.
-        preview = invalidation_preview(root, ["REQ-001"])
+        preview = selective_invalidation_preview(root, ["REQ-001"])
         decisions = {item["step"]: item for item in preview["steps"]}
         assert preview["mode"] == "dry-run", preview
         assert {item["step"] for item in preview["affected"]} == {
@@ -387,7 +387,7 @@ def main() -> int:
 
         # Повторный анализ не меняет tracked STEP/REQ и immutable REVIEW.
         before_preview = first_report.read_bytes()
-        again = invalidation_preview(root, ["REQ-001"])
+        again = selective_invalidation_preview(root, ["REQ-001"])
         assert again == preview
         assert first_report.read_bytes() == before_preview
 
@@ -481,7 +481,7 @@ def main() -> int:
         } in adr_stale["causes"], adr_stale
         replacement = affected_steps(root, ["ADR-002"])
         assert any(item["step"] == "STEP-003" for item in replacement["affected"]), replacement
-        adr_preview = invalidation_preview(root, ["ADR-002"])
+        adr_preview = selective_invalidation_preview(root, ["ADR-002"])
         adr_decision = {item["step"]: item for item in adr_preview["steps"]}
         assert adr_decision["STEP-003"]["decision"] == "invalidated", adr_preview
         assert adr_decision["STEP-002"]["decision"] == "preserved", adr_preview
@@ -525,7 +525,7 @@ def main() -> int:
 
         # Другой stale STEP не должен искусственно расширять площадь
         # влияния изменённого REQ-001, но ошибка видна отдельным разделом.
-        scoped = invalidation_preview(root, ["REQ-001"])
+        scoped = selective_invalidation_preview(root, ["REQ-001"])
         assert "STEP-005" not in {
             item["step"] for item in scoped["affected"]
         }, scoped
@@ -540,7 +540,7 @@ def main() -> int:
             six.read_text(encoding="utf-8").replace("- STEP-001", "- STEP-007", 1),
             encoding="utf-8", newline="\n",
         )
-        cyclic = invalidation_preview(root, ["STEP-006"])
+        cyclic = selective_invalidation_preview(root, ["STEP-006"])
         cycle_decisions = {item["step"]: item for item in cyclic["steps"]}
         assert cycle_decisions["STEP-006"]["decision"] == "ambiguous", cyclic
         assert cycle_decisions["STEP-007"]["decision"] == "ambiguous", cyclic
@@ -551,7 +551,7 @@ def main() -> int:
             seven.read_text(encoding="utf-8").replace("- STEP-006", "- STEP-999", 1),
             encoding="utf-8", newline="\n",
         )
-        missing = invalidation_preview(root, ["STEP-999"])
+        missing = selective_invalidation_preview(root, ["STEP-999"])
         missing_decisions = {item["step"]: item for item in missing["steps"]}
         assert missing_decisions["STEP-007"]["decision"] == "ambiguous", missing
         assert any("missing dependency" in reason
