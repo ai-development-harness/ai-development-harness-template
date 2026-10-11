@@ -26,7 +26,14 @@ from typing import Any
 
 from document_contract import DocumentWriteConflict, atomic_write_text, markdown_headings, stable_hash
 from harness_config import verification_command_timeout_seconds
-from planning_contract import read_task, task_path, planning_context_basis, plan_content_hash
+from planning_contract import (
+    dependency_ids,
+    plan_content_hash,
+    planning_context_basis,
+    read_task,
+    step_completion_proof,
+    task_path,
+)
 from project_verification import (
     ProjectVerificationError,
     validate_product_observations,
@@ -198,18 +205,50 @@ def verification_contract_basis(root: Path, step_id: str) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def verification_dependency_facts(root: Path, step_id: str) -> list[dict[str, Any]]:
+    """Текущий transitive completion proof для explicit зависимостей STEP.
+
+    Не строим ещё одну dependency graph: доверяем существующим canonical
+    step_completion_proof и dependency_ids. Hash меняется при устаревшем
+    upstream контракте, даже если direct STEP contract downstream не менялся.
+    """
+    task = read_task(root, step_id)
+    facts: list[dict[str, Any]] = []
+    for dep_id in sorted(set(dependency_ids(task))):
+        try:
+            proof = step_completion_proof(root, dep_id)
+        except (OSError, ValueError) as exc:
+            facts.append({
+                "step": dep_id, "complete": False, "reason": f"unprovable:{exc}",
+            })
+        else:
+            facts.append({
+                "step": dep_id,
+                "complete": proof["complete"],
+                "proof": proof["proof_hash"],
+                "reasons": proof["reasons"],
+            })
+    return facts
+
+
 def verification_context_basis(root: Path, step_id: str) -> str:
     """Контракт STEP/REQ/ADR, план и timeout, независимо от generated Evidence.
 
     Subject revision исключает STEP, иначе запись Evidence сама сбивала бы PASS.
     Поэтому используем существующие planning fingerprints для semantic fields.
     """
-    return stable_hash({
+    basis = {
         "schemaVersion": 1,
         "planningContextBasis": planning_context_basis(root, step_id),
         "planContentHash": plan_content_hash(root, step_id),
         "timeoutSeconds": verification_command_timeout_seconds(root),
-    })
+    }
+    dependencies = verification_dependency_facts(root, step_id)
+    if dependencies:
+        # STEP без depends_on должен иметь прежний basis byte-for-byte:
+        # обновление Harness не требует ложной повторной Verification.
+        basis["dependencyCompletion"] = dependencies
+    return stable_hash(basis)
 
 
 def _resume_contract_basis(contract: str, context: str) -> str:
@@ -835,6 +874,22 @@ def run_step_verification(
             "message": str(exc),
         }
 
+    # Нельзя запускать новые тесты и выдавать PASS downstream, если completed
+    # upstream STEP перестал соответствовать своему REQ/ADR/semantic contract.
+    # Это gate только для текущего execution, без переписывания history.
+    dependency_failures = [
+        item for item in verification_dependency_facts(root, step_id)
+        if not item["complete"]
+    ]
+    if dependency_failures:
+        return {
+            "schemaVersion": 1,
+            "status": "BLOCKED",
+            "stepId": step_id,
+            "reasonCode": "VERIFICATION_DEPENDENCY_UNPROVEN",
+            "dependencies": dependency_failures,
+        }
+
     resume_basis = _resume_contract_basis(contract_basis, context_basis)
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
     reused = None
@@ -982,6 +1037,7 @@ __all__ = [
     "write_verification_evidence",
     "verification_contract_basis",
     "verification_context_basis",
+    "verification_dependency_facts",
     "verification_freshness",
     "verification_subject_revision",
     "validate_verification_entries",
