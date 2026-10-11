@@ -311,7 +311,7 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
 
     # Existing STEP work always outranks starting another STEP.
     try:
-        executions = unresolved_executions(root)
+        executions = unresolved_executions(root, mutate=False)
     except (OSError, ValueError) as exc:
         return {
             "schemaVersion": 1,
@@ -336,6 +336,7 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
             dependency_failures = [f"dependency-state-invalid:{exc}"]
         if dependency_failures:
             blocked.append({"stepId": step_id, "reasons": dependency_failures})
+            seen_execution_steps.add(step_id)
             continue
         # Multiple local records for one STEP should not multiply candidates.
         if step_id in seen_execution_steps:
