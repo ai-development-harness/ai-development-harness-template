@@ -2021,3 +2021,71 @@ python3 .harness/tools/run-stress-tests.py --json
 Runner запускает каждый manifest scenario ровно один раз с bounded iteration count, не делает retry-on-failure, завершает process tree при timeout и сохраняет diagnostic hashes/byte counts/tails для failed scenario.
 
 Release Qualification/current всегда использует 20 iterations. Обычный PR CI использует explicit lightweight budget.
+
+
+---
+
+# Repository Recovery Preview (Portable Resume, #299)
+
+## Файл / Файлы
+
+- `.harness/tools/repository-recovery.py` — read-only диагностический CLI;
+- `.harness/tools/repository_recovery.py` — внутренний Python-модуль;
+- `.harness/tools/repository-recovery-self-test.py` — два независимых Git-клона и отрицательные сценарии.
+
+## Роль
+
+Показывает **возможную** незавершённую STEP-работу после `git pull` в другом клоне проекта, где отсутствует локальный `execution-status.json`. Это не реализация `HARNESS RESUME` и не разрешение исполнить команду: `safeToResume=false`, `nextCommand=null` **в любом результате**, включая `status=PASS`.
+
+## Когда использовать
+
+- После переноса коммитов в другой clone, чтобы понять, какие STEP остались `in_progress`.
+- Для диагностики различий между состоянием двух компьютеров.
+- Перед проектированием безопасного переносимого checkpoint и его импорта в `HARNESS RESUME`.
+
+Для обычной работы внутри одного clone по-прежнему используются `HARNESS STATUS`, `HARNESS RESUME` и `STEP NEXT`.
+
+## Что проверяет
+
+1. Project initialized в `.harness/manifest.yaml` и Git worktree root.
+2. Git HEAD, текущую ветку и отсутствие незакоммиченных изменений.
+3. Canonical STEP только из `protocol.taskDirectory` (не из захардкоженного `planning/tasks`).
+4. Только STEP со статусом `in_progress`; `planned`, `completed` и прочие статусы не изображаются как прерванная execution.
+5. Для Ready plan — точное сравнение `planning_context_basis` и `plan_content_hash`. Даже `fresh` **не** доказывает выполнение IMPLEMENT, REVIEW или Verification.
+6. Отсутствующие/невалидные документы, неизвестные STEP и символические ссылки блокируются; несколько кандидатов перечисляются без автоматического выбора.
+
+CLI не читает `.harness/local/**`, не использует `.harness/.execution-checkpoint-known`, не создаёт новых execution records, не вызывает Git mutations, не выполняет Verification, не переносит Claude/Codex native session.
+
+## CLI
+
+~~~bash
+python3 .harness/tools/repository-recovery.py --json
+python3 .harness/tools/repository-recovery.py --step STEP-017 --json
+python3 .harness/tools/repository-recovery.py --step STEP-017
+~~~
+
+### Аргументы
+
+- `--step STEP-NNN` — необязательный точный canonical ID, без shorthand.
+- `--json` — структурированные факты и reason codes; без флага — краткая сводка.
+
+## Exit codes
+
+- `0` — `PASS` read-only **диагностики**, а не выполнение/восстановление STEP;
+- `2` — `BLOCKED`: Git недоступен, worktree dirty/detached, STEP/schema не доказаны, либо проект не инициализирован.
+
+## Примеры
+
+| Ситуация | Результат |
+| --- | --- |
+| В новом клоне есть опубликованный `STEP-017: in_progress`, план не готов | Кандидат с `PLAN_NOT_READY`; ручное изучение |
+| Есть `in_progress` и Ready plan со свежими hashes | `LOCAL_EXECUTION_PROOF_MISSING`; auto-resume всё равно запрещён |
+| Ветку изменили локально, есть untracked files | `BLOCKED/WORKTREE_DIRTY` |
+| STEP не найден или symlink вместо canonical файла | `BLOCKED/STEP_DOCUMENT_UNAVAILABLE` |
+| Две STEP `in_progress` | `MULTIPLE_RECOVERY_CANDIDATES`, не выбираем одну автоматически |
+
+## Внутренние зависимости / Граница ответственности
+
+Переиспользуются `task_directory()`, `read_task()`, `planning_context_basis()` и `plan_content_hash()`. Существующий локальный `harness_resume()` остаётся единственным авторитетом для current execution. Прямой Git-preview не является source of truth для PASS/DONE. Следующие этапы #300–#301 добавят переносимый handoff и controlled adoption с отдельной проверкой актуальности, side effects и Verification.
+
+Self-test копирует тот же commit в два clone через локальный bare Git remote и специально оставляет на исходном компьютере несовместимое local state: результат preview должен быть одинаковым и не зависеть от него.
