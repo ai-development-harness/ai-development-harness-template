@@ -1248,6 +1248,18 @@ def resume_dispatch(
                 **selection,
             }
         root_command = str(selection["rootCommand"])
+        if selection.get("portable") is True:
+            # Не импортируем чужой cursor/exec ID: выполняем новый локальный
+            # STEP PLAN через тот же CTS и штатный start_dispatch.
+            # Это только проверка текущего плана, а не replay IMPLEMENT.
+            result = start_dispatch(root, root_command)
+            result["portableAdoption"] = {
+                "sourceHandoff": selection["sourceHandoff"],
+                "reasonCode": "PORTABLE_REPLAN_REQUIRED",
+                "importedExecution": False,
+                "externalSideEffectsExecuted": False,
+            }
+            return result
 
     resolved = resolve_root(root, root_command)
     if resolved.get("status") not in {"RESUME", "NEXT"} or not resolved.get("command"):
