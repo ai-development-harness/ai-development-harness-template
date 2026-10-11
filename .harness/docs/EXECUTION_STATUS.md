@@ -78,7 +78,7 @@ Migration сохраняет running state, latest operational blocked state, im
 
 ## Execution record
 
-Обычно явный запуск пользователя создаёт независимую execution record. Исключения: read-only `STEP NEXT` не регистрирует execution и не меняет local state, а `HARNESS RESUME` продолжает уже существующую запись вместо создания новой.
+Обычно явный запуск пользователя создаёт независимую execution record. Но повторный запуск существующего `STEP RUN STEP-NNN` или STEP chain через dispatcher **сначала восстанавливает тот же root и его checkpoint**, а не начинает новую самостоятельную child execution. Read-only `STEP NEXT` всегда возвращает root как исполнимую рекомендацию; его `nextChildCommand` — диагностика, а не отдельно запускаемая операция. Исключения: read-only `STEP NEXT` не регистрирует execution и не меняет local state, а `HARNESS RESUME` продолжает уже существующую запись вместо создания новой.
 
 Пример single command:
 
