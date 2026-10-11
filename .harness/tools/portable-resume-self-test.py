@@ -336,7 +336,7 @@ def test_two_clone_real_dispatch() -> None:
         _git(desktop, "push", "-q", "-u", "origin", "main")
 
         # Producer имеет собственную незавершённую invocation. Она не переносится.
-        source_local = start_execution(desktop, "PROJECT QUICK FIX: local session")
+        source_local = start_execution(desktop, "STEP IMPLEMENT STEP-017")
         exported = write_handoff(desktop, "STEP-017")
         assert exported["status"] == "PASS", exported
         _git(desktop, "add", exported["path"])
@@ -374,7 +374,7 @@ def test_two_clone_real_dispatch() -> None:
 
         # Повторная команда продолжает NEW local PLAN, а не создаёт ещё один root.
         resumed = start_dispatch(laptop, "HARNESS RESUME")
-        assert resumed["executionId"] == response["executionId"], resumed
+        assert resumed.get("executionId") == response["executionId"], resumed
         assert len(load_status(laptop)["executions"]) == 1
 
         # Новый clone с сохранённым пустым local state НЕ является fresh clone.
