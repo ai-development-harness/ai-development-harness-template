@@ -126,7 +126,7 @@ def _validate_payload(value: Any, step_id: str) -> dict[str, Any]:
         "schemaVersion", "kind", "stepId", "source", "facts",
     }:
         raise PortableHandoffError("HANDOFF_SCHEMA_INVALID", "unknown/missing top-level fields")
-    if value["schemaVersion"] != SCHEMA_VERSION or value["kind"] != KIND:
+    if type(value["schemaVersion"]) is not int or value["schemaVersion"] != SCHEMA_VERSION or value["kind"] != KIND:
         raise PortableHandoffError("HANDOFF_SCHEMA_INVALID", "unsupported schema or kind")
     if value["stepId"] != step_id:
         raise PortableHandoffError("HANDOFF_SCHEMA_INVALID", "STEP identity mismatch")
@@ -144,7 +144,8 @@ def _validate_payload(value: Any, step_id: str) -> dict[str, Any]:
         and isinstance(source["taskIndexObject"], str)
         and GIT_OID_RE.fullmatch(source["taskIndexObject"])
         and isinstance(source["branch"], str)
-        and bool(source["branch"])
+        and bool(source["branch"].strip())
+        and not any(char in source["branch"] for char in ("\n", "\r", "\0"))
         and facts["stepStatus"] == "in_progress"
         and facts["planStatus"] in {"ready", "draft", "not_planned"}
         and isinstance(facts["planningContextBasis"], str)
