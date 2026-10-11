@@ -2122,9 +2122,9 @@ Self-test копирует тот же commit в два clone через лок�
 
 - `protocol.taskDirectory` из manifest, `STEP-NNN` со статусом `in_progress`;
 - корректный строгий allowlist versioned JSON; неизвестные поля запрещены;
-- Git HEAD до handoff, branch, ancestor и object ID отслеживаемого STEP;
+- Git HEAD и точного parent коммита публикации, branch и object ID отслеживаемого STEP;
 - актуальный `planning_context_basis()` / `plan_content_hash()`, а не выдуманный второй fingerprint;
-- наличие handoff в Git commit и чистый worktree; не допускает symlink/path escape;
+- единственное изменение в точном Git-publication commit, чистый worktree, совпадающий Git blob и известный upstream; symlink/path escape запрещены;
 - конфликтующие файлы блокируются; существующий файл может заменяться
   только через compare-before-replace после успешной проверки схемы.
 
@@ -2203,3 +2203,12 @@ python3 .harness/tools/harness-dispatch.py start --command "HARNESS RESUME"
 Отсутствие handoff — прежний `NO_RESUMABLE_EXECUTION`. `WORKTREE_DIRTY`, `HANDOFF_*`, устаревший plan либо несколько кандидатов — `BLOCKED`. Локальные blocked/lost-marker executions не обходятся через переносимый снимок. Никаких автоматических Git PUSH/PR, UPDATE и повторных IMPLEMENT/FIX/REVIEW.
 
 Подробнее: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
+
+
+## Матрица Portable Resume (#302)
+
+`portable-resume-matrix-self-test.py` создаёт локальный bare remote, два и более независимых Git-клона, Ready STEP с привязанными REQ/Accepted ADR/blocking PRN, затем проверяет ухудшение semantic contract, ошибочные handoff JSON и конфликты двух publisher. Нативные runtime sessions, локальные Verification и side-effect checkpoints не переносятся.
+
+Строгие коды: `HANDOFF_OUTDATED` (новый HEAD после публикации), `HANDOFF_PUBLICATION_MIXED` (один Git commit содержит ещё и код), `HANDOFF_UPSTREAM_DIVERGED` (последний известный tracking ref не совпал), `HANDOFF_WORKTREE_MISMATCH` (данные файла расходятся с Git blob), `HANDOFF_HEAD_CHANGED` (HEAD переместился внутри проверки). Все означают BLOCKED, без автоматического повторения Git side effects.
+
+CI на Linux выполняет все discoverable self-tests (Python 3.13 и 3.11), Windows — targeted two-clone tests. Подробные инструкции: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
