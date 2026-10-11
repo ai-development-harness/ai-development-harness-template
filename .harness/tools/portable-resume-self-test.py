@@ -98,6 +98,31 @@ def test_local_precedence() -> None:
         assert decision["executionId"] == "exec-local"
         assert decision["instruction"] == "resume-existing-execution-without-starting-new-root"
 
+    # Уже завершённые локальные executions не actionable, но являются
+    # частью истории. Старый API возвращает NO_RESUMABLE_EXECUTION с executions=[].
+    for reason in ("PORTABLE_LOCAL_HISTORY_PRESENT", "NO_RESUMABLE_EXECUTION"):
+        with (
+            patch("harness_ux.unresolved_executions", return_value=[]),
+            patch("harness_ux.portable_resume_candidate", return_value={
+                "status": "BLOCKED", "reasonCode": reason,
+            }),
+        ):
+            assert harness_resume(ROOT) == {
+                "status": "BLOCKED",
+                "reasonCode": "NO_RESUMABLE_EXECUTION",
+                "executions": [],
+            }
+
+    # Локальный blocker не должен превращаться в portable fallback.
+    with (
+        patch("harness_ux.unresolved_executions", return_value=[
+            {"status": "BLOCKED", "reasonCode": "COMMAND_BLOCKED"}
+        ]),
+        patch("harness_ux.portable_resume_candidate",
+              side_effect=AssertionError("blocked local history must not use portable")),
+    ):
+        assert harness_resume(ROOT)["reasonCode"] == "NO_RESUMABLE_EXECUTION"
+
     with (
         patch("harness_ux.unresolved_executions", return_value=[]),
         patch("harness_ux.portable_resume_candidate", return_value={
