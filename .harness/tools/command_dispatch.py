@@ -889,12 +889,24 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
             "schemaVersion": SCHEMA_VERSION,
             "status": "DONE" if passed else "BLOCKED",
             "rootCommand": "STEP NEXT",
+            # Старые consumers проверяли наличие key executionId.
+            # Read-only NEXT не создаёт идентификатор — None, не fake ID.
+            "executionId": None,
             "command": None,
             "reasonCode": (
                 "SINGLE_COMMAND_COMPLETE" if passed else result.get("reasonCode")
             ),
             "result": result,
         }
+
+    # При выполнении рекомендации STEP NEXT команда-ROOT остаётся владельцем
+    # recovery. Если root уже running, сначала reconcile durable checkpoints
+    # через существующий mutating RESUME path, а не создаём новый child-root.
+    # Это одинаково важно для STEP RUN и explicit STEP chains.
+    if normalized and all(cmd.startswith("STEP ") for cmd in normalized):
+        root_command = " > ".join(normalized)
+        if _active_execution(root, root_command) is not None:
+            return resume_dispatch(root, root_command)
 
     # Pending update journal must be recovered before a new APPLY execution is
     # written. Otherwise exact rollback of execution-status would erase the
