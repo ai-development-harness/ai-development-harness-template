@@ -414,6 +414,66 @@ def test_publication_races(root: Path, origin: Path) -> None:
     # Поэтому Harness сам не делает сеть и не обещает distributed lease.
 
 
+
+def test_custom_task_directory(root: Path, origin: Path) -> None:
+    """Manifest-first layout: нет скрытого planning/tasks второго источника."""
+    custom = clone(root, origin, "custom-layout")
+    git(custom, "switch", "-q", "-c", "custom-layout")
+    manifest = custom / ".harness/manifest.yaml"
+    original = manifest.read_text(encoding="utf-8")
+    assert "taskDirectory: planning/tasks" in original
+    write(
+        manifest,
+        original.replace("taskDirectory: planning/tasks", "taskDirectory: custom/steps", 1),
+    )
+    (custom / "custom/steps").mkdir(parents=True)
+    git(custom, "mv", "planning/tasks/STEP-017.md", "custom/steps/STEP-017.md")
+
+    task_path = custom / "custom/steps/STEP-017.md"
+    text = task_path.read_text(encoding="utf-8")
+    old_basis = text.split("  context_basis: ", 1)[1].splitlines()[0]
+    basis = planning_context_basis(custom, STEP_ID)
+    if basis != old_basis:
+        write(task_path, text.replace(old_basis, basis, 1))
+        review = custom / "planning/plan-reviews/STEP-017/PLAN-REVIEW-20261011T000000Z.md"
+        data = review.read_text(encoding="utf-8")
+        assert old_basis in data
+        write(review, data.replace(old_basis, basis, 1))
+    assert latest_matching_planning_review(custom, STEP_ID) is not None
+    git(custom, "add", ".harness/manifest.yaml",
+        "planning/plan-reviews/STEP-017/PLAN-REVIEW-20261011T000000Z.md",
+        "custom/steps/STEP-017.md")
+    git(custom, "commit", "-qm", "use manifest-defined custom STEP topology")
+    git(custom, "push", "-q", "-u", "origin", "custom-layout")
+
+    handoff = write_handoff(custom, STEP_ID)
+    assert handoff["status"] == "PASS", handoff
+    assert handoff["path"] == "custom/handoffs/STEP-017.json", handoff
+    commit(custom, handoff["path"], "publish custom topology handoff")
+    git(custom, "push", "-q", "origin", "custom-layout")
+
+    other = root / "custom-laptop"
+    git(root, "clone", "-q", "--branch", "custom-layout", str(origin), str(other))
+    proven = check_handoff(other, STEP_ID)
+    assert proven["status"] == "PASS", proven
+    picked = harness_resume(other)
+    assert picked["status"] == "PASS" and picked["portable"] is True, picked
+    assert picked["command"] == "STEP PLAN STEP-017"
+    assert picked["sourceHandoff"] == "custom/handoffs/STEP-017.json"
+
+
+def test_rewritten_git_history(root: Path, origin: Path) -> None:
+    """Старый handoff не допускается после rebase/force-push style rewrite."""
+    other = clone(root, origin, "rewritten-history")
+    # Создаём новый root commit с тем же tree; никаких внешних Git push.
+    new_root = git(other, "commit-tree", "HEAD^{tree}", "-m", "synthetic rewritten root")
+    git(other, "update-ref", "refs/heads/main", new_root)
+    outcome = check_handoff(other, STEP_ID)
+    assert outcome["status"] == "BLOCKED", outcome
+    assert outcome["reasonCode"] == "HANDOFF_SOURCE_UNREACHABLE", outcome
+    assert harness_resume(other)["status"] == "BLOCKED"
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="portable-matrix-") as temp:
         root = Path(temp)
@@ -436,6 +496,8 @@ def main() -> int:
 
         test_semantic_changes(root, origin)
         test_schema_and_traversal(root, origin)
+        test_custom_task_directory(root, origin)
+        test_rewritten_git_history(root, origin)
         test_publication_races(root, origin)
 
     print("PORTABLE RESUME CROSS-WORKSPACE MATRIX: PASS")
