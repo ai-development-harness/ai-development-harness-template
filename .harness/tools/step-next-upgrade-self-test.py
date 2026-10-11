@@ -168,8 +168,8 @@ def main() -> int:
         run(project, sys.executable, ".harness/tools/validate.py", "--mode", "manual")
         # New runtime must resume the v0.11.4 record under the same identity.
         command = run(
-            project, sys.executable, ".harness/tools/command-dispatch.py",
-            "--json", "--", "HARNESS RESUME",
+            project, sys.executable, ".harness/tools/harness-dispatch.py",
+            "start", "--command", "HARNESS RESUME",
         )
         payload = json.loads(command.stdout)
         assert payload.get("executionId") == identity, payload
