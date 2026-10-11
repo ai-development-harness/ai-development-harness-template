@@ -331,7 +331,7 @@ def test_semantic_changes(root: Path, origin: Path) -> None:
     write(cyclic / current_step, first.replace(
         "depends_on: []", "depends_on:\n  - STEP-018", 1,
     ))
-    second = FIXTURE._task().replace("STEP-017", "STEP-018", 1)
+    second = FIXTURE._task().replace("STEP-017", "STEP-018")
     second = second.replace("status: in_progress", "status: planned", 1)
     second = second.replace("depends_on: []", "depends_on:\n  - STEP-017", 1)
     write(cyclic / "planning/tasks/STEP-018.md", second)
