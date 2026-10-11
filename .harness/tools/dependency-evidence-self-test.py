@@ -295,6 +295,102 @@ def main() -> int:
             assert "dependency-unprovable:STEP-999" in str(missing["reasons"]), missing
             assert step_completion_proof(root, "STEP-003")["complete"]
 
+    # Независимая трёхуровневая цепочка: REQ-001 → STEP-001 → STEP-002
+    # → STEP-003. Отдельный STEP-004 не должен получать ложный stale.
+    # В отличие от прямого сценария выше, это доказывает транзитивность
+    # и предотвращает повторное принятие старого REVIEW на втором уровне.
+    with tempfile.TemporaryDirectory(prefix="harness-dependency-multihop-") as tmp:
+        root = Path(tmp)
+        write(root, ".harness/manifest.yaml", MANIFEST)
+        for number in range(1, 5):
+            step_id, req_id = f"STEP-{number:03d}", f"REQ-{number:03d}"
+            dependency = {2: "STEP-001", 3: "STEP-002"}.get(number)
+            write(root, f"docs/requirements/{req_id}-fixture.md",
+                  requirement(step_id, req_id))
+            write(root, f"planning/tasks/{step_id}.md",
+                  step(step_id, req_id, dependency))
+            write(root, f"planning/reviews/{step_id}/REVIEW-proof.md",
+                  "Original immutable REVIEW.\n")
+
+        original_basis = {
+            f"STEP-{number:03d}": planning_context_basis(root, f"STEP-{number:03d}")
+            for number in range(1, 5)
+        }
+        review_paths = {
+            f"STEP-{number:03d}": root / f"planning/reviews/STEP-{number:03d}/REVIEW-proof.md"
+            for number in range(1, 5)
+        }
+        dependency_bases: dict[str, str] = {}
+
+        def trusted_multihop(_root: Path, step_id: str, **_kwargs):
+            meta = {"contract_basis": original_basis[step_id]}
+            if step_id in dependency_bases:
+                meta["dependency_completion_basis"] = dependency_bases[step_id]
+            return {
+                "path": review_paths[step_id],
+                "verdict": "PASS",
+                "document": {"frontmatter": meta},
+            }
+
+        with patch("review_contract.latest_trusted_review", side_effect=trusted_multihop):
+            # Каждый REVIEW фиксирует proofs upstream, действительные
+            # именно в момент создания отчёта.
+            dependency_bases["STEP-002"] = dependency_completion_basis(root, "STEP-002")
+            dependency_bases["STEP-003"] = dependency_completion_basis(root, "STEP-003")
+            for number in range(1, 5):
+                proof = step_completion_proof(root, f"STEP-{number:03d}")
+                assert proof["complete"], proof
+
+            before_chain = verification_context_basis(root, "STEP-003")
+            before_unrelated = verification_context_basis(root, "STEP-004")
+            req = root / "docs/requirements/REQ-001-fixture.md"
+            req.write_text(
+                req.read_text(encoding="utf-8").replace(
+                    "approved behavior", "new approved behavior"
+                ),
+                encoding="utf-8", newline="\n",
+            )
+
+            for step_id in ("STEP-001", "STEP-002", "STEP-003"):
+                assert not step_completion_proof(root, step_id)["complete"], step_id
+            third = step_completion_proof(root, "STEP-003")
+            assert "dependency-incomplete:STEP-002" in str(third["reasons"]), third
+            assert verification_context_basis(root, "STEP-003") != before_chain
+            assert verification_context_basis(root, "STEP-004") == before_unrelated
+            assert step_completion_proof(root, "STEP-004")["complete"]
+
+            # Сначала заново подтверждается STEP-001. Это ещё не делает
+            # действительными исторические REVIEW у STEP-002/003.
+            original_basis["STEP-001"] = planning_context_basis(root, "STEP-001")
+            review_paths["STEP-001"] = (
+                root / "planning/reviews/STEP-001/REVIEW-new.md"
+            )
+            write(root, "planning/reviews/STEP-001/REVIEW-new.md", "New REQ review.\n")
+            assert step_completion_proof(root, "STEP-001")["complete"]
+            assert not step_completion_proof(root, "STEP-002")["complete"]
+            assert not step_completion_proof(root, "STEP-003")["complete"]
+
+            # REVIEW STEP-002 теперь фиксирует новый upstream proof.
+            dependency_bases["STEP-002"] = dependency_completion_basis(root, "STEP-002")
+            review_paths["STEP-002"] = (
+                root / "planning/reviews/STEP-002/REVIEW-new.md"
+            )
+            write(root, "planning/reviews/STEP-002/REVIEW-new.md", "New parent review.\n")
+            assert step_completion_proof(root, "STEP-002")["complete"]
+
+            # Старый REVIEW STEP-003 всё ещё привязан к прежнему
+            # STEP-002 proof; реальное завершение требует своего REVIEW.
+            stale_third = step_completion_proof(root, "STEP-003")
+            assert not stale_third["complete"], stale_third
+            assert "completion-dependency-proof-stale:STEP-003" in stale_third["reasons"]
+
+            dependency_bases["STEP-003"] = dependency_completion_basis(root, "STEP-003")
+            review_paths["STEP-003"] = (
+                root / "planning/reviews/STEP-003/REVIEW-new.md"
+            )
+            write(root, "planning/reviews/STEP-003/REVIEW-new.md", "New child review.\n")
+            assert step_completion_proof(root, "STEP-003")["complete"]
+
     print("DEPENDENCY EVIDENCE ENFORCEMENT SELF-TEST: PASS")
     return 0
 
