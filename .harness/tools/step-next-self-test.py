@@ -11,8 +11,12 @@ import tempfile
 import time
 
 import step_next as step_next_module
+import planning_contract as planning_contract_module
+import execution_status as execution_status_module
+import harness_ux as harness_ux_module
 from command_dispatch import start_dispatch
-from execution_status import complete_command, start_execution
+from execution_status import complete_command, start_execution, unresolved_executions
+from planning_contract import dependency_completion_failures, implementation_prerequisite_failures
 from step_next import resolve_step_action, resolve_step_next
 
 
@@ -200,6 +204,100 @@ def temporary_git_checkout():
                 time.sleep(0.1 * (attempt + 1))
 
 
+def tracked_operational_snapshot(root: Path) -> dict[str, bytes]:
+    """Включая файлы проекций и lock: NEXT не должен ничего записывать."""
+    snapshot: dict[str, bytes] = {}
+    for rel in (".harness/local", "planning", "docs/requirements", "docs/adr"):
+        directory = root / rel
+        if directory.exists():
+            for path in directory.rglob("*"):
+                if path.is_file():
+                    snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
+    return snapshot
+
+
+def assert_deep_dependency_graph(root: Path) -> None:
+    """Проверить длинную цепь и повторное использование proof cache без Git I/O."""
+    first, last = 1000, 2200
+    original_read = planning_contract_module.read_task
+    original_proof = planning_contract_module.step_completion_proof
+    proof_calls = 0
+
+    def fake_read(_root: Path, step_id: str) -> dict:
+        number = int(step_id.removeprefix("STEP-"))
+        deps = [] if number == first else [f"STEP-{number - 1}"]
+        return {"frontmatter": {"depends_on": deps}}
+
+    def fake_proof(_root: Path, _step_id: str) -> dict:
+        nonlocal proof_calls
+        proof_calls += 1
+        return {"complete": True, "reasons": []}
+
+    planning_contract_module.read_task = fake_read
+    planning_contract_module.step_completion_proof = fake_proof
+    try:
+        proofs: dict[str, dict] = {}
+        dependencies: dict[str, list[str]] = {}
+        failures = dependency_completion_failures(
+            root, f"STEP-{last}",
+            proof_cache=proofs, dependency_cache=dependencies,
+        )
+        assert failures == [], failures
+        assert proof_calls == last - first, proof_calls
+        # При повторном запросе того же графа общий cache не пересчитывает proof.
+        failures = dependency_completion_failures(
+            root, f"STEP-{last - 1}",
+            proof_cache=proofs, dependency_cache=dependencies,
+        )
+        assert failures == [], failures
+        assert proof_calls == last - first, proof_calls
+    finally:
+        planning_contract_module.read_task = original_read
+        planning_contract_module.step_completion_proof = original_proof
+
+
+def assert_readonly_review_recovery(root: Path) -> None:
+    """Durable PASS review нельзя использовать как предлог записать STEP на NEXT."""
+    original_review = execution_status_module.latest_review
+    original_proof = execution_status_module.step_completion_proof
+    original_finalize = execution_status_module.finalize_step_completion
+    execution = {
+        "current": {
+            "command": "STEP REVIEW STEP-005",
+            "status": "running",
+            "context": {"reviewReportBefore": "old"},
+        },
+    }
+
+    def forbid_finalize(*_args, **_kwargs):
+        raise AssertionError("read-only recovery tried to finalize STEP")
+
+    try:
+        execution_status_module.latest_review = lambda *_args, **_kwargs: {
+            "path": "new", "verdict": "PASS", "completionResult": "PASS",
+        }
+        execution_status_module.finalize_step_completion = forbid_finalize
+        execution_status_module.step_completion_proof = lambda *_args, **_kwargs: {
+            "complete": False,
+        }
+        pending = execution_status_module._durable_recovery_result(
+            root, execution, allow_finalization=False,
+        )
+        assert pending is None, pending
+
+        execution_status_module.step_completion_proof = lambda *_args, **_kwargs: {
+            "complete": True,
+        }
+        proven = execution_status_module._durable_recovery_result(
+            root, execution, allow_finalization=False,
+        )
+        assert proven == "PASS", proven
+    finally:
+        execution_status_module.latest_review = original_review
+        execution_status_module.step_completion_proof = original_proof
+        execution_status_module.finalize_step_completion = original_finalize
+
+
 def main() -> int:
     with temporary_git_checkout() as tmp:
         root = Path(tmp)
@@ -311,6 +409,82 @@ def main() -> int:
             for item in cycle["blockers"] for reason in item["reasons"]
         ), cycle
 
+        # Неправильный тип depends_on нельзя тихо считать отсутствием связей.
+        reset_steps(root)
+        write_step(root, "STEP-050", priority="low")
+        write_step(root, "STEP-051", priority="critical")
+        malformed_path = root / "planning/tasks/STEP-051.md"
+        original_text = malformed_path.read_text(encoding="utf-8")
+        assert "depends_on: []" in original_text
+        for invalid_yaml in (
+            "depends_on: STEP-050",
+            "depends_on:\n  - STEP-050\n  - 42",
+            "depends_on:\n  - STEP-050\n  - STEP-050",
+        ):
+            malformed_path.write_text(
+                original_text.replace("depends_on: []", invalid_yaml),
+                encoding="utf-8", newline="\n",
+            )
+            rejected = resolve_step_next(root)
+            assert rejected["command"] == "STEP RUN STEP-050", rejected
+            assert any(
+                item["stepId"] == "STEP-051"
+                and any(reason.startswith("dependency-unprovable:STEP-051")
+                        for reason in item["reasons"])
+                for item in rejected["blockers"]
+            ), rejected
+            shared_gate = implementation_prerequisite_failures(root, "STEP-051")
+            assert any(reason.startswith("dependency-unprovable:STEP-051")
+                       for reason in shared_gate), shared_gate
+        malformed_path.write_text(original_text, encoding="utf-8", newline="\n")
+
+        # Missing trusted implementation review never unlocks descendants.
+        reset_steps(root)
+        write_step(root, "STEP-060", priority="critical", depends=["STEP-061"])
+        write_step(root, "STEP-061", status="completed")
+        invalid_implementation = resolve_step_next(root)
+        assert invalid_implementation["status"] == "BLOCKED", invalid_implementation
+        assert any(
+            "trusted PASS review is missing" in reason
+            for item in invalid_implementation["blockers"]
+            for reason in item["reasons"]
+        ), invalid_implementation
+
+        # Plan Ready metadata без matching basis/review не является runnable.
+        reset_steps(root)
+        write_step(root, "STEP-065", priority="critical")
+        stale_path = root / "planning/tasks/STEP-065.md"
+        stale_text = stale_path.read_text(encoding="utf-8")
+        stale_path.write_text(
+            stale_text.replace("  status: not_planned", "  status: ready", 1),
+            encoding="utf-8", newline="\n",
+        )
+        stale_next = resolve_step_next(root)
+        assert stale_next["status"] == "BLOCKED", stale_next
+        assert any(
+            "plan-fingerprints-are-invalid" in reason
+            for item in stale_next["blockers"]
+            for reason in item["reasons"]
+        ), stale_next
+
+        # Planning blockers such as TBD phase stay relevant even without deps.
+        reset_steps(root)
+        write_step(root, "STEP-066", priority="critical")
+        write_step(root, "STEP-067", priority="low")
+        tbd_path = root / "planning/tasks/STEP-066.md"
+        tbd_path.write_text(
+            tbd_path.read_text(encoding="utf-8").replace(
+                "phase: test", "phase: TBD", 1,
+            ),
+            encoding="utf-8", newline="\n",
+        )
+        phase_next = resolve_step_next(root)
+        assert phase_next["command"] == "STEP RUN STEP-067", phase_next
+        assert any(item["stepId"] == "STEP-066" for item in phase_next["blockers"]), phase_next
+
+        assert_deep_dependency_graph(root)
+        assert_readonly_review_recovery(root)
+
         # ADR STEP owns its linked proposed ADR: requiring accepted before PLAN
         # would create a cyclic prerequisite. Ordinary implementation STEPs
         # remain blocked by the same proposed ADR status.
@@ -414,11 +588,33 @@ def main() -> int:
 
         # Dispatcher executes STEP NEXT itself; no next-step semantic skill is
         # needed to choose the recommendation.
+        prior_files = tracked_operational_snapshot(root)
         dispatched = start_dispatch(root, "STEP NEXT")
         assert dispatched["status"] == "DONE", dispatched
         result = dispatched["result"]
         assert result["status"] == "PASS", result
         assert result["command"] == "STEP PLAN STEP-005", result
+        assert tracked_operational_snapshot(root) == prior_files, (
+            "STEP NEXT dispatcher changed project or local operational files"
+        )
+
+        # Durable PLAN success is a read-only virtual completion; NEXT must
+        # not recommend repeating already completed semantic planning.
+        original_plan_info = execution_status_module.plan_info
+        try:
+            execution_status_module.plan_info = (
+                lambda _root, _step: {"ready": True}
+            )
+            before_recovery = tracked_operational_snapshot(root)
+            recoverable = unresolved_executions(root, mutate=False)
+            assert tracked_operational_snapshot(root) == before_recovery
+            assert not any(
+                item.get("command") == "STEP PLAN STEP-005"
+                and item.get("status") == "RESUME"
+                for item in recoverable
+            ), recoverable
+        finally:
+            execution_status_module.plan_info = original_plan_info
 
         # Clean up the synthetic interrupted command to leave no hidden state.
         complete_command(
