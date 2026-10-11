@@ -1362,6 +1362,9 @@ def load_status(root: Path, *, read_only: bool = False) -> dict[str, Any]:
         return value
 
     if read_only:
+        # Lock-файл не создаём, но безопасность self-update boundary сохраняем:
+        # read-only запрос тоже не должен видеть промежуточный APPLY snapshot.
+        _require_update_transaction_access(root)
         return read()
     with execution_state_lock(root):
         return read()
