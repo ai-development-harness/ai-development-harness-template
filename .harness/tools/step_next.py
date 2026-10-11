@@ -328,7 +328,13 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         if item.get("status") not in {"RESUME", "NEXT"}:
             continue
         command = item.get("command")
-        if not isinstance(command, str) or not command.startswith("STEP "):
+        root_command = item.get("rootCommand")
+        if (
+            not isinstance(command, str)
+            or not command.startswith("STEP ")
+            or not isinstance(root_command, str)
+            or not root_command.startswith("STEP ")
+        ):
             continue
         step_id = _step_id_from_execution(item)
         if step_id is None or step_id not in tasks:
@@ -349,18 +355,21 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         if step_id in seen_execution_steps:
             continue
         seen_execution_steps.add(step_id)
-        candidates.append(
-            _candidate(
-                step_id=step_id,
-                task=tasks[step_id],
-                command=command,
-                source="execution",
-                lifecycle=str(item["status"]),
-                downstream=downstream[step_id],
-                roadmap_index=roadmap_index[step_id],
-                execution_id=str(item.get("executionId") or ""),
-            )
+        candidate = _candidate(
+            step_id=step_id,
+            task=tasks[step_id],
+            # Read-only preview may have moved PLAN -> IMPLEMENT only
+            # in memory. The public action must reconcile the ORIGINAL root,
+            # never launch its child as an unrelated single execution.
+            command=root_command,
+            source="execution",
+            lifecycle=str(item["status"]),
+            downstream=downstream[step_id],
+            roadmap_index=roadmap_index[step_id],
+            execution_id=str(item.get("executionId") or ""),
         )
+        candidate["nextChildCommand"] = command  # Read-only, not an executable action.
+        candidates.append(candidate)
 
     # Fresh candidates are still useful as alternatives, but cannot beat
     # resumable work because sourceRank is lower priority.
