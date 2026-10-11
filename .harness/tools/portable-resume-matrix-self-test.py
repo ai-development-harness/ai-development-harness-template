@@ -191,19 +191,23 @@ def linked_ready_step(root: Path) -> None:
 
     path = root / "planning/tasks/STEP-017.md"
     raw = path.read_text(encoding="utf-8")
-    old_basis = planning_context_basis(root, STEP_ID)
+    # Изначальная Ready basis записана до появления linked REQ/ADR/PRN.
+    # Не вычислять её заново по уже изменённым artifacts: это был бы
+    # другой (непубликованный) semantic snapshot.
+    stored_basis = raw.split("  context_basis: ", 1)[1].splitlines()[0]
+    assert stored_basis.startswith("sha256:"), stored_basis
     raw = raw.replace("requirements: []", "requirements:\n  - REQ-901", 1)
     raw = raw.replace("adrs: []", "adrs:\n  - ADR-901", 1)
     write(path, raw)
     current_basis = planning_context_basis(root, STEP_ID)
-    assert current_basis != old_basis
-    raw = raw.replace(old_basis, current_basis, 1)
+    assert current_basis != stored_basis
+    raw = raw.replace(stored_basis, current_basis, 1)
     write(path, raw)
 
     review = root / "planning/plan-reviews/STEP-017/PLAN-REVIEW-20261011T000000Z.md"
     original_review = review.read_text(encoding="utf-8")
-    assert old_basis in original_review
-    write(review, original_review.replace(old_basis, current_basis, 1))
+    assert stored_basis in original_review
+    write(review, original_review.replace(stored_basis, current_basis, 1))
     assert latest_matching_planning_review(root, STEP_ID) is not None
 
 
