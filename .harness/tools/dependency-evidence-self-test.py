@@ -191,6 +191,19 @@ def main() -> int:
             for number in range(1, 4):
                 assert step_completion_proof(root, f"STEP-{number:03d}")["complete"]
 
+            # Смешанная история: REVIEW с contract_basis от более ранней
+            # версии Harness ещё не содержит dependency_completion_basis.
+            # Его нельзя автоматически считать актуальным для downstream.
+            stored_dependency_basis = dependency_review_basis
+            dependency_review_basis = None
+            missing_basis = step_completion_proof(root, "STEP-002")
+            assert not missing_basis["complete"], missing_basis
+            assert "completion-dependency-proof-missing:STEP-002" in missing_basis["reasons"]
+            assert step_completion_proof(root, "STEP-001")["complete"]
+            assert step_completion_proof(root, "STEP-003")["complete"]
+            dependency_review_basis = stored_dependency_basis
+            assert step_completion_proof(root, "STEP-002")["complete"]
+
             before_dependency = verification_context_basis(root, "STEP-002")
             before_unrelated = verification_context_basis(root, "STEP-003")
 
