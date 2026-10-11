@@ -191,3 +191,7 @@ execution ни через crash recovery, ни по сообщению моде�
 `latest_matching_planning_review`. Нет нового proof —
 `PORTABLE_PLAN_RECHECK_REQUIRED`, локальное выполнение остаётся незавершённым.
 Это не новый источник истины: используются canonical STEP + PLAN review.
+
+## Команды UI и dispatcher
+
+`harness-ux.py resume --json` возвращает выбранное продолжение без записи новой execution. Реальное выполнение через `harness-dispatch.py start --command "HARNESS RESUME"` запускает новую локальную STEP PLAN только после проверки переносимого handoff. Публикацию в Git команды восстановления не выполняют.

@@ -2086,7 +2086,7 @@ python3 .harness/tools/repository-recovery.py --step STEP-017
 
 ## Внутренние зависимости / Граница ответственности
 
-Переиспользуются `task_directory()`, `read_task()`, `planning_context_basis()` и `plan_content_hash()`. Существующий локальный `harness_resume()` остаётся единственным авторитетом для current execution. Прямой Git-preview не является source of truth для PASS/DONE. Следующие этапы #300–#301 добавят переносимый handoff и controlled adoption с отдельной проверкой актуальности, side effects и Verification.
+Переиспользуются `task_directory()`, `read_task()`, `planning_context_basis()` и `plan_content_hash()`. Существующий локальный `harness_resume()` остаётся единственным авторитетом для current execution. Прямой Git-preview не является source of truth для PASS/DONE. Этапы #300–#301 добавили переносимый Git-handoff и ограниченный вход HARNESS RESUME без копирования local execution state.
 
 Self-test копирует тот же commit в два clone через локальный bare Git remote и специально оставляет на исходном компьютере несовместимое local state: результат preview должен быть одинаковым и не зависеть от него.
 
@@ -2109,7 +2109,7 @@ Self-test копирует тот же commit в два clone через лок�
 
 `PASS` доказывает **только** публикацию/актуальность снимка. В результате
 **всегда** `safeToResume=false`, `nextCommand=null`. Реальная команда
-`HARNESS RESUME` не менялся на этапе #300. Этап #301 добавил отдельную
+Команда `HARNESS RESUME` не менялась на этапе #300. Этап #301 добавил отдельную
 узкую проверку для нового клона; сам `--check` по-прежнему ничего не импортирует.
 
 ## Когда использовать
@@ -2166,3 +2166,40 @@ completion. Использует `repository_recovery_preview()`,
 `harness_config.task_directory()`, `planning_context_basis()` и
 `plan_content_hash()`. Узкий переносимый вход `HARNESS RESUME` реализован отдельным модулем
 `portable_resume.py` (#301). Подробно: `PORTABLE_RESUME.md`.
+
+---
+
+# Безопасный Portable Resume (#301)
+
+## Файлы
+
+- `.harness/tools/portable_resume.py` — выбор единственного доказанного Git-handoff.
+- `.harness/tools/harness_ux.py` — приоритет локального восстановления.
+- `.harness/tools/command_dispatch.py` и `execution_status.py` — новый локальный `STEP PLAN` с проверкой допустимости перехода и межпроцессной блокировкой.
+- `.harness/tools/portable-resume-self-test.py` — двухклоновый Git-тест и негативные проверки.
+
+## Назначение
+
+В новом клоне при отсутствии локального execution state `HARNESS RESUME` может выполнить только новый `STEP PLAN` для одного опубликованного `in_progress` STEP с проверенным Git-handoff и актуальным Ready-планом. Старый executionId, Verification и side effects не переносятся.
+
+Наличие даже пустого локального checkpoint блокирует переносимый старт. Для `SUCCESS` нового PLAN должны появиться следующая revision плана и новый независимый planning-review с execution_id нового локального выполнения. До выполнения обоих условий возвращается `PORTABLE_PLAN_RECHECK_REQUIRED`.
+
+## Команды
+
+```bash
+# Desktop после обычного commit продуктовых изменений
+python3 .harness/tools/portable-handoff.py --write --step STEP-017 --json
+# Затем обычными Git-командами commit + push handoff-файла
+
+# Laptop после pull
+python3 .harness/tools/harness-ux.py resume --json
+python3 .harness/tools/harness-dispatch.py start --command "HARNESS RESUME"
+```
+
+`harness-ux.py resume` только выбирает; реальное выполнение запускает dispatcher. Смена Claude/Codex не требует дополнительных действий.
+
+## Защитные условия
+
+Отсутствие handoff — прежний `NO_RESUMABLE_EXECUTION`. `WORKTREE_DIRTY`, `HANDOFF_*`, устаревший plan либо несколько кандидатов — `BLOCKED`. Локальные blocked/lost-marker executions не обходятся через переносимый снимок. Никаких автоматических Git PUSH/PR, UPDATE и повторных IMPLEMENT/FIX/REVIEW.
+
+Подробнее: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
