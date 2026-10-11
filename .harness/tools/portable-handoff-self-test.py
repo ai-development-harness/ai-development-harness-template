@@ -197,6 +197,32 @@ def main() -> int:
         run(laptop, "git", "switch", "-q", "main")
         assert check_handoff(laptop, "STEP-017")["status"] == "PASS"
 
+        # #302: A продолжил писать product code после handoff publication,
+        # но STEP/REQ/ADR не поменял. Старый ancestry-only proof пропускал
+        # такой snapshot как актуальный — теперь он обязан быть BLOCKED.
+        write(laptop / "src/continued.txt", "new code after handoff\n")
+        run(laptop, "git", "add", "src/continued.txt")
+        run(laptop, "git", "commit", "-qm", "product code advanced after handoff")
+        outdated = check_handoff(laptop, "STEP-017")
+        assert outdated["reasonCode"] == "HANDOFF_OUTDATED", outdated
+        run(laptop, "git", "reset", "--hard", "HEAD~1")
+        assert check_handoff(laptop, "STEP-017")["status"] == "PASS"
+
+        # Даже если новый STEP/REQ не менялся, в publication commit нельзя
+        # незаметно добавить product changes ПОСЛЕ формирования fingerprints.
+        mixed = root / "mixed"
+        run(root, "git", "clone", "-q", "--branch", "main", str(remote), str(mixed))
+        run(mixed, "git", "config", "user.email", "portable@example.invalid")
+        run(mixed, "git", "config", "user.name", "Portable Test")
+        run(mixed, "git", "reset", "--hard", "HEAD~1")
+        new_handoff = write_handoff(mixed, "STEP-017")
+        assert new_handoff["status"] == "PASS", new_handoff
+        write(mixed / "src/extra.txt", "unpublished changes with handoff\n")
+        run(mixed, "git", "add", new_handoff["path"], "src/extra.txt")
+        run(mixed, "git", "commit", "-qm", "invalid mixed handoff publication")
+        mixed_result = check_handoff(mixed, "STEP-017")
+        assert mixed_result["reasonCode"] == "HANDOFF_PUBLICATION_MIXED", mixed_result
+
         # Неизвестные поля, потенциальные credentials и session IDs
         # запрещены schema allowlist: writer/validator не импортирует их.
         handoff_path = laptop / restored["path"]
