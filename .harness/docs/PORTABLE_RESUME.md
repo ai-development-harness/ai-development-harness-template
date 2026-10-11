@@ -1,4 +1,4 @@
-# Portable Resume: Git-backed Handoff Contract (#300)
+# Portable Resume: Git-backed Handoff и безопасное восстановление (#300–#301)
 
 > `--write` и `--check` публикуют и проверяют Git-backed handoff. `HARNESS RESUME` теперь допускает строго ограниченный переносимый вход: **новый локальный STEP PLAN**, но не replay IMPLEMENT/REVIEW/FIX.
 > Parent: #298. Depends on #299.

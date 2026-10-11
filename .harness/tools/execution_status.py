@@ -1146,6 +1146,23 @@ def _validate_execution_record(
                     prefix=f"{prefix}: current.context.intentBasis",
                 )
             )
+            # Portable PLAN provenance хранится в local Execution Status и
+            # не должен становиться невалидным, но всё ещё «читаемым» маркером.
+            # Отрицательные значения или неизвестная структура — CORRUPTED.
+            if "portablePlanProofBefore" in context:
+                proof = context["portablePlanProofBefore"]
+                if (
+                    not isinstance(proof, dict)
+                    or set(proof) != {"reviewedReport", "revision"}
+                    or not isinstance(proof.get("reviewedReport"), str)
+                    or not proof["reviewedReport"]
+                    or not isinstance(proof.get("revision"), int)
+                    or isinstance(proof.get("revision"), bool)
+                    or proof["revision"] < 0
+                ):
+                    errors.append(
+                        f"{prefix}: current.context.portablePlanProofBefore invalid"
+                    )
             errors.extend(
                 _details_errors(
                     context.get("intentBasisError"),
@@ -3200,6 +3217,10 @@ def portable_plan_recheck_proven(
         return (
             matching is not None
             and matching["path"].relative_to(root).as_posix() == reviewed
+            # Новый PASS должен принадлежать этой локальной execution;
+            # independent review другого clone/эпизода не закрывает её.
+            and matching["document"]["frontmatter"].get("execution_id")
+            == execution.get("executionId")
         )
     except (OSError, UnicodeError, ValueError, KeyError, TypeError):
         return False

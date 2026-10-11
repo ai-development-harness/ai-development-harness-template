@@ -13,7 +13,10 @@ import sys
 import tempfile
 from unittest.mock import patch
 
-from execution_status import ExecutionCheckpointError, empty_status, load_status, start_execution
+from execution_status import (
+    ExecutionCheckpointError, empty_status, load_status, start_execution,
+    validate_status,
+)
 from planning_contract import planning_context_basis, plan_content_hash, latest_matching_planning_review
 from semantic_artifacts import write_plan_draft, write_planning_review
 from portable_handoff import write_handoff
@@ -371,6 +374,13 @@ def test_two_clone_real_dispatch() -> None:
         assert len(local["executions"]) == 1, local
         assert local["executions"][0]["rootCommand"] == "STEP PLAN STEP-017", local
         assert local["executions"][0]["current"]["context"]["intentBasis"], local
+        assert local["executions"][0]["current"]["context"]["portablePlanProofBefore"], local
+        corrupted = json.loads(json.dumps(local))
+        corrupted["executions"][0]["current"]["context"]["portablePlanProofBefore"]["revision"] = "invalid"
+        assert any(
+            "portablePlanProofBefore" in issue
+            for issue in validate_status(corrupted)
+        ), corrupted
         assert _git(laptop, "status", "--porcelain") == ""
 
         # Старый Ready plan НЕ может подтвердить эту только что созданную

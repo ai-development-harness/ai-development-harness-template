@@ -2109,7 +2109,8 @@ Self-test копирует тот же commit в два clone через лок�
 
 `PASS` доказывает **только** публикацию/актуальность снимка. В результате
 **всегда** `safeToResume=false`, `nextCommand=null`. Реальная команда
-`HARNESS RESUME` не меняется в #300 и продолжает использовать local state.
+`HARNESS RESUME` не менялся на этапе #300. Этап #301 добавил отдельную
+узкую проверку для нового клона; сам `--check` по-прежнему ничего не импортирует.
 
 ## Когда использовать
 
@@ -2163,5 +2164,5 @@ python3 .harness/tools/portable-handoff.py --check --step STEP-017 --json
 Handoff не является отдельным журналом команд или источником истины для
 completion. Использует `repository_recovery_preview()`,
 `harness_config.task_directory()`, `planning_context_basis()` и
-`plan_content_hash()`. Runtime-neutral import и `HARNESS RESUME`
-остаются в scope #301. Подробно: `PORTABLE_RESUME.md`.
+`plan_content_hash()`. Узкий переносимый вход `HARNESS RESUME` реализован отдельным модулем
+`portable_resume.py` (#301). Подробно: `PORTABLE_RESUME.md`.

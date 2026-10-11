@@ -231,6 +231,13 @@ execution переводится в `blocked`, а result сохраняет exac
 Повтор exact interrupted command проходит тот же guard и не обходит его новым
 runtime/session.
 
+Если локальной execution нет, проверенный Git-backed handoff может разрешить
+только создание новой локальной `STEP PLAN` на другом компьютере.
+Это **не восстановление старой Intent Basis**: новый snapshot строится по
+текущим canonical artifacts. Старый `Ready`/planning-review не закрывает
+новую PLAN — требуется её собственный reviewed report и revision.
+См. [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
+
 ## Interaction with authority contract
 
 [STATE_AUTHORITY.md](STATE_AUTHORITY.md) определяет, что model/runtime только
