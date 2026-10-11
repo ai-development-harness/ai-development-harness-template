@@ -209,6 +209,35 @@ def main() -> int:
         assert exact["stepType"] == "implementation", exact
         assert exact["command"] == "STEP PLAN STEP-001", exact
 
+        # A five-STEP DAG: unfinished prerequisites never compete on priority.
+        reset_steps(root)
+        write_step(root, "STEP-001", priority="low")
+        write_step(root, "STEP-002", priority="critical", depends=["STEP-001"])
+        write_step(root, "STEP-003", priority="medium")
+        write_step(
+            root, "STEP-004", priority="high",
+            depends=["STEP-002", "STEP-003"],
+        )
+        write_step(
+            root, "STEP-005", priority="critical",
+            depends=["STEP-001", "STEP-002", "STEP-003", "STEP-004"],
+        )
+        dag = resolve_step_next(root)
+        assert dag["command"] == "STEP RUN STEP-003", dag
+        assert dag["eligibleCount"] == 2, dag
+        assert dag["alternatives"][0]["command"] == "STEP RUN STEP-001", dag
+        assert {item["stepId"] for item in dag["blockers"]} == {
+            "STEP-002", "STEP-004", "STEP-005",
+        }, dag
+        assert "dependency-incomplete:STEP-001" in " ".join(
+            next(item["reasons"] for item in dag["blockers"]
+                 if item["stepId"] == "STEP-002")
+        ), dag
+        # Manually requested PLAN retains the old permissive prerequisite rule.
+        manual = resolve_step_action(root, "STEP-005")
+        assert manual["status"] == "PASS", manual
+        assert manual["command"] == "STEP PLAN STEP-005", manual
+
         # ADR STEP owns its linked proposed ADR: requiring accepted before PLAN
         # would create a cyclic prerequisite. Ordinary implementation STEPs
         # remain blocked by the same proposed ADR status.
