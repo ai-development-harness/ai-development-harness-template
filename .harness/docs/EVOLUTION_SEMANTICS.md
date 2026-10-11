@@ -131,6 +131,12 @@ execution boundary переиспользует уже существующие 
 - Если completed STEP зависит от другого STEP, он проверяет актуальность
   его completion proof **транзитивно**. Циклы, отсутствующие зависимости и
   ошибочные документы не превращаются в PASS.
+- Для зависимого STEP с современным `contract_basis` в REVIEW теперь обязателен
+  `dependency_completion_basis`. Старый REVIEW с первым полем, но без второго,
+  не может подтвердить current downstream completion: возвращается
+  `completion-dependency-proof-missing`. Это консервативная перепроверка,
+  а не изменение исторического отчёта; новый обычный REVIEW создаёт proof.
+  Legacy отчёты без `contract_basis` остаются в прежнем migration режиме.
 - `verification_context_basis()` содержит hash подтверждённых
   `step_completion_proof` прямых dependencies. Это отдельно от Ready plan:
   PLAN всё ещё разрешено готовить **до** завершения зависимостей.
