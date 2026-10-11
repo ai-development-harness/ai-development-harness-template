@@ -189,8 +189,8 @@ def main() -> int:
         run(root, "git", "add", ".")
         run(root, "git", "commit", "-qm", "fixture")
 
-        # Priority is stronger than downstream/risk. Dependency completion is
-        # intentionally NOT required for PLAN, so STEP-001 may be planned ahead.
+        # Dependency completion is a hard gate before ranking, even when the
+        # blocked downstream task has critical priority.
         write_step(
             root,
             "STEP-001",
@@ -200,8 +200,9 @@ def main() -> int:
         write_step(root, "STEP-010", priority="low")
         first = resolve_step_next(root)
         assert first["status"] == "PASS", first
-        assert first["command"] == "STEP PLAN STEP-001", first
-        assert first["selected"]["ranking"]["priority"] == "critical", first
+        assert first["command"] == "STEP RUN STEP-010", first
+        assert first["selected"]["ranking"]["priority"] == "low", first
+        assert any(x["stepId"] == "STEP-001" for x in first["blockers"]), first
 
         exact = resolve_step_action(root, "STEP-001")
         assert exact["status"] == "PASS", exact
@@ -255,7 +256,7 @@ def main() -> int:
             depends=["STEP-002"],
         )
         downstream = resolve_step_next(root)
-        assert downstream["command"] == "STEP PLAN STEP-002", downstream
+        assert downstream["command"] == "STEP RUN STEP-002", downstream
         assert downstream["selected"]["ranking"]["downstreamImpact"] == 1, downstream
 
         # Risk is only a deterministic visibility tie-breaker, not a severity
@@ -269,7 +270,7 @@ def main() -> int:
             risks=["security-sensitive", "public-api"],
         )
         risk = resolve_step_next(root)
-        assert risk["command"] == "STEP PLAN STEP-006", risk
+        assert risk["command"] == "STEP RUN STEP-006", risk
         assert risk["selected"]["ranking"]["riskFlagCount"] == 2, risk
 
         # Existing interrupted STEP execution always wins over higher-priority
@@ -281,7 +282,7 @@ def main() -> int:
         assert continuity["command"] == "STEP PLAN STEP-005", continuity
         assert continuity["reasonCode"] == "RESUME_STEP_EXECUTION", continuity
         assert continuity["selected"]["source"] == "execution", continuity
-        assert continuity["alternatives"][0]["command"] == "STEP PLAN STEP-007", continuity
+        assert continuity["alternatives"][0]["command"] == "STEP RUN STEP-007", continuity
 
         # REVIEW PASS and completion are different durable facts. A PASS review
         # with in-scope completion FAIL still requires canonical FIX; a semantic
