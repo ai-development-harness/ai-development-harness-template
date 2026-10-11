@@ -13,7 +13,12 @@ import subprocess
 from typing import Any
 
 from harness_config import get, load_manifest, task_directory
-from planning_contract import plan_content_hash, planning_context_basis, read_task
+from planning_contract import (
+    latest_matching_planning_review,
+    plan_content_hash,
+    planning_context_basis,
+    read_task,
+)
 
 
 STEP_ID_RE = re.compile(r"STEP-\d{3,}\Z")
@@ -89,14 +94,24 @@ def _candidate(root: Path, step_id: str) -> dict[str, Any] | None:
         try:
             context_ok = plan.get("context_basis") == planning_context_basis(root, step_id)
             content_ok = plan.get("content_hash") == plan_content_hash(root, step_id)
-        except (OSError, ValueError) as exc:
+            if not context_ok or not content_ok:
+                freshness, reason = "stale", "PLAN_BASIS_STALE"
+            else:
+                # Совпавшие hashes ещё не доказывают обязательный независимый
+                # planning-review. Проверяем его через canonical resolver, а
+                # не придумываем ещё одну схему доверия для Portable Resume.
+                review = latest_matching_planning_review(root, step_id)
+                expected_report = plan.get("reviewed_report")
+                report_path = (
+                    review["path"].relative_to(root).as_posix()
+                    if review is not None else None
+                )
+                if report_path is None or report_path != expected_report:
+                    freshness, reason = "unprovable", "PLAN_REVIEW_PROOF_MISSING"
+                else:
+                    freshness, reason = "fresh", "LOCAL_EXECUTION_PROOF_MISSING"
+        except (OSError, ValueError, KeyError, TypeError):
             freshness, reason = "unprovable", "PLAN_PROOF_UNAVAILABLE"
-        else:
-            freshness, reason = (
-                ("fresh", "LOCAL_EXECUTION_PROOF_MISSING")
-                if context_ok and content_ok
-                else ("stale", "PLAN_BASIS_STALE")
-            )
 
     # Даже fresh Ready plan не подтверждает выполненный IMPLEMENT, наличие
     # Verification proof и точку продолжения одной конкретной invocation.
