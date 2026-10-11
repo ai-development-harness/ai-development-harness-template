@@ -106,13 +106,23 @@ def _candidate(root: Path, step_id: str) -> dict[str, Any] | None:
     if meta.get("status") != "in_progress":
         return None
 
+    # Даже у ещё не Ready STEP обязательны разрешимые REQ/ADR/STEP/OQ
+    # links. Для этого используется тот же canonical planning snapshot,
+    # что и для полноценного STEP PLAN, а не альтернативный resolver.
+    try:
+        current_context = planning_context_basis(root, step_id)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise RepositoryRecoveryError(
+            "STEP_REFERENCES_UNPROVEN", f"{step_id}: {exc}",
+        ) from exc
+
     plan = meta.get("plan")
     plan_status = plan.get("status") if isinstance(plan, dict) else None
     if plan_status != "ready":
         freshness, reason = "not_ready", "PLAN_NOT_READY"
     else:
         try:
-            context_ok = plan.get("context_basis") == planning_context_basis(root, step_id)
+            context_ok = plan.get("context_basis") == current_context
             content_ok = plan.get("content_hash") == plan_content_hash(root, step_id)
             if not context_ok or not content_ok:
                 freshness, reason = "stale", "PLAN_BASIS_STALE"
