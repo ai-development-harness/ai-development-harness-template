@@ -1,4 +1,4 @@
-# Portable Resume: Git-backed Handoff и безопасное восстановление (#300–#301)
+# Portable Resume: Git-backed Handoff и безопасное восстановление (#299–#302)
 
 > `--write` и `--check` публикуют и проверяют Git-backed handoff. `HARNESS RESUME` теперь допускает строго ограниченный переносимый вход: **новый локальный STEP PLAN**, но не replay IMPLEMENT/REVIEW/FIX.
 > Parent: #298. Depends on #299.
@@ -88,7 +88,10 @@ and synthetic `verified=true` or `reviewPassed=true`.
    Writer **не** stage-ит, не создаёт commit и не обращается к сети.
 4. В другом clone после `pull` validator доказывает:
    - handoff взят из отслеживаемого файла, а не из ignored/untracked path;
-   - source commit является проверяемым предком текущего HEAD;
+   - source commit точно совпадает с единственным parent текущего HEAD;
+   - текущий HEAD — коммит публикации, который изменяет только handoff;
+   - любые последующие коммиты делают handoff устаревшим, даже если STEP не менялся;
+   - payload в Git и локальном JSON совпадает, известный upstream не расходится;
    - branch identity согласована и repository не находится в неоднозначном
      dirty/detached/diverged состоянии;
    - canonical STEP и его Git index object/semantic fingerprints совпадают;
@@ -195,3 +198,74 @@ execution ни через crash recovery, ни по сообщению моде�
 ## Команды UI и dispatcher
 
 `harness-ux.py resume --json` возвращает выбранное продолжение без записи новой execution. Реальное выполнение через `harness-dispatch.py start --command "HARNESS RESUME"` запускает новую локальную STEP PLAN только после проверки переносимого handoff. Публикацию в Git команды восстановления не выполняют.
+
+
+## #302 — Публикация и перенос между компьютерами
+
+Handoff v1 является **указателем на конкретную опубликованную Git-ревизию**, а не синхронизируемым исполнением и не распределённой блокировкой. После нового коммита он устаревает — даже если STEP/REQ/ADR/PRN остались неизменными.
+
+### Компьютер A → Git → компьютер B
+
+На компьютере A сначала необходимо сохранить все продуктовые изменения, включая код, STEP, REQ, ADR и reviews. Команда `portable-handoff.py --write` запускается только при чистом рабочем дереве. Затем handoff публикуется отдельным коммитом, **не смешанным с кодом**.
+
+```bash
+# Компьютер A: сохранить продуктовые изменения
+git add <изменённые-пути>
+git commit -m "Сохранить работу STEP-017"
+git push
+
+# Снять переносимый snapshot
+python3 .harness/tools/portable-handoff.py --write --step STEP-017 --json
+
+# Записать в отдельный коммит только handoff
+git add planning/handoffs/STEP-017.json
+git commit -m "Опубликовать handoff STEP-017"
+git push
+
+# Компьютер B: явно обновить Git refs, без скрытых сетевых запросов Harness
+git fetch
+git pull --ff-only
+
+# Сначала проверить snapshot и будущую команду (read-only)
+python3 .harness/tools/portable-handoff.py --check --step STEP-017 --json
+python3 .harness/tools/harness-ux.py resume --json
+
+# Затем штатно создать новый локальный STEP PLAN
+python3 .harness/tools/harness-dispatch.py start --command "HARNESS RESUME"
+```
+
+Путь `planning/handoffs` — только default. Если `protocol.taskDirectory` изменён, handoff хранится рядом с настроенным task directory. После новой записи handoff допускается только отдельная публикация этого файла: Git HEAD должен иметь ровно одного parent, совпадающего с `source.gitHeadBeforeHandoff`, а единственный изменённый путь коммита — handoff.
+
+### Что было → что стало
+
+| Случай | Прежнее поведение | Проверка #302 |
+| --- | --- | --- |
+| После snapshot появился новый коммит с кодом, STEP не менялся | Ancestor-проверка могла принять старый handoff | `HANDOFF_OUTDATED`: переопубликовать handoff |
+| В коммит публикации попал одновременно код | Snapshot не содержал этот код при создании | `HANDOFF_PUBLICATION_MIXED`: разделить публикацию |
+| Два клона опубликовали конкурирующие handoff | Зависимость только от локального HEAD | Обычный push без force отклоняет второй; после явного fetch `HANDOFF_UPSTREAM_DIVERGED` |
+| Изменились связанные REQ/ADR/PRN или Acceptance | Исходная задача уже не совпадает | Проверяются canonical fingerprints; BLOCKED |
+| На ноутбуке нет исходных local Verification proofs | Можно было ошибочно довериться Git Evidence | Ничего не импортируется, необходимые проверки повторяются локально |
+
+### Правила для пользователя
+
+| Когда | Действие |
+| --- | --- |
+| Есть незакоммиченный код | Сначала сохранить и опубликовать его через Git; неопубликованные файлы не переезжают |
+| После handoff появился следующий commit | Создать и опубликовать новый handoff от нового HEAD |
+| На сервере могли появиться новые commits | Явно выполнить `git fetch` и `git pull --ff-only` перед проверкой |
+| В проекте несколько `in_progress` STEP | Использовать явный STEP workflow; `HARNESS RESUME` не выбирает случайную задачу |
+| Пропала локальная история или checkpoint повреждён | BLOCKED; portable handoff не используется для обхода local recovery |
+| Смена Claude ↔ Codex | Никаких новых действий и переноса native session не требуется |
+| Новый PLAN прошёл | Проверить реальный код, получить независимый planning-review и повторить отсутствующую Verification |
+
+### Trust boundary и ограничения
+
+- Текущий HEAD должен быть точным коммитом публикации; старый ancestor недостаточен.
+- Если upstream tracking ref настроен и отличается от локального HEAD, восстановление блокируется. **Это только последний известный ref:** пока пользователь не сделал fetch, другой опубликованный commit может оставаться невидимым.
+- Если другой компьютер сейчас изменяет файлы, но не опубликовал результат, Git не сообщает об этом. Handoff не предоставляет distributed lock, lease или «одновременную работу без конфликтов».
+- Не выполняются автоматические fetch/pull/commit/push/PR, UPDATE, повтор IMPLEMENT/FIX/REVIEW, импорт Claude/Codex session, локальной Verification или side-effect journal.
+- `portable-handoff.py --check` даже при PASS всегда возвращает `safeToResume=false`: окончательное решение о новом локальном PLAN принимает существующий HARNESS dispatcher и CTS.
+
+Коды отказа: `HANDOFF_OUTDATED`, `HANDOFF_PUBLICATION_MIXED`, `HANDOFF_UPSTREAM_DIVERGED`, `HANDOFF_WORKTREE_MISMATCH`, `HANDOFF_HEAD_CHANGED`, `HANDOFF_CONTRACT_STALE`, `HANDOFF_STEP_CHANGED`, `HANDOFF_SCHEMA_INVALID`. Никакой из них не является основанием автоматически повторять внешние действия.
+
+Проверки: `portable-handoff-self-test.py`, `portable-resume-self-test.py` и `portable-resume-matrix-self-test.py` с локальным bare remote, настоящими клонами и негативными сценариями.
