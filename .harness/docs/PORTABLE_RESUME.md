@@ -1,7 +1,6 @@
-# Portable Resume: Git-backed Handoff Contract (проектирование #300)
+# Portable Resume: Git-backed Handoff Contract (#300)
 
-> Статус: **проектируемый контракт**, а не уже доступная возможность.
-> Реализация `HARNESS RESUME` в текущем Harness остаётся local-only до #301.
+> Реализованы отдельные `--write` и `--check` для Git-backed handoff. Они **не восстанавливают выполнение**: `HARNESS RESUME` остаётся local-only до #301.
 > Parent: #298. Depends on #299.
 
 ## Почему нельзя синхронизировать execution-status.json
@@ -29,9 +28,9 @@ verification proofs, .harness/.execution-checkpoint-known, locks и update journ
 этих механизмов.** Он даёт только переносимый набор проверяемых фактов
 и подсказку, какой canonical workflow исследовать в другом clone.
 
-## Proposed project-owned storage
+## Project-owned storage
 
-Первоначальный вариант без новой manifest key:
+Расположение определяется без новой manifest key:
 
 ```text
 <parent of configured protocol.taskDirectory>/
@@ -46,12 +45,12 @@ verification proofs, .harness/.execution-checkpoint-known, locks и update journ
 Область должна быть project-owned и Git-tracked; не размещать эти файлы
 в `.harness/local/`, Harness update-owned `.harness/docs/**` или
 runtime adapter configuration. Коллизии с пользовательскими файлами и
-символические ссылки — BLOCKED. Точное расположение/схему закрепит код
-и его негативные regressions, а не это описание само по себе.
+символические ссылки — BLOCKED. Точное расположение определяет `.harness/tools/portable_handoff.py` через
+`harness_config.task_directory()`, а не независимый registry.
 
-## Proposed allowlisted schema v1
+## Strict allowlisted schema v1
 
-Пример **формата проектирования**, не готовый совместимый JSON:
+Сокращённый пример поддерживаемого JSON (хеши здесь условные):
 
 ```json
 {
@@ -82,7 +81,7 @@ and synthetic `verified=true` or `reviewPassed=true`.
 
 ## Publication boundary
 
-1. Все product/STEP изменения должны быть в Git, `git status` чистый.
+1. Все product/STEP изменения должны быть в Git, `git status` чистый; STEP должен иметь статус `in_progress`.
 2. Writer проверяет canonical links и fingerprints по текущему рабочему
    дереву и Git index; записывает только handoff-файл.
 3. Пользователь публикует файл через обычный `GIT CHECK → COMMIT → PUSH`.
@@ -117,9 +116,51 @@ handoff, commit+push; laptop fetch/pull; оба видят одинаковые 
 schema, changed Git HEAD, concurrent publisher, missing reviewed report,
 dirty or ignored handoff, symlink/path traversal.
 
+## Команды подготовки и проверки
+
+В уже инициализированном Harness-проекте с опубликованными изменениями STEP:
+
+```bash
+python3 .harness/tools/portable-handoff.py --write --step STEP-017 --json
+# Изучить дифф; затем штатно GIT CHECK → COMMIT → PUSH.
+```
+
+На ноутбуке после `git pull`:
+
+```bash
+python3 .harness/tools/portable-handoff.py --check --step STEP-017 --json
+```
+
+`PASS/HANDOFF_WRITTEN_NOT_PUBLISHED` означает лишь, что JSON создан в
+рабочем дереве. Пока файл не закоммичен, переносимого checkpoint нет.
+`PASS/HANDOFF_PROVEN_NOT_EXECUTION` означает только успешную проверку
+provenance и сохранённых смысловых отпечатков, а **не успешный REVIEW,
+Verification или выполнение команды**. В обоих случаях возвращаются
+`safeToResume=false`, `nextCommand=null`; запись локального состояния
+Harness отсутствует.
+
+### Результаты и ограничения
+
+| Результат | Значение |
+| --- | --- |
+| `REPOSITORY_NOT_PUBLISHABLE` | Проект не инициализирован, Git dirty или нет подходящего STEP |
+| `HANDOFF_COLLISION` | Файл уже существует, но его схема недоказуема |
+| `HANDOFF_NOT_PUBLISHED` | Handoff ещё не закоммичен |
+| `HANDOFF_BRANCH_CHANGED` | Ветка текущего клона не соответствует исходной |
+| `HANDOFF_SOURCE_UNREACHABLE` | Исходный commit не входит в текущую историю |
+| `HANDOFF_STEP_CHANGED` | Git index object STEP отличается от опубликованного |
+| `HANDOFF_CONTRACT_STALE` | Изменился смысловой контракт STEP/REQ/ADR/плана |
+| `HANDOFF_SCHEMA_INVALID` | Некорректная версия или дополнительное поле, включая provider secret/session metadata |
+
+Конфликтующий проектный файл не перезаписывается без schema проверки и
+compare-before-replace. Механический инструмент не выполняет
+`git add/commit/push`, не требует конкретного runtime и не читает
+`.harness/local/**`. На другом клоне производные локальные подтверждения
+Verification отсутствуют и не могут быть подменены handoff.
+
 ## Граница текущего этапа
 
-До реализации writer и validator этот документ не меняет поведение Harness.
-`HARNESS RESUME` остаётся существующей командой для local executions;
-read-only `repository-recovery.py` из #299 даёт только кандидатов. Ни
-экспорт, ни импорт, ни реплей опасных операций не выполняются автоматически.
+**#300 создаёт и проверяет переносимые факты, а не выполняет перенос
+execution.** `HARNESS RESUME` и локальный checkpoint marker не изменены.
+Следующая #301 должна отдельно доказать безопасную реконструкцию
+действия, включая side effects и missing Verification proof.
