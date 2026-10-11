@@ -203,6 +203,14 @@ def repository_recovery_preview(root: Path, step_id: str | None = None) -> dict[
                 raise RepositoryRecoveryError(
                     "STEP_DOCUMENT_UNSAFE", f"STEP path leaves repository: {path.name}",
                 )
+            # Чистый git status не доказывает, что ignored файл попал в
+            # опубликованный commit. Кандидат Portable Resume должен
+            # существовать именно в Git index, а не только на диске.
+            rel = path.relative_to(root).as_posix()
+            if _git(root, "ls-files", "--error-unmatch", "--", rel, required=False) is None:
+                raise RepositoryRecoveryError(
+                    "STEP_NOT_TRACKED", f"canonical STEP is not tracked by Git: {rel}",
+                )
             candidate = _candidate(root, path.stem)
             if candidate is not None:
                 candidates.append(candidate)
