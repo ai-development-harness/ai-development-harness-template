@@ -234,6 +234,14 @@ def main() -> int:
         assert stale["candidates"][0]["reasonCode"] == "PLAN_BASIS_STALE", stale
         assert stale["safeToResume"] is False, stale
 
+        # Schema-invalid, но синтаксически читаемый STEP тоже не может
+        # исчезнуть как "не in_progress" или стать RESUME-кандидатом.
+        valid = target.read_text(encoding="utf-8")
+        write(target, valid.replace("schema: 1", "schema: 2", 1))
+        bad_schema = repository_recovery_preview(laptop)
+        assert bad_schema["reasonCode"] == "STEP_CONTRACT_INVALID", bad_schema
+        write(target, valid)
+
         # Повреждённый canonical STEP не исключается из обхода молча.
         write(laptop / "custom/steps/STEP-005.md", "broken document\n")
         invalid = repository_recovery_preview(laptop)
