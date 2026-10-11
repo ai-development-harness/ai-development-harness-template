@@ -153,6 +153,12 @@ def empty_status() -> dict[str, Any]:
     }
 
 
+class PortableRevisionChanged(ValueError):
+    """HEAD переместился после Git-handoff, до atomic local execution start."""
+
+    code = "HANDOFF_HEAD_CHANGED"
+
+
 class ExecutionCheckpointError(ValueError):
     """Причина невозможности безопасного чтения persisted execution state.
 
@@ -2162,6 +2168,7 @@ def start_execution(
     raw_command: str,
     *,
     require_fresh_clone: bool = False,
+    expected_git_head: str | None = None,
 ) -> dict[str, Any]:
     normalized = _normalize_root(root, raw_command)
 
@@ -2185,6 +2192,16 @@ def start_execution(
         raise ExecutionCheckpointError(
             "INCOMPATIBLE",
             "portable adoption requires a new clone without prior local execution state",
+        )
+    # Даже после повторной read-only проверки снимка HEAD может измениться
+    # до сохранения новой invocation. Проверка действует под execution-state
+    # lock; новый context не может создаться поверх уже другой revision.
+    if require_fresh_clone and (
+        not isinstance(expected_git_head, str)
+        or _git_head(root) != expected_git_head
+    ):
+        raise PortableRevisionChanged(
+            "Git HEAD changed after portable handoff validation"
         )
     status = load_status(root)
 

@@ -81,6 +81,7 @@ def portable_resume_candidate(root: Path) -> dict[str, Any]:
         "command": command,
         "portable": True,
         "sourceHandoff": proof["path"],
+        "publicationHead": proof["publicationHead"],
         "instruction": "start-new-local-plan-review; inspect published code before implementation",
     }
 
