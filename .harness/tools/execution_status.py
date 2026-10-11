@@ -2140,7 +2140,12 @@ def _command_context(
 
 # Зарегистрировать новый root invocation либо resume уже running invocation с тем же normalized rootCommand.
 @execution_state_mutation
-def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
+def start_execution(
+    root: Path,
+    raw_command: str,
+    *,
+    require_fresh_clone: bool = False,
+) -> dict[str, Any]:
     normalized = _normalize_root(root, raw_command)
 
     # Первый executable segment не имеет incoming CTS edge, поэтому его
@@ -2155,6 +2160,15 @@ def start_execution(root: Path, raw_command: str) -> dict[str, Any]:
         if failures:
             raise ValueError("command precondition failed: " + "; ".join(failures))
 
+    # Переносимый handoff не вправе переиспользовать ни один local checkpoint:
+    # даже полностью compacted/empty state означает уже использованный clone.
+    # Проверка делается здесь ПОД OS-lock вместе с созданием execution,
+    # а не только в read-only preflight (защита от concurrent local starts).
+    if require_fresh_clone and _checkpoint_exists(root):
+        raise ExecutionCheckpointError(
+            "INCOMPATIBLE",
+            "portable adoption requires a new clone without prior local execution state",
+        )
     status = load_status(root)
 
     # Повтор той же root command после session interruption должен resume

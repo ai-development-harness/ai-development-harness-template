@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from execution_status import load_status
+from execution_status import load_status, status_path
 from portable_handoff import check_handoff
 from repository_recovery import repository_recovery_preview
 
@@ -22,7 +22,15 @@ def portable_resume_candidate(root: Path) -> dict[str, Any]:
     прежней работы, штатная ошибка не превращается в «чистый» Git clone.
     """
     state = load_status(root)
-    if state.get("executions") or state.get("recentTerminals") or state.get("stepRecovery"):
+    # Даже если tombstones уже вытеснены и массивы пусты, файл local state
+    # доказывает, что clone ранее исполнял Harness. Его нельзя считать новым.
+    if (
+        status_path(root).exists()
+        or state.get("executions")
+        or state.get("recentTerminals")
+        or state.get("stepRecovery")
+        or state.get("nextOrdinal", 1) != 1
+    ):
         return {
             "status": "BLOCKED",
             "reasonCode": "PORTABLE_LOCAL_HISTORY_PRESENT",
