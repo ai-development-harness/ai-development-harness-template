@@ -13,9 +13,10 @@ import time
 import step_next as step_next_module
 import planning_contract as planning_contract_module
 import execution_status as execution_status_module
+import command_dispatch as command_dispatch_module
 import harness_ux as harness_ux_module
 from command_dispatch import start_dispatch
-from execution_status import complete_command, start_execution, unresolved_executions
+from execution_status import begin_command, complete_command, load_status, start_execution, unresolved_executions
 from planning_contract import dependency_completion_failures, implementation_prerequisite_failures
 from step_next import resolve_step_action, resolve_step_next
 
@@ -674,6 +675,122 @@ def main() -> int:
             unsafe["current"]["command"],
             "BLOCKED",
         )
+
+        # Cross-version v0.11.4-style v2 state: existing STEP RUN with a
+        # running PLAN child must keep its executionId. A durable Ready plan
+        # may have been written before the local completion checkpoint.
+        reset_steps(root)
+        write_step(root, "STEP-070", priority="critical")
+        old_root = "STEP RUN STEP-070"
+        old_exec = start_execution(root, old_root)
+        begin_command(root, old_root, "STEP PLAN STEP-070")
+        state_file = root / ".harness/local/execution/execution-status.json"
+        assert load_status(root)["schemaVersion"] == 2
+        old_state = state_file.read_bytes()
+        previous_plan_info = execution_status_module.plan_info
+        previous_prerequisites = execution_status_module.implementation_prerequisite_failures
+        previous_dispatch = command_dispatch_module._dispatch_running
+        try:
+            # Simulate a durable approved Ready plan / passing preflight.
+            execution_status_module.plan_info = (
+                lambda _root, _step: {"ready": True}
+            )
+            execution_status_module.implementation_prerequisite_failures = (
+                lambda _root, _step: []
+            )
+            # Keep this test at the dispatcher boundary; do not invoke an AI
+            # provider or mutate the product during the synthetic check.
+            command_dispatch_module._dispatch_running = (
+                lambda _root, execution, command: {
+                    "status": "RUNNING",
+                    "rootCommand": execution["rootCommand"],
+                    "executionId": execution["executionId"],
+                    "command": command,
+                }
+            )
+
+            preview = resolve_step_next(root)
+            assert preview["status"] == "PASS", preview
+            assert preview["command"] == old_root, preview
+            assert preview["selected"]["executionId"] == old_exec["executionId"], preview
+            assert preview["selected"]["nextChildCommand"] == "STEP IMPLEMENT STEP-070", preview
+            assert state_file.read_bytes() == old_state, "NEXT committed virtual recovery"
+
+            # Running the exact recommended command must reconcile the
+            # original root first, not create an orphaned IMPLEMENT invocation.
+            continued = start_dispatch(root, preview["command"])
+            assert continued["executionId"] == old_exec["executionId"], continued
+            assert continued["rootCommand"] == old_root, continued
+            assert continued["command"] == "STEP IMPLEMENT STEP-070", continued
+            owned = [
+                item for item in load_status(root)["executions"]
+                if item["executionId"] == old_exec["executionId"]
+            ]
+            assert len(owned) == 1 and owned[0]["current"]["command"] == "STEP IMPLEMENT STEP-070", owned
+            assert not any(
+                item["rootCommand"] == "STEP IMPLEMENT STEP-070"
+                for item in load_status(root)["executions"]
+            ), "orphaned standalone IMPLEMENT was created"
+            assert owned[0]["current"]["status"] == "running", owned
+        finally:
+            execution_status_module.plan_info = previous_plan_info
+            execution_status_module.implementation_prerequisite_failures = previous_prerequisites
+            command_dispatch_module._dispatch_running = previous_dispatch
+
+        # An uninterrupted (not-yet-proven) PLAN also resumes its original
+        # STEP RUN root, rather than starting a standalone PLAN.
+        reset_steps(root)
+        write_step(root, "STEP-071")
+        plain_root = "STEP RUN STEP-071"
+        plain = start_execution(root, plain_root)
+        begin_command(root, plain_root, "STEP PLAN STEP-071")
+        plain_next = resolve_step_next(root)
+        assert plain_next["command"] == plain_root, plain_next
+        assert plain_next["selected"]["nextChildCommand"] == "STEP PLAN STEP-071", plain_next
+        previous_dispatch = command_dispatch_module._dispatch_running
+        try:
+            command_dispatch_module._dispatch_running = (
+                lambda _root, execution, command: {
+                    "status": "RUNNING",
+                    "rootCommand": execution["rootCommand"],
+                    "executionId": execution["executionId"],
+                    "command": command,
+                }
+            )
+            plain_resume = start_dispatch(root, plain_root)
+        finally:
+            command_dispatch_module._dispatch_running = previous_dispatch
+        assert plain_resume["executionId"] == plain["executionId"], plain_resume
+        assert plain_resume["command"] == "STEP PLAN STEP-071", plain_resume
+
+        # Manual STEP chains also have one durable root. NEXT must return
+        # that root, not the child command, even with multiple commands.
+        reset_steps(root)
+        write_step(root, "STEP-072")
+        chain_root = "STEP PLAN STEP-072 > STEP IMPLEMENT STEP-072"
+        chain = start_execution(root, chain_root)
+        chain_next = resolve_step_next(root)
+        assert chain_next["command"] == chain_root, chain_next
+        previous_dispatch = command_dispatch_module._dispatch_running
+        try:
+            command_dispatch_module._dispatch_running = (
+                lambda _root, execution, command: {
+                    "status": "RUNNING",
+                    "rootCommand": execution["rootCommand"],
+                    "executionId": execution["executionId"],
+                    "command": command,
+                }
+            )
+            chain_resume = start_dispatch(root, chain_root)
+        finally:
+            command_dispatch_module._dispatch_running = previous_dispatch
+        assert chain_resume["executionId"] == chain["executionId"], chain_resume
+        assert chain_resume["command"] == "STEP PLAN STEP-072", chain_resume
+
+        # The old dispatcher envelope offered an executionId field.
+        # Read-only NEXT cannot allocate an ID, but the field remains stable.
+        envelope = start_dispatch(root, "STEP NEXT")
+        assert "executionId" in envelope and envelope["executionId"] is None, envelope
 
     print("STEP NEXT SELF-TEST: PASS")
     return 0
