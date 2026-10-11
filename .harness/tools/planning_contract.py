@@ -576,6 +576,84 @@ def plan_content_hash(root: Path, step_id: str) -> str:
     return stable_hash({"implementationPlan": body, "executionGroups": groups})
 
 
+def dependency_completion_failures(
+    root: Path,
+    step_id: str,
+    *,
+    transitive: bool = True,
+    proof_cache: dict[str, dict[str, Any]] | None = None,
+    dependency_cache: dict[str, list[str]] | None = None,
+) -> list[str]:
+    """Доказать завершение hard dependencies без рекурсии.
+
+    STEP NEXT проверяет весь DAG (transitive=True). Старый IMPLEMENT gate
+    v0.11.4 проверял только direct depends_on: это правило сохраняем для
+    безопасного обновления проектов с историческими completion baselines.
+    Проверка формата depends_on общая и fail-closed в обоих режимах.
+    Кэши — только на время одного вызова resolver.
+    """
+    failures: list[str] = []
+    checked: set[str] = set()
+    visiting: set[str] = set()
+    proofs = proof_cache if proof_cache is not None else {}
+    deps_cache = dependency_cache if dependency_cache is not None else {}
+
+    def dependencies_of(current: str) -> list[str]:
+        if current not in deps_cache:
+            meta = read_task(root, current)["frontmatter"]
+            raw = meta.get("depends_on")
+            if not isinstance(raw, list) or any(
+                not isinstance(item, str) or STEP_ID_RE.fullmatch(item) is None
+                for item in raw
+            ):
+                raise ValueError(f"{current}: depends_on must be a list of STEP-NNN IDs")
+            if len(raw) != len(set(raw)):
+                raise ValueError(f"{current}: duplicate depends_on entries")
+            deps_cache[current] = raw
+        return deps_cache[current]
+
+    # (STEP, exit_marker): visiting хранит только текущую ветку DFS.
+    # В отличие от рекурсивного обхода, длинный DAG не вызывает RecursionError.
+    stack: list[tuple[str, bool]] = [(step_id, False)]
+    while stack:
+        current, leaving = stack.pop()
+        if leaving:
+            visiting.discard(current)
+            checked.add(current)
+            continue
+        if current in visiting:
+            failures.append(f"dependency-cycle:{current}")
+            continue
+        if current in checked:
+            continue
+
+        visiting.add(current)
+        stack.append((current, True))
+        try:
+            dependencies = dependencies_of(current)
+        except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
+            failures.append(f"dependency-unprovable:{current}:{exc}")
+            continue
+
+        for dep in reversed(dependencies):
+            if dep in visiting:
+                failures.append(f"dependency-cycle:{dep}")
+                continue
+            try:
+                if dep not in proofs:
+                    proofs[dep] = step_completion_proof(root, dep)
+                proof = proofs[dep]
+            except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
+                failures.append(f"dependency-unprovable:{dep}:{exc}")
+            else:
+                if not proof["complete"]:
+                    failures.append(
+                        f"dependency-incomplete:{dep}:" + "; ".join(proof["reasons"])
+                    )
+            if transitive and dep not in checked:
+                stack.append((dep, False))
+    return list(dict.fromkeys(failures))
+
 def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
     """Детерминированно доказать prerequisites непосредственно перед IMPLEMENT.
 
@@ -636,16 +714,9 @@ def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
         if item.get("status") == "open":
             failures.append(f"open-question:{item.get('id')}")
 
-    for dep_id in dependency_ids(task):
-        try:
-            proof = step_completion_proof(root, dep_id)
-        except (DocumentError, ConfigError, OSError, ValueError) as exc:
-            failures.append(f"dependency-unprovable:{dep_id}:{exc}")
-            continue
-        if not proof["complete"]:
-            failures.append(
-                f"dependency-incomplete:{dep_id}:" + "; ".join(proof["reasons"])
-            )
+    # Не ужесточаем manual IMPLEMENT при minor upgrade: его контракт из
+    # v0.11.4 требует только direct completion proofs.
+    failures.extend(dependency_completion_failures(root, step_id, transitive=False))
 
     return failures
 

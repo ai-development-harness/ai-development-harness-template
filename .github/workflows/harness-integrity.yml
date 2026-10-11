@@ -253,6 +253,7 @@ jobs:
           python .harness/tools/harness-config-self-test.py
           python .harness/tools/document-contract-self-test.py
           python .harness/tools/execution-self-test.py
+          python .harness/tools/step-next-self-test.py
           python .harness/tools/verification-self-test.py
           python .harness/tools/reliable-orchestration-fault-self-test.py
           python .harness/tools/update-engine-self-test.py

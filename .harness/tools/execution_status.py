@@ -1324,9 +1324,16 @@ def _migrate_status_v1(value: dict[str, Any]) -> dict[str, Any]:
 
 # Прочитать local state, fail-closed validate и при необходимости атомарно
 # мигрировать legacy v1. PROJECT RECONCILE здесь намеренно не участвует.
-def load_status(root: Path) -> dict[str, Any]:
+def load_status(root: Path, *, read_only: bool = False) -> dict[str, Any]:
+    """Прочитать state; read_only не создаёт lock и не пишет migration.
+
+    Записывающие вызовы продолжают использовать общий transaction lock.
+    Read-only snapshot безопасен без отдельного lock-файла: JSON публикуется
+    атомарным os.replace(), а migration v1 вычисляется только в памяти.
+    """
     path = status_path(root)
-    with execution_state_lock(root):
+
+    def read() -> dict[str, Any]:
         if not path.is_file():
             return empty_status()
         try:
@@ -1334,7 +1341,6 @@ def load_status(root: Path) -> dict[str, Any]:
                 value = json.load(fh)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"execution-status: cannot parse JSON: {exc}") from exc
-        # Не-object root (array/string) — повреждённый state, а не AttributeError (#117).
         if not isinstance(value, dict):
             raise ValueError("execution-status: root must be a JSON object")
 
@@ -1342,12 +1348,12 @@ def load_status(root: Path) -> dict[str, Any]:
             errors = _validate_v1_status(value)
             if errors:
                 raise ValueError("; ".join(errors))
-            migrated = _migrate_status_v1(value)
-            compacted = _compact_status(root, migrated)
+            compacted = _compact_status(root, _migrate_status_v1(value))
             errors = _validate_v2_status(compacted)
             if errors:
                 raise ValueError("; ".join(errors))
-            _atomic_write_json(path, compacted)
+            if not read_only:
+                _atomic_write_json(path, compacted)
             return compacted
 
         errors = _validate_v2_status(value)
@@ -1355,6 +1361,13 @@ def load_status(root: Path) -> dict[str, Any]:
             raise ValueError("; ".join(errors))
         return value
 
+    if read_only:
+        # Lock-файл не создаём, но безопасность self-update boundary сохраняем:
+        # read-only запрос тоже не должен видеть промежуточный APPLY snapshot.
+        _require_update_transaction_access(root)
+        return read()
+    with execution_state_lock(root):
+        return read()
 
 
 # Записать JSON crash-safe способом через temporary file, fsync и atomic os.replace. Это защищает от половины файла при process/session crash.
@@ -2930,6 +2943,8 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
 def _durable_recovery_result(
     root: Path,
     execution: dict[str, Any],
+    *,
+    allow_finalization: bool = True,
 ) -> str | None:
     current = execution["current"]
     if current.get("status") != "running":
@@ -2965,6 +2980,16 @@ def _durable_recovery_result(
                     if completion_result in {"FAIL", "BLOCKED"}:
                         return completion_result
                     if completion_result == "PASS":
+                        if not allow_finalization:
+                            # Пока STEP не закрыт, завершение REVIEW нельзя
+                            # объявить успешным без записи lifecycle/projections.
+                            # Read-only preview оставляет точный RESUME, который
+                            # уже в записывающем режиме доведёт close до конца.
+                            try:
+                                proof = step_completion_proof(root, target)
+                            except (OSError, ValueError, FileNotFoundError):
+                                return None
+                            return "PASS" if proof["complete"] else None
                         finalized = finalize_step_completion(root, target)
                         return "PASS" if finalized.get("completed") else "BLOCKED"
                     # Historical PASS без Completion Contract автоматически
@@ -2986,6 +3011,8 @@ def _durable_recovery_result(
                     task["frontmatter"].get("status") == "completed"
                     and proof.get("complete") is True
                 ):
+                    if not allow_finalization:
+                        return "PASS"
                     finalized = finalize_step_completion(root, target)
                     return "PASS" if finalized.get("completed") else "BLOCKED"
 
@@ -3035,12 +3062,24 @@ def _apply_recovered_completion(
 
 
 # Главный deterministic resolver одной root execution: RESUME running command либо NEXT/DONE/BLOCKED по mode и CTS.
-@execution_state_mutation
 def resolve_execution(
     root: Path,
     execution: dict[str, Any],
     *,
     mutate: bool = True,
+) -> dict[str, Any]:
+    """Записывающий resolve сериализуется; read-only не создаёт lock-файла."""
+    if mutate:
+        with execution_state_lock(root):
+            return _resolve_execution_inner(root, execution, mutate=True)
+    return _resolve_execution_inner(root, execution, mutate=False)
+
+
+def _resolve_execution_inner(
+    root: Path,
+    execution: dict[str, Any],
+    *,
+    mutate: bool,
 ) -> dict[str, Any]:
     if execution.get("status") == "complete":
         return {
@@ -3087,16 +3126,37 @@ def resolve_execution(
 
         # Базовое правило: running => RESUME той же command. Только узкий набор
         # доказуемых durable facts имеет право автоматически закрыть crash-window.
-        recovered = _durable_recovery_result(root, execution)
-        if recovered is not None and mutate:
-            status = load_status(root)
-            stored = _latest_execution(
-                status,
-                execution_id=execution["executionId"],
-            )
-            if stored is not None:
-                _apply_recovered_completion(root, status, stored, recovered)
-                return resolve_execution(root, stored, mutate=False)
+        recovered = _durable_recovery_result(
+            root, execution, allow_finalization=mutate,
+        )
+        if recovered is not None:
+            if mutate:
+                status = load_status(root)
+                stored = _latest_execution(
+                    status,
+                    execution_id=execution["executionId"],
+                )
+                if stored is not None:
+                    _apply_recovered_completion(root, status, stored, recovered)
+                    return resolve_execution(root, stored, mutate=False)
+            else:
+                # Durable факт уже существует. Смоделировать результат в памяти,
+                # не записывая execution-status и не повторяя semantic PLAN/REVIEW.
+                preview = deepcopy(execution)
+                preview_current = preview["current"]
+                preview_current["status"] = (
+                    "blocked" if recovered == "BLOCKED" else "complete"
+                )
+                preview_current["result"] = recovered
+                if recovered == "BLOCKED":
+                    return {
+                        "status": "BLOCKED",
+                        "executionId": execution["executionId"],
+                        "rootCommand": execution["rootCommand"],
+                        "command": None,
+                        "reasonCode": "RECOVERED_COMMAND_BLOCKED",
+                    }
+                return resolve_execution(root, preview, mutate=False)
         return {
             "status": "RESUME",
             "executionId": execution["executionId"],
@@ -3426,13 +3486,24 @@ def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
 # Вернуть только актуальные unresolved executions: historical blocked record
 # перестаёт быть actionable, как только существует более новая invocation того
 # же rootCommand. mutate=False используется read-only HARNESS STATUS.
-@execution_state_mutation
 def unresolved_executions(
     root: Path,
     *,
     mutate: bool = True,
 ) -> list[dict[str, Any]]:
-    status = load_status(root)
+    """Read-only путь не создаёт lock и не меняет execution checkpoint."""
+    if mutate:
+        with execution_state_lock(root):
+            return _unresolved_executions_snapshot(root, mutate=True)
+    return _unresolved_executions_snapshot(root, mutate=False)
+
+
+def _unresolved_executions_snapshot(
+    root: Path,
+    *,
+    mutate: bool,
+) -> list[dict[str, Any]]:
+    status = load_status(root, read_only=not mutate)
     executions = status.get("executions", [])
 
     latest_ordinal_by_root: dict[str, int] = {}

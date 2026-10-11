@@ -776,7 +776,7 @@ Exit codes: `0` — SUCCESS; `2` — BLOCKED/preflight/mutation/postcondition fa
 5. больше explicit non-`none` risk flags — только visibility tie-breaker, не severity score;
 6. canonical roadmap order.
 
-Для STEP без Ready plan dependency completion не блокирует `STEP PLAN`. Для Ready plan `STEP IMPLEMENT` допускается только при PASS `implementation_prerequisite_failures`. Current exact FAIL review маршрутизируется в `STEP FIX`.
+В **рекомендации STEP NEXT** dependency completion proofs являются hard gate **до** priority ranking, включая resumable executions. Fresh candidate возвращается как `STEP RUN STEP-NNN`, а safe recovery рекомендует **original rootCommand** (RUN или полная chain) и возвращает только для диагностики `nextChildCommand`. Рекомендованный root dispatcher восстанавливает существующий executionId до любых новых дочерних команд, в том числе после crash-window Ready PLAN → IMPLEMENT. Explicit/manual `STEP PLAN` по-прежнему допускается без completion dependencies, а `STEP IMPLEMENT` требует PASS `implementation_prerequisite_failures`. Current exact FAIL review остаётся внутренним маршрутом `STEP FIX`. Исключённые кандидаты перечисляются в blockers. `depends_on` с неправильным типом или дублями не превращается в пустой список, глубокие DAG обходятся без рекурсивного вызова, proof кэшируется только в рамках одного NEXT. Read-only regression сверяет файлы проекта и local execution; `PROJECT STATUS.nextWork` должен совпадать с авторитетным resolver.
 
 ## CLI
 
