@@ -321,6 +321,26 @@ def test_semantic_changes(root: Path, origin: Path) -> None:
     assert bad_refs["status"] == "BLOCKED", bad_refs
     assert bad_refs["reasonCode"] == "STEP_REFERENCES_UNPROVEN", bad_refs
 
+    # Dependency cycle must never become portable execution, even when all
+    # referenced files exist. STEP Git object changes after publication,
+    # so the existing canonical freshness gate is enough to fail closed.
+    cyclic = clone(root, origin, "dependency-cycle")
+    current_step = "planning/tasks/STEP-017.md"
+    first = (cyclic / current_step).read_text(encoding="utf-8")
+    assert "depends_on: []" in first
+    write(cyclic / current_step, first.replace(
+        "depends_on: []", "depends_on:\n  - STEP-018", 1,
+    ))
+    second = FIXTURE._task().replace("STEP-017", "STEP-018", 1)
+    second = second.replace("status: in_progress", "status: planned", 1)
+    second = second.replace("depends_on: []", "depends_on:\n  - STEP-017", 1)
+    write(cyclic / "planning/tasks/STEP-018.md", second)
+    git(cyclic, "add", current_step, "planning/tasks/STEP-018.md")
+    git(cyclic, "commit", "-qm", "introduce cyclic STEP dependencies")
+    cycle_result = harness_resume(cyclic)
+    assert cycle_result["status"] == "BLOCKED", cycle_result
+    assert not (cyclic / ".harness/local/execution/execution-status.json").exists()
+
     partial = clone(root, origin, "draft-plan")
     filename = "planning/tasks/STEP-017.md"
     text = (partial / filename).read_text(encoding="utf-8")
