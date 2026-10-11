@@ -40,7 +40,11 @@ def _preview(*, count: int = 1, fresh: bool = True) -> dict:
 
 
 def _proof() -> dict:
-    return {"status": "PASS", "path": "planning/handoffs/STEP-001.json"}
+    return {
+        "status": "PASS",
+        "path": "planning/handoffs/STEP-001.json",
+        "publicationHead": "a" * 40,
+    }
 
 
 def test_portable_gate() -> None:
