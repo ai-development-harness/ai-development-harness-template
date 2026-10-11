@@ -1,6 +1,6 @@
 # Portable Resume: Git-backed Handoff Contract (#300)
 
-> Реализованы отдельные `--write` и `--check` для Git-backed handoff. Они **не восстанавливают выполнение**: `HARNESS RESUME` остаётся local-only до #301.
+> `--write` и `--check` публикуют и проверяют Git-backed handoff. `HARNESS RESUME` теперь допускает строго ограниченный переносимый вход: **новый локальный STEP PLAN**, но не replay IMPLEMENT/REVIEW/FIX.
 > Parent: #298. Depends on #299.
 
 ## Почему нельзя синхронизировать execution-status.json
@@ -93,8 +93,7 @@ and synthetic `verified=true` or `reviewPassed=true`.
      dirty/detached/diverged состоянии;
    - canonical STEP и его Git index object/semantic fingerprints совпадают;
    - schema/canonical path/version доказаны.
-5. Только после этих проверок #301 решает, как восстановить **новую локальную**
-   invocation. Старый executionId, native session и Verified PASS не импортируются.
+5. `HARNESS RESUME` сначала выбирает штатное локальное продолжение. Лишь в новом clone без локальной истории и с единственным полностью проверенным кандидатом начинается **новый локальный STEP PLAN** (новый executionId). Старый executionId, native session и Verified PASS не импортируются.
 
 Переименование ветки, rebase, force-push, changed task, modified contract,
 lost marker в уже существующем clone и несовпадающие handoff files не
@@ -160,7 +159,8 @@ Verification отсутствуют и не могут быть подменен
 
 ## Граница текущего этапа
 
-**#300 создаёт и проверяет переносимые факты, а не выполняет перенос
-execution.** `HARNESS RESUME` и локальный checkpoint marker не изменены.
-Следующая #301 должна отдельно доказать безопасную реконструкцию
-действия, включая side effects и missing Verification proof.
+**#301: ограниченное переносимое продолжение.** При наличии local resumable execution она всегда имеет приоритет. Повреждённый/утраченный local checkpoint и имеющаяся local history не могут быть обойдены portable fallback. Если в чистом клоне есть ровно один Git-published handoff с актуальным Ready plan и matching independent planning review, `HARNESS RESUME` создаёт **новую локальную STEP PLAN invocation** через штатный dispatcher/CTS. Это повторная смысловая проверка контракта, а не утверждение о выполненном IMPLEMENT.
+
+Если есть несколько in_progress STEP, изменённый Git/контракт, неподтверждённый план, конфликтующий handoff или любое сомнение — BLOCKED. Нельзя автоматически повторять Git COMMIT/PUSH/PR, UPDATE и другие side effects. Модель и её session handle в checkpoint не входят. Для работы после PLAN агент должен проверить опубликованный код, фактические доказательства и заново выполнить необходимые локальные Verification gates.
+
+**Ограничение:** Git-handoff v1 не фиксирует завершённую фазу или exclusive lease между двумя активными компьютерами. Он не даёт права автоматически продолжать IMPLEMENT/FIX/REVIEW и не обеспечивает распределённую блокировку. Полная проверка двух клонов, races и negative matrix — отдельный обязательный этап #302.
