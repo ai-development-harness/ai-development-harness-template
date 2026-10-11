@@ -308,6 +308,9 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
 
     candidates: list[dict[str, Any]] = []
     blocked: list[dict[str, Any]] = []
+    # Общие зависимости многих STEP проверяем один раз за вызов NEXT.
+    proof_cache: dict[str, dict[str, Any]] = {}
+    dependency_cache: dict[str, list[str]] = {}
 
     # Existing STEP work always outranks starting another STEP.
     try:
@@ -331,7 +334,11 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         if step_id is None or step_id not in tasks:
             continue
         try:
-            dependency_failures = dependency_completion_failures(root, step_id)
+            dependency_failures = dependency_completion_failures(
+                root, step_id,
+                proof_cache=proof_cache,
+                dependency_cache=dependency_cache,
+            )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             dependency_failures = [f"dependency-state-invalid:{exc}"]
         if dependency_failures:
@@ -362,7 +369,11 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
             continue
         task = tasks[step_id]
         try:
-            dependency_failures = dependency_completion_failures(root, step_id)
+            dependency_failures = dependency_completion_failures(
+                root, step_id,
+                proof_cache=proof_cache,
+                dependency_cache=dependency_cache,
+            )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             dependency_failures = [f"dependency-state-invalid:{exc}"]
         if dependency_failures:
