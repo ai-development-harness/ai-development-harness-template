@@ -485,7 +485,56 @@ def test_two_clone_real_dispatch() -> None:
         assert state["executions"][0]["executionId"] == competing["executionId"]
 
 
+
+def test_new_review_must_belong_to_new_execution() -> None:
+    """Новый immutable review чужой invocation не может доказать portable PLAN."""
+    from execution_status import portable_plan_recheck_proven
+
+    report = "planning/plan-reviews/STEP-017/PLAN-REVIEW-new.md"
+    execution = {
+        "executionId": "exec-portable",
+        "current": {
+            "command": "STEP PLAN STEP-017",
+            "context": {
+                "portablePlanProofBefore": {
+                    "reviewedReport": "planning/plan-reviews/STEP-017/PLAN-REVIEW-old.md",
+                    "revision": 1,
+                }
+            },
+        },
+    }
+    current_plan = {
+        "frontmatter": {
+            "plan": {"status": "ready", "revision": 2, "reviewed_report": report}
+        }
+    }
+    with (
+        patch("execution_status.normalize_single_command", return_value={
+            "domain": "STEP", "operation": "PLAN", "target": "STEP-017",
+        }),
+        patch("execution_status.read_planning_task", return_value=current_plan),
+        patch("execution_status.latest_matching_planning_review", return_value={
+            "path": ROOT / report,
+            "document": {"frontmatter": {"execution_id": "exec-other"}},
+        }),
+    ):
+        assert portable_plan_recheck_proven(ROOT, execution) is False
+
+    with (
+        patch("execution_status.normalize_single_command", return_value={
+            "domain": "STEP", "operation": "PLAN", "target": "STEP-017",
+        }),
+        patch("execution_status.read_planning_task", return_value=current_plan),
+        patch("execution_status.latest_matching_planning_review", return_value={
+            "path": ROOT / report,
+            "document": {"frontmatter": {"execution_id": "exec-portable"}},
+        }),
+    ):
+        assert portable_plan_recheck_proven(ROOT, execution) is True
+
+
 if __name__ == "__main__":
+    test_new_review_must_belong_to_new_execution()
     test_portable_gate()
     test_local_precedence()
     test_dispatch_creates_new_local_plan()
