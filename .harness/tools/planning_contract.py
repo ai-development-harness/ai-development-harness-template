@@ -576,6 +576,51 @@ def plan_content_hash(root: Path, step_id: str) -> str:
     return stable_hash({"implementationPlan": body, "executionGroups": groups})
 
 
+def dependency_completion_failures(root: Path, step_id: str) -> list[str]:
+    """Проверить доказанное завершение всех предшественников STEP.
+
+    Используется и при подборе следующей задачи, и перед IMPLEMENT.
+    Цикл либо отсутствующий STEP не превращается в разрешение на выполнение.
+    """
+    failures: list[str] = []
+    checked: set[str] = set()
+    visiting: set[str] = set()
+
+    def visit(current: str) -> None:
+        if current in visiting:
+            failures.append(f"dependency-cycle:{current}")
+            return
+        if current in checked:
+            return
+        visiting.add(current)
+        try:
+            dependencies = dependency_ids(read_task(root, current))
+        except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
+            failures.append(f"dependency-unprovable:{current}:{exc}")
+            visiting.remove(current)
+            checked.add(current)
+            return
+        for dependency in dependencies:
+            if dependency in visiting:
+                failures.append(f"dependency-cycle:{dependency}")
+                continue
+            try:
+                proof = step_completion_proof(root, dependency)
+            except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
+                failures.append(f"dependency-unprovable:{dependency}:{exc}")
+            else:
+                if not proof["complete"]:
+                    failures.append(
+                        f"dependency-incomplete:{dependency}:" + "; ".join(proof["reasons"])
+                    )
+            visit(dependency)
+        visiting.remove(current)
+        checked.add(current)
+
+    visit(step_id)
+    return list(dict.fromkeys(failures))
+
+
 def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
     """Детерминированно доказать prerequisites непосредственно перед IMPLEMENT.
 
@@ -636,16 +681,7 @@ def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
         if item.get("status") == "open":
             failures.append(f"open-question:{item.get('id')}")
 
-    for dep_id in dependency_ids(task):
-        try:
-            proof = step_completion_proof(root, dep_id)
-        except (DocumentError, ConfigError, OSError, ValueError) as exc:
-            failures.append(f"dependency-unprovable:{dep_id}:{exc}")
-            continue
-        if not proof["complete"]:
-            failures.append(
-                f"dependency-incomplete:{dep_id}:" + "; ".join(proof["reasons"])
-            )
+    failures.extend(dependency_completion_failures(root, step_id))
 
     return failures
 
