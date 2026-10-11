@@ -463,12 +463,19 @@ def step_completion_proof(
             )
             reviewed_basis = report_meta.get("contract_basis")
             reviewed_deps = report_meta.get("dependency_completion_basis")
-            if isinstance(reviewed_deps, str) and _valid_sha256(reviewed_deps):
-                current_deps = dependency_completion_basis(
-                    root, step_id, _ancestors=_ancestors,
-                )
-                if current_deps != reviewed_deps:
-                    reasons.append(f"completion-dependency-proof-stale:{step_id}")
+            # Старый современный REVIEW мог иметь semantic contract_basis, но
+            # не фиксировать зависимые proofs. Нельзя доказать, что он был
+            # проведён после текущего upstream REVIEW. Legacy отчёты без
+            # contract_basis сохраняют отдельные migration semantics.
+            if dependency_ids(task) and _valid_sha256(reviewed_basis):
+                if not _valid_sha256(reviewed_deps):
+                    reasons.append(f"completion-dependency-proof-missing:{step_id}")
+                else:
+                    current_deps = dependency_completion_basis(
+                        root, step_id, _ancestors=_ancestors,
+                    )
+                    if current_deps != reviewed_deps:
+                        reasons.append(f"completion-dependency-proof-stale:{step_id}")
             if isinstance(reviewed_basis, str) and _valid_sha256(reviewed_basis):
                 try:
                     current_basis = planning_context_basis(root, step_id)
