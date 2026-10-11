@@ -313,6 +313,20 @@ def check_handoff(root: Path, step_id: str) -> dict[str, Any]:
                 "HANDOFF_WORKTREE_MISMATCH",
                 "handoff working-tree content differs from published Git object",
             )
+        # Если настроена upstream tracking branch, локальная revision
+        # обязана совпадать с ПОСЛЕДНИМ ИЗВЕСТНЫМ tracking ref. При гонке двух
+        # publishers после explicit fetch появится divergence и BLOCKED.
+        # Здесь намеренно нет fetch/ls-remote: скрытых сетевых действий нет.
+        upstream = subprocess.run(
+            ["git", "rev-parse", "--verify", "@{upstream}"],
+            cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=False, timeout=15,
+        )
+        if upstream.returncode == 0 and upstream.stdout.strip().decode("ascii") != git["head"]:
+            raise PortableHandoffError(
+                "HANDOFF_UPSTREAM_DIVERGED",
+                "tracked upstream differs from local HEAD; reconcile Git before resume",
+            )
         if _git(root, "rev-parse", "--verify", "HEAD").decode("ascii") != git["head"]:
             raise PortableHandoffError("HANDOFF_HEAD_CHANGED", "HEAD moved during validation")
 
