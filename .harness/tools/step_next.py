@@ -377,13 +377,7 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
             continue
         # STEP NEXT selects a whole executable unit, not speculative PLAN.
         # The internal action remains available to STEP RUN and explicit commands.
-        if command.startswith("STEP IMPLEMENT "):
-            pass  # _fresh_command already checked Ready-plan prerequisites.
-        elif command.startswith("STEP FIX "):
-            pass  # An exact FAIL review is actionable through STEP RUN.
-        elif command.startswith("STEP PLAN "):
-            pass  # Planning gates passed; dependency gate already passed above.
-        else:
+        if not command.startswith(("STEP PLAN ", "STEP IMPLEMENT ", "STEP FIX ")):
             blocked.append({"stepId": step_id, "reasons": ["unsupported-next-action"]})
             continue
         candidates.append(
