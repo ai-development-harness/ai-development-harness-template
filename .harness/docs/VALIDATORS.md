@@ -2089,3 +2089,79 @@ python3 .harness/tools/repository-recovery.py --step STEP-017
 Переиспользуются `task_directory()`, `read_task()`, `planning_context_basis()` и `plan_content_hash()`. Существующий локальный `harness_resume()` остаётся единственным авторитетом для current execution. Прямой Git-preview не является source of truth для PASS/DONE. Следующие этапы #300–#301 добавят переносимый handoff и controlled adoption с отдельной проверкой актуальности, side effects и Verification.
 
 Self-test копирует тот же commit в два clone через локальный bare Git remote и специально оставляет на исходном компьютере несовместимое local state: результат preview должен быть одинаковым и не зависеть от него.
+
+---
+
+# Git-backed Portable Handoff (#300)
+
+## Файл / Файлы
+
+- `.harness/tools/portable-handoff.py` — явные действия `--write` и `--check`;
+- `.harness/tools/portable_handoff.py` — strict JSON schema и Git provenance;
+- `.harness/tools/portable-handoff-self-test.py` — synthetic two-clone regression.
+
+## Роль
+
+Записать минимальный **project-owned переносимый снимок фактов** о STEP в
+настроенном каталоге проектных handoff; затем подтвердить, что этот
+файл действительно опубликован через Git и по-прежнему относится к тому
+же STEP, ветке, индексу и semantic contract.
+
+`PASS` доказывает **только** публикацию/актуальность снимка. В результате
+**всегда** `safeToResume=false`, `nextCommand=null`. Реальная команда
+`HARNESS RESUME` не меняется в #300 и продолжает использовать local state.
+
+## Когда использовать
+
+- `--write` — после явного commit продуктовых изменений и STEP, при чистом Git.
+- `--check` — после `pull` того же project branch во втором клоне.
+- Когда нужен диагностический checkpoint без переноса локального состояния runtime.
+
+## Что проверяет
+
+- `protocol.taskDirectory` из manifest, `STEP-NNN` со статусом `in_progress`;
+- корректный строгий allowlist versioned JSON; неизвестные поля запрещены;
+- Git HEAD до handoff, branch, ancestor и object ID отслеживаемого STEP;
+- актуальный `planning_context_basis()` / `plan_content_hash()`, а не выдуманный второй fingerprint;
+- наличие handoff в Git commit и чистый worktree; не допускает symlink/path escape;
+- конфликтующие файлы блокируются; существующий файл может заменяться
+  только через compare-before-replace после успешной проверки схемы.
+
+Writer не создаёт Git commit, не выполняет push, не читает/копирует
+`.harness/local/execution`, Verification proofs, secrets и provider session
+handles.
+
+## CLI
+
+```bash
+python3 .harness/tools/portable-handoff.py --write --step STEP-017 --json
+python3 .harness/tools/portable-handoff.py --check --step STEP-017 --json
+```
+
+### Аргументы
+
+- Ровно один из `--write` или `--check`.
+- `--step STEP-NNN` — обязательный canonical STEP ID.
+- `--json` — machine-readable result; без него короткая сводка.
+
+## Exit codes
+
+- `0` — успешно создан или проверен handoff, **не** разрешён resume;
+- `2` — BLOCKED из-за Git, схемы, файла, scope либо provenance.
+
+## Примеры
+
+| Сценарий | Результат |
+| --- | --- |
+| Чистый проект и STEP `in_progress` | `HANDOFF_WRITTEN_NOT_PUBLISHED` |
+| Handoff уже закоммичен, branch/index/contract совпадают | `HANDOFF_PROVEN_NOT_EXECUTION` |
+| Uncommitted handoff или изменённый STEP | `BLOCKED` |
+| Неизвестная схема либо `nativeSessionId` в JSON | `HANDOFF_SCHEMA_INVALID` |
+
+## Внутренние зависимости / Граница ответственности
+
+Handoff не является отдельным журналом команд или источником истины для
+completion. Использует `repository_recovery_preview()`,
+`harness_config.task_directory()`, `planning_context_basis()` и
+`plan_content_hash()`. Runtime-neutral import и `HARNESS RESUME`
+остаются в scope #301. Подробно: `PORTABLE_RESUME.md`.
