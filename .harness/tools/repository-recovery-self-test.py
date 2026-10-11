@@ -110,7 +110,7 @@ plan:
 
 ## Implementation plan
 
-— 
+—
 
 ## Evidence
 
