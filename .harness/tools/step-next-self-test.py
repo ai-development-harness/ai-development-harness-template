@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import contextmanager
+import errno
 import shutil
 import subprocess
 import tempfile
+import time
 
 import step_next as step_next_module
 from command_dispatch import start_dispatch
@@ -176,8 +179,29 @@ def reset_steps(root: Path) -> None:
         path.unlink()
 
 
+@contextmanager
+def temporary_git_checkout():
+    """Очистить временный Git checkout без случайного падения из-за race.
+
+    На Python 3.11 rmtree иногда встречает временно непустую .git. Повторяем
+    только этот конкретный сбой, не игнорируя постоянную ошибку очистки.
+    """
+    temporary = tempfile.TemporaryDirectory(prefix="harness-step-next-")
+    try:
+        yield temporary.name
+    finally:
+        for attempt in range(3):
+            try:
+                temporary.cleanup()
+                break
+            except OSError as exc:
+                if exc.errno != errno.ENOTEMPTY or attempt == 2:
+                    raise
+                time.sleep(0.1 * (attempt + 1))
+
+
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="harness-step-next-") as tmp:
+    with temporary_git_checkout() as tmp:
         root = Path(tmp)
         copy_tracked(root)
         isolate_project_artifacts(root)
@@ -186,6 +210,9 @@ def main() -> int:
         run(root, "git", "init", "-q", "-b", "main")
         run(root, "git", "config", "user.email", "next@example.invalid")
         run(root, "git", "config", "user.name", "Next Test")
+        # Во временной фикстуре не нужен фоновый Git maintenance / auto-gc.
+        run(root, "git", "config", "gc.auto", "0")
+        run(root, "git", "config", "maintenance.auto", "false")
         run(root, "git", "add", ".")
         run(root, "git", "commit", "-qm", "fixture")
 
