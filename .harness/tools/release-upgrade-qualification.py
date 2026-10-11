@@ -158,7 +158,7 @@ def _candidate_identity(source: Path, candidate_sha: str) -> tuple[str, str, str
         if isinstance(edge, dict)
         and edge.get("to") == tag
         and isinstance(edge.get("from"), str)
-        and re.fullmatch(r"v[0-9]+\\.[0-9]+\\.[0-9]+", edge["from"]) is not None
+        and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", edge["from"]) is not None
     }
     if not previous_tags:
         raise QualificationError(
