@@ -283,8 +283,11 @@ def main() -> int:
         assert bad_schema["reasonCode"] == "STEP_CONTRACT_INVALID", bad_schema
         write(target, valid)
 
-        # Повреждённый canonical STEP не исключается из обхода молча.
+        # Повреждённый STEP должен быть именно tracked в Git: иначе
+        # первым корректным отказом станет STEP_NOT_TRACKED.
         write(laptop / "custom/steps/STEP-005.md", "broken document\n")
+        run(laptop, "git", "add", "custom/steps/STEP-005.md")
+        run(laptop, "git", "commit", "-qm", "malformed tracked step fixture")
         invalid = repository_recovery_preview(laptop)
         assert invalid["status"] == "BLOCKED", invalid
         assert invalid["reasonCode"] == "REPOSITORY_RECOVERY_UNPROVEN", invalid
