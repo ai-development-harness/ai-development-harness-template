@@ -3059,12 +3059,24 @@ def _apply_recovered_completion(
 
 
 # Главный deterministic resolver одной root execution: RESUME running command либо NEXT/DONE/BLOCKED по mode и CTS.
-@execution_state_mutation
 def resolve_execution(
     root: Path,
     execution: dict[str, Any],
     *,
     mutate: bool = True,
+) -> dict[str, Any]:
+    """Записывающий resolve сериализуется; read-only не создаёт lock-файла."""
+    if mutate:
+        with execution_state_lock(root):
+            return _resolve_execution_inner(root, execution, mutate=True)
+    return _resolve_execution_inner(root, execution, mutate=False)
+
+
+def _resolve_execution_inner(
+    root: Path,
+    execution: dict[str, Any],
+    *,
+    mutate: bool,
 ) -> dict[str, Any]:
     if execution.get("status") == "complete":
         return {
