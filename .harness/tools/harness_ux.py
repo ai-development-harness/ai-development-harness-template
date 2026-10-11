@@ -25,6 +25,7 @@ from harness_config import (
     task_directory,
 )
 from planning_contract import read_task
+from portable_resume import portable_resume_candidate
 from projection_contract import write_projections
 from review_contract import latest_review
 from step_next import resolve_step_next
@@ -190,6 +191,10 @@ def harness_resume(root: Path) -> dict[str, Any]:
                 "remediation": selected.get("remediation"),
                 "intent": selected.get("intent") or selected.get("blocker"),
             }
+        # Git-backed fallback допустим только при отсутствии local history.
+        # Нельзя обходить заблокированную execution или потерянный checkpoint.
+        if not items:
+            return portable_resume_candidate(root)
         return {
             "status": "BLOCKED",
             "reasonCode": "NO_RESUMABLE_EXECUTION",
