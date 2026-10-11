@@ -152,6 +152,7 @@ def test_dispatch_creates_new_local_plan() -> None:
         "rootCommand": "STEP PLAN STEP-001",
         "command": "STEP PLAN STEP-001",
         "sourceHandoff": "planning/handoffs/STEP-001.json",
+        "publicationHead": "a" * 40,
     }
     started = {
         "status": "SEMANTIC",
@@ -165,7 +166,10 @@ def test_dispatch_creates_new_local_plan() -> None:
         patch("command_dispatch.resolve_root", side_effect=AssertionError("must not resume source execution")),
     ):
         result = resume_dispatch(ROOT)
-        start.assert_called_once_with(ROOT, "STEP PLAN STEP-001", require_fresh_clone=True)
+        start.assert_called_once_with(
+            ROOT, "STEP PLAN STEP-001",
+            require_fresh_clone=True, expected_git_head="a" * 40,
+        )
         assert result["executionId"] == "exec-new-local"
         assert result["portableAdoption"]["importedExecution"] is False
         assert result["portableAdoption"]["externalSideEffectsExecuted"] is False
@@ -441,10 +445,27 @@ def test_two_clone_real_dispatch() -> None:
             assert rejected["reasonCode"] == "PORTABLE_LOCAL_HISTORY_PRESENT", rejected
         # Проверяем и сам атомарный guard, если local state появился
         # уже ПОСЛЕ read-only проверки handoff, перед start_execution.
-        atomic = start_dispatch(prior, "STEP PLAN STEP-017", require_fresh_clone=True)
+        atomic = start_dispatch(
+            prior, "STEP PLAN STEP-017", require_fresh_clone=True,
+            expected_git_head=_git(prior, "rev-parse", "HEAD"),
+        )
         assert atomic["status"] == "BLOCKED", atomic
         assert atomic["reasonCode"] == "EXECUTION_STATE_INCOMPATIBLE", atomic
         assert load_status(prior)["executions"] == []
+
+        # HEAD может сдвинуться между read-only preview и записью state.
+        # Подменяем только Git observation внутри atomic boundary и
+        # проверяем, что ни один новый execution не зарегистрирован.
+        moving = root / "moving-head"
+        _git(root, "clone", "-q", "--branch", "main", str(origin), str(moving))
+        with (
+            patch("execution_status._git_head", return_value="f" * 40),
+            patch("command_dispatch.harness_resume", return_value=selection),
+        ):
+            blocked = start_dispatch(moving, "HARNESS RESUME")
+        assert blocked["status"] == "BLOCKED", blocked
+        assert blocked["reasonCode"] == "HANDOFF_HEAD_CHANGED", blocked
+        assert load_status(moving)["executions"] == []
 
         # Uncommitted files and diverged branch cannot provide adoption proof.
         dirty = root / "dirty"

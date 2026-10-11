@@ -871,6 +871,7 @@ def start_dispatch(
     raw_command: str,
     *,
     require_fresh_clone: bool = False,
+    expected_git_head: str | None = None,
 ) -> dict[str, Any]:
     """Начать explicit command; portable mode разрешён только для нового STEP PLAN."""
     table = _table(root)
@@ -936,7 +937,9 @@ def start_dispatch(
 
     try:
         execution = start_execution(
-            root, raw_command, require_fresh_clone=require_fresh_clone,
+            root, raw_command,
+            require_fresh_clone=require_fresh_clone,
+            expected_git_head=expected_git_head,
         )
     except (OSError, ValueError) as exc:
         value = {
@@ -1295,6 +1298,7 @@ def resume_dispatch(
                 current.get("status") != "PASS"
                 or current.get("command") != root_command
                 or current.get("sourceHandoff") != selection.get("sourceHandoff")
+                or current.get("publicationHead") != selection.get("publicationHead")
             ):
                 return {
                     "schemaVersion": SCHEMA_VERSION,
@@ -1304,7 +1308,10 @@ def resume_dispatch(
                 }
             # Сохраняем local-only authority: exact fresh-clone check выполняется
             # под execution state lock, одновременно с записью новой invocation.
-            result = start_dispatch(root, root_command, require_fresh_clone=True)
+            result = start_dispatch(
+                root, root_command, require_fresh_clone=True,
+                expected_git_head=current["publicationHead"],
+            )
             if result.get("status") != "SEMANTIC":
                 return result
             result["portableAdoption"] = {
