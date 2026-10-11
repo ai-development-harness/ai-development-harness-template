@@ -46,9 +46,14 @@ def portable_resume_candidate(root: Path) -> dict[str, Any]:
     step_id = candidates[0]["stepId"]
     proof = check_handoff(root, step_id)
     if proof.get("status") != "PASS":
+        # Старые проекты без handoff сохраняют прежнюю local-only семантику.
+        # Не маскируем этим действительные ошибки существующего handoff.
+        reason = proof.get("reasonCode", "PORTABLE_HANDOFF_UNPROVEN")
+        if reason == "HANDOFF_NOT_FOUND":
+            reason = "NO_RESUMABLE_EXECUTION"
         return {
             "status": "BLOCKED",
-            "reasonCode": proof.get("reasonCode", "PORTABLE_HANDOFF_UNPROVEN"),
+            "reasonCode": reason,
             "message": proof.get("message", "Portable handoff validation failed"),
         }
     if candidates[0].get("planFreshness") != "fresh":
