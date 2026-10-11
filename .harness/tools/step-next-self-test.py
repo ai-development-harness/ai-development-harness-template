@@ -238,6 +238,52 @@ def main() -> int:
         assert manual["status"] == "PASS", manual
         assert manual["command"] == "STEP PLAN STEP-005", manual
 
+        # Completed metadata alone is not enough: a research dependency needs
+        # durable evidence before it can unlock an implementation STEP.
+        reset_steps(root)
+        write_step(root, "STEP-020", priority="critical", depends=["STEP-021"])
+        write_step(
+            root, "STEP-021", status="completed", step_type="research",
+        )
+        no_proof = resolve_step_next(root)
+        assert no_proof["status"] == "BLOCKED", no_proof
+        assert no_proof["reasonCode"] == "NO_EXECUTABLE_STEP", no_proof
+        assert any(
+            reason.startswith("dependency-incomplete:STEP-021")
+            for item in no_proof["blockers"] for reason in item["reasons"]
+        ), no_proof
+
+        completed_research = root / "planning/tasks/STEP-021.md"
+        research_text = completed_research.read_text(encoding="utf-8")
+        assert "## Evidence\n\n—" in research_text
+        completed_research.write_text(
+            research_text.replace(
+                "## Evidence\n\n—", "## Evidence\n\n- Synthetic research proof."
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        ready_after_proof = resolve_step_next(root)
+        assert ready_after_proof["status"] == "PASS", ready_after_proof
+        assert ready_after_proof["command"] == "STEP RUN STEP-020", ready_after_proof
+
+        # Missing dependencies and dependency cycles are never executable.
+        reset_steps(root)
+        write_step(root, "STEP-030", depends=["STEP-031"])
+        missing = resolve_step_next(root)
+        assert missing["status"] == "BLOCKED", missing
+        assert any(
+            reason.startswith("dependency-unprovable:STEP-031")
+            for item in missing["blockers"] for reason in item["reasons"]
+        ), missing
+        write_step(root, "STEP-031", depends=["STEP-030"])
+        cycle = resolve_step_next(root)
+        assert cycle["status"] == "BLOCKED", cycle
+        assert any(
+            reason.startswith("dependency-cycle:")
+            for item in cycle["blockers"] for reason in item["reasons"]
+        ), cycle
+
         # ADR STEP owns its linked proposed ADR: requiring accepted before PLAN
         # would create a cyclic prerequisite. Ordinary implementation STEPs
         # remain blocked by the same proposed ADR status.
@@ -352,6 +398,29 @@ def main() -> int:
             root,
             active["rootCommand"],
             active["current"]["command"],
+            "BLOCKED",
+        )
+
+        # Interrupted PLAN is not an exception to dependency gating.
+        # Reading STEP NEXT must not rewrite durable execution state.
+        reset_steps(root)
+        write_step(root, "STEP-040", priority="critical", depends=["STEP-041"])
+        write_step(root, "STEP-041", priority="low")
+        unsafe = start_execution(root, "STEP PLAN STEP-040")
+        state_file = root / ".harness/local/execution/execution-status.json"
+        before = state_file.read_bytes()
+        guarded = resolve_step_next(root)
+        after = state_file.read_bytes()
+        assert before == after, "STEP NEXT mutated execution state"
+        assert guarded["command"] == "STEP RUN STEP-041", guarded
+        assert guarded["selected"]["source"] == "fresh", guarded
+        assert any(
+            item["stepId"] == "STEP-040" for item in guarded["blockers"]
+        ), guarded
+        complete_command(
+            root,
+            unsafe["rootCommand"],
+            unsafe["current"]["command"],
             "BLOCKED",
         )
 
