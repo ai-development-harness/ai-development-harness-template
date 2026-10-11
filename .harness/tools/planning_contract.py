@@ -576,15 +576,24 @@ def plan_content_hash(root: Path, step_id: str) -> str:
     return stable_hash({"implementationPlan": body, "executionGroups": groups})
 
 
-def dependency_completion_failures(root: Path, step_id: str) -> list[str]:
-    """Проверить доказанное завершение всех предшественников STEP.
+def dependency_completion_failures(
+    root: Path,
+    step_id: str,
+    *,
+    proof_cache: dict[str, dict[str, Any]] | None = None,
+    dependency_cache: dict[str, list[str]] | None = None,
+) -> list[str]:
+    """Проверить завершение всех предшественников STEP по durable proof.
 
-    Используется и при подборе следующей задачи, и перед IMPLEMENT.
-    Цикл либо отсутствующий STEP не превращается в разрешение на выполнение.
+    В рамках одного STEP NEXT общие для многих задач доказательства и списки
+    зависимостей читаются один раз. Кэши только на время одного вызова resolver:
+    изменение STEP между вызовами не должно давать устаревший результат.
     """
     failures: list[str] = []
     checked: set[str] = set()
     visiting: set[str] = set()
+    proofs = proof_cache if proof_cache is not None else {}
+    dependencies_by_step = dependency_cache if dependency_cache is not None else {}
 
     def visit(current: str) -> None:
         if current in visiting:
@@ -594,7 +603,9 @@ def dependency_completion_failures(root: Path, step_id: str) -> list[str]:
             return
         visiting.add(current)
         try:
-            dependencies = dependency_ids(read_task(root, current))
+            if current not in dependencies_by_step:
+                dependencies_by_step[current] = dependency_ids(read_task(root, current))
+            dependencies = dependencies_by_step[current]
         except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
             failures.append(f"dependency-unprovable:{current}:{exc}")
             visiting.remove(current)
@@ -605,7 +616,9 @@ def dependency_completion_failures(root: Path, step_id: str) -> list[str]:
                 failures.append(f"dependency-cycle:{dependency}")
                 continue
             try:
-                proof = step_completion_proof(root, dependency)
+                if dependency not in proofs:
+                    proofs[dependency] = step_completion_proof(root, dependency)
+                proof = proofs[dependency]
             except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
                 failures.append(f"dependency-unprovable:{dependency}:{exc}")
             else:
