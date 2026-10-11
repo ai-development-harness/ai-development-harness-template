@@ -880,6 +880,17 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
     normalized = list(structural.get("normalized") or [])
     if normalized == ["HARNESS RESUME"]:
         return resume_dispatch(root)
+    if normalized == ["STEP NEXT"]:
+        # STEP NEXT — чистая рекомендация. Не регистрируем её как execution:
+        # запись operational checkpoint нарушала бы read-only контракт.
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "status": "DONE",
+            "rootCommand": "STEP NEXT",
+            "command": None,
+            "reasonCode": "SINGLE_COMMAND_COMPLETE",
+            "result": resolve_step_next(root),
+        }
 
     # Pending update journal must be recovered before a new APPLY execution is
     # written. Otherwise exact rollback of execution-status would erase the
