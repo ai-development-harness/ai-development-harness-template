@@ -206,6 +206,17 @@ def main() -> int:
         assert dirty["safeToResume"] is False, dirty
         (laptop / "unpublished.txt").unlink()
 
+        # .git/info/exclude скрывает локальный STEP от git status.
+        # Его нельзя показывать как переносимый результат Git-публикации.
+        exclude = laptop / ".git/info/exclude"
+        original_exclude = exclude.read_text(encoding="utf-8")
+        write(exclude, original_exclude + "\nplanning/tasks/STEP-004.md\n")
+        write(laptop / "planning/tasks/STEP-004.md", step("STEP-004"))
+        ignored = repository_recovery_preview(laptop)
+        assert ignored["reasonCode"] == "STEP_NOT_TRACKED", ignored
+        (laptop / "planning/tasks/STEP-004.md").unlink()
+        write(exclude, original_exclude)
+
         # Изменение layout через manifest: старый путь не может оставаться
         # скрытым вторым источником STEP topology.
         custom_manifest = (laptop / ".harness/manifest.yaml").read_text(encoding="utf-8")
@@ -217,9 +228,13 @@ def main() -> int:
             ),
         )
         write(laptop / "custom/steps/STEP-004.md", step("STEP-004"))
+        run(laptop, "git", "config", "user.email", "portable@example.invalid")
+        run(laptop, "git", "config", "user.name", "Portable Fixture")
+        run(laptop, "git", "add", ".harness/manifest.yaml", "custom/steps/STEP-004.md")
+        run(laptop, "git", "commit", "-qm", "custom task layout")
         custom = repository_recovery_preview(laptop)
         assert [item["stepId"] for item in custom["candidates"]] == ["STEP-004"], custom
-        assert custom["reasonCode"] == "WORKTREE_DIRTY", custom
+        assert custom["status"] == "PASS", custom
 
         # Современный Ready plan с неизвестными fingerprints не выглядит
         # доказанным; ошибка не становится правом auto-resume.
