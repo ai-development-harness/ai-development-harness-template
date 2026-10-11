@@ -580,14 +580,17 @@ def dependency_completion_failures(
     root: Path,
     step_id: str,
     *,
+    transitive: bool = True,
     proof_cache: dict[str, dict[str, Any]] | None = None,
     dependency_cache: dict[str, list[str]] | None = None,
 ) -> list[str]:
-    """Доказать завершение всех hard dependencies без рекурсии.
+    """Доказать завершение hard dependencies без рекурсии.
 
-    Проверяет и структуру `depends_on`, и durable completion proof.
-    Все кэши живут только в пределах одного вызова resolver: следующий
-    STEP NEXT заново увидит изменения STEP или Evidence.
+    STEP NEXT проверяет весь DAG (transitive=True). Старый IMPLEMENT gate
+    v0.11.4 проверял только direct depends_on: это правило сохраняем для
+    безопасного обновления проектов с историческими completion baselines.
+    Проверка формата depends_on общая и fail-closed в обоих режимах.
+    Кэши — только на время одного вызова resolver.
     """
     failures: list[str] = []
     checked: set[str] = set()
@@ -647,7 +650,7 @@ def dependency_completion_failures(
                     failures.append(
                         f"dependency-incomplete:{dep}:" + "; ".join(proof["reasons"])
                     )
-            if dep not in checked:
+            if transitive and dep not in checked:
                 stack.append((dep, False))
     return list(dict.fromkeys(failures))
 
@@ -711,7 +714,9 @@ def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
         if item.get("status") == "open":
             failures.append(f"open-question:{item.get('id')}")
 
-    failures.extend(dependency_completion_failures(root, step_id))
+    # Не ужесточаем manual IMPLEMENT при minor upgrade: его контракт из
+    # v0.11.4 требует только direct completion proofs.
+    failures.extend(dependency_completion_failures(root, step_id, transitive=False))
 
     return failures
 
