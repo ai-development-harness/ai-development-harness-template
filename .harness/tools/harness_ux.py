@@ -191,10 +191,16 @@ def harness_resume(root: Path) -> dict[str, Any]:
                 "remediation": selected.get("remediation"),
                 "intent": selected.get("intent") or selected.get("blocker"),
             }
-        # Git-backed fallback допустим только при отсутствии local history.
-        # Нельзя обходить заблокированную execution или потерянный checkpoint.
+        # Переносимый handoff — дополнительная возможность, а не замена
+        # существующей local-only семантики. В проекте с local history или
+        # без опубликованного handoff оставляем прежний ответ API.
         if not items:
-            return portable_resume_candidate(root)
+            portable = portable_resume_candidate(root)
+            if portable.get("reasonCode") not in {
+                "PORTABLE_LOCAL_HISTORY_PRESENT",
+                "NO_RESUMABLE_EXECUTION",
+            }:
+                return portable
         return {
             "status": "BLOCKED",
             "reasonCode": "NO_RESUMABLE_EXECUTION",
