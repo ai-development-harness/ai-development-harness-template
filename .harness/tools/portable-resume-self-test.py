@@ -107,7 +107,34 @@ def test_local_precedence() -> None:
         assert harness_resume(ROOT)["portable"] is True
 
 
+
+def test_dispatch_creates_new_local_plan() -> None:
+    from command_dispatch import resume_dispatch
+    decision = {
+        "status": "PASS",
+        "portable": True,
+        "rootCommand": "STEP PLAN STEP-001",
+        "command": "STEP PLAN STEP-001",
+        "sourceHandoff": "planning/handoffs/STEP-001.json",
+    }
+    started = {
+        "status": "SEMANTIC",
+        "executionId": "exec-new-local",
+        "command": "STEP PLAN STEP-001",
+    }
+    with (
+        patch("command_dispatch.harness_resume", return_value=decision),
+        patch("command_dispatch.start_dispatch", return_value=started) as start,
+        patch("command_dispatch.resolve_root", side_effect=AssertionError("must not resume source execution")),
+    ):
+        result = resume_dispatch(ROOT)
+        start.assert_called_once_with(ROOT, "STEP PLAN STEP-001")
+        assert result["executionId"] == "exec-new-local"
+        assert result["portableAdoption"]["importedExecution"] is False
+        assert result["portableAdoption"]["externalSideEffectsExecuted"] is False
+
 if __name__ == "__main__":
     test_portable_gate()
     test_local_precedence()
+    test_dispatch_creates_new_local_plan()
     print("portable-resume-self-test: PASS")
