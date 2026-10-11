@@ -2051,7 +2051,7 @@ Release Qualification/current всегда использует 20 iterations. �
 2. Git HEAD, текущую ветку и отсутствие незакоммиченных изменений.
 3. Canonical STEP только из `protocol.taskDirectory` (не из захардкоженного `planning/tasks`).
 4. Только STEP со статусом `in_progress`; `planned`, `completed` и прочие статусы не изображаются как прерванная execution.
-5. Для Ready plan — точное сравнение `planning_context_basis` и `plan_content_hash`. Даже `fresh` **не** доказывает выполнение IMPLEMENT, REVIEW или Verification.
+5. Для Ready plan — точное сравнение `planning_context_basis`, `plan_content_hash` и matching immutable planning-review PASS. Даже `fresh` **не** доказывает выполнение IMPLEMENT, REVIEW или Verification.
 6. Отсутствующие/невалидные документы, неизвестные STEP и символические ссылки блокируются; несколько кандидатов перечисляются без автоматического выбора.
 
 CLI не читает `.harness/local/**`, не использует `.harness/.execution-checkpoint-known`, не создаёт новых execution records, не вызывает Git mutations, не выполняет Verification, не переносит Claude/Codex native session.
