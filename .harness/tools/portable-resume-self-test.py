@@ -585,7 +585,46 @@ def test_new_review_must_belong_to_new_execution() -> None:
         assert portable_plan_recheck_proven(ROOT, execution) is True
 
 
+def test_legacy_empty_project_without_published_handoff() -> None:
+    """Не менять прежний ответ HARNESS RESUME для ещё пустого проекта.
+
+    Проверяем не mock, а два публичных пути в реальной копии шаблона:
+    pre-INIT и initialized project без Git repository. В обоих случаях
+    переносимый handoff невозможен и возвращается старый reasonCode.
+    """
+    from command_dispatch import start_dispatch
+
+    with tempfile.TemporaryDirectory(prefix="harness-resume-empty-project-") as tmp:
+        root = Path(tmp)
+        copy_effective_harness_checkout(Path(__file__).resolve().parents[2], root)
+        manifest = root / ".harness/manifest.yaml"
+        original = manifest.read_text(encoding="utf-8")
+        assert "initialized: false" in original
+        assert not (root / ".git").exists()
+
+        expected = {
+            "status": "BLOCKED",
+            "reasonCode": "NO_RESUMABLE_EXECUTION",
+            "executions": [],
+        }
+        assert harness_resume(root) == expected
+        dispatched = start_dispatch(root, "HARNESS RESUME")
+        assert dispatched["status"] == "BLOCKED", dispatched
+        assert dispatched["reasonCode"] == "NO_RESUMABLE_EXECUTION", dispatched
+        assert dispatched["executions"] == [], dispatched
+
+        # Проект может быть помечен initialized, но не являться Git worktree.
+        # Это тоже не разрешение для portable recovery.
+        manifest.write_text(
+            original.replace("initialized: false", "initialized: true", 1),
+            encoding="utf-8",
+        )
+        assert harness_resume(root) == expected
+        assert not (root / ".harness/local/execution/execution-status.json").exists()
+
+
 if __name__ == "__main__":
+    test_legacy_empty_project_without_published_handoff()
     test_new_review_must_belong_to_new_execution()
     test_portable_gate()
     test_local_precedence()
