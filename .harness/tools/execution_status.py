@@ -2254,6 +2254,27 @@ def start_execution(
         current_command,
         baseline,
     )
+    if require_fresh_clone:
+        # Старый Ready PLAN, доставленный через Git, НЕ является доказательством
+        # завершения нового PLAN. Запоминаем его verified immutable report
+        # ДО новой semantic работы, чтобы completion мог отличить новый proof.
+        parsed = normalize_single_command(root, current_command)
+        if parsed.get("domain") != "STEP" or parsed.get("operation") != "PLAN":
+            raise ValueError("portable fresh start only supports STEP PLAN")
+        task = read_planning_task(root, str(parsed["target"]))
+        before_plan = task["frontmatter"].get("plan")
+        if (
+            not isinstance(before_plan, dict)
+            or before_plan.get("status") != "ready"
+            or not isinstance(before_plan.get("reviewed_report"), str)
+            or not isinstance(before_plan.get("revision"), int)
+            or isinstance(before_plan.get("revision"), bool)
+        ):
+            raise ValueError("portable PLAN requires a previously reviewed Ready plan")
+        execution["current"]["context"]["portablePlanProofBefore"] = {
+            "reviewedReport": before_plan["reviewed_report"],
+            "revision": before_plan["revision"],
+        }
     _initialize_progress(root, execution, current_command)
     status["executions"].append(execution)
     save_status(root, status)
@@ -3131,6 +3152,59 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
 
 
 # Попробовать доказать completion running command по durable artifacts и тем самым закрыть crash-window между фактом и local checkpoint.
+def portable_plan_recheck_proven(
+    root: Path,
+    execution: dict[str, Any],
+) -> bool | None:
+    """Canonical proof, что именно НОВАЯ переносимая PLAN прошла review.
+
+    None означает обычную локальную PLAN без portable marker. Для portable
+    False запрещает как crash recovery, так и semantic SUCCESS: старый
+    опубликованный Ready-план не должен становиться новым PASS.
+    """
+    current = execution.get("current")
+    context = current.get("context") if isinstance(current, dict) else None
+    if not isinstance(context, dict) or "portablePlanProofBefore" not in context:
+        return None
+    previous = context["portablePlanProofBefore"]
+    if not isinstance(previous, dict):
+        return False
+    before_report = previous.get("reviewedReport")
+    before_revision = previous.get("revision")
+    if (
+        not isinstance(before_report, str)
+        or not isinstance(before_revision, int)
+        or isinstance(before_revision, bool)
+    ):
+        return False
+    try:
+        parsed = normalize_single_command(root, str(current["command"]))
+        if parsed.get("domain") != "STEP" or parsed.get("operation") != "PLAN":
+            return False
+        step_id = str(parsed["target"])
+        plan = read_planning_task(root, step_id)["frontmatter"].get("plan")
+        if not isinstance(plan, dict) or plan.get("status") != "ready":
+            return False
+        revision = plan.get("revision")
+        reviewed = plan.get("reviewed_report")
+        if (
+            not isinstance(revision, int)
+            or isinstance(revision, bool)
+            or revision <= before_revision
+            or not isinstance(reviewed, str)
+            or not reviewed
+            or reviewed == before_report
+        ):
+            return False
+        matching = latest_matching_planning_review(root, step_id)
+        return (
+            matching is not None
+            and matching["path"].relative_to(root).as_posix() == reviewed
+        )
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError):
+        return False
+
+
 def _durable_recovery_result(
     root: Path,
     execution: dict[str, Any],
@@ -3147,6 +3221,10 @@ def _durable_recovery_result(
         if target:
             try:
                 if plan_info(root, target)["ready"]:
+                    # У portable PLAN старый Ready + старый review уже
+                    # существовали ДО начала текущей execution.
+                    if portable_plan_recheck_proven(root, execution) is False:
+                        return None
                     return "SUCCESS"
             except (OSError, ValueError, FileNotFoundError):
                 return None

@@ -177,3 +177,17 @@ Verification отсутствуют и не могут быть подменен
 локальное выполнение, переносимый запуск блокируется; существующее состояние
 не сбрасывается. Эти гарантии проверяются отдельным двухклоновым тестом
 `portable-resume-self-test.py` с настоящим Git и публичным dispatcher.
+
+### Откуда берётся SUCCESS после portable re-plan
+
+Git уже содержит `Ready` и прежний `PLAN-REVIEW`. Они подтверждают только
+состояние **до** новой локальной invocation. Когда portable `HARNESS RESUME`
+запускает `STEP PLAN`, Execution Status сохраняет `plan.revision` и путь
+`plan.reviewed_report` до semantic работы. Старый review не может закрыть новую
+execution ни через crash recovery, ни по сообщению модели `SUCCESS`.
+
+Для успешного завершения нужны **новая revision** плана и **новый
+независимый immutable planning-review**, подтверждённые штатным
+`latest_matching_planning_review`. Нет нового proof —
+`PORTABLE_PLAN_RECHECK_REQUIRED`, локальное выполнение остаётся незавершённым.
+Это не новый источник истины: используются canonical STEP + PLAN review.

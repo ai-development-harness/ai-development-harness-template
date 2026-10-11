@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 from execution_status import ExecutionCheckpointError, empty_status, load_status, start_execution
 from planning_contract import planning_context_basis, plan_content_hash, latest_matching_planning_review
+from semantic_artifacts import write_plan_draft, write_planning_review
 from portable_handoff import write_handoff
 from self_test_fixture import copy_effective_harness_checkout, isolate_project_artifacts
 from portable_resume import portable_resume_candidate
@@ -312,7 +313,7 @@ Plan is consistent with canonical task.
 
 def test_two_clone_real_dispatch() -> None:
     """Positive path: Git publish -> clone -> real HARNESS RESUME dispatcher."""
-    from command_dispatch import start_dispatch
+    from command_dispatch import start_dispatch, complete_dispatch
 
     with tempfile.TemporaryDirectory(prefix="portable-resume-integration-") as temp:
         root = Path(temp)
@@ -372,10 +373,48 @@ def test_two_clone_real_dispatch() -> None:
         assert local["executions"][0]["current"]["context"]["intentBasis"], local
         assert _git(laptop, "status", "--porcelain") == ""
 
-        # Повторная команда продолжает NEW local PLAN, а не создаёт ещё один root.
-        resumed = start_dispatch(laptop, "HARNESS RESUME")
-        assert resumed.get("executionId") == response["executionId"], resumed
+        # Старый Ready plan НЕ может подтвердить эту только что созданную
+        # локальную PLAN: ни при crash recovery, ни через semantic SUCCESS.
+        local_choice = harness_resume(laptop)
+        assert local_choice["status"] == "PASS", local_choice
+        assert local_choice["executionId"] == response["executionId"], local_choice
+        assert local_choice["command"] == "STEP PLAN STEP-017", local_choice
         assert len(load_status(laptop)["executions"]) == 1
+        premature = complete_dispatch(
+            laptop, "STEP PLAN STEP-017", "STEP PLAN STEP-017",
+            "SUCCESS", execution_id=response["executionId"],
+        )
+        assert premature["status"] == "BLOCKED", premature
+        assert premature["reasonCode"] == "PORTABLE_PLAN_RECHECK_REQUIRED", premature
+        assert load_status(laptop)["executions"][0]["status"] == "running"
+
+        # Обязательная новая semantic PLAN: канонический writer создаёт новый
+        # draft + независимый immutable planning review, после чего stamp Ready.
+        draft = write_plan_draft(laptop, "STEP-017", {
+            "implementationPlan": [{
+                "title": "Inspect existing implementation",
+                "actions": ["Inspect the published implementation against acceptance."],
+                "files": [],
+                "tests": [],
+                "risks": [],
+            }],
+            "verification": [{"kind": "manual", "value": "Inspect published implementation"}],
+        })
+        assert draft["status"] == "PASS", draft
+        reviewed = write_planning_review(laptop, "STEP-017", {
+            "verdict": "pass",
+            "findings": [],
+            "rationale": "The portable STEP remains semantically consistent.",
+        })
+        assert reviewed["status"] == "PASS", reviewed
+        assert reviewed["executionId"] == response["executionId"], reviewed
+        completed = complete_dispatch(
+            laptop, "STEP PLAN STEP-017", "STEP PLAN STEP-017",
+            "SUCCESS", execution_id=response["executionId"],
+        )
+        assert completed["status"] == "DONE", completed
+        assert completed["executionId"] == response["executionId"], completed
+        assert harness_resume(laptop)["reasonCode"] == "NO_RESUMABLE_EXECUTION"
 
         # Новый clone с сохранённым пустым local state НЕ является fresh clone.
         prior = root / "prior-local"

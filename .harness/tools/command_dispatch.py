@@ -37,6 +37,7 @@ from execution_status import (
     load_status,
     resolve_execution,
     normalize_single_command,
+    portable_plan_recheck_proven,
     resolve_root,
     running_command_for,
     stamp_review_expectation,
@@ -1141,6 +1142,25 @@ def complete_dispatch(
         # Lock reentrant: complete_command использует ту же state transaction.
         with execution_state_lock(root):
             completed_route = route_command(root, command)
+            if (
+                result in {"SUCCESS", "PASS"}
+                and completed_route.get("domain") == "STEP"
+                and completed_route.get("operation") == "PLAN"
+            ):
+                live = _active_execution(root, root_command)
+                if (
+                    live is not None
+                    and live.get("executionId") == execution_id
+                    and portable_plan_recheck_proven(root, live) is False
+                ):
+                    return {
+                        "schemaVersion": SCHEMA_VERSION,
+                        "status": "BLOCKED",
+                        "rootCommand": root_command,
+                        "command": command,
+                        "reasonCode": "PORTABLE_PLAN_RECHECK_REQUIRED",
+                        "message": "New independent planning review has not been proven",
+                    }
             if (
                 result in {"SUCCESS", "PASS"}
                 and completed_route.get("domain") == "STEP"
