@@ -271,7 +271,7 @@ def main() -> int:
 
         adr_next = resolve_step_next(root)
         assert adr_next["status"] == "PASS", adr_next
-        assert adr_next["command"] == "STEP PLAN STEP-011", adr_next
+        assert adr_next["command"] == "STEP RUN STEP-011", adr_next
 
         # Same priority: a STEP that unlocks more downstream active work wins.
         reset_steps(root)
