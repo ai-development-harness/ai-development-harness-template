@@ -361,15 +361,21 @@ def step_completion_proof(
     *,
     extra_legacy_review_pins: dict[str, str] | None = None,
     _ancestors: frozenset[str] = frozenset(),
+    _proof_cache: dict[tuple[str, frozenset[str] | None], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Вернуть type-specific proof prerequisite completion.
 
     Это structural proof. review_contract.py дополнительно доказывает корректность
     самого immutable report и reviewed revision.
     """
-    # Proof может рекурсивно проверять transitive depends_on. Циклический
-    # граф никогда не считается успешно завершённым и не вызывает recursion
-    # overflow. Проверка не изменяет completed lifecycle или history reports.
+    # Кеш живёт только в пределах одной проверки. PASS proofs не зависят
+    # от пути обхода, поэтому могут переиспользоваться в DAG; BLOCKED proofs
+    # сохраняют конкретный путь (не скрываем dependency-cycle).
+    # Файлового state или второго источника истины здесь нет.
+    if _proof_cache is None:
+        _proof_cache = {}
+
+    # Back-edge важнее кеша: цикл не превращается в ложный PASS.
     if step_id in _ancestors:
         reasons = [f"dependency-cycle:{step_id}"]
         snapshot = {
@@ -380,6 +386,12 @@ def step_completion_proof(
             "complete": False, "reasons": reasons,
             "snapshot": snapshot, "proof_hash": stable_hash(snapshot),
         }
+
+    cached = _proof_cache.get((step_id, None))
+    if cached is None:
+        cached = _proof_cache.get((step_id, _ancestors))
+    if cached is not None:
+        return cached
 
     task = read_task(root, step_id)
     meta = task["frontmatter"]
@@ -473,6 +485,8 @@ def step_completion_proof(
                 else:
                     current_deps = dependency_completion_basis(
                         root, step_id, _ancestors=_ancestors,
+                        _proof_cache=_proof_cache,
+                        extra_legacy_review_pins=extra_legacy_review_pins,
                     )
                     if current_deps != reviewed_deps:
                         reasons.append(f"completion-dependency-proof-stale:{step_id}")
@@ -508,6 +522,7 @@ def step_completion_proof(
                     dep_id,
                     extra_legacy_review_pins=extra_legacy_review_pins,
                     _ancestors=ancestry,
+                    _proof_cache=_proof_cache,
                 )
             except (OSError, ValueError) as exc:
                 reasons.append(f"dependency-unprovable:{dep_id}:{exc}")
@@ -525,12 +540,16 @@ def step_completion_proof(
         "evidence_hash": content_hash(task["sections"].get("Evidence", "")),
         "reasons": reasons,
     }
-    return {
+    proof = {
         "complete": not reasons,
         "reasons": reasons,
         "snapshot": snapshot,
         "proof_hash": stable_hash(snapshot),
     }
+    # PASS можно переиспользовать независимо от маршрута; у BLOCKED результат
+    # зависит от ancestry и должен содержать честную причину сбоя.
+    _proof_cache[(step_id, None if proof["complete"] else _ancestors)] = proof
+    return proof
 
 
 def dependency_completion_basis(
@@ -538,6 +557,8 @@ def dependency_completion_basis(
     step_id: str,
     *,
     _ancestors: frozenset[str] = frozenset(),
+    _proof_cache: dict[tuple[str, frozenset[str] | None], dict[str, Any]] | None = None,
+    extra_legacy_review_pins: dict[str, str] | None = None,
 ) -> str | None:
     """Durable fingerprint upstream completion proofs at REVIEW time.
 
@@ -551,11 +572,15 @@ def dependency_completion_basis(
     dependencies = sorted(set(dependency_ids(task)))
     if not dependencies:
         return None
+    if _proof_cache is None:
+        _proof_cache = {}
     records: list[dict[str, Any]] = []
     for dep_id in dependencies:
         try:
             proof = step_completion_proof(
                 root, dep_id, _ancestors=_ancestors | {step_id},
+                _proof_cache=_proof_cache,
+                extra_legacy_review_pins=extra_legacy_review_pins,
             )
         except (OSError, ValueError) as exc:
             records.append({"step": dep_id, "status": "unprovable", "reason": str(exc)})
