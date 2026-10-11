@@ -13,7 +13,9 @@ import subprocess
 from typing import Any
 
 from harness_config import get, load_manifest, task_directory
+from document_contract import STEP_STATUSES, STEP_TYPES, exact_h1, require_schema
 from planning_contract import (
+    REQUIRED_TASK_SECTIONS,
     latest_matching_planning_review,
     plan_content_hash,
     planning_context_basis,
@@ -82,6 +84,24 @@ def _candidate(root: Path, step_id: str) -> dict[str, Any] | None:
     if meta.get("id") != step_id:
         raise RepositoryRecoveryError(
             "STEP_ID_MISMATCH", f"{step_id}: document ID differs from filename",
+        )
+
+    # Parser подтверждает синтаксис, но не обязательные schema/sections.
+    # Не называем повреждённый STEP "просто не in_progress": ошибка в
+    # проектных данных должна оставаться видимой, даже для полного scan.
+    invalid = require_schema(task)
+    if not exact_h1(task, step_id):
+        invalid.append("invalid STEP H1")
+    if meta.get("status") not in STEP_STATUSES:
+        invalid.append("invalid STEP status")
+    if meta.get("type") not in STEP_TYPES:
+        invalid.append("invalid STEP type")
+    for title in REQUIRED_TASK_SECTIONS:
+        if title not in task["sections"]:
+            invalid.append(f"missing required section: {title}")
+    if invalid:
+        raise RepositoryRecoveryError(
+            "STEP_CONTRACT_INVALID", f"{step_id}: " + "; ".join(invalid),
         )
     if meta.get("status") != "in_progress":
         return None
