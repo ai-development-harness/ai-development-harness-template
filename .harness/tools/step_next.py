@@ -28,6 +28,7 @@ from planning_contract import (
     canonical_adr_path,
     dependency_ids,
     implementation_prerequisite_failures,
+    dependency_completion_failures,
     read_task,
     relevant_open_questions,
 )
@@ -329,6 +330,13 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         step_id = _step_id_from_execution(item)
         if step_id is None or step_id not in tasks:
             continue
+        try:
+            dependency_failures = dependency_completion_failures(root, step_id)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            dependency_failures = [f"dependency-state-invalid:{exc}"]
+        if dependency_failures:
+            blocked.append({"stepId": step_id, "reasons": dependency_failures})
+            continue
         # Multiple local records for one STEP should not multiply candidates.
         if step_id in seen_execution_steps:
             continue
@@ -353,6 +361,13 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
             continue
         task = tasks[step_id]
         try:
+            dependency_failures = dependency_completion_failures(root, step_id)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            dependency_failures = [f"dependency-state-invalid:{exc}"]
+        if dependency_failures:
+            blocked.append({"stepId": step_id, "reasons": dependency_failures})
+            continue
+        try:
             command, reasons = _fresh_command(root, step_id, task)
         except (OSError, ValueError) as exc:
             blocked.append({"stepId": step_id, "reasons": [str(exc)]})
@@ -360,11 +375,22 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         if command is None:
             blocked.append({"stepId": step_id, "reasons": reasons})
             continue
+        # STEP NEXT selects a whole executable unit, not speculative PLAN.
+        # The internal action remains available to STEP RUN and explicit commands.
+        if command.startswith("STEP IMPLEMENT "):
+            pass  # _fresh_command already checked Ready-plan prerequisites.
+        elif command.startswith("STEP FIX "):
+            pass  # An exact FAIL review is actionable through STEP RUN.
+        elif command.startswith("STEP PLAN "):
+            pass  # Planning gates passed; dependency gate already passed above.
+        else:
+            blocked.append({"stepId": step_id, "reasons": ["unsupported-next-action"]})
+            continue
         candidates.append(
             _candidate(
                 step_id=step_id,
                 task=task,
-                command=command,
+                command=f"STEP RUN {step_id}",
                 source="fresh",
                 lifecycle=str(task["frontmatter"].get("status")),
                 downstream=downstream[step_id],
@@ -410,8 +436,10 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         "selected": selected,
         "eligibleCount": len(ranked),
         "blockedCount": len(blocked),
+        "blockers": blocked[:10],
         "alternatives": ranked[1:5],
         "rankingPolicy": [
+            "dependency-completion-gate",
             "resume-existing-execution",
             "in-progress-before-planned",
             "priority-critical-high-medium-low",
