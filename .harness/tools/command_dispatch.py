@@ -883,13 +883,17 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
     if normalized == ["STEP NEXT"]:
         # STEP NEXT — чистая рекомендация. Не регистрируем её как execution:
         # запись operational checkpoint нарушала бы read-only контракт.
+        result = resolve_step_next(root)
+        passed = result.get("status") == "PASS"
         return {
             "schemaVersion": SCHEMA_VERSION,
-            "status": "DONE",
+            "status": "DONE" if passed else "BLOCKED",
             "rootCommand": "STEP NEXT",
             "command": None,
-            "reasonCode": "SINGLE_COMMAND_COMPLETE",
-            "result": resolve_step_next(root),
+            "reasonCode": (
+                "SINGLE_COMMAND_COMPLETE" if passed else result.get("reasonCode")
+            ),
+            "result": result,
         }
 
     # Pending update journal must be recovered before a new APPLY execution is
