@@ -234,6 +234,19 @@ def main() -> int:
         assert stale["candidates"][0]["reasonCode"] == "PLAN_BASIS_STALE", stale
         assert stale["safeToResume"] is False, stale
 
+        # Missing REQ на неготовом STEP тоже является blocker: нельзя
+        # объявить документ переносимым без разрешения canonical links.
+        valid = target.read_text(encoding="utf-8")
+        write(
+            target,
+            valid.replace(
+                "requirements: []", "requirements:\n  - REQ-999", 1
+            ),
+        )
+        missing_ref = repository_recovery_preview(laptop)
+        assert missing_ref["reasonCode"] == "STEP_REFERENCES_UNPROVEN", missing_ref
+        write(target, valid)
+
         # Schema-invalid, но синтаксически читаемый STEP тоже не может
         # исчезнуть как "не in_progress" или стать RESUME-кандидатом.
         valid = target.read_text(encoding="utf-8")
