@@ -236,6 +236,19 @@ def main() -> int:
         assert [item["stepId"] for item in custom["candidates"]] == ["STEP-004"], custom
         assert custom["status"] == "PASS", custom
 
+        # Два published in_progress STEP не дают права выбрать один
+        # молча, даже при полностью чистом рабочем дереве.
+        write(laptop / "custom/steps/STEP-006.md", step("STEP-006"))
+        run(laptop, "git", "add", "custom/steps/STEP-006.md")
+        run(laptop, "git", "commit", "-qm", "second in-progress candidate")
+        multiple = repository_recovery_preview(laptop)
+        assert multiple["status"] == "PASS", multiple
+        assert multiple["reasonCode"] == "MULTIPLE_RECOVERY_CANDIDATES", multiple
+        assert [item["stepId"] for item in multiple["candidates"]] == [
+            "STEP-004", "STEP-006",
+        ], multiple
+        assert multiple["safeToResume"] is False, multiple
+
         # Современный Ready plan с неизвестными fingerprints не выглядит
         # доказанным; ошибка не становится правом auto-resume.
         target = laptop / "custom/steps/STEP-004.md"
