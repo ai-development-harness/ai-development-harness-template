@@ -434,6 +434,33 @@ def test_two_clone_real_dispatch() -> None:
         assert completed["executionId"] == response["executionId"], completed
         assert harness_resume(laptop)["reasonCode"] == "NO_RESUMABLE_EXECUTION"
 
+        # Новый Ready plan НЕ должен сам по себе запускать IMPLEMENT/REVIEW.
+        # Обычный STEP resolver лишь предлагает следующий этап после PLAN.
+        from step_next import resolve_step_action
+        next_step = resolve_step_action(laptop, "STEP-017")
+        assert next_step["status"] == "PASS", next_step
+        assert next_step["command"] == "STEP IMPLEMENT STEP-017", next_step
+        assert not any(
+            item["rootCommand"].startswith(("STEP IMPLEMENT", "STEP REVIEW"))
+            for item in load_status(laptop)["executions"]
+        )
+
+        # Явный IMPLEMENT после нового PLAN использует штатный local recovery,
+        # а отсутствие на ноутбуке manual Verification НЕ становится PASS.
+        implement = start_dispatch(laptop, "STEP IMPLEMENT STEP-017")
+        assert implement["status"] == "SEMANTIC", implement
+        local_implement = harness_resume(laptop)
+        assert local_implement["status"] == "PASS", local_implement
+        assert local_implement["executionId"] == implement["executionId"]
+        assert local_implement.get("portable") is not True
+        missing_verification = complete_dispatch(
+            laptop, "STEP IMPLEMENT STEP-017", "STEP IMPLEMENT STEP-017",
+            "SUCCESS", execution_id=implement["executionId"],
+        )
+        assert missing_verification["status"] != "DONE", missing_verification
+        assert missing_verification["reasonCode"].startswith("VERIFICATION_"), missing_verification
+        assert load_status(laptop)["executions"][-1]["status"] == "running"
+
         # Новый clone с сохранённым пустым local state НЕ является fresh clone.
         prior = root / "prior-local"
         _git(root, "clone", "-q", "--branch", "main", str(origin), str(prior))
