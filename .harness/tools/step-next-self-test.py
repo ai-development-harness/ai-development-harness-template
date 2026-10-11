@@ -482,6 +482,34 @@ def main() -> int:
         assert phase_next["command"] == "STEP RUN STEP-067", phase_next
         assert any(item["stepId"] == "STEP-066" for item in phase_next["blockers"]), phase_next
 
+        # PROJECT STATUS должен брать тот же результат, без второго ranking.
+        reset_steps(root)
+        write_step(root, "STEP-068", priority="low")
+        write_step(root, "STEP-069", priority="critical", depends=["STEP-068"])
+        canonical_next = resolve_step_next(root)
+        original_write_projections = harness_ux_module.write_projections
+        original_run = harness_ux_module._run
+        try:
+            harness_ux_module.write_projections = lambda _root: []
+            harness_ux_module._run = lambda *_args, **_kwargs: {
+                "ok": True, "code": 0, "stdout": "PASS", "stderr": "",
+            }
+            status = harness_ux_module.project_status(root)
+        finally:
+            harness_ux_module.write_projections = original_write_projections
+            harness_ux_module._run = original_run
+        assert status["status"] == "PASS", status
+        assert status["nextWork"]["command"] == canonical_next["command"], status
+        assert status["nextWork"]["command"] == "STEP RUN STEP-068", status
+
+        # Даже отрицательная read-only рекомендация не создаёт execution.
+        reset_steps(root)
+        before_empty = tracked_operational_snapshot(root)
+        empty_dispatch = start_dispatch(root, "STEP NEXT")
+        assert empty_dispatch["status"] == "BLOCKED", empty_dispatch
+        assert empty_dispatch["result"]["reasonCode"] == "NO_EXECUTABLE_STEP", empty_dispatch
+        assert tracked_operational_snapshot(root) == before_empty
+
         assert_deep_dependency_graph(root)
         assert_readonly_review_recovery(root)
 
