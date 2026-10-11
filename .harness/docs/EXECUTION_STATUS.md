@@ -72,13 +72,13 @@ read v1
 → atomic replace
 ```
 
-`PROJECT RECONCILE` в этой миграции **не участвует**: это local runtime state, а не project-owned document schema.
+`PROJECT RECONCILE` в этой миграции **не участвует**: это local runtime state, а не project-owned document schema. При read-only просмотре (`STEP NEXT`/`unresolved_executions(..., mutate=False)`) шаги validate/compact происходят **только в памяти**: lock-файл не создаётся и v1 JSON не переписывается. Первый записывающий вызов выполняет обычный atomic migration под межпроцессной блокировкой.
 
 Migration сохраняет running state, latest operational blocked state, implementation baseline и optional command-specific `current.details` для recent terminal handoff. Legacy v1 details, которые превышают current 16 KiB budget, не truncate-ятся: migration fail-closed и оставляет исходный v1 byte-for-byte прежним. Superseded historical blocked/completed records превращаются в bounded tombstones. Повреждённый или неизвестный old schema, включая несовпадающие `stepRecovery` key/baseline identity, fail-closed: исходный файл не заменяется пустым state.
 
 ## Execution record
 
-Каждый явный запуск пользователя создаёт независимую execution record.
+Обычно явный запуск пользователя создаёт независимую execution record. Исключения: read-only `STEP NEXT` не регистрирует execution и не меняет local state, а `HARNESS RESUME` продолжает уже существующую запись вместо создания новой.
 
 Пример single command:
 
