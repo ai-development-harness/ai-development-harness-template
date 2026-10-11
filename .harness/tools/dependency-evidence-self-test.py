@@ -391,6 +391,55 @@ def main() -> int:
             write(root, "planning/reviews/STEP-003/REVIEW-new.md", "New child review.\n")
             assert step_completion_proof(root, "STEP-003")["complete"]
 
+    # Длинная линейная цепочка должна вычисляться без экспоненциального
+    # повторного чтения одних и тех же STEP. До кеша каждый узел обходился
+    # дважды (basis + prerequisite), приводя к ~2**depth вызовам.
+    with tempfile.TemporaryDirectory(prefix="harness-dependency-depth-") as tmp:
+        root = Path(tmp)
+        write(root, ".harness/manifest.yaml", MANIFEST)
+        depth = 12
+        for number in range(1, depth + 1):
+            step_id, req_id = f"STEP-{number:03d}", f"REQ-{number:03d}"
+            parent = f"STEP-{number - 1:03d}" if number > 1 else None
+            write(root, f"docs/requirements/{req_id}-fixture.md",
+                  requirement(step_id, req_id))
+            write(root, f"planning/tasks/{step_id}.md", step(step_id, req_id, parent))
+            write(root, f"planning/reviews/{step_id}/REVIEW-proof.md",
+                  "Original REVIEW.\n")
+
+        plan_basis = {
+            f"STEP-{number:03d}": planning_context_basis(root, f"STEP-{number:03d}")
+            for number in range(1, depth + 1)
+        }
+        dependency_bases: dict[str, str] = {}
+
+        def trusted_deep(_root: Path, step_id: str, **_kwargs):
+            meta = {"contract_basis": plan_basis[step_id]}
+            if step_id in dependency_bases:
+                meta["dependency_completion_basis"] = dependency_bases[step_id]
+            return {
+                "path": root / f"planning/reviews/{step_id}/REVIEW-proof.md",
+                "verdict": "PASS",
+                "document": {"frontmatter": meta},
+            }
+
+        with patch("review_contract.latest_trusted_review", side_effect=trusted_deep):
+            for number in range(2, depth + 1):
+                step_id = f"STEP-{number:03d}"
+                dependency_bases[step_id] = dependency_completion_basis(root, step_id)
+
+            # Считаем реальные чтения canonical task, а не время выполнения:
+            # результат не зависит от нагрузки на CI runner или платформы.
+            import planning_contract
+
+            with patch("planning_contract.read_task", wraps=planning_contract.read_task) as spy:
+                deepest = step_completion_proof(root, f"STEP-{depth:03d}")
+            assert deepest["complete"], deepest
+            assert spy.call_count < 120, (
+                f"completion proof revisited task files {spy.call_count} times "
+                f"for a {depth}-step chain"
+            )
+
     print("DEPENDENCY EVIDENCE ENFORCEMENT SELF-TEST: PASS")
     return 0
 
