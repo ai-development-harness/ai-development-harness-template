@@ -1424,6 +1424,22 @@ def main() -> int:
             json.dumps(legacy_state, ensure_ascii=False, indent=2) + "\n",
         )
 
+        # STEP NEXT / HARNESS STATUS обязаны прочитать старый v1 snapshot
+        # без автоматической миграции и создания нового lock-файла.
+        legacy_bytes = migration_state_path.read_bytes()
+        migration_lock = migration_root / ".harness/local/execution/execution-status.lock"
+        assert not migration_lock.exists(), migration_lock
+        readonly_migration = load_status(migration_root, read_only=True)
+        assert readonly_migration["schemaVersion"] == 2, readonly_migration
+        readonly_unresolved = unresolved_executions(migration_root, mutate=False)
+        assert any(
+            item["rootCommand"] == "HARNESS CONFIG"
+            and item["status"] == "RESUME"
+            for item in readonly_unresolved
+        ), readonly_unresolved
+        assert migration_state_path.read_bytes() == legacy_bytes
+        assert not migration_lock.exists(), migration_lock
+
         migrated = load_status(migration_root)
         assert migrated["schemaVersion"] == 2, migrated
         assert migrated["nextOrdinal"] == 7, migrated
