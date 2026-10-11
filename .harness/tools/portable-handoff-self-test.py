@@ -210,6 +210,16 @@ def main() -> int:
         bad = check_handoff(laptop, "STEP-017")
         assert bad["reasonCode"] == "HANDOFF_SCHEMA_INVALID", bad
 
+        # Python bool — наследник int, но версия схемы должна быть
+        # именно целочисленной. True нельзя читать как schemaVersion=1.
+        record.pop("nativeSessionId")
+        record["schemaVersion"] = True
+        write(handoff_path, json.dumps(record, indent=2, sort_keys=True) + "\n")
+        run(laptop, "git", "add", restored["path"])
+        run(laptop, "git", "commit", "-qm", "boolean schema fixture")
+        invalid_version = check_handoff(laptop, "STEP-017")
+        assert invalid_version["reasonCode"] == "HANDOFF_SCHEMA_INVALID", invalid_version
+
     print("PORTABLE HANDOFF SELF-TEST: PASS")
     return 0
 
