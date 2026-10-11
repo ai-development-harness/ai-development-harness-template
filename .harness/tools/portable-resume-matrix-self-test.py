@@ -356,7 +356,9 @@ def test_schema_and_traversal(root: Path, origin: Path) -> None:
     bad_id = clone(root, origin, "bad-step-id")
     invalid = check_handoff(bad_id, "STEP-../secret")
     assert invalid["status"] == "BLOCKED", invalid
-    assert invalid["reasonCode"] == "INVALID_STEP_ID", invalid
+    # Public checker wraps the repository diagnostic; preserve inner code.
+    assert invalid["reasonCode"] == "REPOSITORY_STATE_INVALID", invalid
+    assert "INVALID_STEP_ID" in invalid["message"], invalid
 
     unsafe = clone(root, origin, "symlink-path")
     file = unsafe / "planning/handoffs/STEP-017.json"
