@@ -272,6 +272,50 @@ def check_handoff(root: Path, step_id: str) -> dict[str, Any]:
             raise PortableHandoffError("HANDOFF_STEP_CHANGED", "task Git object changed")
         if record["facts"] != _canonical_facts(root, step_id):
             raise PortableHandoffError("HANDOFF_CONTRACT_STALE", "STEP/REQ/ADR/PLAN context changed")
+
+        # Handoff не является distributed lease. Если с момента его публикации
+        # появился ещё один commit (даже без изменения STEP/REQ/ADR), старый
+        # снимок не должен разрешать работу поверх нового product code.
+        # Поэтому HEAD обязан быть самим publication commit, а его единственным
+        # parent — снимок Git перед writer. Никаких wall-clock/latest heuristics.
+        parents = _git(root, "rev-list", "--parents", "-n", "1", "HEAD").decode("ascii").split()
+        if (
+            len(parents) != 2
+            or parents[0] != git["head"]
+            or parents[1] != source["gitHeadBeforeHandoff"]
+        ):
+            raise PortableHandoffError(
+                "HANDOFF_OUTDATED",
+                "HEAD is not the exact handoff publication commit; publish a new handoff",
+            )
+
+        # Writer работает только с clean repository. Publication commit также
+        # не может незаметно захватить новые product changes в один Git commit
+        # с handoff: тогда сохранённые до commit semantic facts были бы stale.
+        changed = [
+            name.decode("utf-8", errors="surrogateescape")
+            for name in _git(root, "diff-tree", "--no-commit-id", "--name-only",
+                             "-r", "-z", "HEAD").split(b"\0")
+            if name
+        ]
+        if changed != [rel]:
+            raise PortableHandoffError(
+                "HANDOFF_PUBLICATION_MIXED",
+                "publication commit must change only this handoff file",
+            )
+
+        # Git status может не заметить изменения в файлах с assume-unchanged.
+        # Сравниваем реальный payload с blob текущего HEAD: подмена локального
+        # JSON не должна проходить из-за флагов Git index.
+        published = _git(root, "show", f"HEAD:{rel}")
+        if json.loads(published) != record:
+            raise PortableHandoffError(
+                "HANDOFF_WORKTREE_MISMATCH",
+                "handoff working-tree content differs from published Git object",
+            )
+        if _git(root, "rev-parse", "--verify", "HEAD").decode("ascii") != git["head"]:
+            raise PortableHandoffError("HANDOFF_HEAD_CHANGED", "HEAD moved during validation")
+
         return {
             "schemaVersion": SCHEMA_VERSION,
             "status": "PASS",
@@ -279,6 +323,7 @@ def check_handoff(root: Path, step_id: str) -> dict[str, Any]:
             "stepId": step_id,
             "path": rel,
             "sourceGitHead": source["gitHeadBeforeHandoff"],
+            "publicationHead": git["head"],
             "safeToResume": False,
             "nextCommand": None,
             "localExecutionImported": False,
