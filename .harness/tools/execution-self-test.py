@@ -1428,7 +1428,9 @@ def main() -> int:
         # без автоматической миграции и создания нового lock-файла.
         legacy_bytes = migration_state_path.read_bytes()
         migration_lock = migration_root / ".harness/local/execution/execution-status.lock"
-        assert not migration_lock.exists(), migration_lock
+        previous_lock = (
+            migration_lock.read_bytes() if migration_lock.is_file() else None
+        )
         readonly_migration = load_status(migration_root, read_only=True)
         assert readonly_migration["schemaVersion"] == 2, readonly_migration
         readonly_unresolved = unresolved_executions(migration_root, mutate=False)
@@ -1438,7 +1440,17 @@ def main() -> int:
             for item in readonly_unresolved
         ), readonly_unresolved
         assert migration_state_path.read_bytes() == legacy_bytes
-        assert not migration_lock.exists(), migration_lock
+        # Существовавший lock сохраняется побайтно; новый не создаётся.
+        assert (
+            migration_lock.read_bytes() if migration_lock.is_file() else None
+        ) == previous_lock
+        # Пустой новый workspace вообще не получает локальный каталог.
+        empty_readonly = migration_root / ".empty-readonly-check"
+        empty_readonly.mkdir()
+        assert not (empty_readonly / ".harness").exists()
+        assert load_status(empty_readonly, read_only=True)["schemaVersion"] == 2
+        assert unresolved_executions(empty_readonly, mutate=False) == []
+        assert not (empty_readonly / ".harness").exists()
 
         migrated = load_status(migration_root)
         assert migrated["schemaVersion"] == 2, migrated
