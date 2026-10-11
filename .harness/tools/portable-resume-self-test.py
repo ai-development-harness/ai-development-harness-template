@@ -157,7 +157,7 @@ def test_dispatch_creates_new_local_plan() -> None:
     with (
         patch("command_dispatch.harness_resume", return_value=decision),
         patch("command_dispatch.start_dispatch", return_value=started) as start,
-        patch("command_dispatch.portable_resume_candidate", return_value=decision),
+        patch("portable_resume.portable_resume_candidate", return_value=decision),
         patch("command_dispatch.resolve_root", side_effect=AssertionError("must not resume source execution")),
     ):
         result = resume_dispatch(ROOT)
@@ -389,7 +389,12 @@ def test_two_clone_real_dispatch() -> None:
             rejected = start_dispatch(prior, "HARNESS RESUME")
             # The patched selection still must hit the atomic fresh state guard.
             assert rejected["status"] == "BLOCKED", rejected
-            assert rejected["reasonCode"] == "EXECUTION_STATE_INCOMPATIBLE", rejected
+            assert rejected["reasonCode"] == "PORTABLE_LOCAL_HISTORY_PRESENT", rejected
+        # Проверяем и сам атомарный guard, если local state появился
+        # уже ПОСЛЕ read-only проверки handoff, перед start_execution.
+        atomic = start_dispatch(prior, "STEP PLAN STEP-017", require_fresh_clone=True)
+        assert atomic["status"] == "BLOCKED", atomic
+        assert atomic["reasonCode"] == "EXECUTION_STATE_INCOMPATIBLE", atomic
         assert load_status(prior)["executions"] == []
 
         # Uncommitted files and diverged branch cannot provide adoption proof.
