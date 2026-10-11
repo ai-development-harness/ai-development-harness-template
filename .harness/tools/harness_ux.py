@@ -25,6 +25,7 @@ from harness_config import (
     task_directory,
 )
 from planning_contract import read_task
+from portable_resume import portable_resume_candidate
 from projection_contract import write_projections
 from review_contract import latest_review
 from step_next import resolve_step_next
@@ -190,6 +191,16 @@ def harness_resume(root: Path) -> dict[str, Any]:
                 "remediation": selected.get("remediation"),
                 "intent": selected.get("intent") or selected.get("blocker"),
             }
+        # Переносимый handoff — дополнительная возможность, а не замена
+        # существующей local-only семантики. В проекте с local history или
+        # без опубликованного handoff оставляем прежний ответ API.
+        if not items:
+            portable = portable_resume_candidate(root)
+            if portable.get("reasonCode") not in {
+                "PORTABLE_LOCAL_HISTORY_PRESENT",
+                "NO_RESUMABLE_EXECUTION",
+            }:
+                return portable
         return {
             "status": "BLOCKED",
             "reasonCode": "NO_RESUMABLE_EXECUTION",

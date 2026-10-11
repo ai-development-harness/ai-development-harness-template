@@ -37,6 +37,7 @@ from execution_status import (
     load_status,
     resolve_execution,
     normalize_single_command,
+    portable_plan_recheck_proven,
     resolve_root,
     running_command_for,
     stamp_review_expectation,
@@ -865,8 +866,13 @@ def _dispatch_running(
     )
 
 
-def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
-    """Начать explicit user command и вернуть result либо semantic handoff."""
+def start_dispatch(
+    root: Path,
+    raw_command: str,
+    *,
+    require_fresh_clone: bool = False,
+) -> dict[str, Any]:
+    """Начать explicit command; portable mode разрешён только для нового STEP PLAN."""
     table = _table(root)
     structural = validate_command_text(raw_command, table)
     if not structural.get("valid"):
@@ -878,6 +884,16 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
         }
 
     normalized = list(structural.get("normalized") or [])
+    if require_fresh_clone:
+        # Portable Resume не может стать обходом CTS либо запускать mutation
+        # других namespaces с подменённым аргументом.
+        command = parse_canonical_command(normalized[0], table) if len(normalized) == 1 else {}
+        if command.get("domain") != "STEP" or command.get("operation") != "PLAN":
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "BLOCKED",
+                "reasonCode": "PORTABLE_COMMAND_NOT_ALLOWED",
+            }
     if normalized == ["HARNESS RESUME"]:
         return resume_dispatch(root)
 
@@ -919,7 +935,9 @@ def start_dispatch(root: Path, raw_command: str) -> dict[str, Any]:
             }
 
     try:
-        execution = start_execution(root, raw_command)
+        execution = start_execution(
+            root, raw_command, require_fresh_clone=require_fresh_clone,
+        )
     except (OSError, ValueError) as exc:
         value = {
             "schemaVersion": SCHEMA_VERSION,
@@ -1127,6 +1145,25 @@ def complete_dispatch(
             if (
                 result in {"SUCCESS", "PASS"}
                 and completed_route.get("domain") == "STEP"
+                and completed_route.get("operation") == "PLAN"
+            ):
+                live = _active_execution(root, root_command)
+                if (
+                    live is not None
+                    and live.get("executionId") == execution_id
+                    and portable_plan_recheck_proven(root, live) is False
+                ):
+                    return {
+                        "schemaVersion": SCHEMA_VERSION,
+                        "status": "BLOCKED",
+                        "rootCommand": root_command,
+                        "command": command,
+                        "reasonCode": "PORTABLE_PLAN_RECHECK_REQUIRED",
+                        "message": "New independent planning review has not been proven",
+                    }
+            if (
+                result in {"SUCCESS", "PASS"}
+                and completed_route.get("domain") == "STEP"
                 and completed_route.get("operation") in {"IMPLEMENT", "FIX"}
             ):
                 fresh = verification_freshness(root, str(completed_route["target"]))
@@ -1248,6 +1285,35 @@ def resume_dispatch(
                 **selection,
             }
         root_command = str(selection["rootCommand"])
+        if selection.get("portable") is True:
+            # Между read-only выбором и dispatch Git мог измениться. Проверяем
+            # published handoff второй раз; старый executionId не импортируем.
+            from portable_resume import portable_resume_candidate
+
+            current = portable_resume_candidate(root)
+            if (
+                current.get("status") != "PASS"
+                or current.get("command") != root_command
+                or current.get("sourceHandoff") != selection.get("sourceHandoff")
+            ):
+                return {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "status": "BLOCKED",
+                    "reasonCode": current.get("reasonCode", "PORTABLE_HANDOFF_CHANGED"),
+                    "message": "Portable handoff changed before execution start",
+                }
+            # Сохраняем local-only authority: exact fresh-clone check выполняется
+            # под execution state lock, одновременно с записью новой invocation.
+            result = start_dispatch(root, root_command, require_fresh_clone=True)
+            if result.get("status") != "SEMANTIC":
+                return result
+            result["portableAdoption"] = {
+                "sourceHandoff": current["sourceHandoff"],
+                "reasonCode": "PORTABLE_REPLAN_REQUIRED",
+                "importedExecution": False,
+                "externalSideEffectsExecuted": False,
+            }
+            return result
 
     resolved = resolve_root(root, root_command)
     if resolved.get("status") not in {"RESUME", "NEXT"} or not resolved.get("command"):

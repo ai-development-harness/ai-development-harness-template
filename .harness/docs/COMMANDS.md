@@ -47,13 +47,18 @@ python3 .harness/tools/harness-ux.py status --json
 <a id="command-harness-resume"></a>
 ## `HARNESS RESUME`
 
-Продолжает единственное незавершённое выполнение, которое можно безопасно возобновить. Для interrupted `STEP PLAN/IMPLEMENT/REVIEW/FIX` сначала проверяет durable Intent Basis, затем bounded Progress Guard. Stale REQ/ADR/STEP/Project Principle/Ready plan блокируется intent guard; repeated no-op/cycle/repeated factual worsening возвращают `EXECUTION_STAGNATION | EXECUTION_CYCLE | EXECUTION_DRIFT` с `STEP PLAN STEP-NNN` remediation. Read-only STATUS не увеличивает progress counters. Если resumable выполнений нет — `BLOCKED/NO_RESUMABLE_EXECUTION`; если их несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
+Сначала продолжает единственное **локальное** выполнение, которое можно безопасно возобновить. Для interrupted `STEP PLAN/IMPLEMENT/REVIEW/FIX` проверяет durable Intent Basis и bounded Progress Guard. Stale REQ/ADR/STEP/Project Principle/Ready plan блокируется intent guard; repeated no-op/cycle/repeated factual worsening возвращают `EXECUTION_STAGNATION | EXECUTION_CYCLE | EXECUTION_DRIFT` с `STEP PLAN STEP-NNN` remediation. Read-only STATUS не увеличивает progress counters. Если локальных resumable выполнений несколько — `BLOCKED/MULTIPLE_RESUMABLE_EXECUTIONS`.
+
+Если локального продолжения нет, в **совершенно новом Git-клоне без прежнего execution state** возможен узкий portable fallback: ровно один `in_progress` STEP, Git-published handoff, текущий Ready plan и независимый planning-review. Тогда выполняется только **новый локальный `STEP PLAN STEP-NNN`**, не импортируется чужой executionId и не повторяются IMPLEMENT/REVIEW/FIX либо внешние Git side effects. Прежний Ready plan **не** доказывает завершение новой PLAN: требуется новая revision и новый immutable planning-review от новой execution. При отсутствии handoff/продолжения остаётся `BLOCKED/NO_RESUMABLE_EXECUTION`. Подробно — [Portable Resume](PORTABLE_RESUME.md).
 
 ```bash
 python3 .harness/tools/harness-ux.py resume --json
 ```
 
-Команда не создаёт новое корневое выполнение: она возвращает идентификатор, корневую команду и точную команду продолжения уже существующего выполнения.
+Управляющая команда `HARNESS RESUME` сама не записывается как отдельная root execution. Для локального продолжения она возвращает прежний executionId; только переносимый сценарий создаёт новый **root `STEP PLAN`**. `harness-ux.py resume --json` показывает выбор, а реальное выполнение через штатный диспетчер:
+```bash
+python3 .harness/tools/harness-dispatch.py start --command "HARNESS RESUME"
+```
 
 <a id="command-harness-doctor"></a>
 ## `HARNESS DOCTOR`
