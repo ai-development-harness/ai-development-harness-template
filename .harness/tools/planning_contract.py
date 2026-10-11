@@ -583,56 +583,73 @@ def dependency_completion_failures(
     proof_cache: dict[str, dict[str, Any]] | None = None,
     dependency_cache: dict[str, list[str]] | None = None,
 ) -> list[str]:
-    """Проверить завершение всех предшественников STEP по durable proof.
+    """Доказать завершение всех hard dependencies без рекурсии.
 
-    В рамках одного STEP NEXT общие для многих задач доказательства и списки
-    зависимостей читаются один раз. Кэши только на время одного вызова resolver:
-    изменение STEP между вызовами не должно давать устаревший результат.
+    Проверяет и структуру `depends_on`, и durable completion proof.
+    Все кэши живут только в пределах одного вызова resolver: следующий
+    STEP NEXT заново увидит изменения STEP или Evidence.
     """
     failures: list[str] = []
     checked: set[str] = set()
     visiting: set[str] = set()
     proofs = proof_cache if proof_cache is not None else {}
-    dependencies_by_step = dependency_cache if dependency_cache is not None else {}
+    deps_cache = dependency_cache if dependency_cache is not None else {}
 
-    def visit(current: str) -> None:
+    def dependencies_of(current: str) -> list[str]:
+        if current not in deps_cache:
+            meta = read_task(root, current)["frontmatter"]
+            raw = meta.get("depends_on")
+            if not isinstance(raw, list) or any(
+                not isinstance(item, str) or STEP_ID_RE.fullmatch(item) is None
+                for item in raw
+            ):
+                raise ValueError(f"{current}: depends_on must be a list of STEP-NNN IDs")
+            if len(raw) != len(set(raw)):
+                raise ValueError(f"{current}: duplicate depends_on entries")
+            deps_cache[current] = raw
+        return deps_cache[current]
+
+    # (STEP, exit_marker): visiting хранит только текущую ветку DFS.
+    # В отличие от рекурсивного обхода, длинный DAG не вызывает RecursionError.
+    stack: list[tuple[str, bool]] = [(step_id, False)]
+    while stack:
+        current, leaving = stack.pop()
+        if leaving:
+            visiting.discard(current)
+            checked.add(current)
+            continue
         if current in visiting:
             failures.append(f"dependency-cycle:{current}")
-            return
+            continue
         if current in checked:
-            return
+            continue
+
         visiting.add(current)
+        stack.append((current, True))
         try:
-            if current not in dependencies_by_step:
-                dependencies_by_step[current] = dependency_ids(read_task(root, current))
-            dependencies = dependencies_by_step[current]
+            dependencies = dependencies_of(current)
         except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
             failures.append(f"dependency-unprovable:{current}:{exc}")
-            visiting.remove(current)
-            checked.add(current)
-            return
-        for dependency in dependencies:
-            if dependency in visiting:
-                failures.append(f"dependency-cycle:{dependency}")
+            continue
+
+        for dep in reversed(dependencies):
+            if dep in visiting:
+                failures.append(f"dependency-cycle:{dep}")
                 continue
             try:
-                if dependency not in proofs:
-                    proofs[dependency] = step_completion_proof(root, dependency)
-                proof = proofs[dependency]
+                if dep not in proofs:
+                    proofs[dep] = step_completion_proof(root, dep)
+                proof = proofs[dep]
             except (DocumentError, ConfigError, OSError, ValueError, KeyError) as exc:
-                failures.append(f"dependency-unprovable:{dependency}:{exc}")
+                failures.append(f"dependency-unprovable:{dep}:{exc}")
             else:
                 if not proof["complete"]:
                     failures.append(
-                        f"dependency-incomplete:{dependency}:" + "; ".join(proof["reasons"])
+                        f"dependency-incomplete:{dep}:" + "; ".join(proof["reasons"])
                     )
-            visit(dependency)
-        visiting.remove(current)
-        checked.add(current)
-
-    visit(step_id)
+            if dep not in checked:
+                stack.append((dep, False))
     return list(dict.fromkeys(failures))
-
 
 def implementation_prerequisite_failures(root: Path, step_id: str) -> list[str]:
     """Детерминированно доказать prerequisites непосредственно перед IMPLEMENT.
