@@ -47,8 +47,8 @@ jobs:
     # Отображаемое имя job в GitHub UI.
     # Пример: "Validate Harness".
     name: Validate Harness
-    # Linux runner из repository variable HARNESS_LINUX_RUNS_ON (JSON labels или имя runner).
-    # Без переменной используем закреплённый ubuntu-24.04, не плавающий ubuntu-latest.
+    # Linux runner выбирается из HARNESS_LINUX_RUNS_ON (JSON-массив labels или JSON-строка).
+    # Пример: ["self-hosted", "linux", "x64", "harness"]; без переменной — ubuntu-24.04.
     runs-on: ${{ fromJSON(vars.HARNESS_LINUX_RUNS_ON || '"ubuntu-24.04"') }}
     # Максимальное время job до принудительной остановки.
     # Пример: 5 минут существенно выше обычного времени validator, но защищает от зависания.
