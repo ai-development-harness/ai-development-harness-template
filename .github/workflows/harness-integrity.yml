@@ -338,3 +338,54 @@ jobs:
         # Regression #256 является первым scenario canonical stress manifest.
         # Пример: explicit PR budget = 5, release default остаётся 20.
         run: python3 .harness/tools/run-stress-tests.py --iterations 5
+  # Временный release diagnostic: проверить обновление именно принятого canary.
+  # Пример: fixture v0.11.6 -> synthetic candidate v0.12.0.
+  diagnose-initialized-canary:
+    # Job не должен задерживать остальные PR.
+    # Пример: отдельная диагностика изменения #332.
+    name: Diagnose initialized canary upgrade
+    # Применяется только к этой временной diagnostic ветке.
+    # Пример: feature PR, не обычный main push.
+    if: github.event_name == 'pull_request' && github.head_ref == 'test/v0120-canary-current-main'
+    # Ubuntu соответствует runner из maintainer-tools.
+    # Пример: ubuntu-24.04.
+    runs-on: ubuntu-24.04
+    # Allow replay of the real canary upgrade plus synthetic tests.
+    # Пример: 15 минут.
+    timeout-minutes: 15
+    # CI is read-only with respect to external Git.
+    # Пример: checkout, setup, deterministic clone test.
+    steps:
+      # Read current PR merge commit with release tags.
+      # Пример: git checkout с fetch-depth=0.
+      - name: Checkout branch with full Git history
+        # Readonly pinned checkout.
+        # Пример: actions/checkout@v7.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        # Checkout configuration.
+        # Пример: read-only full history.
+        with:
+          # Need historical tag v0.11.6.
+          # Пример: 0.
+          fetch-depth: 0
+          # Never preserve GitHub App token.
+          # Пример: false.
+          persist-credentials: false
+      # Runtime equivalent to qualification current lane.
+      # Пример: Python 3.13.
+      - name: Setup Python
+        # Pinned official runtime setup.
+        # Пример: actions/setup-python@v7.
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        # Choose supported Python.
+        # Пример: python-version=3.13.
+        with:
+          # Major/minor fixed.
+          # Пример: 3.13.
+          python-version: "3.13"
+      # Run only in this temporary PR.
+      # Пример: public canary Git checkout in disposable directory.
+      - name: Reproduce real initialized canary failure
+        # No private credentials or remote mutations.
+        # Пример: stdout is JSON with names of failed tests.
+        run: python3 .github/diagnostics/v0120-canary-preflight.py
