@@ -56,7 +56,11 @@ from review_findings import (
 )
 from review_gates import required_reviewers
 from fix_delta import review_scope, enforce_findings, clear_scope, FixDeltaError
-from verification import render_verification_entries, validate_verification_entries
+from verification import (
+    render_verification_entries,
+    validate_verification_entries,
+    verification_subject_content_hash,
+)
 
 
 class SemanticArtifactError(ValueError):
@@ -590,6 +594,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         implementation_baseline=baseline_sha,
     )
     revision = repository_revision(root)
+    subject_content_hash = verification_subject_content_hash(root, step_id)
     try:
         expectation = review_expectation_for_step(root, step_id)
     except ValueError as exc:
@@ -638,6 +643,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
             "reviewer_role": "reviewer",
             "created_at": created_at,
             "reviewed_revision": revision,
+            "reviewed_subject_content_hash": subject_content_hash,
             "contract_basis": planning_context_basis(root, step_id),
             "verification_basis": _review_verification_basis(root, step_id),
             "verification_status": generated_verification_status(read_task(root, step_id)),

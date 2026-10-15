@@ -197,7 +197,13 @@ print(json.dumps(result))
 
 
 
-def baseline_project(root: Path, *, mutate_project_owned: bool = False, mode: str = "reload_completed") -> str:
+def baseline_project(
+    root: Path,
+    *,
+    mutate_project_owned: bool = False,
+    mode: str = "reload_completed",
+    release: str = "0.11.2",
+) -> str:
     root.mkdir()
     init_repo(root)
     write(
@@ -206,8 +212,8 @@ def baseline_project(root: Path, *, mutate_project_owned: bool = False, mode: st
         json.dumps(
             {
                 "schemaVersion": 1,
-                "release": "0.11.2",
-                "source": {"repository": "ai-development-harness/ai-development-harness-template", "ref": "v0.11.2"},
+                "release": release,
+                "source": {"repository": "ai-development-harness/ai-development-harness-template", "ref": f"v{release}"},
             }
         ),
     )
@@ -281,6 +287,7 @@ def main() -> int:
         assert payload["status"] == "PASS", payload
         assert payload["candidateRevision"] == candidate, payload
         assert payload["candidateRelease"] == "v0.11.3", payload
+        assert payload["expectedPreviousStable"] == "v0.11.2", payload
         assert any(item["result"] == "UPDATER_RELOAD_REQUIRED" for item in payload["stages"] if item["id"].startswith("apply-")), payload
         assert any(item["result"] == "NO_UPDATE" for item in payload["stages"] if item["id"].startswith("apply-")), payload
         assert git(source, "rev-parse", "HEAD") == source_head
@@ -299,6 +306,15 @@ def main() -> int:
         direct_pass = invoke(root, direct, direct_sha, source, candidate, expect=0)
         assert direct_pass["status"] == "PASS", direct_pass
         assert any(stage["result"] == "UPDATED" for stage in direct_pass["stages"] if stage["id"].startswith("apply-")), direct_pass
+
+        # Обязательное условие нового release gate: canary не может быть
+        # на позапрошлом релизе и выдавать multi-hop за предыдущий stable.
+        obsolete = root / "outdated-canary"
+        obsolete_sha = baseline_project(obsolete, release="0.11.1")
+        outdated = invoke(root, obsolete, obsolete_sha, source, candidate, expect=1)
+        assert outdated["status"] == "FAIL", outdated
+        assert outdated["reasonCode"] == "CANARY_BASELINE_NOT_PREVIOUS_STABLE", outdated
+        assert git(obsolete, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
         noop = root / "noop-baseline"
         noop_sha = baseline_project(noop, mode="noop")

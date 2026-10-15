@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 import json
 import hashlib
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -37,8 +38,13 @@ from document_contract import (
     validate_report_timestamp_identity,
 )
 from harness_config import (
+    ConfigError,
     audit_directory,
     init_review_directory,
+    open_questions_index_path,
+    requirements_directory,
+    roadmap_path,
+    status_path,
     planning_review_directory,
     release_directory,
     review_directory,
@@ -610,6 +616,128 @@ def repository_revision(
     return {"git_head": git_head, "worktree_hash": "sha256:" + digest.hexdigest()}
 
 
+def repository_subject_content_hash(
+    root: Path,
+    *,
+    ignored_paths: set[str] | frozenset[str] | None = None,
+) -> str:
+    """Отпечаток фактического содержимого, независимый от Git HEAD и staging.
+
+    Git SHA показывает историю, а не то, что исполняли тесты. После commit,
+    squash или rebase те же файлы дают тот же digest. Учитываем tracked и
+    untracked (кроме ignored), имена, executable bit, symlinks и gitlinks.
+
+    Canonical generated projections и immutable reports не являются исходным
+    продуктовым кодом. Их проверяют отдельные validators, а изменение ими
+    lifecycle после PASS не должно обнулять доказательство.
+    """
+    root = root.resolve()
+    code, raw_index = _git(root, "ls-files", "--stage", "-z")
+    if code != 0:
+        raise ValueError("cannot enumerate tracked files for content identity")
+    tracked: dict[str, str] = {}
+    for item in (part for part in raw_index.split(b"\0") if part):
+        meta, sep, raw_rel = item.partition(b"\t")
+        parts = meta.split()
+        if not sep or len(parts) != 3 or parts[2] != b"0":
+            raise ValueError("unmerged or malformed Git index prevents content identity")
+        rel = raw_rel.decode("utf-8", errors="surrogateescape")
+        if rel in tracked:
+            raise ValueError(f"duplicate Git index path: {rel!r}")
+        tracked[rel] = parts[0].decode("ascii")
+
+    code, raw_untracked = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if code != 0:
+        raise ValueError("cannot enumerate untracked files for content identity")
+    files = set(tracked)
+    files.update(item.decode("utf-8", errors="surrogateescape")
+                 for item in raw_untracked.split(b"\0") if item)
+
+    excluded = set()
+    for value in ignored_paths or set():
+        rel = _normalize_git_rel(value)
+        if rel is None:
+            raise ValueError(f"invalid ignored repository path: {value}")
+        excluded.add(rel)
+
+    # Детерминированные проекции могут обновиться после PASS, в том числе
+    # при завершении STEP. Источники этих проекций остаются в fingerprint.
+    projection_paths: list[Path] = []
+    # Путь проекции может отсутствовать в малом bootstrap/synthetic fixture.
+    # Не придумываем default: тогда файл остаётся в subject и не исключается.
+    try:
+        req_directory = requirements_directory(root)
+    except ConfigError:
+        pass
+    else:
+        projection_paths.extend((req_directory / "SPEC.md", req_directory / "STATUS.md"))
+    for resolve_path in (roadmap_path, status_path, open_questions_index_path):
+        try:
+            projection_paths.append(resolve_path(root))
+        except ConfigError:
+            continue
+    excluded.update(_repo_relative(root, path) for path in projection_paths)
+
+    immutable_patterns = _immutable_report_patterns(root)
+    digest = hashlib.sha256()
+    digest.update(b"HARNESS_SUBJECT_CONTENT_V1\0")
+    for rel in sorted(files, key=lambda value: value.encode("utf-8", errors="surrogateescape")):
+        normalized = _normalize_git_rel(rel)
+        if normalized is None:
+            raise ValueError(f"invalid Git path for content identity: {rel!r}")
+        if (normalized in excluded
+                or normalized == ".harness/local"
+                or normalized.startswith(".harness/local/")
+                or _matches_immutable_report(normalized, immutable_patterns)):
+            continue
+        path = root / rel
+        index_mode = tracked.get(rel)
+
+        # Удалённый файл исчезает из фактической поверхности до коммита;
+        # после коммита он исчезает и из index. Оба состояния эквивалентны.
+        if not path.exists() and not path.is_symlink():
+            continue
+
+        if path.is_symlink():
+            mode = "120000"
+            data = str(path.readlink()).encode("utf-8", errors="surrogateescape")
+        elif index_mode == "160000":
+            mode = "160000"
+            # git -C на НЕинициализированном submodule может по ошибке
+            # подняться до родительского repo и вернуть его HEAD.
+            git_marker = path / ".git"
+            if not git_marker.exists():
+                raise ValueError(f"submodule is not initialized: {rel}")
+            submodule = _submodule_head(path)
+            if submodule is None:
+                raise ValueError(f"cannot prove submodule HEAD: {rel}")
+            data = submodule.encode("ascii")
+        elif path.is_file():
+            # Windows не предоставляет надёжную POSIX executable bit; при
+            # tracked files используем Git mode, остальное — фактический mode.
+            if os.name == "nt" and index_mode in {"100644", "100755"}:
+                mode = index_mode
+            else:
+                mode = "100755" if path.stat().st_mode & 0o111 else "100644"
+            data = None
+        else:
+            raise ValueError(f"unsupported filesystem item in Git surface: {rel}")
+
+        digest.update(rel.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(mode.encode("ascii"))
+        digest.update(b"\0")
+        if data is None:
+            with path.open("rb") as stream:
+                while chunk := stream.read(65536):
+                    digest.update(chunk)
+        else:
+            digest.update(data)
+        digest.update(b"\0")
+
+    return "sha256:" + digest.hexdigest()
+
+
 def repository_activity_fingerprint(
     root: Path,
     *,
@@ -918,6 +1046,12 @@ def validate_review_report(
             else:
                 if revision != current:
                     errors.append("reviewed_revision does not match current repository state")
+
+    # Новые отчёты сохраняют hash проверенного содержимого отдельно от SHA
+    # Git-коммита. Старые immutable reports оставляем валидными без переписывания.
+    reviewed_subject_content = meta.get("reviewed_subject_content_hash")
+    if reviewed_subject_content is not None and not _valid_sha256(reviewed_subject_content):
+        errors.append("reviewed_subject_content_hash must be sha256 when present")
 
     human_findings = _parse_findings(document)
     finding_contract = meta.get("finding_contract")
@@ -1278,17 +1412,32 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
 
 # Lexical classifier durable history. Symlink target не используется для
 # classification: Git tracks path identity, а не место, куда указывает symlink.
-def _is_immutable_review_path(root: Path, rel: str) -> bool:
-    """Распознать immutable report по lexical Git path, не symlink target."""
-    patterns = (
-        (_configured_rel(root, review_directory(root)), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
-        (_configured_rel(root, planning_review_directory(root)), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
-        (_configured_rel(root, init_review_directory(root)), re.compile(r"^INIT-REVIEW-.+\.md$")),
-        (_configured_rel(root, audit_directory(root)), re.compile(r"^(?:MIGRATION|AUDIT)-.+\.md$")),
-        (_configured_rel(root, release_directory(root)), re.compile(r"^RELEASE-.+\.md$")),
-        (_configured_rel(root, skill_search_directory(root)), re.compile(r"^SKILL-SEARCH-.+\.md$")),
-        (_configured_rel(root, update_report_directory(root)), re.compile(r"^UPDATE-.+\.md$")),
+def _immutable_report_patterns(root: Path) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Разрешить только реально заданные canonical report paths.
+
+    Малые fixture могут не задавать некоторые пути. В таком случае мы НЕ
+    исключаем guessed default directory из content hash.
+    """
+    result: list[tuple[str, re.Pattern[str]]] = []
+    surfaces = (
+        (review_directory, r"^STEP-\d{3,}/REVIEW-.+\.md$"),
+        (planning_review_directory, r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$"),
+        (init_review_directory, r"^INIT-REVIEW-.+\.md$"),
+        (audit_directory, r"^(?:MIGRATION|AUDIT)-.+\.md$"),
+        (release_directory, r"^RELEASE-.+\.md$"),
+        (skill_search_directory, r"^SKILL-SEARCH-.+\.md$"),
+        (update_report_directory, r"^UPDATE-.+\.md$"),
     )
+    for resolver, pattern in surfaces:
+        try:
+            directory = resolver(root)
+        except ConfigError:
+            continue
+        result.append((_configured_rel(root, directory), re.compile(pattern)))
+    return tuple(result)
+
+
+def _matches_immutable_report(rel: str, patterns: tuple[tuple[str, re.Pattern[str]], ...]) -> bool:
     for base, pattern in patterns:
         suffix = _under_git_path(rel, base)
         if suffix is not None and pattern.fullmatch(suffix) is not None:
@@ -1297,6 +1446,11 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
         # внутрь более широкого directory не означает, что это artifact именно
         # этого kind; продолжаем проверку остальных configured roots.
     return False
+
+
+def _is_immutable_review_path(root: Path, rel: str) -> bool:
+    """Распознать immutable report по lexical Git path, не symlink target."""
+    return _matches_immutable_report(rel, _immutable_report_patterns(root))
 
 
 def _git_changed_review_paths(root: Path, *diff_args: str) -> tuple[list[str], str | None]:
