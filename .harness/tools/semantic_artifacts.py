@@ -379,7 +379,7 @@ def write_planning_review(root: Path, step_id: str, payload: Any) -> dict[str, A
             "planReviewCycles": len(existing_reports) + 1,
             "maxPlanReviewCycles": max_rounds,
             "verdict": verdict,
-            "report": path.relative_to(root).as_posix(),
+            "report": path.resolve().relative_to(root.resolve()).as_posix(),
             "contextBasis": basis,
             "planContentHash": plan_hash,
         }
@@ -737,7 +737,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         raise SemanticArtifactError(
             "generated STEP review failed canonical validation: " + "; ".join(errors)
         )
-    report_rel = path.relative_to(root).as_posix()
+    report_rel = path.resolve().relative_to(root.resolve()).as_posix()
     try:
         provenance_recorded = record_review_report(
             root,
@@ -761,7 +761,7 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
         "completionResult": data["verdict"].upper(),
         "stepId": step_id,
         "verdict": data["verdict"],
-        "report": path.relative_to(root).as_posix(),
+        "report": path.resolve().relative_to(root.resolve()).as_posix(),
         "reviewedRevision": revision,
         "specializedReviewGate": {
             "basis": gate["basis"],
