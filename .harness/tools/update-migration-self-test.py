@@ -1191,6 +1191,7 @@ def test_release_metadata_initialized_downstream() -> None:
             ".harness/manifest.yaml",
             ".harness/harness.lock.json",
             ".harness/harness-update-graph.json",
+            ".harness/harness-update.toml",
         ):
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
