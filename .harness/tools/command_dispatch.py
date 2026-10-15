@@ -1132,6 +1132,31 @@ def complete_dispatch(
                 "message": f"current running command is {running!r}, not {normalized_command!r}",
             }
 
+        # Между semantic handoff и complete могла завершиться другая invocation
+        # того же STEP. Перед дорогой Verification ещё раз сверяем authority:
+        # stale IMPLEMENT не имеет права переписывать уже успешный Evidence.
+        command_route = route_command(root, command)
+        if (
+            active is not None
+            and command_route.get("domain") == "STEP"
+            and command_route.get("operation") in {"IMPLEMENT", "FIX", "REVIEW"}
+        ):
+            checkpoint = resolve_execution(root, active)
+            if (
+                checkpoint.get("status") != "RESUME"
+                or checkpoint.get("command") != normalized_command
+            ):
+                return {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "status": "BLOCKED",
+                    "rootCommand": root_command,
+                    "executionId": execution_id,
+                    "command": command,
+                    "reasonCode": checkpoint.get("reasonCode", "RECOVERY_CONFLICT"),
+                    "remediation": checkpoint.get("remediation"),
+                    "message": "Execution changed before semantic completion; Evidence was not rewritten.",
+                }
+
         early = _step_run_completion_gate(root, root_command, command, result)
         if early is not None:
             return early
