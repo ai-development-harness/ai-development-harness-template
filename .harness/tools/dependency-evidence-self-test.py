@@ -19,6 +19,7 @@ from planning_contract import (
     _validate_task,
 )
 from verification import verification_context_basis, verification_dependency_facts
+from projection_contract import render_requirements_status
 
 
 MANIFEST = """execution:
@@ -196,6 +197,11 @@ def main() -> int:
             for number in range(1, 4):
                 assert step_completion_proof(root, f"STEP-{number:03d}")["complete"]
 
+            # Сохраняем exact historical REQ projection из старого
+            # непротиворечивого contract. В обновлении он не должен дрейфовать
+            # только потому, что у REVIEW отсутствуют новые metadata.
+            historical_projection = render_requirements_status(root)
+
             # Смешанная история: REVIEW с contract_basis от более ранней
             # версии Harness ещё не содержит dependency_completion_basis.
             # Его нельзя автоматически считать актуальным для downstream.
@@ -225,6 +231,9 @@ def main() -> int:
                 for x in validation_warnings
             ), validation_warnings
             assert not step_completion_proof(root, "STEP-002")["complete"]
+            assert render_requirements_status(root) == historical_projection, (
+                "updater must preserve old REQ projection without permitting runtime"
+            )
 
             # Новый REVIEW обязан содержать dependency proof; просто убрать
             # поле при новой записи нельзя — это остаётся строгой ошибкой.
@@ -239,6 +248,7 @@ def main() -> int:
                 "completed STEP completion proof failed: completion-dependency-proof-missing"
                 in x for x in modern_errors
             ), modern_errors
+            assert render_requirements_status(root) != historical_projection
             modern_review_missing_basis = False
             assert step_completion_proof(root, "STEP-003")["complete"]
             dependency_review_basis = stored_dependency_basis
@@ -273,6 +283,7 @@ def main() -> int:
                 "completed STEP completion proof failed" in value
                 for value in stale_errors
             ), stale_errors
+            assert render_requirements_status(root) != historical_projection
             facts = verification_dependency_facts(root, "STEP-002")
             assert len(facts) == 1 and facts[0]["complete"] is False, facts
             assert verification_context_basis(root, "STEP-002") != before_dependency

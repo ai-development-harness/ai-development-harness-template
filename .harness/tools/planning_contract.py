@@ -1390,6 +1390,41 @@ def _historical_missing_dependency_proof(root: Path, reason: str) -> bool:
     return True
 
 
+def historical_completion_projection_proof(
+    root: Path,
+    step_id: str,
+    *,
+    extra_legacy_review_pins: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Исторический REQ status без выдачи runtime permission.
+
+    Старый immutable REVIEW может не содержать metadata, которой не было
+    в тогдашней версии Harness. Если и только если ВСЕ blockers являются
+    такими отсутствующими historical dependency proofs, восстановим
+    прежний projection snapshot. Это сохраняет отображение завершённой
+    истории, но НЕ меняет runtime step_completion_proof()/preconditions.
+    """
+    proof = step_completion_proof(
+        root, step_id,
+        extra_legacy_review_pins=extra_legacy_review_pins,
+    )
+    if proof["complete"] or not proof["reasons"]:
+        return proof
+    if not all(
+        _historical_missing_dependency_proof(root, reason)
+        for reason in proof["reasons"]
+    ):
+        return proof
+    snapshot = dict(proof["snapshot"])
+    snapshot["reasons"] = []
+    return {
+        "complete": True,
+        "reasons": [],
+        "snapshot": snapshot,
+        "proof_hash": stable_hash(snapshot),
+    }
+
+
 def validate_planning_contracts(
     root: Path,
     *,
@@ -1520,6 +1555,7 @@ __all__ = [
     "canonical_requirement_path",
     "dependency_ids",
     "dependency_completion_basis",
+    "historical_completion_projection_proof",
     "init_review_basis",
     "latest_matching_init_review",
     "latest_matching_planning_review",

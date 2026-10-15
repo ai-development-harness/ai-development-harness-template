@@ -316,5 +316,13 @@ Synthetic regression должен доказывать минимум:
 у которого есть `reviewed_subject_content_hash`, но отсутствует обязательная
 `dependency_completion_basis`, также не получает historical-исключения.
 
+Точно та же граница применяется к tracked `docs/requirements/STATUS.md`:
+исторически завершённые REQ не превращаются в `planned` только из-за
+отсутствия более позднего поля в неизменяемом REVIEW. Для таких проекций
+восстанавливается прежний completed snapshot/hash, а `STEP NEXT`,
+`IMPLEMENT` и транзитивные prerequisites по-прежнему вызывают строгий
+`step_completion_proof()`. При реальном изменении upstream contract
+проекция устаревает по обычным правилам.
+
 Это различие необходимо при проверке обновления Harness:
 **historical validity** не равна **current execution authorization**.
