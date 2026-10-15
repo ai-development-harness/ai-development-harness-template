@@ -132,7 +132,7 @@ out-of-scope obligation добавить нельзя.
 
 Writer разрешает ссылочную пару только при `fix_delta` и проверяет:
 canonical parent full REVIEW, цепочку `sourceReport` (включая повторные
-FIX cycles), корректность и неизменяемые bytes отчёта, тот же
+FIX cycles), **байты full REVIEW против pre-FIX Git tree**, тот же
 `planning_context_basis`, свежий `verification_freshness=PASS` и
 точный `subjectContentHash` после FIX. Hash источника и текущая
 Verification сохраняются в `coverageReuseProof` **внутри durable
