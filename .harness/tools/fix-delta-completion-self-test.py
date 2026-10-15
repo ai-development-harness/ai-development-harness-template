@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
@@ -64,6 +65,15 @@ verdict: fail
 """
 
 
+def git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args], cwd=root, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    assert result.returncode == 0, (args, result.stderr)
+    return result.stdout.strip()
+
+
 def completion(root: Path) -> dict:
     return {
         "disposition": "pass",
@@ -110,7 +120,14 @@ def main() -> int:
               "protocol:\n  reviewDirectory: planning/reviews\n")
         write(root, FULL, full_report())
         write(root, DELTA, delta_report(FULL))
-        scope = {"mode": "fix_delta", "sourceReport": DELTA}
+        git(root, "init", "-q", "-b", "main")
+        git(root, "config", "user.email", "fix-delta@example.invalid")
+        git(root, "config", "user.name", "Scoped Completion Fixture")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "before FIX")
+        before_tree = git(root, "rev-parse", "HEAD^{tree}")
+        scope = {"mode": "fix_delta", "sourceReport": DELTA,
+                 "beforeTree": before_tree}
         fresh = {
             "status": "PASS", "fresh": True,
             "contractBasis": HASH, "subjectContentHash": SUBJECT,
@@ -211,16 +228,23 @@ def main() -> int:
                 ),
                 "not canonical",
             )
+            write(root, FULL, full_report() + "\nTAMPERED after FIX\n")
+            blocked(
+                lambda: validate_fix_delta_coverage_reuse(root, STEP, candidate, scope),
+                "differs from pre-FIX Git tree",
+            )
             write(root, FULL, full_report(marker=False))
-            blocked(
-                lambda: validate_fix_delta_coverage_reuse(root, STEP, candidate, scope),
-                "initial/full_explicit",
-            )
+            with patch("fix_delta_completion._unchanged_pre_fix_full_report", return_value=True):
+                blocked(
+                    lambda: validate_fix_delta_coverage_reuse(root, STEP, candidate, scope),
+                    "initial/full_explicit",
+                )
             write(root, FULL, full_report(verdict="blocked"))
-            blocked(
-                lambda: validate_fix_delta_coverage_reuse(root, STEP, candidate, scope),
-                "full baseline has no reviewable verdict",
-            )
+            with patch("fix_delta_completion._unchanged_pre_fix_full_report", return_value=True):
+                blocked(
+                    lambda: validate_fix_delta_coverage_reuse(root, STEP, candidate, scope),
+                    "full baseline has no reviewable verdict",
+                )
             write(root, FULL, full_report())
             write(root, DELTA, delta_report(DELTA))
             blocked(
