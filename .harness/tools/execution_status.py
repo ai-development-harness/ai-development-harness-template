@@ -3245,7 +3245,7 @@ def portable_plan_recheck_proven(
         matching = latest_matching_planning_review(root, step_id)
         return (
             matching is not None
-            and matching["path"].relative_to(root).as_posix() == reviewed
+            and matching["path"].resolve().relative_to(root.resolve()).as_posix() == reviewed
             # Новый PASS должен принадлежать этой локальной execution;
             # independent review другого clone/эпизода не закрывает её.
             and matching["document"]["frontmatter"].get("execution_id")
