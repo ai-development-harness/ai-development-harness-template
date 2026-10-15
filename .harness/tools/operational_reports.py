@@ -270,4 +270,84 @@ def write_operational_report(
         }
 
 
-__all__ = ["OperationalReportError", "write_operational_report", "COMMAND_KINDS"]
+def operational_completion_blocker(
+    root: Path,
+    execution: dict[str, Any],
+    command: str,
+) -> dict[str, str] | None:
+    """Проверить report receipt перед SUCCESS без доверия к self-report модели.
+
+    Вызов обязан идти под execution_state_lock и после authority guards
+    диспетчера. BLOCKED без status mutation позволяет исправить отчёт в
+    той же running invocation; старые executions не получают новый SUCCESS.
+    """
+    parsed = normalize_single_command(root, command)
+    kind = COMMAND_KINDS.get((parsed["domain"], parsed["operation"]))
+    if kind is None:
+        return None  # Existing PLAN/REVIEW/INIT and other commands unchanged.
+
+    def blocked(code: str, message: str) -> dict[str, str]:
+        return {"reasonCode": code, "message": message}
+
+    current = execution.get("current")
+    context = current.get("context") if isinstance(current, dict) else None
+    receipt = context.get("operationalReport") if isinstance(context, dict) else None
+    if not isinstance(receipt, dict):
+        return blocked("OPERATIONAL_REPORT_MISSING", "validated writer receipt required")
+
+    if (
+        receipt.get("kind") != kind
+        or receipt.get("command") != parsed["normalized"]
+        or receipt.get("executionId") != execution.get("executionId")
+        or not isinstance(receipt.get("path"), str)
+        or not isinstance(receipt.get("sha256"), str)
+        or not isinstance(receipt.get("subjectHash"), str)
+    ):
+        return blocked("OPERATIONAL_REPORT_IDENTITY_MISMATCH", "receipt belongs to different execution/command")
+
+    directory_fn, _prefix, validate, _h1 = KIND_CONFIG[kind]
+    try:
+        root = root.resolve()
+        configured = directory_fn(root)
+        raw_path = Path(receipt["path"])
+        if raw_path.is_absolute() or ".." in raw_path.parts:
+            return blocked("OPERATIONAL_REPORT_PATH_INVALID", "untrusted report path")
+        path = root / raw_path
+        if (configured.is_symlink() or path.is_symlink()
+                or not path.is_file()
+                or path.parent.resolve() != configured.resolve()
+                or not path.resolve().is_relative_to(root)):
+            return blocked("OPERATIONAL_REPORT_PATH_INVALID", "report missing or outside configured directory")
+
+        contents = path.read_bytes()
+        if hashlib.sha256(contents).hexdigest() != receipt["sha256"]:
+            return blocked("OPERATIONAL_REPORT_CHANGED", "report bytes differ from writer receipt")
+        errors = validate(root, path)
+        if errors:
+            return blocked("OPERATIONAL_REPORT_INVALID", "; ".join(errors))
+
+        # File kind/structure passed; now prove command-specific identity.
+        meta = parse_document(path)["frontmatter"]
+        if kind == "audit":
+            expected = ("project" if parsed["domain"] == "PROJECT" else parsed["target"])
+            if meta.get("scope") != expected:
+                return blocked("OPERATIONAL_REPORT_SCOPE_MISMATCH", "report audit scope differs from command")
+        elif kind == "release_check":
+            if parsed.get("target") and meta.get("target") != parsed["target"]:
+                return blocked("OPERATIONAL_REPORT_SCOPE_MISMATCH", "release target differs from command")
+        elif meta.get("query") != parsed.get("input"):
+            return blocked("OPERATIONAL_REPORT_SCOPE_MISMATCH", "search query differs from command")
+        if repository_subject_content_hash(root) != receipt["subjectHash"]:
+            return blocked("OPERATIONAL_REPORT_CONTEXT_STALE", "project subject changed after report")
+        # File could have changed during other read-only checks. Retest exact bytes.
+        if path.read_bytes() != contents:
+            return blocked("OPERATIONAL_REPORT_CHANGED", "report changed during validation")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return blocked("OPERATIONAL_REPORT_UNPROVEN", str(exc))
+    return None
+
+
+__all__ = [
+    "OperationalReportError", "write_operational_report",
+    "operational_completion_blocker", "COMMAND_KINDS",
+]
