@@ -197,7 +197,13 @@ def _active(root: Path, execution_id: str, kind: str) -> tuple[str, dict[str, An
     owner = active_execution_for_command(root, command)
     if owner is None or owner["executionId"] != execution_id:
         raise OperationalReportError("REPORT_EXECUTION_AMBIGUOUS", "multiple active owners or stale execution")
-    if current.get("context", {}).get("operationalReport") is not None:
+    context = current.get("context")
+    if not isinstance(context, dict):
+        raise OperationalReportError(
+            "REPORT_EXECUTION_CONTEXT_INVALID",
+            "current execution does not contain a valid semantic context",
+        )
+    if context.get("operationalReport") is not None:
         raise OperationalReportError("REPORT_ALREADY_RECORDED", "current execution already has a report")
     return command, parsed
 
