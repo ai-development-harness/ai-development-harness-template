@@ -177,6 +177,27 @@ def _fresh_command(
 
     failures = implementation_prerequisite_failures(root, step_id)
     if failures:
+        # Historical Ready plans can become stale when linked REQ/ADR/STEP/PRN
+        # or architecture references change. Re-plan ONLY after this STEP has
+        # passed the dependency gate and is being considered for execution.
+        # Never downgrade actual malformed/unsafe plan state into executable.
+        recalculable = {
+            "plan-context-basis-is-stale",
+            "plan-content-hash-is-stale",
+            "matching-planning-review-pass-is-missing",
+        }
+        stale = {"plan-context-basis-is-stale", "plan-content-hash-is-stale"}
+        if (
+            any(reason in stale for reason in failures)
+            and set(failures).issubset(recalculable)
+            and isinstance(plan, dict)
+            and isinstance(plan.get("context_basis"), str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", plan["context_basis"]) is not None
+            and isinstance(plan.get("content_hash"), str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", plan["content_hash"]) is not None
+            and not _planning_blockers(root, task)
+        ):
+            return f"STEP PLAN {step_id}", []
         return None, failures
     return f"STEP IMPLEMENT {step_id}", []
 
@@ -208,13 +229,32 @@ def resolve_step_action(root: Path, step_id: str) -> dict[str, Any]:
             "lifecycleStatus": meta.get("status"),
             "reasons": reasons,
         }
-    return {
+    result = {
         "status": "PASS",
         "stepId": step_id,
         "stepType": meta.get("type"),
         "lifecycleStatus": meta.get("status"),
         "command": command,
     }
+    if command == f"STEP PLAN {step_id}":
+        # Explicit PLAN remains supported for manual use and as the internal
+        # first child of STEP RUN. Never silently redefine it as a new command.
+        # This advisory does not relax the normal STEP IMPLEMENT proof gate.
+        result["planningAdvisory"] = {
+            "policy": "just-in-time",
+            "preferredCommand": f"STEP RUN {step_id}",
+            "deferIfNotNext": True,
+            "staleReadyPlan": (
+                isinstance(meta.get("plan"), dict)
+                and meta["plan"].get("status") == "ready"
+            ),
+            "message": (
+                "Plan can go stale as REQ/ADR/STEP/architecture changes. "
+                "Prefer STEP NEXT then STEP RUN; defer standalone PLAN "
+                "until this STEP becomes next."
+            ),
+        }
+    return result
 
 
 def _step_id_from_execution(item: dict[str, Any]) -> str | None:
@@ -401,17 +441,24 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         if not command.startswith(("STEP PLAN ", "STEP IMPLEMENT ", "STEP FIX ")):
             blocked.append({"stepId": step_id, "reasons": ["unsupported-next-action"]})
             continue
-        candidates.append(
-            _candidate(
-                step_id=step_id,
-                task=task,
-                command=f"STEP RUN {step_id}",
-                source="fresh",
-                lifecycle=str(task["frontmatter"].get("status")),
-                downstream=downstream[step_id],
-                roadmap_index=roadmap_index[step_id],
-            )
+        candidate = _candidate(
+            step_id=step_id,
+            task=task,
+            command=f"STEP RUN {step_id}",
+            source="fresh",
+            lifecycle=str(task["frontmatter"].get("status")),
+            downstream=downstream[step_id],
+            roadmap_index=roadmap_index[step_id],
         )
+        if command == f"STEP PLAN {step_id}":
+            candidate["planTiming"] = {
+                "mode": "just-in-time",
+                "refreshStaleReady": (
+                    isinstance(task["frontmatter"].get("plan"), dict)
+                    and task["frontmatter"]["plan"].get("status") == "ready"
+                ),
+            }
+        candidates.append(candidate)
 
     # Deduplicate exact command if same STEP is both execution + fresh.
     by_command: dict[str, dict[str, Any]] = {}
@@ -439,6 +486,17 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
         }
 
     selected = ranked[0]
+    # Alternatives are for visibility, not a backlog of instructions to
+    # generate plans now. Any future PLAN/refresh is postponed until selected.
+    for alternative in ranked[1:]:
+        if alternative.get("planTiming") is not None:
+            alternative["planTiming"]["deferUntilSelected"] = True
+            alternative["planTiming"]["message"] = (
+                "Do not create or refresh this plan in advance; "
+                "architecture/requirements may change."
+            )
+    if selected.get("planTiming") is not None:
+        selected["planTiming"]["deferUntilSelected"] = False
     return {
         "schemaVersion": 1,
         "status": "PASS",
@@ -461,6 +519,7 @@ def resolve_step_next(root: Path) -> dict[str, Any]:
             "larger-transitive-downstream-impact",
             "risk-flag-count-for-visibility-only",
             "canonical-roadmap-order",
+            "plan-just-in-time-with-selected-step-only",
         ],
     }
 

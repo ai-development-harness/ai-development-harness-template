@@ -438,18 +438,32 @@ def selective_invalidation_preview(root: Path, changed: list[str]) -> dict[str, 
             "direct": explicit,
             "dependencyPath": source,
             "reasons": sorted(set(reasons)),
-            "plan": plan,
+            "plan": {
+                **plan,
+                # A plan_staleness() diagnostic may contain STEP PLAN, but a
+                # repository-wide impact preview cannot recommend executing
+                # it for every invalidated STEP in advance.
+                "action": None,
+                "deferredAction": plan.get("action"),
+                "refreshPolicy": "when-selected-by-STEP-NEXT",
+            },
             "evidence": {
                 "review": evidence_decision,
                 "verification": evidence_decision,
                 "completion": evidence_decision,
             },
+            # This preview is about blast radius, not a backlog of PLAN
+            # commands. Invalidated plans are a deferred remediation until
+            # STEP NEXT ranks their step as the next executable one.
             "action": (
-                f"STEP PLAN {step_id}" if state == "invalidated"
-                else "investigate dependency/contract" if state == "ambiguous"
+                "investigate dependency/contract" if state == "ambiguous"
                 else "revalidate current evidence and prerequisites" if state == "revalidate"
                 else None
             ),
+            "deferredPlanAction": (
+                f"STEP PLAN {step_id}" if state == "invalidated" else None
+            ),
+            "planRefreshPolicy": "when-selected-by-STEP-NEXT",
         })
 
     states = ("preserved", "revalidate", "invalidated", "ambiguous")

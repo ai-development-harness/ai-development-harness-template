@@ -471,7 +471,19 @@ def step_list(root: Path) -> dict[str, Any]:
             "planStatus": (meta.get("plan") or {}).get("status") if isinstance(meta.get("plan"), dict) else None,
             "planFreshness": freshness.get("status"),
             "planStaleCauses": freshness.get("causes", []),
-            "planRemediation": freshness.get("action"),
+            # The diagnostic action may be STEP PLAN, but STEP LIST is a
+            # broad inventory, not an instruction to replan all stale items.
+            # Actual actionable guidance belongs to STEP NEXT (STEP RUN).
+            "planRemediation": None,
+            "deferredPlanRemediation": freshness.get("action"),
+            "planRefreshPolicy": "when-selected-by-STEP-NEXT",
+            "planTimingWarning": (
+                "Do not plan or replan this STEP in advance. "
+                "Run STEP NEXT and use STEP RUN when it becomes eligible; "
+                "REQ/ADR/architecture changes can invalidate a future plan."
+                if freshness.get("status") in {"stale", "not_ready", "invalid", "blocked"}
+                else None
+            ),
             "path": _project_relative_path(root, path),
         })
     rows.sort(key=lambda item: int(str(item["id"]).split("-")[1]))

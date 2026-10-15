@@ -88,7 +88,7 @@ python3 .harness/tools/impact-analysis.py --changed ADR-002 --preview --json
 | --- | --- | --- |
 | `preserved` | Указанное изменение не затрагивает STEP через известные зависимости | Ничего сбрасывать не нужно; обычные freshness gates продолжают действовать |
 | `revalidate` | У upstream STEP есть изменения, но собственный plan basis ещё не доказан устаревшим | Перепроверить зависимости и текущие review/verification evidence |
-| `invalidated` | План STEP уже имеет несовпадение canonical planning basis | Повторить обычный `STEP PLAN` и дальнейшую проверку |
+| `invalidated` | План STEP уже имеет несовпадение canonical planning basis | Отложить пересоздание плана до выбора STEP командой `STEP NEXT`; начать `STEP RUN`, который выполнит новый PLAN + REVIEW перед IMPLEMENT |
 | `ambiguous` | Цикл, отсутствующий dependency или ошибка чтения/контракта не дают доказать безопасность | Сначала исправить/разобрать граф зависимостей; автоматически не продолжать |
 
 Например:
@@ -241,7 +241,9 @@ Code не становится source of truth автоматически.
 
 - `planFreshness: stale`;
 - `planStaleCauses[]`;
-- `planRemediation: STEP PLAN STEP-NNN`.
+- `planRemediation: null` (нет массовой команды по списку);
+- `deferredPlanRemediation: STEP PLAN STEP-NNN` (diagnostic, не рекомендация выполнить сейчас);
+- `planRefreshPolicy: when-selected-by-STEP-NEXT`.
 
 Пример:
 
@@ -249,7 +251,8 @@ Code не становится source of truth автоматически.
 STEP-018
 Plan: STALE
 Cause: REQ-007 changed
-Action: STEP PLAN STEP-018
+Action now: defer
+When selected: STEP NEXT → STEP RUN STEP-018 → new PLAN + independent REVIEW
 ```
 
 Project State API экспортирует те же facts для UI/Navigator.

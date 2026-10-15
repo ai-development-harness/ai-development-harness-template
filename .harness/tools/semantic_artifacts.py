@@ -56,6 +56,7 @@ from review_findings import (
 )
 from review_gates import required_reviewers
 from fix_delta import review_scope, enforce_findings, clear_scope, FixDeltaError
+from fix_delta_completion import validate_fix_delta_coverage_reuse
 from verification import (
     render_verification_entries,
     validate_verification_entries,
@@ -626,7 +627,16 @@ def write_step_review(root: Path, step_id: str, payload: Any) -> dict[str, Any]:
     convergence: dict[str, Any] | None = None
     if data["verdict"] == "pass":
         try:
+            # In FIX delta the delegated reviewer does not re-open all AC.
+            # The parent/root agent composes the ordinary full Completion
+            # Contract. Any reuse references to unchanged criteria must prove
+            # the exact previous full REVIEW and current post-FIX Verification.
+            reuse = validate_fix_delta_coverage_reuse(
+                root, step_id, data.get("completion"), fix_scope,
+            )
             convergence = evaluate_completion(root, step_id, data.get("completion"))
+            if reuse is not None and convergence["completionResult"] == "PASS":
+                convergence["coverageReuseProof"] = reuse
         except CompletionGateError as exc:
             raise SemanticArtifactError(str(exc)) from exc
     directory = review_directory(root) / step_id

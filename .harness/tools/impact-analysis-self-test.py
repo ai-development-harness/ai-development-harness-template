@@ -12,6 +12,7 @@ from command_dispatch import start_dispatch
 from document_contract import render_document
 from impact_analysis import affected_steps, selective_invalidation_preview, plan_staleness
 from planning_contract import (
+    implementation_prerequisite_failures,
     planning_context_basis,
     planning_context_components,
     read_task,
@@ -398,7 +399,8 @@ def main() -> int:
             if node["id"] == "STEP-001"
         )
         assert step1_node["metadata"]["planFreshness"] == "stale", step1_node
-        assert step1_node["metadata"]["planRemediation"] == "STEP PLAN STEP-001", step1_node
+        assert step1_node["metadata"]["planRemediation"] is None, step1_node
+        assert step1_node["metadata"]["deferredPlanRemediation"] == "STEP PLAN STEP-001", step1_node
         assert {
             "component": "REQ@REQ-001",
             "change": "changed",
@@ -407,7 +409,12 @@ def main() -> int:
         listed = harness_ux_module.step_list(root)
         step1_row = next(item for item in listed["steps"] if item["id"] == "STEP-001")
         assert step1_row["planFreshness"] == "stale", step1_row
-        assert step1_row["planRemediation"] == "STEP PLAN STEP-001", step1_row
+        assert step1_row["planRemediation"] is None, step1_row
+        assert step1_row["deferredPlanRemediation"] == "STEP PLAN STEP-001", step1_row
+        assert decisions["STEP-001"]["action"] is None, preview
+        assert decisions["STEP-001"]["deferredPlanAction"] == "STEP PLAN STEP-001", preview
+        assert decisions["STEP-001"]["plan"]["action"] is None, preview
+        assert decisions["STEP-001"]["plan"]["deferredAction"] == "STEP PLAN STEP-001", preview
 
         original_write = harness_ux_module.write_projections
         original_run = harness_ux_module._run
@@ -434,21 +441,30 @@ def main() -> int:
         assert status_payload["stalePlans"][0]["id"] == "STEP-001", status_payload
         assert status_payload["stalePlans"][0]["planStaleCauses"] == stale["causes"], status_payload
 
-        # STEP RUN uses resolve_step_action. Stale Ready plan cannot reach
-        # IMPLEMENT; unrelated Ready STEP remains directly executable.
+        # A stale Ready plan cannot reach IMPLEMENT; however an eligible
+        # STEP RUN must refresh PLAN just in time, not leave it blocked forever.
         impacted_action = resolve_step_action(root, "STEP-001")
-        assert impacted_action["status"] == "BLOCKED", impacted_action
-        assert any(
-            "plan-context-basis-is-stale" in item
-            for item in impacted_action.get("reasons", [])
-        ), impacted_action
+        assert impacted_action["status"] == "PASS", impacted_action
+        assert impacted_action["command"] == "STEP PLAN STEP-001", impacted_action
+        assert impacted_action["planningAdvisory"]["staleReadyPlan"] is True
+        assert "plan-context-basis-is-stale" in implementation_prerequisite_failures(
+            root, "STEP-001",
+        )
         unrelated_action = resolve_step_action(root, "STEP-002")
         assert unrelated_action["status"] == "PASS", unrelated_action
         assert unrelated_action["command"] == "STEP IMPLEMENT STEP-002", unrelated_action
 
-        blocked_run = start_dispatch(root, "STEP RUN STEP-001")
-        assert blocked_run["status"] == "BLOCKED", blocked_run
-        assert "STEP IMPLEMENT STEP-001" not in str(blocked_run), blocked_run
+        refreshed_run = start_dispatch(root, "STEP RUN STEP-001")
+        assert refreshed_run["status"] == "SEMANTIC", refreshed_run
+        assert refreshed_run["command"] == "STEP PLAN STEP-001", refreshed_run
+        assert "STEP IMPLEMENT STEP-001" not in str(refreshed_run), refreshed_run
+        # Stop the unfinished test invocation before the next independent
+        # blast-radius scenario; no implementation/review mutation occurs.
+        complete_command(
+            root, refreshed_run["rootCommand"],
+            "STEP PLAN STEP-001", "BLOCKED",
+            expected_execution_id=refreshed_run["executionId"],
+        )
 
         # ADR replacement: linked historical ADR changes status/superseded_by,
         # new ADR ID still maps to the affected STEP.

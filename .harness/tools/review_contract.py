@@ -930,6 +930,7 @@ def validate_review_report(
             "verification_status must be PASS|FAIL|MANUAL_REQUIRED|BLOCKED|UNKNOWN when present"
         )
 
+    completion_payload: Any = None
     completion_contract = meta.get("completion_contract")
     if completion_contract is not None:
         if verdict != "pass":
@@ -1022,6 +1023,92 @@ def validate_review_report(
                                 errors.append(
                                     "Completion convergence finding route differs from result"
                                 )
+
+    # Durable FIX-delta completion references are checked again during
+    # historical review validation, not only during writer execution. This
+    # preserves the exact prior full report bytes without demanding current
+    # Verification freshness from an immutable report after future commits.
+    if isinstance(completion_payload, dict):
+        reuse = completion_payload.get("coverageReuseProof")
+        semantic = completion_payload.get("semantic")
+        records = semantic.get("coverage") if isinstance(semantic, dict) else []
+        reused_coverage = [
+            row for row in records
+            if isinstance(row, dict) and isinstance(row.get("evidence"), list)
+            and any(
+                isinstance(e, str)
+                and e.startswith(("previous-review:", "verification:"))
+                for e in row["evidence"]
+            )
+        ] if isinstance(records, list) else []
+        if reused_coverage and not isinstance(reuse, dict):
+            errors.append("FIX delta coverage references require durable reuse proof")
+        if reuse is not None:
+            expected_fields = {
+                "fullReview", "fullReviewSha256",
+                "verificationSubjectContentHash", "contractBasis",
+            }
+            if not isinstance(reuse, dict) or set(reuse) != expected_fields:
+                errors.append("FIX delta coverage reuse proof has invalid fields")
+            elif "FIX delta provenance" not in document["sections"] or not reused_coverage:
+                errors.append("FIX delta reuse proof requires scoped coverage and provenance")
+            else:
+                original = reuse["fullReview"]
+                checksum = reuse["fullReviewSha256"]
+                subject = reuse["verificationSubjectContentHash"]
+                contract = reuse["contractBasis"]
+                base = review_directory(root) / step_id
+                valid_source = (
+                    isinstance(original, str)
+                    and isinstance(checksum, str) and _valid_sha256(checksum)
+                    and isinstance(subject, str) and _valid_sha256(subject)
+                    and isinstance(contract, str) and _valid_sha256(contract)
+                    and isinstance(meta.get("contract_basis"), str)
+                    and meta.get("contract_basis") == contract
+                )
+                try:
+                    relative = Path(original) if isinstance(original, str) else Path("/")
+                    source = root / relative
+                    valid_source = (
+                        valid_source and not relative.is_absolute()
+                        and ".." not in relative.parts
+                        and source.parent.resolve() == base.resolve()
+                        and source != path
+                        and not source.is_symlink() and source.is_file()
+                        and re.fullmatch(r"REVIEW-\d{8}T\d{6}Z\.md", source.name) is not None
+                    )
+                    if valid_source:
+                        cursor = root
+                        for part in relative.parts:
+                            cursor = cursor / part
+                            if cursor.is_symlink():
+                                valid_source = False
+                                break
+                    if valid_source:
+                        valid_source = (
+                            "sha256:" + hashlib.sha256(source.read_bytes()).hexdigest() == checksum
+                        )
+                except (OSError, ValueError):
+                    valid_source = False
+                if not valid_source:
+                    errors.append("FIX delta coverage full REVIEW proof is unavailable or changed")
+                previous_ref = "previous-review:" + str(original)
+                verification_ref = "verification:" + str(subject)
+                for row in reused_coverage:
+                    evidence = row["evidence"]
+                    old = [
+                        e for e in evidence
+                        if isinstance(e, str) and e.startswith("previous-review:")
+                    ]
+                    fresh = [
+                        e for e in evidence
+                        if isinstance(e, str) and e.startswith("verification:")
+                    ]
+                    if (row.get("status") != "covered"
+                            or old != [previous_ref]
+                            or fresh != [verification_ref]):
+                        errors.append("FIX delta reused coverage reference differs from proven source")
+                        break
 
     revision = meta.get("reviewed_revision")
     if not isinstance(revision, dict):
