@@ -338,3 +338,23 @@ jobs:
         # Regression #256 является первым scenario canonical stress manifest.
         # Пример: explicit PR budget = 5, release default остаётся 20.
         run: python3 .harness/tools/run-stress-tests.py --iterations 5
+
+  # Временный release diagnostic: проверить обновление именно принятого canary.
+  # Удалить из workflow перед финальным merge, оставив deterministic test.
+  diagnose-initialized-canary:
+    name: Diagnose initialized canary upgrade
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/downstream-canary-self-tests-0120'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout branch with full Git history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - name: Reproduce real initialized canary failure
+        run: python3 .harness/tools/release-canary-ci-diagnostic.py
