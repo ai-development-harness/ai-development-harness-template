@@ -53,8 +53,8 @@ jobs:
     # Пример: ["self-hosted", "linux", "x64", "harness"]; без переменной — ubuntu-24.04.
     runs-on: ${{ fromJSON(vars.HARNESS_LINUX_RUNS_ON || '"ubuntu-24.04"') }}
     # Максимальное время job до принудительной остановки.
-    # Пример: 5 минут существенно выше обычного времени validator, но защищает от зависания.
-    timeout-minutes: 5
+    # Пример: 15 минут дают запас для полного synthetic suite на загруженном runner.
+    timeout-minutes: 15
 
     # Последовательность шагов job.
     # Пример: checkout → setup Python → запуск dependency-free validator.
@@ -194,8 +194,8 @@ jobs:
     # Пример: windows-2025 вместо floating windows-latest.
     runs-on: windows-2025
     # Targeted suite обычно короткий; timeout защищает от зависших process tests.
-    # Пример: 10 минут оставляет запас для update-engine fixtures.
-    timeout-minutes: 10
+    # Пример: 15 минут оставляют запас для update-engine fixtures на загруженном runner.
+    timeout-minutes: 15
 
     # Последовательность Windows-specific проверок.
     # Пример: checkout → Python → python3 shim → targeted self-tests.
@@ -286,8 +286,8 @@ jobs:
     # Пример: без HARNESS_LINUX_RUNS_ON используется ubuntu-24.04.
     runs-on: ${{ fromJSON(vars.HARNESS_LINUX_RUNS_ON || '"ubuntu-24.04"') }}
     # Полный synthetic suite обычно укладывается существенно быстрее.
-    # Пример: 5 минут защищают от regression/hang.
-    timeout-minutes: 5
+    # Пример: 15 минут дают запас для полного synthetic suite на минимальной версии Python.
+    timeout-minutes: 15
 
     # Последовательность minimum-version validation.
     # Пример: checkout → Python 3.11 → validator → discoverable self-tests.

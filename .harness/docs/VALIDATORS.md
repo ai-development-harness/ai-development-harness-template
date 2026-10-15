@@ -85,7 +85,7 @@ Validator проверяет protocol/repository invariants, но **не зам�
 - обязательный Claude project-level `permissions.deny` набор для прямых Git mutations в обход `git-action.py`;
 - `.gitignore` semantics через `git check-ignore`;
 - forbidden tracked paths/secrets/artifacts;
-- UTF-8, final newline, trailing whitespace, merge markers;
+- UTF-8, final newline, trailing whitespace, отсутствие пустых строк в конце файлов из `format_paths`, merge markers;
 - комментарии и примеры у managed YAML/TOML parameters;
 - manifest language/review/execution policies;
 - Git policy schema и safety semantics;
