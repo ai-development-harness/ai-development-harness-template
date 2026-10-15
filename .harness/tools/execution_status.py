@@ -3078,6 +3078,15 @@ def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str,
     step_id = parsed.get("target")
     if not isinstance(step_id, str):
         return None
+    # Существующий REVIEW recovery может иметь более сильный durable proof
+    # собственного отчёта. Не подменяем его общим guard-ом completed STEP:
+    # особенно после изменения Git HEAD, когда старый Evidence hash устаревает.
+    if parsed.get("operation") == "REVIEW":
+        durable = _durable_recovery_result(
+            root, execution, allow_finalization=False,
+        )
+        if durable is not None:
+            return None
     try:
         task = read_planning_task(root, step_id)
     except (OSError, ValueError, KeyError, TypeError):
