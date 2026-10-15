@@ -64,7 +64,9 @@ def search() -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="operational-integration-") as tmp:
+    with tempfile.TemporaryDirectory(
+        prefix="operational-integration-", ignore_cleanup_errors=True,
+    ) as tmp:
         root = Path(tmp).resolve()
         copy_effective_harness_checkout(SOURCE, root)
         isolate_project_artifacts(root)
@@ -80,6 +82,8 @@ def main() -> int:
         (root / "planning/tasks/STEP-017.md").write_text(task, encoding="utf-8")
 
         git(root, "init", "-q", "-b", "main")
+        git(root, "config", "maintenance.auto", "false")
+        git(root, "config", "gc.auto", "0")
         git(root, "config", "user.email", "integration@example.invalid")
         git(root, "config", "user.name", "Skills Contracts Integration")
         git(root, "add", ".")
