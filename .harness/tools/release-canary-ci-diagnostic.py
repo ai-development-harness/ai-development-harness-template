@@ -94,10 +94,13 @@ def main() -> int:
             "--candidate-sha", candidate_sha,
             "--json",
         ]
+        import os
+        diagnostic_env = os.environ.copy()
+        diagnostic_env["HARNESS_CI_CANARY_DEBUG"] = "1"
         proc = subprocess.run(
             command, cwd=candidate, text=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-            timeout=900,
+            timeout=900, env=diagnostic_env,
         )
         try:
             payload = json.loads(proc.stdout)
