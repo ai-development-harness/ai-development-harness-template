@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Focused regression: an obsolete IMPLEMENT must not replay completed work."""
+from __future__ import annotations
+
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from execution_status import _completed_step_recovery
+
+
+def command(value: str) -> dict:
+    pieces = value.split()
+    return {
+        "domain": pieces[0],
+        "operation": pieces[1],
+        "target": pieces[2] if len(pieces) == 3 else None,
+    }
+
+
+def execution(root_command: str, *, mode: str = "chain") -> dict:
+    sequence = root_command.split(" > ")
+    return {
+        "rootCommand": root_command,
+        "mode": mode,
+        "sequence": sequence,
+        "current": {
+            "command": "STEP IMPLEMENT STEP-033",
+            "status": "running",
+        },
+    }
+
+
+def evaluate(*, completed: bool, evidence: bool, review: bool,
+             sequence: str = "STEP PLAN STEP-033 > STEP IMPLEMENT STEP-033 > STEP REVIEW STEP-033") -> dict | None:
+    from verification import verification_freshness
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        with (
+            patch("execution_status.normalize_single_command", side_effect=lambda _root, value: command(value)),
+            patch("execution_status.read_planning_task", return_value={
+                "frontmatter": {"status": "completed" if completed else "in_progress"},
+            }),
+            patch("execution_status.step_completion_proof", return_value={
+                "complete": evidence, "reasons": [] if evidence else ["invalid evidence"],
+                "proof_hash": "sha256:valid",
+            }),
+            patch("execution_status.latest_review", return_value={
+                "path": "planning/reviews/STEP-033/REVIEW-pass.md",
+                "verdict": "PASS", "completionResult": "PASS",
+            } if review else {"path": "bad", "verdict": "FAIL", "completionResult": "FAIL"}),
+            patch("verification.verification_freshness", return_value={
+                "status": "PASS" if evidence else "STALE",
+                "fresh": evidence, "reasonCode": None if evidence else "VERIFICATION_SUBJECT_STALE",
+            }),
+        ):
+            return _completed_step_recovery(root, execution(sequence))
+
+
+def main() -> int:
+    assert evaluate(completed=False, evidence=False, review=False) is None
+    result = evaluate(completed=True, evidence=True, review=True)
+    assert result is not None and result["kind"] == "reconciled", result
+    assert result["stepId"] == "STEP-033", result
+
+    for evidence, review in ((False, True), (True, False), (False, False)):
+        result = evaluate(completed=True, evidence=evidence, review=review)
+        assert result is not None and result["kind"] == "blocked", result
+        assert result["blocker"]["reasonCode"] == "COMPLETED_STEP_RECOVERY_CONFLICT"
+
+    # A completed STEP never proves unrelated Git publication or another STEP.
+    for sequence in (
+        "STEP IMPLEMENT STEP-033 > GIT PUSH",
+        "STEP IMPLEMENT STEP-033 > STEP REVIEW STEP-034",
+    ):
+        result = evaluate(completed=True, evidence=True, review=True, sequence=sequence)
+        assert result is not None and result["kind"] == "blocked", result
+
+    print("completed-step-recovery-self-test: PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
