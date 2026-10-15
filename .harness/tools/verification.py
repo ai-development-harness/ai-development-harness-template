@@ -1027,6 +1027,7 @@ def run_step_verification(
         "contractBasis": contract_basis,
         "contextBasis": context_basis,
         "subjectRevision": subject_revision,
+        "subjectContentHash": subject_content_hash,
         "revision": revision,
     }
     try:
