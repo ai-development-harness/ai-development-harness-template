@@ -615,6 +615,10 @@ def test_legacy_empty_project_without_published_handoff() -> None:
     with tempfile.TemporaryDirectory(prefix="harness-resume-empty-project-") as tmp:
         root = Path(tmp)
         copy_effective_harness_checkout(Path(__file__).resolve().parents[2], root)
+        # This is a *pre-INIT* regression regardless of whether the installed
+        # host is the pristine template or an initialized downstream project.
+        # Keep Harness-managed files, reset only project-owned fixture state.
+        isolate_project_artifacts(root)
         manifest = root / ".harness/manifest.yaml"
         original = manifest.read_text(encoding="utf-8")
         assert "initialized: false" in original
