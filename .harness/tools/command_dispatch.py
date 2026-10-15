@@ -920,7 +920,7 @@ def start_dispatch(
     # recovery. Если root уже running, сначала reconcile durable checkpoints
     # через существующий mutating RESUME path, а не создаём новый child-root.
     # Это одинаково важно для STEP RUN и explicit STEP chains.
-    if normalized and all(cmd.startswith("STEP ") for cmd in normalized):
+    if not require_fresh_clone and normalized and all(cmd.startswith("STEP ") for cmd in normalized):
         root_command = " > ".join(normalized)
         if _active_execution(root, root_command) is not None:
             return resume_dispatch(root, root_command)
