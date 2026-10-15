@@ -527,14 +527,53 @@ def qualify(
                 ),
                 (
                     "self-tests",
-                    [sys.executable, ".harness/tools/run-self-tests.py"],
+                    [sys.executable, ".harness/tools/run-self-tests.py", "--json"],
                 ),
             ]
             for stage_id, command in checks:
                 proc, item = _stage(stage_id, command, cwd=work)
+
+                # On failures expose only canonical test names/statuses,
+                # never raw stdout/stderr (which may contain project secrets).
+                # run-self-tests.py --json is an existing deterministic CLI.
+                if stage_id == "self-tests":
+                    try:
+                        details = json.loads(proc.stdout)
+                    except json.JSONDecodeError:
+                        details = None
+                    if isinstance(details, dict) and isinstance(details.get("results"), list):
+                        failed = []
+                        for record in details["results"]:
+                            if not isinstance(record, dict) or record.get("status") == "PASS":
+                                continue
+                            name = record.get("test")
+                            status = record.get("status")
+                            exit_code = record.get("exitCode")
+                            if not (isinstance(name, str)
+                                    and re.fullmatch(r"[A-Za-z0-9_-]+-self-test\.py", name)):
+                                continue
+                            if status not in {"FAIL", "TIMEOUT"}:
+                                continue
+                            if isinstance(exit_code, bool) or (
+                                exit_code is not None and not isinstance(exit_code, int)
+                            ):
+                                continue
+                            failed.append({
+                                "test": name, "status": status, "exitCode": exit_code,
+                            })
+                        item["testCount"] = details.get("count")
+                        item["failedSelfTests"] = failed[:100]
+
                 stages.append(item)
                 if proc.returncode != 0:
-                    raise QualificationError("POST_UPDATE_GATE_FAILED", stage_id)
+                    suffix = ""
+                    if stage_id == "self-tests" and item.get("failedSelfTests"):
+                        suffix = ": " + ", ".join(
+                            record["test"] for record in item["failedSelfTests"]
+                        )
+                    raise QualificationError(
+                        "POST_UPDATE_GATE_FAILED", stage_id + suffix,
+                    )
 
             protected_after = _capture_protected(work)
             if protected_after != protected_before:
