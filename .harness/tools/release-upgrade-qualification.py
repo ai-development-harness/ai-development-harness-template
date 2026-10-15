@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 from pathlib import Path
 import shutil
@@ -564,26 +563,6 @@ def qualify(
                             })
                         item["testCount"] = details.get("count")
                         item["failedSelfTests"] = failed[:100]
-
-                        # TEMPORARY debug mode ONLY for the public canary CI
-                        # reproduction, never enabled by release qualification.
-                        # No inherited Git credentials in disposable fixtures.
-                        if os.environ.get("HARNESS_CI_CANARY_DEBUG") == "1" and failed:
-                            diagnostics = []
-                            for record in failed[:3]:
-                                test = subprocess.run(
-                                    [sys.executable, ".harness/tools/" + record["test"]],
-                                    cwd=work, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True,
-                                    check=False, timeout=90,
-                                )
-                                diagnostics.append({
-                                    "test": record["test"],
-                                    "exitCode": test.returncode,
-                                    "stdoutTail": test.stdout[-1800:],
-                                    "stderrTail": test.stderr[-2800:],
-                                })
-                            item["temporaryDiagnostics"] = diagnostics
 
                 stages.append(item)
                 if proc.returncode != 0:
