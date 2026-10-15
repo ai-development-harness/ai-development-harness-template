@@ -23,9 +23,9 @@ Human-readable release-check report пиши на `.harness/manifest.yaml → la
 
 ## Report
 
-Создай schema-v1 report `RELEASE-YYYYMMDDTHHMMSSZ.md` в configured `protocol.releaseDirectory`. В report явно свяжи verdict с фактическими gates/evidence и перечисли blockers с required next action.
+Создай schema-v1 report `RELEASE-YYYYMMDDTHHMMSSZ.md` в configured `protocol.releaseDirectory` **по текущему `TEMPLATE.md` и `report_contract.py`**. Канонический `kind: release_check`, `verdict: ready|blocked`, непустой `target`, H1 `# Release Check — …`, `created_at` и filename используют один UTC instant. В report явно свяжи verdict с фактическими gates/evidence и перечисли blockers с required next action; пустой шаблон или `TBD` не доказательство readiness.
 
-До завершения проверь конкретный файл:
+**После записи и до `SUCCESS`** проверь конкретный файл:
 
 ```bash
 python3 .harness/tools/report_contract.py --file '<report-path>' --kind release_check

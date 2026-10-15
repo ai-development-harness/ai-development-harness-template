@@ -60,6 +60,15 @@ Migration:
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-9. Substantive gaps превращай в corrective STEP. Итоговый reconcile/audit report сохраняй в configured `protocol.auditDirectory` с YAML frontmatter `schema: 1`.
+9. Substantive gaps превращай в corrective STEP. **Итоговый аудит обязателен даже если drift не найден.** Используй проектный `TEMPLATE.md` из configured `protocol.auditDirectory` и canonical report contract, а не придумывай Markdown/метаданные:
+   - `schema: 1`, `kind: audit`, **`mode: audit` (не `reconcile`)**, `result: complete`, непустой `scope`;
+   - имя `AUDIT-YYYYMMDDTHHMMSSZ.md`, где timestamp — UTC-время **этого же** отчёта; `created_at` соответствует имени с точностью до секунды, не находится в будущем;
+   - H1 начинается с `# Audit — `; заполнены реальные `Sources checked`, `Actual state`, `Drift / findings`, `Evidence`, `Corrective actions`. Шаблонные `TBD` не являются evidence.
+10. **После фактической записи** проверь именно созданный файл:
+   ```bash
+   python3 .harness/tools/report_contract.py --file '<report-path>' --kind audit
+   python3 .harness/tools/validate.py --mode manual
+   ```
+   При ошибке отчёта не передавай `SUCCESS` через `harness-dispatch.py complete`: исправь файл либо сообщи `BLOCKED`. Проверка `validate.py` из пункта 8 до создания отчёта не заменяет эту проверку. С появлением deterministic report writer используй его вместо ручного расчёта технических полей.
 
 Нельзя заявлять «drift отсутствует», пока migration/check-command-references/validator не выполнены либо их BLOCKED состояние не раскрыто в Evidence.
