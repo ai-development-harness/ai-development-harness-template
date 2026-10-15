@@ -33,11 +33,11 @@ description: Perform a read-only evidence-based audit of a STEP or subsystem aga
 
 ## Report
 
-Новый report сохраняй в configured `protocol.auditDirectory` как `AUDIT-YYYYMMDDTHHMMSSZ.md` с YAML frontmatter `schema: 1`, `kind: audit`.
+Новый report сохраняй в configured `protocol.auditDirectory` по **проектному `TEMPLATE.md`** и `report_contract.py`, не по свободному формату. Он требует `schema: 1`, `kind: audit`, `mode: audit`, `result: complete`, непустой `scope`, H1 `# Audit — …` и согласованные UTC `created_at` / `AUDIT-YYYYMMDDTHHMMSSZ.md`. Отчёт не должен содержать незаполненные шаблонные `TBD`. Поля не угадывай: сверяй с текущим template.
 
 В human-readable части явно разделяй observed state/evidence, drift/findings, risk и corrective actions. Не объявляй отсутствие drift, если значимая часть target surface не была проверена.
 
-До завершения проверь report:
+**После записи и до `SUCCESS`** проверь именно этот report (само существование файла не доказывает корректность):
 
 ```bash
 python3 .harness/tools/report_contract.py --file '<report-path>' --kind audit
