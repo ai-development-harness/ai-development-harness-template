@@ -1029,6 +1029,12 @@ def validate_review_report(
                 if revision != current:
                     errors.append("reviewed_revision does not match current repository state")
 
+    # Новые отчёты сохраняют hash проверенного содержимого отдельно от SHA
+    # Git-коммита. Старые immutable reports оставляем валидными без переписывания.
+    reviewed_subject_content = meta.get("reviewed_subject_content_hash")
+    if reviewed_subject_content is not None and not _valid_sha256(reviewed_subject_content):
+        errors.append("reviewed_subject_content_hash must be sha256 when present")
+
     human_findings = _parse_findings(document)
     finding_contract = meta.get("finding_contract")
     structured_findings: list[dict[str, Any]] | None = None
