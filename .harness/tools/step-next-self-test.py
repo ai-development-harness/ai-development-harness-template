@@ -468,6 +468,63 @@ def main() -> int:
             for reason in item["reasons"]
         ), stale_next
 
+        # #331: Just-in-time planning after REQ/ADR/architecture drift.
+        # A valid old Ready fingerprint cannot authorize IMPLEMENT, but STEP
+        # NEXT may recommend STEP RUN to refresh PLAN when dependency gates
+        # are clear. Other STEP plans must NOT be regenerated in bulk.
+        reset_steps(root)
+        write_step(root, "STEP-080", priority="low")
+        write_step(root, "STEP-081", priority="critical", depends=["STEP-080"])
+        write_step(root, "STEP-082", priority="medium")
+        task_path = root / "planning/tasks/STEP-080.md"
+        old_basis = planning_contract_module.planning_context_basis(root, "STEP-080")
+        old_content = planning_contract_module.plan_content_hash(root, "STEP-080")
+        plan_text = task_path.read_text(encoding="utf-8")
+        plan_text = plan_text.replace("  status: not_planned", "  status: ready", 1)
+        plan_text = plan_text.replace("  context_basis: null", f"  context_basis: {old_basis}", 1)
+        plan_text = plan_text.replace("  content_hash: null", f"  content_hash: {old_content}", 1)
+        # A changed linked planning fact makes stored Ready basis stale.
+        plan_text = plan_text.replace("phase: test", "phase: revised", 1)
+        task_path.write_text(plan_text, encoding="utf-8", newline="\n")
+        failures = implementation_prerequisite_failures(root, "STEP-080")
+        assert "plan-context-basis-is-stale" in failures, failures
+        assert resolve_step_action(root, "STEP-080")["command"] == "STEP PLAN STEP-080"
+        assert resolve_step_action(root, "STEP-080")["planningAdvisory"]["staleReadyPlan"]
+        future_plan = resolve_step_action(root, "STEP-081")
+        assert future_plan["command"] == "STEP PLAN STEP-081", future_plan
+        assert future_plan["planningAdvisory"]["deferIfNotNext"] is True
+
+        before_selection = resolve_step_next(root)
+        assert before_selection["command"] == "STEP RUN STEP-082", before_selection
+        assert before_selection["alternatives"][0]["command"] == "STEP RUN STEP-080"
+        assert before_selection["alternatives"][0]["planTiming"]["deferUntilSelected"] is True
+        assert any(x["stepId"] == "STEP-081" for x in before_selection["blockers"])
+        stale_list = harness_ux_module.step_list(root)
+        stale_row = next(x for x in stale_list["steps"] if x["id"] == "STEP-080")
+        assert stale_row["planFreshness"] == "stale", stale_row
+        assert stale_row["planRemediation"] is None, stale_row
+        assert stale_row["deferredPlanRemediation"] == "STEP PLAN STEP-080", stale_row
+        assert stale_row["planRefreshPolicy"] == "when-selected-by-STEP-NEXT", stale_row
+
+        # As soon as stale Ready STEP becomes the highest-priority actionable
+        # one, NEXT recommends one RUN; the child PLAN is selected inside RUN.
+        task_path.write_text(
+            task_path.read_text(encoding="utf-8").replace(
+                "priority: low", "priority: high", 1,
+            ),
+            encoding="utf-8", newline="\\n",
+        )
+        selected_stale = resolve_step_next(root)
+        assert selected_stale["command"] == "STEP RUN STEP-080", selected_stale
+        assert selected_stale["selected"]["planTiming"]["refreshStaleReady"] is True
+        assert selected_stale["selected"]["planTiming"]["deferUntilSelected"] is False
+        still_blocked = implementation_prerequisite_failures(root, "STEP-080")
+        assert "plan-context-basis-is-stale" in still_blocked, still_blocked
+        # A standalone IMPLEMENT must remain BLOCKED, even though RUN can
+        # safely execute a fresh independent PLAN before attempting it.
+        step_implement = start_dispatch(root, "STEP IMPLEMENT STEP-080")
+        assert step_implement["status"] == "BLOCKED", step_implement
+
         # Planning blockers such as TBD phase stay relevant even without deps.
         reset_steps(root)
         write_step(root, "STEP-066", priority="critical")
