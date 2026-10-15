@@ -239,6 +239,65 @@ def main() -> int:
         assert contract_stale["reasonCode"] == "VERIFICATION_CONTRACT_STALE", contract_stale
         step.write_text(original_text, encoding="utf-8", newline="\n")
 
+        # Squash/rebase/commit могут менять HEAD без изменения фактических
+        # проверенных файлов. В том числе до commit product-файл был untracked,
+        # а после commit стал tracked — отпечаток должен остаться тем же.
+        reset(root)
+        product_path = root / "src" / "squash-fixture.ts"
+        product_path.parent.mkdir(parents=True, exist_ok=True)
+        product_path.write_text("export const answer = 42;\n", encoding="utf-8")
+        uncommitted = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Squash test confirmed.",
+            }],
+        )
+        assert uncommitted["status"] == "PASS", uncommitted
+        subject_hash = uncommitted["subjectContentHash"]
+        assert subject_hash.startswith("sha256:"), subject_hash
+        assert "Subject content hash: " + subject_hash in step.read_text(encoding="utf-8")
+        run(root, "git", "add", "-A")
+        run(root, "git", "commit", "-qm", "validated product content")
+        same_after_commit = verification_freshness(root, "STEP-001")
+        assert same_after_commit["fresh"] is True, same_after_commit
+        assert same_after_commit["subjectContentHash"] == subject_hash
+        # Переписать identity коммита с тем же tree (эквивалент squash rewrite).
+        run(root, "git", "commit", "--amend", "-qm", "squashed product result")
+        after_squash = verification_freshness(root, "STEP-001")
+        assert after_squash["fresh"] is True, after_squash
+        command_after_squash = verification_command_evidence(
+            root, "STEP-001", 'python3 -c "print(123)"',
+        )
+        assert command_after_squash["fresh"] is True, command_after_squash
+        # Но изменение одного байта в коде по-прежнему invalidates PASS.
+        product_path.write_text("export const answer = 43;\n", encoding="utf-8")
+        changed_content = verification_freshness(root, "STEP-001")
+        assert changed_content["fresh"] is False, changed_content
+        assert changed_content["reasonCode"] == "VERIFICATION_SUBJECT_STALE"
+        run(root, "git", "checkout", "--", "src/squash-fixture.ts")
+        restored = verification_freshness(root, "STEP-001")
+        assert restored["fresh"] is True, restored
+        if os.name == "posix":
+            product_path.chmod(0o755)
+            chmod_stale = verification_freshness(root, "STEP-001")
+            assert chmod_stale["fresh"] is False, chmod_stale
+            product_path.chmod(0o644)
+
+        # Legacy Evidence без отдельного content hash не объявляется PASS
+        # после смены SHA по догадке: требуется exact прежняя revision.
+        legacy_evidence = step.read_text(encoding="utf-8")
+        step.write_text(
+            "\n".join(line for line in legacy_evidence.splitlines()
+                      if not line.startswith("- Subject content hash: ")) + "\n",
+            encoding="utf-8",
+        )
+        legacy_same_head = verification_freshness(root, "STEP-001")
+        assert legacy_same_head["fresh"] is False, legacy_same_head
+        # Вернуть новый Evidence и исходную fixture для остальных проверок.
+        step.write_text(legacy_evidence, encoding="utf-8")
+        reset(root)
+
         # A modified subject invalidates cached automation even if manual
         # observations arrive unchanged.
         reset(root)
