@@ -32,6 +32,8 @@ def execution(root_command: str, *, mode: str = "chain") -> dict:
 
 
 def evaluate(*, completed: bool, evidence: bool, review: bool, competing: bool = False,
+             report_content_hash: str | None = "sha256:identical-product",
+             legacy_revision_current: bool = False,
              sequence: str = "STEP PLAN STEP-033 > STEP IMPLEMENT STEP-033 > STEP REVIEW STEP-033") -> dict | None:
     with TemporaryDirectory() as directory:
         root = Path(directory)
@@ -44,10 +46,15 @@ def evaluate(*, completed: bool, evidence: bool, review: bool, competing: bool =
                 "complete": evidence, "reasons": [] if evidence else ["invalid evidence"],
                 "proof_hash": "sha256:valid",
             }),
-            patch("execution_status.latest_review", return_value={
-                "path": "planning/reviews/STEP-033/REVIEW-pass.md",
-                "verdict": "PASS", "completionResult": "PASS",
-            } if review else {"path": "bad", "verdict": "FAIL", "completionResult": "FAIL"}),
+            patch("execution_status.latest_review", side_effect=lambda _root, _step, *,
+                  require_current_revision=False: (
+                    None if require_current_revision and not legacy_revision_current
+                    else ({
+                        "path": "planning/reviews/STEP-033/REVIEW-pass.md",
+                        "verdict": "PASS", "completionResult": "PASS",
+                        "reviewedContentHash": report_content_hash,
+                    } if review else {"path": "bad", "verdict": "FAIL", "completionResult": "FAIL"})
+                  )),
             patch("execution_status.load_status", return_value={
                 "executions": ([{"executionId": "other", "status": "running",
                     "current": {"command": "STEP REVIEW STEP-033", "status": "running"}}]
@@ -56,6 +63,7 @@ def evaluate(*, completed: bool, evidence: bool, review: bool, competing: bool =
             patch("verification.verification_freshness", return_value={
                 "status": "PASS" if evidence else "STALE",
                 "fresh": evidence, "reasonCode": None if evidence else "VERIFICATION_SUBJECT_STALE",
+                "subjectContentHash": "sha256:identical-product",
             }),
         ):
             return _completed_step_recovery(root, execution(sequence))
@@ -66,6 +74,23 @@ def main() -> int:
     result = evaluate(completed=True, evidence=True, review=True)
     assert result is not None and result["kind"] == "reconciled", result
     assert result["stepId"] == "STEP-033", result
+
+    # Старый Git HEAD не является основанием отвергнуть совпадающие bytes.
+    # Но последний independent REVIEW тоже должен быть привязан к тем же bytes.
+    report_stale = evaluate(
+        completed=True, evidence=True, review=True,
+        report_content_hash="sha256:older-product",
+    )
+    assert report_stale is not None and report_stale["kind"] == "blocked", report_stale
+    legacy_missing = evaluate(
+        completed=True, evidence=True, review=True, report_content_hash=None,
+    )
+    assert legacy_missing is not None and legacy_missing["kind"] == "blocked", legacy_missing
+    legacy_exact = evaluate(
+        completed=True, evidence=True, review=True, report_content_hash=None,
+        legacy_revision_current=True,
+    )
+    assert legacy_exact is not None and legacy_exact["kind"] == "reconciled", legacy_exact
 
     for evidence, review in ((False, True), (True, False), (False, False)):
         result = evaluate(completed=True, evidence=evidence, review=review)
