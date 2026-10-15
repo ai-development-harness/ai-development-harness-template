@@ -38,6 +38,7 @@ from document_contract import (
     validate_report_timestamp_identity,
 )
 from harness_config import (
+    ConfigError,
     audit_directory,
     init_review_directory,
     open_questions_index_path,
@@ -661,13 +662,20 @@ def repository_subject_content_hash(
 
     # Детерминированные проекции могут обновиться после PASS, в том числе
     # при завершении STEP. Источники этих проекций остаются в fingerprint.
-    projection_paths = (
-        requirements_directory(root) / "SPEC.md",
-        requirements_directory(root) / "STATUS.md",
-        roadmap_path(root),
-        status_path(root),
-        open_questions_index_path(root),
-    )
+    projection_paths: list[Path] = []
+    # Путь проекции может отсутствовать в малом bootstrap/synthetic fixture.
+    # Не придумываем default: тогда файл остаётся в subject и не исключается.
+    try:
+        req_directory = requirements_directory(root)
+    except ConfigError:
+        pass
+    else:
+        projection_paths.extend((req_directory / "SPEC.md", req_directory / "STATUS.md"))
+    for resolve_path in (roadmap_path, status_path, open_questions_index_path):
+        try:
+            projection_paths.append(resolve_path(root))
+        except ConfigError:
+            continue
     excluded.update(_repo_relative(root, path) for path in projection_paths)
 
     immutable_patterns = _immutable_report_patterns(root)
