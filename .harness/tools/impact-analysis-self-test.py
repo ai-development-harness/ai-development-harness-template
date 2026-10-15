@@ -413,6 +413,8 @@ def main() -> int:
         assert step1_row["deferredPlanRemediation"] == "STEP PLAN STEP-001", step1_row
         assert decisions["STEP-001"]["action"] is None, preview
         assert decisions["STEP-001"]["deferredPlanAction"] == "STEP PLAN STEP-001", preview
+        assert decisions["STEP-001"]["plan"]["action"] is None, preview
+        assert decisions["STEP-001"]["plan"]["deferredAction"] == "STEP PLAN STEP-001", preview
 
         original_write = harness_ux_module.write_projections
         original_run = harness_ux_module._run
