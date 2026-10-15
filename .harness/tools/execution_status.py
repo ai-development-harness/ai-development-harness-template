@@ -1169,6 +1169,27 @@ def _validate_execution_record(
                     errors.append(
                         f"{prefix}: current.context.portablePlanProofBefore invalid"
                     )
+            # Writer-bound report receipt живёт внутри той же execution:
+            # произвольный JSON не должен превращаться в доказательство PASS.
+            if "operationalReport" in context:
+                receipt = context["operationalReport"]
+                keys = {"kind", "command", "executionId", "path", "sha256", "subjectHash"}
+                if (
+                    not isinstance(receipt, dict)
+                    or set(receipt) != keys
+                    or receipt.get("kind") not in {"audit", "release_check", "skill_search"}
+                    or receipt.get("executionId") != execution_id
+                    or receipt.get("command") != current.get("command")
+                    or not isinstance(receipt.get("path"), str)
+                    or not receipt["path"]
+                    or receipt["path"].startswith("/")
+                    or ".." in Path(receipt["path"]).parts
+                    or not isinstance(receipt.get("sha256"), str)
+                    or re.fullmatch(r"[a-f0-9]{64}", receipt["sha256"]) is None
+                    or not isinstance(receipt.get("subjectHash"), str)
+                    or re.fullmatch(r"sha256:[a-f0-9]{64}", receipt["subjectHash"]) is None
+                ):
+                    errors.append(f"{prefix}: current.context.operationalReport invalid")
             errors.extend(
                 _details_errors(
                     context.get("intentBasisError"),
@@ -3875,6 +3896,38 @@ def stamp_review_expectation(
     execution["updatedAt"] = utc_now()
     save_status(root, status)
     return dict(expectation)
+
+
+@execution_state_mutation
+def record_operational_report(
+    root: Path,
+    command: str,
+    execution_id: str,
+    receipt: dict[str, Any],
+) -> None:
+    """Привязать validated immutable report к одному текущему executionId.
+
+    Тот же OS-lock удерживает writer, status validator и будущий completion
+    gate. Receipt нельзя принять из текста модели: его создаёт только writer.
+    """
+    normalized = normalize_single_command(root, command)["normalized"]
+    status = load_status(root)
+    active = _active_execution_for_command(status, normalized)
+    if (
+        active is None
+        or active.get("executionId") != execution_id
+        or active["current"].get("command") != normalized
+    ):
+        raise ValueError("OPERATIONAL_REPORT_EXECUTION_STALE")
+    current = active["current"]
+    context = current.get("context")
+    if not isinstance(context, dict):
+        raise ValueError("OPERATIONAL_REPORT_CONTEXT_INVALID")
+    if context.get("operationalReport") is not None:
+        raise ValueError("OPERATIONAL_REPORT_ALREADY_RECORDED")
+    context["operationalReport"] = dict(receipt)
+    active["updatedAt"] = utc_now()
+    save_status(root, status)
 
 
 @execution_state_mutation
