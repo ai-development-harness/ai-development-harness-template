@@ -670,6 +670,7 @@ def repository_subject_content_hash(
     )
     excluded.update(_repo_relative(root, path) for path in projection_paths)
 
+    immutable_patterns = _immutable_report_patterns(root)
     digest = hashlib.sha256()
     digest.update(b"HARNESS_SUBJECT_CONTENT_V1\0")
     for rel in sorted(files, key=lambda value: value.encode("utf-8", errors="surrogateescape")):
@@ -679,7 +680,7 @@ def repository_subject_content_hash(
         if (normalized in excluded
                 or normalized == ".harness/local"
                 or normalized.startswith(".harness/local/")
-                or _is_immutable_review_path(root, normalized)):
+                or _matches_immutable_report(normalized, immutable_patterns)):
             continue
         path = root / rel
         index_mode = tracked.get(rel)
@@ -1394,9 +1395,9 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
 
 # Lexical classifier durable history. Symlink target не используется для
 # classification: Git tracks path identity, а не место, куда указывает symlink.
-def _is_immutable_review_path(root: Path, rel: str) -> bool:
-    """Распознать immutable report по lexical Git path, не symlink target."""
-    patterns = (
+def _immutable_report_patterns(root: Path) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Один раз разрешить configured report directories для batch traversal."""
+    return (
         (_configured_rel(root, review_directory(root)), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
         (_configured_rel(root, planning_review_directory(root)), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
         (_configured_rel(root, init_review_directory(root)), re.compile(r"^INIT-REVIEW-.+\.md$")),
@@ -1405,6 +1406,9 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
         (_configured_rel(root, skill_search_directory(root)), re.compile(r"^SKILL-SEARCH-.+\.md$")),
         (_configured_rel(root, update_report_directory(root)), re.compile(r"^UPDATE-.+\.md$")),
     )
+
+
+def _matches_immutable_report(rel: str, patterns: tuple[tuple[str, re.Pattern[str]], ...]) -> bool:
     for base, pattern in patterns:
         suffix = _under_git_path(rel, base)
         if suffix is not None and pattern.fullmatch(suffix) is not None:
@@ -1413,6 +1417,11 @@ def _is_immutable_review_path(root: Path, rel: str) -> bool:
         # внутрь более широкого directory не означает, что это artifact именно
         # этого kind; продолжаем проверку остальных configured roots.
     return False
+
+
+def _is_immutable_review_path(root: Path, rel: str) -> bool:
+    """Распознать immutable report по lexical Git path, не symlink target."""
+    return _matches_immutable_report(rel, _immutable_report_patterns(root))
 
 
 def _git_changed_review_paths(root: Path, *diff_args: str) -> tuple[list[str], str | None]:
