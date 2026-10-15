@@ -1523,7 +1523,12 @@ def load_status(root: Path, *, read_only: bool = False) -> dict[str, Any]:
 
 
 # Записать JSON crash-safe способом через temporary file, fsync и atomic os.replace. Это защищает от половины файла при process/session crash.
-def _atomic_write_json(path: Path, value: dict[str, Any]) -> None:
+def _atomic_write_json(
+    path: Path,
+    value: dict[str, Any],
+    *,
+    allow_initial_creation: bool = False,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
     fd, tmp_name = tempfile.mkstemp(
