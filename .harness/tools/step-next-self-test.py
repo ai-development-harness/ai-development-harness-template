@@ -483,8 +483,12 @@ def main() -> int:
         plan_text = plan_text.replace("  status: not_planned", "  status: ready", 1)
         plan_text = plan_text.replace("  context_basis: null", f"  context_basis: {old_basis}", 1)
         plan_text = plan_text.replace("  content_hash: null", f"  content_hash: {old_content}", 1)
-        # A changed linked planning fact makes stored Ready basis stale.
-        plan_text = plan_text.replace("phase: test", "phase: revised", 1)
+        # Goal is part of the semantic STEP contract; priority/phase are
+        # scheduling metadata and must NOT stale a Ready plan.
+        plan_text = plan_text.replace(
+            "## Goal\\n\\nПроверить STEP NEXT.",
+            "## Goal\\n\\nПроверить изменённый contract STEP NEXT.", 1,
+        )
         task_path.write_text(plan_text, encoding="utf-8", newline="\n")
         failures = implementation_prerequisite_failures(root, "STEP-080")
         assert "plan-context-basis-is-stale" in failures, failures
