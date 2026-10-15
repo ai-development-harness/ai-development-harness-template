@@ -110,7 +110,7 @@ def main() -> int:
             execution_id=execution_id,
         )
         assert done["status"] == "DONE", done
-        assert load_status(root)["recentTerminals"][-1]["result"] == "SUCCESS"
+        assert load_status(root)["recentTerminals"][-1]["current"]["result"] == "SUCCESS"
 
         # Нельзя подставить чужой старый PASS вместо нового report.
         later = start_execution(root, "PROJECT RECONCILE")
