@@ -60,15 +60,11 @@ Migration:
    ```bash
    python3 .harness/tools/validate.py --mode manual
    ```
-9. Substantive gaps превращай в corrective STEP. **Итоговый аудит обязателен даже если drift не найден.** Используй проектный `TEMPLATE.md` из configured `protocol.auditDirectory` и canonical report contract, а не придумывай Markdown/метаданные:
-   - `schema: 1`, `kind: audit`, **`mode: audit` (не `reconcile`)**, `result: complete`, непустой `scope`;
-   - имя `AUDIT-YYYYMMDDTHHMMSSZ.md`, где timestamp — UTC-время **этого же** отчёта; `created_at` соответствует имени с точностью до секунды, не находится в будущем;
-   - H1 начинается с `# Audit — `; заполнены реальные `Sources checked`, `Actual state`, `Drift / findings`, `Evidence`, `Corrective actions`. Шаблонные `TBD` не являются evidence.
-10. **После фактической записи** проверь именно созданный файл:
-   ```bash
-   python3 .harness/tools/report_contract.py --file '<report-path>' --kind audit
-   python3 .harness/tools/validate.py --mode manual
-   ```
-   При ошибке отчёта не передавай `SUCCESS` через `harness-dispatch.py complete`: исправь файл либо сообщи `BLOCKED`. Проверка `validate.py` из пункта 8 до создания отчёта не заменяет эту проверку. С появлением deterministic report writer используй его вместо ручного расчёта технических полей.
+9. Substantive gaps превращай в corrective STEP. Итоговый audit report обязателен даже при отсутствии drift. Модель передаёт только **semantic payload** с `scope: "project"` и секциями из configured audit `TEMPLATE.md`, включая конкретные находки, evidence и corrective actions. Канонические `schema/kind/mode/created_at`, H1 и имя файла **не создавай вручную**. Пример payload и правила секций: `.harness/docs/REPORTING.md`.
+10. Передай payload в deterministic writer с **точным** `executionId` текущего handoff:
+    ```bash
+    python3 .harness/tools/semantic-writer.py audit-report --execution-id '<executionId>' --payload-file '<local-json-or->'
+    ```
+    Writer сам использует configured `protocol.auditDirectory/TEMPLATE.md`, создаёт immutable `AUDIT-<UTC>.md`, проверяет `report_contract.py` и сохраняет execution-bound receipt. При `BLOCKED` не отправляй `complete SUCCESS`. При `PASS` передай штатному dispatcher `SUCCESS` именно для этой execution: Core перепроверит receipt, SHA-256 и scope до terminal success. Найденный drift — **содержимое валидного аудита**, не ошибка schema: его нельзя скрывать и не нужно выдавать за отсутствие отчёта.
 
 Нельзя заявлять «drift отсутствует», пока migration/check-command-references/validator не выполнены либо их BLOCKED состояние не раскрыто в Evidence.

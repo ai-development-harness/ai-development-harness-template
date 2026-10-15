@@ -151,6 +151,20 @@ def main() -> int:
             else:
                 raise AssertionError("duplicate report recorded")
 
+        # Legacy status допускает пустой/отсутствующий command context. Это
+        # controlled BLOCKED, а не необработанный AttributeError из writer.
+        existing["current"]["context"] = None
+        with (
+            patch("execution_status.load_status", return_value={"executions": [existing]}),
+            patch("operational_reports.active_execution_for_command", return_value=existing),
+        ):
+            try:
+                write_operational_report(root, "audit", payload("audit"), execution_id="exec-a")
+            except OperationalReportError as exc:
+                assert exc.code == "REPORT_EXECUTION_CONTEXT_INVALID", exc
+            else:
+                raise AssertionError("missing command context accepted")
+
     print("operational-reports-self-test: PASS")
     return 0
 

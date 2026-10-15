@@ -271,6 +271,9 @@ jobs:
           Invoke-HarnessSelfTest ".harness/tools/portable-handoff-self-test.py"
           Invoke-HarnessSelfTest ".harness/tools/portable-resume-self-test.py"
           Invoke-HarnessSelfTest ".harness/tools/portable-resume-matrix-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/operational-reports-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/operational-completion-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/operational-integration-self-test.py"
           Invoke-HarnessSelfTest ".harness/tools/update-engine-self-test.py"
 
   # Проверить нижнюю документированную границу Python отдельно от основного 3.13 job.
