@@ -38,7 +38,11 @@ def audit_payload() -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="operational-completion-") as directory:
+    # Disposable Git fixture: на Python 3.11 фоновые процессы Git могут
+    # удерживать .git при удалении temp-каталога; это не report failure.
+    with tempfile.TemporaryDirectory(
+        prefix="operational-completion-", ignore_cleanup_errors=True,
+    ) as directory:
         root = Path(directory).resolve()
         copy_effective_harness_checkout(SOURCE, root)
         isolate_project_artifacts(root)
@@ -50,6 +54,8 @@ def main() -> int:
             encoding="utf-8",
         )
         run(root, "git", "init", "-q", "-b", "main")
+        run(root, "git", "config", "maintenance.auto", "false")
+        run(root, "git", "config", "gc.auto", "0")
         run(root, "git", "config", "user.email", "completion@example.invalid")
         run(root, "git", "config", "user.name", "Completion Contract")
         run(root, "git", "add", ".")
