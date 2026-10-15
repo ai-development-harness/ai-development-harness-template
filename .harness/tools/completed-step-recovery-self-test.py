@@ -31,10 +31,8 @@ def execution(root_command: str, *, mode: str = "chain") -> dict:
     }
 
 
-def evaluate(*, completed: bool, evidence: bool, review: bool,
+def evaluate(*, completed: bool, evidence: bool, review: bool, competing: bool = False,
              sequence: str = "STEP PLAN STEP-033 > STEP IMPLEMENT STEP-033 > STEP REVIEW STEP-033") -> dict | None:
-    from verification import verification_freshness
-
     with TemporaryDirectory() as directory:
         root = Path(directory)
         with (
@@ -50,6 +48,11 @@ def evaluate(*, completed: bool, evidence: bool, review: bool,
                 "path": "planning/reviews/STEP-033/REVIEW-pass.md",
                 "verdict": "PASS", "completionResult": "PASS",
             } if review else {"path": "bad", "verdict": "FAIL", "completionResult": "FAIL"}),
+            patch("execution_status.load_status", return_value={
+                "executions": ([{"executionId": "other", "status": "running",
+                    "current": {"command": "STEP REVIEW STEP-033", "status": "running"}}]
+                    if competing else []),
+            }),
             patch("verification.verification_freshness", return_value={
                 "status": "PASS" if evidence else "STALE",
                 "fresh": evidence, "reasonCode": None if evidence else "VERIFICATION_SUBJECT_STALE",
@@ -68,6 +71,10 @@ def main() -> int:
         result = evaluate(completed=True, evidence=evidence, review=review)
         assert result is not None and result["kind"] == "blocked", result
         assert result["blocker"]["reasonCode"] == "COMPLETED_STEP_RECOVERY_CONFLICT"
+
+    conflict = evaluate(completed=True, evidence=True, review=True, competing=True)
+    assert conflict is not None and conflict["kind"] == "blocked", conflict
+    assert conflict["blocker"]["details"]["competingExecutions"] == ["other"]
 
     # A completed STEP never proves unrelated Git publication or another STEP.
     for sequence in (
