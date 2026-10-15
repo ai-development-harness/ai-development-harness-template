@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 import json
 import hashlib
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -39,6 +40,10 @@ from document_contract import (
 from harness_config import (
     audit_directory,
     init_review_directory,
+    open_questions_index_path,
+    requirements_directory,
+    roadmap_path,
+    status_path,
     planning_review_directory,
     release_directory,
     review_directory,
@@ -608,6 +613,115 @@ def repository_revision(
             digest.update(b"DELETED\0")
         digest.update(b"\0")
     return {"git_head": git_head, "worktree_hash": "sha256:" + digest.hexdigest()}
+
+
+def repository_subject_content_hash(
+    root: Path,
+    *,
+    ignored_paths: set[str] | frozenset[str] | None = None,
+) -> str:
+    """Отпечаток фактического содержимого, независимый от Git HEAD и staging.
+
+    Git SHA показывает историю, а не то, что исполняли тесты. После commit,
+    squash или rebase те же файлы дают тот же digest. Учитываем tracked и
+    untracked (кроме ignored), имена, executable bit, symlinks и gitlinks.
+
+    Canonical generated projections и immutable reports не являются исходным
+    продуктовым кодом. Их проверяют отдельные validators, а изменение ими
+    lifecycle после PASS не должно обнулять доказательство.
+    """
+    root = root.resolve()
+    code, raw_index = _git(root, "ls-files", "--stage", "-z")
+    if code != 0:
+        raise ValueError("cannot enumerate tracked files for content identity")
+    tracked: dict[str, str] = {}
+    for item in (part for part in raw_index.split(b"\0") if part):
+        meta, sep, raw_rel = item.partition(b"\t")
+        parts = meta.split()
+        if not sep or len(parts) != 3 or parts[2] != b"0":
+            raise ValueError("unmerged or malformed Git index prevents content identity")
+        rel = raw_rel.decode("utf-8", errors="surrogateescape")
+        if rel in tracked:
+            raise ValueError(f"duplicate Git index path: {rel!r}")
+        tracked[rel] = parts[0].decode("ascii")
+
+    code, raw_untracked = _git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if code != 0:
+        raise ValueError("cannot enumerate untracked files for content identity")
+    files = set(tracked)
+    files.update(item.decode("utf-8", errors="surrogateescape")
+                 for item in raw_untracked.split(b"\0") if item)
+
+    excluded = set()
+    for value in ignored_paths or set():
+        rel = _normalize_git_rel(value)
+        if rel is None:
+            raise ValueError(f"invalid ignored repository path: {value}")
+        excluded.add(rel)
+
+    # Детерминированные проекции могут обновиться после PASS, в том числе
+    # при завершении STEP. Источники этих проекций остаются в fingerprint.
+    projection_paths = (
+        requirements_directory(root) / "SPEC.md",
+        requirements_directory(root) / "STATUS.md",
+        roadmap_path(root),
+        status_path(root),
+        open_questions_index_path(root),
+    )
+    excluded.update(_repo_relative(root, path) for path in projection_paths)
+
+    digest = hashlib.sha256()
+    digest.update(b"HARNESS_SUBJECT_CONTENT_V1\0")
+    for rel in sorted(files, key=lambda value: value.encode("utf-8", errors="surrogateescape")):
+        normalized = _normalize_git_rel(rel)
+        if normalized is None:
+            raise ValueError(f"invalid Git path for content identity: {rel!r}")
+        if (normalized in excluded
+                or normalized == ".harness/local"
+                or normalized.startswith(".harness/local/")
+                or _is_immutable_review_path(root, normalized)):
+            continue
+        path = root / rel
+        index_mode = tracked.get(rel)
+
+        # Удалённый файл исчезает из фактической поверхности до коммита;
+        # после коммита он исчезает и из index. Оба состояния эквивалентны.
+        if not path.exists() and not path.is_symlink():
+            continue
+
+        if path.is_symlink():
+            mode = "120000"
+            data = str(path.readlink()).encode("utf-8", errors="surrogateescape")
+        elif index_mode == "160000":
+            mode = "160000"
+            submodule = _submodule_head(path)
+            if submodule is None:
+                raise ValueError(f"cannot prove submodule HEAD: {rel}")
+            data = submodule.encode("ascii")
+        elif path.is_file():
+            # Windows не предоставляет надёжную POSIX executable bit; при
+            # tracked files используем Git mode, остальное — фактический mode.
+            if os.name == "nt" and index_mode in {"100644", "100755"}:
+                mode = index_mode
+            else:
+                mode = "100755" if path.stat().st_mode & 0o111 else "100644"
+            data = None
+        else:
+            raise ValueError(f"unsupported filesystem item in Git surface: {rel}")
+
+        digest.update(rel.encode("utf-8", errors="surrogateescape"))
+        digest.update(b"\0")
+        digest.update(mode.encode("ascii"))
+        digest.update(b"\0")
+        if data is None:
+            with path.open("rb") as stream:
+                while chunk := stream.read(65536):
+                    digest.update(chunk)
+        else:
+            digest.update(data)
+        digest.update(b"\0")
+
+    return "sha256:" + digest.hexdigest()
 
 
 def repository_activity_fingerprint(
