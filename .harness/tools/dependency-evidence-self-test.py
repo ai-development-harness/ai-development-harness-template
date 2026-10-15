@@ -14,9 +14,12 @@ from unittest.mock import patch
 from planning_contract import (
     dependency_completion_basis,
     planning_context_basis,
+    read_task,
     step_completion_proof,
+    _validate_task,
 )
 from verification import verification_context_basis, verification_dependency_facts
+from projection_contract import render_requirements_status
 
 
 MANIFEST = """execution:
@@ -170,6 +173,7 @@ def main() -> int:
         # Только snapshot из настоящего REVIEW, а не изменяемый current state,
         # может подтвердить повторную проверку downstream after upstream re-plan.
         dependency_review_basis: str | None = None
+        modern_review_missing_basis = False
         review_paths = {
             f"STEP-{n:03d}": root / f"planning/reviews/STEP-{n:03d}/REVIEW-proof.md"
             for n in range(1, 4)
@@ -179,6 +183,8 @@ def main() -> int:
             meta = {"contract_basis": basis[step_id]}
             if step_id == "STEP-002" and dependency_review_basis is not None:
                 meta["dependency_completion_basis"] = dependency_review_basis
+            if step_id == "STEP-002" and modern_review_missing_basis:
+                meta["reviewed_subject_content_hash"] = "sha256:" + "1" * 64
             return {
                 "path": review_paths[step_id],
                 "verdict": "PASS",
@@ -191,6 +197,11 @@ def main() -> int:
             for number in range(1, 4):
                 assert step_completion_proof(root, f"STEP-{number:03d}")["complete"]
 
+            # Сохраняем exact historical REQ projection из старого
+            # непротиворечивого contract. В обновлении он не должен дрейфовать
+            # только потому, что у REVIEW отсутствуют новые metadata.
+            historical_projection = render_requirements_status(root)
+
             # Смешанная история: REVIEW с contract_basis от более ранней
             # версии Harness ещё не содержит dependency_completion_basis.
             # Его нельзя автоматически считать актуальным для downstream.
@@ -200,6 +211,45 @@ def main() -> int:
             assert not missing_basis["complete"], missing_basis
             assert "completion-dependency-proof-missing:STEP-002" in missing_basis["reasons"]
             assert step_completion_proof(root, "STEP-001")["complete"]
+
+            # Canary v0.11.6 содержит завершённые STEP и immutable REVIEW без
+            # dependency_completion_basis. Structural validator обязан
+            # сохранять historical state как предупреждение при update, но
+            # runtime-продолжение по-прежнему НЕ получает completion PASS.
+            validation_errors: list[str] = []
+            validation_warnings: list[str] = []
+            _validate_task(
+                root, "STEP-002", read_task(root, "STEP-002"),
+                validation_errors, validation_warnings,
+            )
+            assert not any(
+                "completed STEP completion proof failed" in x
+                for x in validation_errors
+            ), validation_errors
+            assert any(
+                "completion-dependency-proof-missing:STEP-002" in x
+                for x in validation_warnings
+            ), validation_warnings
+            assert not step_completion_proof(root, "STEP-002")["complete"]
+            assert render_requirements_status(root) == historical_projection, (
+                "updater must preserve old REQ projection without permitting runtime"
+            )
+
+            # Новый REVIEW обязан содержать dependency proof; просто убрать
+            # поле при новой записи нельзя — это остаётся строгой ошибкой.
+            modern_review_missing_basis = True
+            modern_errors: list[str] = []
+            modern_warnings: list[str] = []
+            _validate_task(
+                root, "STEP-002", read_task(root, "STEP-002"),
+                modern_errors, modern_warnings,
+            )
+            assert any(
+                "completed STEP completion proof failed: completion-dependency-proof-missing"
+                in x for x in modern_errors
+            ), modern_errors
+            assert render_requirements_status(root) != historical_projection
+            modern_review_missing_basis = False
             assert step_completion_proof(root, "STEP-003")["complete"]
             dependency_review_basis = stored_dependency_basis
             assert step_completion_proof(root, "STEP-002")["complete"]
@@ -224,6 +274,16 @@ def main() -> int:
             assert not downstream["complete"], downstream
             assert any("dependency-incomplete:STEP-001" in value
                        for value in downstream["reasons"]), downstream
+            stale_errors: list[str] = []
+            _validate_task(
+                root, "STEP-002", read_task(root, "STEP-002"),
+                stale_errors, [],
+            )
+            assert any(
+                "completed STEP completion proof failed" in value
+                for value in stale_errors
+            ), stale_errors
+            assert render_requirements_status(root) != historical_projection
             facts = verification_dependency_facts(root, "STEP-002")
             assert len(facts) == 1 and facts[0]["complete"] is False, facts
             assert verification_context_basis(root, "STEP-002") != before_dependency
@@ -321,11 +381,14 @@ def main() -> int:
             for number in range(1, 5)
         }
         dependency_bases: dict[str, str] = {}
+        modern_parent_without_proof = False
 
         def trusted_multihop(_root: Path, step_id: str, **_kwargs):
             meta = {"contract_basis": original_basis[step_id]}
             if step_id in dependency_bases:
                 meta["dependency_completion_basis"] = dependency_bases[step_id]
+            if step_id == "STEP-002" and modern_parent_without_proof:
+                meta["reviewed_subject_content_hash"] = "sha256:" + "2" * 64
             return {
                 "path": review_paths[step_id],
                 "verdict": "PASS",
@@ -333,6 +396,33 @@ def main() -> int:
             }
 
         with patch("review_contract.latest_trusted_review", side_effect=trusted_multihop):
+            # Два legacy REPORT подряд: nested dependency-incomplete тоже
+            # является только историческим предупреждением, не PASS proof.
+            legacy_chain = step_completion_proof(root, "STEP-003")
+            assert not legacy_chain["complete"], legacy_chain
+            legacy_errors: list[str] = []
+            legacy_warnings: list[str] = []
+            _validate_task(
+                root, "STEP-003", read_task(root, "STEP-003"),
+                legacy_errors, legacy_warnings,
+            )
+            assert not any("completed STEP completion proof failed" in value
+                           for value in legacy_errors), legacy_errors
+            assert any("dependency-incomplete:STEP-002" in value
+                       for value in legacy_warnings), legacy_warnings
+
+            # Modern parent с отсутствующей dependency basis не получает
+            # grandfathering через исторический downstream.
+            modern_parent_without_proof = True
+            invalid_errors: list[str] = []
+            _validate_task(
+                root, "STEP-003", read_task(root, "STEP-003"),
+                invalid_errors, [],
+            )
+            assert any("dependency-incomplete:STEP-002" in x
+                       for x in invalid_errors), invalid_errors
+            modern_parent_without_proof = False
+
             # Каждый REVIEW фиксирует proofs upstream, действительные
             # именно в момент создания отчёта.
             dependency_bases["STEP-002"] = dependency_completion_basis(root, "STEP-002")

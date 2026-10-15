@@ -292,3 +292,37 @@ Synthetic regression должен доказывать минимум:
 6. implementation discovery policy routes to BLOCKED;
 7. semantic contract edit не проходит QUICK FIX policy;
 8. impact analysis не мутирует immutable historical review.
+
+## Совместимость historical REVIEW с новыми dependency proofs
+
+Некоторые проекты завершили зависимые STEP до появления поля
+`dependency_completion_basis` в immutable REVIEW. Их исторические отчёты
+не переписываются и не превращаются в новый `PASS` по догадке.
+
+У structural validator есть строго ограниченное правило совместимости:
+если причина сбоя **только** `completion-dependency-proof-missing` и каждый
+затронутый trusted PASS REVIEW принадлежит прежнему формату
+(нет `reviewed_subject_content_hash` и `dependency_completion_basis`),
+`validate.py` выводит предупреждение вместо ошибки. Это позволяет обновить
+существующий инициализированный проект без исправления истории задним числом.
+
+Важно: это **не ослабляет runtime proof**. `step_completion_proof` и
+`dependency_completion_failures` продолжат возвращать blocker для
+использования такого STEP как подтверждённой актуальной зависимости.
+Перед новым зависимым выполнением необходим новый canonical proof/review.
+
+Любое фактическое изменение REQ/ADR/STEP/PRN, устаревший контракт, цикл,
+ошибка или отсутствие trusted REVIEW остаются ошибкой validator. Новый REVIEW,
+у которого есть `reviewed_subject_content_hash`, но отсутствует обязательная
+`dependency_completion_basis`, также не получает historical-исключения.
+
+Точно та же граница применяется к tracked `docs/requirements/STATUS.md`:
+исторически завершённые REQ не превращаются в `planned` только из-за
+отсутствия более позднего поля в неизменяемом REVIEW. Для таких проекций
+восстанавливается прежний completed snapshot/hash, а `STEP NEXT`,
+`IMPLEMENT` и транзитивные prerequisites по-прежнему вызывают строгий
+`step_completion_proof()`. При реальном изменении upstream contract
+проекция устаревает по обычным правилам.
+
+Это различие необходимо при проверке обновления Harness:
+**historical validity** не равна **current execution authorization**.
