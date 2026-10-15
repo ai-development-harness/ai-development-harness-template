@@ -615,6 +615,16 @@ def test_legacy_empty_project_without_published_handoff() -> None:
     with tempfile.TemporaryDirectory(prefix="harness-resume-empty-project-") as tmp:
         root = Path(tmp)
         copy_effective_harness_checkout(Path(__file__).resolve().parents[2], root)
+        # Reproduce an initialized downstream host even when CI itself runs
+        # on the pristine Harness template. This specifically regresses the
+        # canary failure where the copied manifest had initialized: true.
+        manifest = root / ".harness/manifest.yaml"
+        copied = manifest.read_text(encoding="utf-8")
+        if "initialized: false" in copied:
+            manifest.write_text(
+                copied.replace("initialized: false", "initialized: true", 1),
+                encoding="utf-8",
+            )
         # This is a *pre-INIT* regression regardless of whether the installed
         # host is the pristine template or an initialized downstream project.
         # Keep Harness-managed files, reset only project-owned fixture state.
