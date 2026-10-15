@@ -703,6 +703,11 @@ def repository_subject_content_hash(
             data = str(path.readlink()).encode("utf-8", errors="surrogateescape")
         elif index_mode == "160000":
             mode = "160000"
+            # git -C на НЕинициализированном submodule может по ошибке
+            # подняться до родительского repo и вернуть его HEAD.
+            git_marker = path / ".git"
+            if not git_marker.exists():
+                raise ValueError(f"submodule is not initialized: {rel}")
             submodule = _submodule_head(path)
             if submodule is None:
                 raise ValueError(f"cannot prove submodule HEAD: {rel}")
@@ -1404,16 +1409,28 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
 # Lexical classifier durable history. Symlink target не используется для
 # classification: Git tracks path identity, а не место, куда указывает symlink.
 def _immutable_report_patterns(root: Path) -> tuple[tuple[str, re.Pattern[str]], ...]:
-    """Один раз разрешить configured report directories для batch traversal."""
-    return (
-        (_configured_rel(root, review_directory(root)), re.compile(r"^STEP-\d{3,}/REVIEW-.+\.md$")),
-        (_configured_rel(root, planning_review_directory(root)), re.compile(r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$")),
-        (_configured_rel(root, init_review_directory(root)), re.compile(r"^INIT-REVIEW-.+\.md$")),
-        (_configured_rel(root, audit_directory(root)), re.compile(r"^(?:MIGRATION|AUDIT)-.+\.md$")),
-        (_configured_rel(root, release_directory(root)), re.compile(r"^RELEASE-.+\.md$")),
-        (_configured_rel(root, skill_search_directory(root)), re.compile(r"^SKILL-SEARCH-.+\.md$")),
-        (_configured_rel(root, update_report_directory(root)), re.compile(r"^UPDATE-.+\.md$")),
+    """Разрешить только реально заданные canonical report paths.
+
+    Малые fixture могут не задавать некоторые пути. В таком случае мы НЕ
+    исключаем guessed default directory из content hash.
+    """
+    result: list[tuple[str, re.Pattern[str]]] = []
+    surfaces = (
+        (review_directory, r"^STEP-\d{3,}/REVIEW-.+\.md$"),
+        (planning_review_directory, r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$"),
+        (init_review_directory, r"^INIT-REVIEW-.+\.md$"),
+        (audit_directory, r"^(?:MIGRATION|AUDIT)-.+\.md$"),
+        (release_directory, r"^RELEASE-.+\.md$"),
+        (skill_search_directory, r"^SKILL-SEARCH-.+\.md$"),
+        (update_report_directory, r"^UPDATE-.+\.md$"),
     )
+    for resolver, pattern in surfaces:
+        try:
+            directory = resolver(root)
+        except ConfigError:
+            continue
+        result.append((_configured_rel(root, directory), re.compile(pattern)))
+    return tuple(result)
 
 
 def _matches_immutable_report(rel: str, patterns: tuple[tuple[str, re.Pattern[str]], ...]) -> bool:
