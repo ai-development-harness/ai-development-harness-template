@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 
-from command_dispatch import start_dispatch, resume_dispatch
+from command_dispatch import complete_dispatch, start_dispatch, resume_dispatch
 from execution_status import (
     begin_command,
     block_execution,
@@ -834,6 +834,17 @@ def main() -> int:
         # Повторный вызов old root не должен запускать новый semantic IMPLEMENT.
         resumed_again = resume_dispatch(root, stale_root)
         assert resumed_again["status"] == "DONE", resumed_again
+
+        # Поздний semantic SUCCESS старого executionId нельзя принять и нельзя
+        # запускать для него повторную Verification или перезаписывать Evidence.
+        evidence_before = step_path.read_bytes()
+        stale_completion = complete_dispatch(
+            root, stale_root, "STEP IMPLEMENT STEP-001", "SUCCESS",
+            execution_id=stale_chain["executionId"],
+        )
+        assert stale_completion["status"] == "BLOCKED", stale_completion
+        assert step_path.read_bytes() == evidence_before
+
 
 
         before = set((root / "planning/reviews/STEP-001").glob("REVIEW-*.md"))
