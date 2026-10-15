@@ -7,6 +7,7 @@ from pathlib import Path
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from unittest.mock import patch
 
@@ -105,16 +106,45 @@ def main() -> int:
             assert no_report["reasonCode"] == "OPERATIONAL_REPORT_MISSING", no_report
             assert any(e["executionId"] == eid for e in load_status(root)["executions"])
 
-            result = write_operational_report(root, kind, value, execution_id=eid)
+            if kind == "release_check":
+                # Проверить действительный CLI writer в новом Python процессе:
+                # JSON передаём через stdin, receipt должен пережить restart.
+                writer = subprocess.run(
+                    [
+                        sys.executable, ".harness/tools/semantic-writer.py",
+                        "release-report", "--execution-id", eid,
+                        "--payload-file", "-",
+                    ],
+                    input=json.dumps(value), text=True,
+                    capture_output=True, cwd=root,
+                )
+                assert writer.returncode == 0, (writer.stdout, writer.stderr)
+                result = json.loads(writer.stdout)
+            else:
+                result = write_operational_report(root, kind, value, execution_id=eid)
             assert result["status"] == "PASS", result
             report = root / result["report"]
             assert report.is_file() and not validate(root, report), result
 
             # Validator должен принять и реальный material drift (audit),
             # и честный вердикт blocked (release) как валидный report.
-            done = complete_dispatch(
-                root, command, command, "SUCCESS", execution_id=eid,
-            )
+            if kind == "release_check":
+                # Completion после независимого запуска подтверждает durable
+                # receipt, а не случайную память текущего Python-процесса.
+                completed = subprocess.run(
+                    [
+                        sys.executable, ".harness/tools/harness-dispatch.py",
+                        "complete", "--root", command, "--command", command,
+                        "--result", "SUCCESS", "--execution-id", eid,
+                    ],
+                    text=True, capture_output=True, cwd=root,
+                )
+                assert completed.returncode == 0, (completed.stdout, completed.stderr)
+                done = json.loads(completed.stdout)
+            else:
+                done = complete_dispatch(
+                    root, command, command, "SUCCESS", execution_id=eid,
+                )
             assert done["status"] == "DONE", done
             assert not any(e["executionId"] == eid for e in load_status(root)["executions"])
 
