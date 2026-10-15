@@ -1485,9 +1485,16 @@ def _migrate_status_v1(value: dict[str, Any]) -> dict[str, Any]:
 
 # Прочитать local state, fail-closed validate и при необходимости атомарно
 # мигрировать legacy v1. PROJECT RECONCILE здесь намеренно не участвует.
-def load_status(root: Path) -> dict[str, Any]:
+def load_status(root: Path, *, read_only: bool = False) -> dict[str, Any]:
+    """Читать checkpoint fail-closed; preview не создаёт lock или marker.
+
+    Old status.json without marker remains compatible. Mutating path registers
+    marker before writing so a subsequent lost checkpoint is not treated as
+    a fresh project. Read-only mode never mutates Git-private state.
+    """
     path = status_path(root)
-    with execution_state_lock(root):
+
+    def read() -> dict[str, Any]:
         if not _checkpoint_exists(root):
             return empty_status()
         try:
@@ -1498,8 +1505,6 @@ def load_status(root: Path) -> dict[str, Any]:
                 "CORRUPTED", f"cannot parse checkpoint JSON: {exc}",
             ) from exc
         except OSError as exc:
-            # File vanished or storage became unavailable after lstat:
-            # это не доказанное NOT_FOUND, поэтому не создаём пустой state.
             raise ExecutionCheckpointError(
                 "UNAVAILABLE", f"cannot read checkpoint: {exc}",
             ) from exc
@@ -1517,23 +1522,27 @@ def load_status(root: Path) -> dict[str, Any]:
             errors = _validate_v1_status(value)
             if errors:
                 raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
-            migrated = _migrate_status_v1(value)
-            compacted = _compact_status(root, migrated)
+            compacted = _compact_status(root, _migrate_status_v1(value))
             errors = _validate_v2_status(compacted)
             if errors:
                 raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
-            _mark_checkpoint_known(root)
-            _atomic_write_json(path, compacted)
+            if not read_only:
+                _mark_checkpoint_known(root)
+                _atomic_write_json(path, compacted)
             return compacted
 
         errors = _validate_v2_status(value)
         if errors:
             raise ExecutionCheckpointError("CORRUPTED", "; ".join(errors))
-        # При переходе с прежней версии Harness state уже может существовать
-        # без маркера. Механически добавляем его под тем же OS lock.
-        _mark_checkpoint_known(root)
+        if not read_only:
+            _mark_checkpoint_known(root)
         return value
 
+    if read_only:
+        _require_update_transaction_access(root)
+        return read()
+    with execution_state_lock(root):
+        return read()
 
 
 # Записать JSON crash-safe способом через temporary file, fsync и atomic os.replace. Это защищает от половины файла при process/session crash.
@@ -3178,10 +3187,13 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
     )
     if item is None:
         return None
+    document = item.get("document")
+    meta = document.get("frontmatter", {}) if isinstance(document, dict) else {}
     return {
         "path": _repo_relative(root, item["path"]),
         "verdict": item["verdict"],
         "completionResult": item.get("completionResult"),
+        "reviewedContentHash": meta.get("reviewed_subject_content_hash"),
     }
 
 
@@ -3246,6 +3258,8 @@ def portable_plan_recheck_proven(
 def _durable_recovery_result(
     root: Path,
     execution: dict[str, Any],
+    *,
+    allow_finalization: bool = True,
 ) -> str | None:
     current = execution["current"]
     if current.get("status") != "running":
@@ -3285,6 +3299,16 @@ def _durable_recovery_result(
                     if completion_result in {"FAIL", "BLOCKED"}:
                         return completion_result
                     if completion_result == "PASS":
+                        if not allow_finalization:
+                            # Пока STEP не закрыт, завершение REVIEW нельзя
+                            # объявить успешным без записи lifecycle/projections.
+                            # Read-only preview оставляет точный RESUME, который
+                            # уже в записывающем режиме доведёт close до конца.
+                            try:
+                                proof = step_completion_proof(root, target)
+                            except (OSError, ValueError, FileNotFoundError):
+                                return None
+                            return "PASS" if proof["complete"] else None
                         finalized = finalize_step_completion(root, target)
                         return "PASS" if finalized.get("completed") else "BLOCKED"
                     # Historical PASS без Completion Contract автоматически
@@ -3306,6 +3330,8 @@ def _durable_recovery_result(
                     task["frontmatter"].get("status") == "completed"
                     and proof.get("complete") is True
                 ):
+                    if not allow_finalization:
+                        return "PASS"
                     finalized = finalize_step_completion(root, target)
                     return "PASS" if finalized.get("completed") else "BLOCKED"
 
@@ -3354,13 +3380,175 @@ def _apply_recovered_completion(
 
 
 
+
+def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str, Any] | None:
+    """Resolve an obsolete STEP cursor against canonical completion, never status alone.
+
+    A completed STEP is not permission to replay IMPLEMENT (or to overwrite
+    Verification Evidence).  Freshness and the latest review are checked before
+    deciding whether the old execution may be retired without any product work.
+    """
+    current = execution.get("current") or {}
+    if current.get("status") != "running":
+        return None
+    parsed = normalize_single_command(root, str(current.get("command") or ""))
+    if parsed.get("domain") != "STEP" or parsed.get("operation") not in {"IMPLEMENT", "FIX", "REVIEW"}:
+        return None
+    step_id = parsed.get("target")
+    if not isinstance(step_id, str):
+        return None
+    # Существующий REVIEW recovery может иметь более сильный durable proof
+    # собственного отчёта. Не подменяем его общим guard-ом completed STEP:
+    # особенно после изменения Git HEAD, когда старый Evidence hash устаревает.
+    if parsed.get("operation") == "REVIEW":
+        durable = _durable_recovery_result(
+            root, execution, allow_finalization=False,
+        )
+        if durable is not None:
+            return None
+    try:
+        task = read_planning_task(root, step_id)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if task["frontmatter"].get("status") != "completed":
+        return None
+
+    blocker = {
+        "reasonCode": "COMPLETED_STEP_RECOVERY_CONFLICT",
+        "message": "Local running command conflicts with an already completed STEP.",
+        "stepId": step_id,
+        "remediation": (
+            f"Inspect STEP {step_id} canonical completion, Verification and review; "
+            "reconcile the interrupted execution without rerunning IMPLEMENT."
+        ),
+    }
+    try:
+        from verification import verification_freshness
+
+        proof = step_completion_proof(root, step_id)
+        verification = verification_freshness(root, step_id)
+        review = latest_review(root, step_id, require_current_revision=False)
+        review_hash = review.get("reviewedContentHash") if review else None
+        current_hash = verification.get("subjectContentHash")
+        # Новый report доказывает exact contents независимо от squash SHA.
+        # Legacy report без такого hash допускается только с прежним строгим
+        # exact-revision guard; догадка по STEP status небезопасна.
+        reviewed_subject_current = (
+            review_hash == current_hash
+            if isinstance(review_hash, str) and review_hash
+            else latest_review(root, step_id, require_current_revision=True) is not None
+        )
+        valid = (
+            proof.get("complete") is True
+            and verification.get("status") == "PASS"
+            and verification.get("fresh") is True
+            and review is not None
+            and review.get("verdict") == "PASS"
+            and review.get("completionResult") == "PASS"
+            and reviewed_subject_current
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        blocker["details"] = {"proofError": str(exc)}
+        return {"kind": "blocked", "blocker": blocker}
+    if not valid:
+        blocker["details"] = {
+            "proofReasons": proof.get("reasons"),
+            "verification": verification.get("reasonCode"),
+            "review": review.get("verdict") if review else None,
+            "reviewedSubjectCurrent": reviewed_subject_current,
+        }
+        return {"kind": "blocked", "blocker": blocker}
+
+    # Другой активный запуск того же STEP делает происхождение завершения
+    # неоднозначным. Не выбираем победителя по времени или имени отчёта.
+    try:
+        checkpoint = load_status(root, read_only=True)
+        competing = []
+        for other in checkpoint.get("executions", []):
+            if other.get("executionId") == execution.get("executionId"):
+                continue
+            if other.get("status") != "running":
+                continue
+            other_current = other.get("current")
+            if not isinstance(other_current, dict) or other_current.get("status") != "running":
+                continue
+            other_command = normalize_single_command(root, str(other_current.get("command") or ""))
+            if other_command.get("domain") == "STEP" and other_command.get("target") == step_id:
+                competing.append(other.get("executionId"))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        blocker["details"] = {"executionStateError": str(exc)}
+        return {"kind": "blocked", "blocker": blocker}
+    if competing:
+        blocker["details"] = {"competingExecutions": competing}
+        return {"kind": "blocked", "blocker": blocker}
+
+    # A homogeneous STEP chain can be retired because the final canonical
+    # lifecycle was already proved. Never skip Git or another STEP in a chain.
+    sequence = execution.get("sequence") or [execution.get("rootCommand")]
+    try:
+        same_step = all(
+            (part := normalize_single_command(root, command)).get("domain") == "STEP"
+            and part.get("target") == step_id
+            and part.get("operation") in {"PLAN", "IMPLEMENT", "FIX", "REVIEW", "RUN"}
+            for command in sequence
+        )
+    except (ValueError, TypeError):
+        same_step = False
+    if not same_step:
+        return {"kind": "blocked", "blocker": blocker}
+    return {
+        "kind": "reconciled",
+        "stepId": step_id,
+        "proofHash": proof.get("proof_hash"),
+        "review": review.get("path"),
+    }
+
+
+def _apply_completed_step_recovery(
+    root: Path,
+    status: dict[str, Any],
+    execution: dict[str, Any],
+    decision: dict[str, Any],
+) -> None:
+    """Retire only this invocation under the existing execution-state lock."""
+    current = execution["current"]
+    current["status"] = "complete"
+    current["result"] = "SUCCESS"
+    current["completedAt"] = utc_now()
+    current["recoveredFromDurableState"] = True
+    current["recovery"] = {
+        "reasonCode": "STEP_ALREADY_COMPLETED",
+        "stepId": decision["stepId"],
+        "proofHash": decision["proofHash"],
+        "review": decision["review"],
+    }
+    execution["notExecuted"] = (
+        execution.get("sequence", [])[int(execution.get("currentIndex") or 0) + 1:]
+        if execution.get("mode") == "chain" else []
+    )
+    _mark_root_complete(execution)
+    save_status(root, status)
+
+
 # Главный deterministic resolver одной root execution: RESUME running command либо NEXT/DONE/BLOCKED по mode и CTS.
-@execution_state_mutation
 def resolve_execution(
     root: Path,
     execution: dict[str, Any],
     *,
     mutate: bool = True,
+) -> dict[str, Any]:
+    """Записывающий resolve сериализуется; read-only не создаёт lock-файла."""
+    if mutate:
+        with execution_state_lock(root):
+            return _resolve_execution_inner(root, execution, mutate=True)
+    return _resolve_execution_inner(root, execution, mutate=False)
+
+
+def _resolve_execution_inner(
+    root: Path,
+    execution: dict[str, Any],
+    *,
+    mutate: bool,
 ) -> dict[str, Any]:
     if execution.get("status") == "complete":
         return {
@@ -3391,6 +3579,34 @@ def resolve_execution(
 
     current = execution["current"]
     if current.get("status") == "running":
+        completed_decision = _completed_step_recovery(root, execution)
+        if completed_decision is not None:
+            if completed_decision["kind"] == "reconciled":
+                if mutate:
+                    status = load_status(root)
+                    stored = _latest_execution(
+                        status, execution_id=execution["executionId"],
+                    )
+                    if stored is not None and stored.get("status") == "running":
+                        _apply_completed_step_recovery(root, status, stored, completed_decision)
+                return {
+                    "status": "DONE",
+                    "executionId": execution["executionId"],
+                    "rootCommand": execution["rootCommand"],
+                    "command": None,
+                    "reasonCode": "STEP_ALREADY_COMPLETED",
+                    "recovery": completed_decision,
+                }
+            blocker = completed_decision["blocker"]
+            if mutate:
+                status = load_status(root)
+                stored = _latest_execution(
+                    status, execution_id=execution["executionId"],
+                )
+                if stored is not None and stored.get("status") == "running":
+                    _apply_intent_blocker(stored, blocker)
+                    save_status(root, status)
+            return _intent_blocked_resolution(execution, blocker)
         blocker = _intent_resume_blocker(root, execution)
         if blocker is not None:
             if mutate:
@@ -3407,16 +3623,37 @@ def resolve_execution(
 
         # Базовое правило: running => RESUME той же command. Только узкий набор
         # доказуемых durable facts имеет право автоматически закрыть crash-window.
-        recovered = _durable_recovery_result(root, execution)
-        if recovered is not None and mutate:
-            status = load_status(root)
-            stored = _latest_execution(
-                status,
-                execution_id=execution["executionId"],
-            )
-            if stored is not None:
-                _apply_recovered_completion(root, status, stored, recovered)
-                return resolve_execution(root, stored, mutate=False)
+        recovered = _durable_recovery_result(
+            root, execution, allow_finalization=mutate,
+        )
+        if recovered is not None:
+            if mutate:
+                status = load_status(root)
+                stored = _latest_execution(
+                    status,
+                    execution_id=execution["executionId"],
+                )
+                if stored is not None:
+                    _apply_recovered_completion(root, status, stored, recovered)
+                    return resolve_execution(root, stored, mutate=False)
+            else:
+                # Durable факт уже существует. Смоделировать результат в памяти,
+                # не записывая execution-status и не повторяя semantic PLAN/REVIEW.
+                preview = deepcopy(execution)
+                preview_current = preview["current"]
+                preview_current["status"] = (
+                    "blocked" if recovered == "BLOCKED" else "complete"
+                )
+                preview_current["result"] = recovered
+                if recovered == "BLOCKED":
+                    return {
+                        "status": "BLOCKED",
+                        "executionId": execution["executionId"],
+                        "rootCommand": execution["rootCommand"],
+                        "command": None,
+                        "reasonCode": "RECOVERED_COMMAND_BLOCKED",
+                    }
+                return resolve_execution(root, preview, mutate=False)
         return {
             "status": "RESUME",
             "executionId": execution["executionId"],
@@ -3746,13 +3983,24 @@ def resolve_root(root: Path, root_command: str) -> dict[str, Any]:
 # Вернуть только актуальные unresolved executions: historical blocked record
 # перестаёт быть actionable, как только существует более новая invocation того
 # же rootCommand. mutate=False используется read-only HARNESS STATUS.
-@execution_state_mutation
 def unresolved_executions(
     root: Path,
     *,
     mutate: bool = True,
 ) -> list[dict[str, Any]]:
-    status = load_status(root)
+    """Read-only путь не создаёт lock и не меняет execution checkpoint."""
+    if mutate:
+        with execution_state_lock(root):
+            return _unresolved_executions_snapshot(root, mutate=True)
+    return _unresolved_executions_snapshot(root, mutate=False)
+
+
+def _unresolved_executions_snapshot(
+    root: Path,
+    *,
+    mutate: bool,
+) -> list[dict[str, Any]]:
+    status = load_status(root, read_only=not mutate)
     executions = status.get("executions", [])
 
     latest_ordinal_by_root: dict[str, int] = {}

@@ -72,13 +72,13 @@ read v1
 → atomic replace
 ```
 
-`PROJECT RECONCILE` в этой миграции **не участвует**: это local runtime state, а не project-owned document schema.
+`PROJECT RECONCILE` в этой миграции **не участвует**: это local runtime state, а не project-owned document schema. При read-only просмотре (`STEP NEXT`/`unresolved_executions(..., mutate=False)`) шаги validate/compact происходят **только в памяти**: lock-файл не создаётся и v1 JSON не переписывается. Первый записывающий вызов выполняет обычный atomic migration под межпроцессной блокировкой.
 
 Migration сохраняет running state, latest operational blocked state, implementation baseline и optional command-specific `current.details` для recent terminal handoff. Legacy v1 details, которые превышают current 16 KiB budget, не truncate-ятся: migration fail-closed и оставляет исходный v1 byte-for-byte прежним. Superseded historical blocked/completed records превращаются в bounded tombstones. Повреждённый или неизвестный old schema, включая несовпадающие `stepRecovery` key/baseline identity, fail-closed: исходный файл не заменяется пустым state.
 
 ## Execution record
 
-Каждый явный запуск пользователя создаёт независимую execution record.
+Обычно явный запуск пользователя создаёт независимую execution record. Но повторный запуск существующего `STEP RUN STEP-NNN` или STEP chain через dispatcher **сначала восстанавливает тот же root и его checkpoint**, а не начинает новую самостоятельную child execution. Read-only `STEP NEXT` всегда возвращает root как исполнимую рекомендацию; его `nextChildCommand` — диагностика, а не отдельно запускаемая операция. Исключения: read-only `STEP NEXT` не регистрирует execution и не меняет local state, а `HARNESS RESUME` продолжает уже существующую запись вместо создания новой.
 
 Пример single command:
 
@@ -577,3 +577,45 @@ Mutation-команды могут хранить optional `current.context.side
 ## Portable Resume между двумя компьютерами (#302)
 
 `HARNESS RESUME` в новом clone не переносит ни identity прежней invocation, ни локальные Verification/side-effect proofs. После строгой Git-проверки команда создаёт только собственную новую `STEP PLAN`, которая заново проходит обязательный независимый planning review. Git HEAD должен быть точным publication commit. Последующие product-коммиты (даже с неизменным STEP) требуют нового handoff. Тестируется на реальных двух клонах в `portable-resume-matrix-self-test.py`. Подробнее: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
+
+
+## Согласование зависшего STEP с уже завершённым lifecycle
+
+Если локальная execution осталась на `STEP IMPLEMENT`, `STEP FIX` или
+`STEP REVIEW`, но сам STEP позднее был завершён отдельными canonical
+invocations, обычный `RESUME` не должен повторно запускать реализацию и
+перезаписывать Verification Evidence.
+
+Общий resolver сначала сопоставляет локальный checkpoint с canonical STEP.
+Статус `completed` **сам по себе недостаточен**: нужны успешный
+`step_completion_proof`, свежая Verification для текущего Git/контракта и
+актуальный schema-valid REVIEW с `PASS` по коду и Completion Contract.
+
+- Для однородной цепочки команд **того же STEP** подтверждённое завершение
+  позволяет закрыть старый root с reasonCode `STEP_ALREADY_COMPLETED`,
+  сохранив execution identity и recovery provenance в локальном состоянии.
+- Если proof отсутствует, Verification устарела или последний review не PASS,
+  возвращается `BLOCKED` с кодом
+  `COMPLETED_STEP_RECOVERY_CONFLICT`. Нельзя исправлять конфликт повторным
+  `complete SUCCESS` или ручным удалением execution-status.
+- Смешанные цепочки (другой STEP, Git и прочие операции) не считаются
+  завершёнными на основании одного STEP. Нужна отдельная сверка невыполненных
+  команд.
+- Незавершённый STEP с неизменённым Intent Basis по-прежнему может
+  возобновляться как обычно.
+- `STEP NEXT` проверяет этот результат **без записи** состояния. Записывающий
+  `HARNESS RESUME` применяет согласование под существующей блокировкой.
+
+Для новых Evidence учитывается SHA-256 **содержимого** проверяемых файлов,
+а не SHA Git-коммита. Обычный commit, squash merge или rebase при одинаковом
+содержимом не заставляют повторять Verification. Изменение проверенного кода,
+конфигурации или входных документов меняет этот отпечаток и блокирует
+переиспользование PASS. Независимый REVIEW также должен доказать совпадение
+содержимого — одного завершённого статуса STEP недостаточно.
+
+Старые Evidence и REVIEW без content hash остаются действительными по прежней
+точной проверке revision. Если после squash её уже нельзя доказать, Harness
+возвращает понятный BLOCKED, а не выдаёт предположительный PASS. Невозможно
+достоверно восстановить полное содержимое проверенных до коммита файлов из
+старого хэша разницы рабочего дерева.
+

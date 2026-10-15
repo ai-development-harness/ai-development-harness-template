@@ -49,9 +49,9 @@ jobs:
     # Отображаемое имя job в GitHub UI.
     # Пример: "Validate Harness".
     name: Validate Harness
-    # Runner image для выполнения validation; закреплён, чтобы смена `latest` не меняла CI молча (#111).
-    # Пример: `ubuntu-24.04`; конкретная версия Python задаётся отдельным setup step.
-    runs-on: ubuntu-24.04
+    # Linux runner выбирается из HARNESS_LINUX_RUNS_ON (JSON-массив labels или JSON-строка).
+    # Пример: ["self-hosted", "linux", "x64", "harness"]; без переменной — ubuntu-24.04.
+    runs-on: ${{ fromJSON(vars.HARNESS_LINUX_RUNS_ON || '"ubuntu-24.04"') }}
     # Максимальное время job до принудительной остановки.
     # Пример: 5 минут существенно выше обычного времени validator, но защищает от зависания.
     timeout-minutes: 5
@@ -255,6 +255,7 @@ jobs:
           python .harness/tools/harness-config-self-test.py
           python .harness/tools/document-contract-self-test.py
           python .harness/tools/execution-self-test.py
+          python .harness/tools/step-next-self-test.py
           python .harness/tools/verification-self-test.py
           python .harness/tools/reliable-orchestration-fault-self-test.py
           python .harness/tools/portable-handoff-self-test.py
@@ -269,8 +270,8 @@ jobs:
     # Пример: "Validate Python 3.11 compatibility".
     name: Validate Python 3.11 compatibility
     # Linux runner совпадает с основным job, чтобы различалась только версия Python.
-    # Пример: ubuntu-24.04.
-    runs-on: ubuntu-24.04
+    # Пример: без HARNESS_LINUX_RUNS_ON используется ubuntu-24.04.
+    runs-on: ${{ fromJSON(vars.HARNESS_LINUX_RUNS_ON || '"ubuntu-24.04"') }}
     # Полный synthetic suite обычно укладывается существенно быстрее.
     # Пример: 5 минут защищают от regression/hang.
     timeout-minutes: 5
