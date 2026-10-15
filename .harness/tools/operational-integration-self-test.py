@@ -190,15 +190,20 @@ def main() -> int:
             folder.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(root / old / "TEMPLATE.md", folder / "TEMPLATE.md")
         manifest.write_text(changed, encoding="utf-8")
-        execution = start_execution(root, "PROJECT RECONCILE")
-        custom = write_operational_report(
-            root, "audit", audit("project"), execution_id=execution["executionId"],
-        )
-        assert custom["report"].startswith("work/custom-audits/"), custom
-        assert complete_dispatch(
-            root, "PROJECT RECONCILE", "PROJECT RECONCILE", "SUCCESS",
-            execution_id=execution["executionId"],
-        )["status"] == "DONE"
+        for command, kind, value, destination in (
+            ("PROJECT RECONCILE", "audit", audit("project"), "work/custom-audits/"),
+            ("RELEASE CHECK", "release_check", release(), "work/custom-releases/"),
+            ("SKILL FIND: testing skill", "skill_search", search(), "work/custom-skill-searches/"),
+        ):
+            execution = start_execution(root, command)
+            custom = write_operational_report(
+                root, kind, value, execution_id=execution["executionId"],
+            )
+            assert custom["report"].startswith(destination), custom
+            assert complete_dispatch(
+                root, command, command, "SUCCESS",
+                execution_id=execution["executionId"],
+            )["status"] == "DONE"
 
         # Нельзя подменять payload модельным YAML или незаполненным TBD.
         execution = start_execution(root, "RELEASE CHECK")
