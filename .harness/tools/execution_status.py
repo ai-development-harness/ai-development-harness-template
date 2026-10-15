@@ -2932,10 +2932,13 @@ def latest_review(root: Path, step_id: str, *, require_current_revision: bool = 
     )
     if item is None:
         return None
+    document = item.get("document")
+    meta = document.get("frontmatter", {}) if isinstance(document, dict) else {}
     return {
         "path": _repo_relative(root, item["path"]),
         "verdict": item["verdict"],
         "completionResult": item.get("completionResult"),
+        "reviewedContentHash": meta.get("reviewed_subject_content_hash"),
     }
 
 
@@ -3108,7 +3111,17 @@ def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str,
 
         proof = step_completion_proof(root, step_id)
         verification = verification_freshness(root, step_id)
-        review = latest_review(root, step_id, require_current_revision=True)
+        review = latest_review(root, step_id, require_current_revision=False)
+        review_hash = review.get("reviewedContentHash") if review else None
+        current_hash = verification.get("subjectContentHash")
+        # Новый report доказывает exact contents независимо от squash SHA.
+        # Legacy report без такого hash допускается только с прежним строгим
+        # exact-revision guard; догадка по STEP status небезопасна.
+        reviewed_subject_current = (
+            review_hash == current_hash
+            if isinstance(review_hash, str) and review_hash
+            else latest_review(root, step_id, require_current_revision=True) is not None
+        )
         valid = (
             proof.get("complete") is True
             and verification.get("status") == "PASS"
@@ -3116,6 +3129,7 @@ def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str,
             and review is not None
             and review.get("verdict") == "PASS"
             and review.get("completionResult") == "PASS"
+            and reviewed_subject_current
         )
     except (OSError, ValueError, KeyError, TypeError) as exc:
         blocker["details"] = {"proofError": str(exc)}
@@ -3125,6 +3139,7 @@ def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str,
             "proofReasons": proof.get("reasons"),
             "verification": verification.get("reasonCode"),
             "review": review.get("verdict") if review else None,
+            "reviewedSubjectCurrent": reviewed_subject_current,
         }
         return {"kind": "blocked", "blocker": blocker}
 
