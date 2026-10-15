@@ -536,6 +536,24 @@ def test_two_clone_real_dispatch() -> None:
         assert len(state["executions"]) == 1, state
         assert state["executions"][0]["executionId"] == competing["executionId"]
 
+        # Тот же root STEP PLAN: portable adoption не имеет права подхватить
+        # чужой running PLAN через обычный shortcut в start_dispatch.
+        same = root / "local-race-same-root"
+        _git(root, "clone", "-q", "--branch", "main", str(origin), str(same))
+        published = harness_resume(same)
+        assert published["status"] == "PASS", published
+        existing_plan = start_execution(same, "STEP PLAN STEP-017")
+        blocked_same = start_dispatch(
+            same, "STEP PLAN STEP-017",
+            require_fresh_clone=True,
+            expected_git_head=_git(same, "rev-parse", "HEAD"),
+        )
+        assert blocked_same["status"] == "BLOCKED", blocked_same
+        assert blocked_same["reasonCode"] == "EXECUTION_STATE_INCOMPATIBLE", blocked_same
+        current_state = load_status(same)
+        assert len(current_state["executions"]) == 1, current_state
+        assert current_state["executions"][0]["executionId"] == existing_plan["executionId"]
+
 
 
 def test_new_review_must_belong_to_new_execution() -> None:
