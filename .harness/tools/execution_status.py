@@ -3119,6 +3119,29 @@ def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str,
         }
         return {"kind": "blocked", "blocker": blocker}
 
+    # Другой активный запуск того же STEP делает происхождение завершения
+    # неоднозначным. Не выбираем победителя по времени или имени отчёта.
+    try:
+        checkpoint = load_status(root, read_only=True)
+        competing = []
+        for other in checkpoint.get("executions", []):
+            if other.get("executionId") == execution.get("executionId"):
+                continue
+            if other.get("status") != "running":
+                continue
+            other_current = other.get("current")
+            if not isinstance(other_current, dict) or other_current.get("status") != "running":
+                continue
+            other_command = normalize_single_command(root, str(other_current.get("command") or ""))
+            if other_command.get("domain") == "STEP" and other_command.get("target") == step_id:
+                competing.append(other.get("executionId"))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        blocker["details"] = {"executionStateError": str(exc)}
+        return {"kind": "blocked", "blocker": blocker}
+    if competing:
+        blocker["details"] = {"competingExecutions": competing}
+        return {"kind": "blocked", "blocker": blocker}
+
     # A homogeneous STEP chain can be retired because the final canonical
     # lifecycle was already proved. Never skip Git or another STEP in a chain.
     sequence = execution.get("sequence") or [execution.get("rootCommand")]
