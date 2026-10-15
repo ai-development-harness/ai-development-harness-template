@@ -313,6 +313,12 @@ def main() -> int:
         # Squash/rebase/commit могут менять HEAD без изменения фактических
         # проверенных файлов. В том числе до commit product-файл был untracked,
         # а после commit стал tracked — отпечаток должен остаться тем же.
+        # Сохраняем базовый HEAD: остальные тесты НЕ должны работать на
+        # временном squash-коммите, который уже содержит generated Evidence.
+        squash_base_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            text=True, capture_output=True,
+        ).stdout.strip()
         reset(root)
         product_path = root / "src" / "squash-fixture.ts"
         product_path.parent.mkdir(parents=True, exist_ok=True)
@@ -367,7 +373,10 @@ def main() -> int:
         assert legacy_same_head["fresh"] is False, legacy_same_head
         # Вернуть новый Evidence и исходную fixture для остальных проверок.
         step.write_text(legacy_evidence, encoding="utf-8")
-        reset(root)
+        # Убрать именно тестовые коммиты и остаточные файлы, восстановив
+        # исходный тестовый baseline без ранее созданного Evidence.
+        run(root, "git", "reset", "--hard", squash_base_head)
+        run(root, "git", "clean", "-fd")
 
         # A modified subject invalidates cached automation even if manual
         # observations arrive unchanged.
