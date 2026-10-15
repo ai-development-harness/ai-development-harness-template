@@ -56,3 +56,5 @@ Harness skills описывают **workflow**, а не конкретный tec
 ## Контракты создаваемых артефактов
 
 Матрица 33 core skills, обязательных результатов и границ завершения: [SKILL_CONTRACT_MATRIX.md](../../.harness/docs/SKILL_CONTRACT_MATRIX.md). Используйте действующие templates и deterministic writers; валидный Markdown без происхождения из текущей execution не является достаточным доказательством SUCCESS.
+
+Порядок подготовки JSON для operational audit/release/skill-search reports и deterministic writer CLI: [REPORTING.md](../../.harness/docs/REPORTING.md). Отчёты создаются до `complete SUCCESS`; отсутствие writer receipt блокируется Core.

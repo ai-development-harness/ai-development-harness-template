@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | add-plan-step | STEP; project-owned | configured `taskDirectory/TEMPLATE.md` | `validate.py --mode manual` после записи |
 | architecture-change | ADR при durable decision; project-owned | configured `adrDirectory/TEMPLATE.md` | `validate.py`; N/A если ADR не требуется |
-| audit-step | audit report | configured `auditDirectory/TEMPLATE.md` (до #316) | `report_contract.py --kind audit` после записи; gate #317 |
+| audit-step | audit report | `semantic-writer.py audit-report` + configured template | `report_contract.py --kind audit` после записи; gate #317 |
 | benchmark-methodology | diagnostic assessment; N/A report | internal rubric / evidence | Не переносить INCONCLUSIVE в PASS |
 | code-review | findings/assessment; N/A report | role prompt | Evidence gate, без самостоятельного durable writer |
 | codebase-grounding | read-only grounding; N/A report | context/grounding tools | Факты только из actual source |
@@ -14,7 +14,7 @@
 | create-skill | skill bundle, routing/provenance | skill spec / configured registry | `validate.py`, проверка routing |
 | decision-archaeology | read-only assessment; N/A report | grounding/rubric | Unknown сохраняется unknown |
 | documentation-sync | синхронизированные docs | existing project docs | Реальные ссылки и validate по scope |
-| find-skill | skill-search report | configured `skillSearchDirectory/TEMPLATE.md` (до #316) | `report_contract.py --kind skill_search`; gate #317 |
+| find-skill | skill-search report | `semantic-writer.py skill-search-report` + configured template | `report_contract.py --kind skill_search`; gate #317 |
 | fix-step | исправленный product/evidence | STEP plan, verification dispatcher | `verification_freshness` / `complete_dispatch` |
 | generate-github-templates | GitHub issue/PR templates | configured repository context | `validate.py` |
 | git-workflow | git operation или local payload | git action executor | side-effect postconditions, no model PASS |
@@ -26,8 +26,8 @@
 | pr-maintenance | PR maintenance evidence; N/A durable report | provider/Git contracts | No auto merge or rewrite |
 | project-status | generated status projections | `sync-projections.py` | `validate.py` |
 | quick-fix | scoped product change; N/A report | project toolchain | tests/checks по request |
-| reconcile-project | audit report | configured `auditDirectory/TEMPLATE.md` (до #316) | `report_contract.py --kind audit` + `validate.py`; gate #317 |
-| release-check | release-check report | configured `releaseDirectory/TEMPLATE.md` (до #316) | `report_contract.py --kind release_check`; gate #317 |
+| reconcile-project | audit report | `semantic-writer.py audit-report` + configured template | `report_contract.py --kind audit` + `validate.py`; gate #317 |
+| release-check | release-check report | `semantic-writer.py release-report` + configured template | `report_contract.py --kind release_check`; gate #317 |
 | requirements-review | semantic review; N/A standalone report | canonical INIT review (когда INIT) | INIT finalizer проверяет lifecycle |
 | review-step | immutable STEP REVIEW | `semantic-writer.py` | exact revision, review+completion proof |
 | run-step | orchestrated STEP lifecycle; N/A report | command dispatcher | CTS + existing child guards |
@@ -49,3 +49,7 @@
 ## Область изменений
 
 Нет новых CTS-команд, второго парсера YAML/Markdown, массового преобразования 33 skills, изменений Claude/Codex runtime contract или переписывания исторических immutable reports. Детали writer/gate задают последующие #316/#317 и должны быть отражены в документации только после работающих тестов.
+
+## Исполнение после #316/#317
+
+`semantic-writer.py audit-report|release-report|skill-search-report` формирует metadata/имя/UTC и сохраняет **operationalReport receipt** в текущей local execution. `command_dispatch.complete_dispatch()` повторно проверяет path, owner/kind, content SHA-256, canonical timestamp/schema и subject hash. Обычная текстовая проверка самим агентом больше не служит authority для terminal SUCCESS. Потребитель не должен вручную создавать второй report или подменять `executionId`.

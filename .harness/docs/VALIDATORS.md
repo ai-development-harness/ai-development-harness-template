@@ -2212,3 +2212,20 @@ python3 .harness/tools/harness-dispatch.py start --command "HARNESS RESUME"
 Строгие коды: `HANDOFF_OUTDATED` (новый HEAD после публикации), `HANDOFF_PUBLICATION_MIXED` (один Git commit содержит ещё и код), `HANDOFF_UPSTREAM_DIVERGED` (последний известный tracking ref не совпал), `HANDOFF_WORKTREE_MISMATCH` (данные файла расходятся с Git blob), `HANDOFF_HEAD_CHANGED` (HEAD переместился внутри проверки). Все означают BLOCKED, без автоматического повторения Git side effects.
 
 CI на Linux выполняет все discoverable self-tests (Python 3.13 и 3.11), Windows — targeted two-clone tests. Подробные инструкции: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
+
+## Operational writer / completion receipt (#314–#318)
+
+`semantic-writer.py` поддерживает `audit-report`, `release-report`, `skill-search-report`, дополнительно к прежним `plan-draft`, `planning-review`, `step-review`. Три новые операции требуют `--execution-id <active-id> --payload-file <local-json-or->`. Формат semantic payload описан в [REPORTING.md](REPORTING.md). Writer заполняет timestamp/H1/YAML по configured project-owned template, использует `create_durable_report()` и вызывает соответствующий `report_contract` validator.
+
+`report_contract.py --file '<report-path>' --kind audit|release_check|skill_search` остается самостоятельным read-only structural validator. Он не может заменить execution-bound receipt. `command_dispatch.complete_dispatch` проверяет receipt только для четырёх операций: `PROJECT RECONCILE`, `STEP AUDIT`, `RELEASE CHECK`, `SKILL FIND`. Все другие commands сохраняют прежний completion contract.
+
+Тесты:
+```bash
+python3 .harness/tools/operational-reports-self-test.py
+python3 .harness/tools/operational-completion-self-test.py
+python3 .harness/tools/operational-integration-self-test.py
+python3 .harness/tools/run-self-tests.py
+python3 .harness/tools/validate.py --mode manual
+```
+
+Negative scenarios: missing/wrong receipt, previous executionId, modified file, changed subject, wrong scope, invalid template, same-second report collision, configured paths, crash между durable report и сохранением receipt. `PASS` в CLI writer не означает terminal SUCCESS; authoritative gate принадлежит dispatcher.
