@@ -516,7 +516,7 @@ def main() -> int:
             task_path.read_text(encoding="utf-8").replace(
                 "priority: low", "priority: high", 1,
             ),
-            encoding="utf-8", newline="\\n",
+            encoding="utf-8", newline="\n",
         )
         selected_stale = resolve_step_next(root)
         assert selected_stale["command"] == "STEP RUN STEP-080", selected_stale
