@@ -252,13 +252,26 @@ jobs:
         # Targeted regression set platform-sensitive tools.
         # Пример: execution, verification и update engine.
         run: |
-          python .harness/tools/harness-config-self-test.py
-          python .harness/tools/document-contract-self-test.py
-          python .harness/tools/execution-self-test.py
-          python .harness/tools/step-next-self-test.py
-          python .harness/tools/verification-self-test.py
-          python .harness/tools/reliable-orchestration-fault-self-test.py
-          python .harness/tools/update-engine-self-test.py
+          # В PowerShell ошибка native python не прерывает следующие команды
+          # автоматически: успешный последний тест мог скрыть предыдущий FAIL.
+          # Проверяем код возврата каждого скрипта отдельно (#302).
+          function Invoke-HarnessSelfTest {
+            param([string]$Script)
+            python $Script
+            if ($LASTEXITCODE -ne 0) {
+              throw "Self-test failed: $Script (exit $LASTEXITCODE)"
+            }
+          }
+          Invoke-HarnessSelfTest ".harness/tools/harness-config-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/document-contract-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/execution-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/step-next-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/verification-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/reliable-orchestration-fault-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/portable-handoff-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/portable-resume-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/portable-resume-matrix-self-test.py"
+          Invoke-HarnessSelfTest ".harness/tools/update-engine-self-test.py"
 
   # Проверить нижнюю документированную границу Python отдельно от основного 3.13 job.
   # Пример: использование API, появившегося только в 3.12+, должно ломать этот job.

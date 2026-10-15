@@ -2,7 +2,7 @@
 
 Execution Status — локальный crash-safe слой, который фиксирует фактическое выполнение **всех** canonical Harness-команд между session/runtime interruptions.
 
-Исключение: `HARNESS RESUME` — управляющая команда над уже существующим состоянием выполнения. Она не создаёт новое корневое выполнение и работает только тогда, когда существует ровно одна безопасная точка продолжения.
+Исключение: `HARNESS RESUME` — управляющая команда, сама не создающая root execution с этим именем. При обычном локальном восстановлении продолжает существующее выполнение. При единственном подтверждённом portable handoff в совершенно новом clone создаёт **новую локальную root execution `STEP PLAN`** (не импортируя старую invocation и её side effects). Подробнее: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
 
 Он не добавляет новых пользовательских команд и не создаёт вторую state machine.
 
@@ -572,6 +572,11 @@ new independent command
 ## Side-effect checkpoint
 
 Mutation-команды могут хранить optional `current.context.sideEffect` по contract из [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md). Это bounded per-attempt proof, а не новый журнал и не command transition state. CTS остаётся source of truth для переходов; execution state отвечает за resume invocation; checkpoint нужен только для reconciliation внешнего side effect после interruption.
+
+
+## Portable Resume между двумя компьютерами (#302)
+
+`HARNESS RESUME` в новом clone не переносит ни identity прежней invocation, ни локальные Verification/side-effect proofs. После строгой Git-проверки команда создаёт только собственную новую `STEP PLAN`, которая заново проходит обязательный независимый planning review. Git HEAD должен быть точным publication commit. Последующие product-коммиты (даже с неизменным STEP) требуют нового handoff. Тестируется на реальных двух клонах в `portable-resume-matrix-self-test.py`. Подробнее: [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
 
 
 ## Согласование зависшего STEP с уже завершённым lifecycle

@@ -2,8 +2,9 @@
 """Deterministic UX queries/control commands for AI Development Harness.
 
 Модуль намеренно не содержит LLM reasoning и не меняет product artifacts.
-HARNESS RESUME разрешает существующий execution и возвращает exact handoff,
-но сам не создаёт новый root execution.
+HARNESS RESUME продолжает существующую local execution или безопасно
+выбирает новый STEP PLAN из Git-handoff. Отдельной root invocation с
+именем HARNESS RESUME не создаётся.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ from harness_config import (
     task_directory,
 )
 from planning_contract import read_task
+from portable_resume import portable_resume_candidate
 from projection_contract import write_projections
 from review_contract import latest_review
 from step_next import resolve_step_next
@@ -190,6 +192,21 @@ def harness_resume(root: Path) -> dict[str, Any]:
                 "remediation": selected.get("remediation"),
                 "intent": selected.get("intent") or selected.get("blocker"),
             }
+        # Переносимый handoff — дополнительная возможность, а не замена
+        # существующей local-only семантики. В проекте с local history или
+        # без опубликованного handoff оставляем прежний ответ API.
+        if not items:
+            portable = portable_resume_candidate(root)
+            if portable.get("reasonCode") not in {
+                "PORTABLE_LOCAL_HISTORY_PRESENT",
+                "NO_RESUMABLE_EXECUTION",
+                # На ещё не инициализированном шаблоне или без Git репозитория
+                # опубликованного handoff быть не может. До Portable Resume
+                # интерфейс возвращал NO_RESUMABLE_EXECUTION: сохраняем контракт.
+                "PROJECT_NOT_INITIALIZED",
+                "GIT_UNAVAILABLE",
+            }:
+                return portable
         return {
             "status": "BLOCKED",
             "reasonCode": "NO_RESUMABLE_EXECUTION",
