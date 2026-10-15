@@ -1260,9 +1260,18 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
             errors.append(f"{prefix}: cannot prove completed lifecycle: {exc}")
         else:
             for reason in proof["reasons"]:
-                errors.append(
-                    f"{prefix}: completed STEP completion proof failed: {reason}"
-                )
+                message = f"{prefix}: completed STEP completion proof failed: {reason}"
+                if warnings is not None and _historical_missing_dependency_proof(root, reason):
+                    # Исторический completion остаётся валидным документом,
+                    # но это НЕ разрешение использовать его как свежий
+                    # prerequisite для новой execution (step_completion_proof
+                    # остаётся строгим). Записать диагностику, не переписывая
+                    # старый immutable report.
+                    warnings.append(
+                        message + " (legacy REVIEW: new dependent executions require fresh proof)"
+                    )
+                else:
+                    errors.append(message)
 
 
 # Open Question validator: ID/status/affects targets и обязательные sections.
@@ -1332,6 +1341,55 @@ def _validate_open_questions(root: Path, errors: list[str]) -> None:
 # Сканирует STEP files, проверяет каждый contract, затем dependency cycles, OQ
 # и semantic review history. allow_legacy используется только migration flow.
 # ---------------------------------------------------------------------------
+def _historical_missing_dependency_proof(root: Path, reason: str) -> bool:
+    """Распознать только отсутствие нового proof в ИСТОРИЧЕСКОМ REVIEW.
+
+    До появления dependency_completion_basis старые valid immutable REVIEW
+    не могли сохранять snapshot upstream completion. Их нельзя переписать
+    задним числом и нельзя делать invalid только из-за версии Harness.
+
+    Это разрешение используется исключительно в structural validator.
+    step_completion_proof() и runtime prerequisites остаются fail-closed:
+    ни PLAN/IMPLEMENT, ни новое зависимое выполнение не получают PASS из
+    отсутствующего поля. Настоящий stale contract / cycle остаётся ошибкой.
+    """
+    match = re.fullmatch(
+        r"(?:dependency-incomplete:STEP-\d{3,}:)*"
+        r"completion-dependency-proof-missing:(STEP-\d{3,})",
+        reason,
+    )
+    if match is None:
+        return False
+
+    from review_contract import latest_trusted_review
+
+    # В transitively incomplete reason каждый промежуточный STEP тоже
+    # должен иметь именно historical REVIEW. Modern STEP с устаревшей
+    # зависимостью нельзя скрывать за старым ancestor.
+    chain = re.findall(r"dependency-incomplete:(STEP-\d{3,}):", reason)
+    chain.append(match.group(1))
+    for step_id in chain:
+        try:
+            trusted = latest_trusted_review(root, step_id)
+        except (OSError, ValueError):
+            return False
+        if trusted is None or trusted.get("verdict") != "PASS":
+            return False
+        document = trusted.get("document")
+        meta = document.get("frontmatter") if isinstance(document, dict) else None
+        if not isinstance(meta, dict):
+            return False
+        # Новый writer всегда сохраняет content hash. Его отсутствие, как и
+        # dependency basis, отличает pre-contract report от нового неполного.
+        if not (
+            _valid_sha256(meta.get("contract_basis"))
+            and meta.get("dependency_completion_basis") is None
+            and meta.get("reviewed_subject_content_hash") is None
+        ):
+            return False
+    return True
+
+
 def validate_planning_contracts(
     root: Path,
     *,
