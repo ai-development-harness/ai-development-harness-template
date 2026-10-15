@@ -31,7 +31,7 @@ from project_verification import (
     ProjectVerificationError,
     validate_product_observations,
 )
-from review_contract import repository_revision
+from review_contract import repository_revision, repository_subject_content_hash
 from verification_resume import remember_pending, reuse_pending, forget_pending
 
 
@@ -197,6 +197,38 @@ def verification_subject_revision(root: Path, step_id: str) -> dict[str, str | N
     return repository_revision(root, ignored_paths={rel})
 
 
+def verification_subject_content_hash(root: Path, step_id: str) -> str:
+    """Отпечаток проверенных файлов (не Git history и не Evidence самого STEP)."""
+    rel = task_path(root, step_id).resolve().relative_to(root.resolve()).as_posix()
+    return repository_subject_content_hash(root, ignored_paths={rel})
+
+
+def _subject_freshness(
+    root: Path,
+    step_id: str,
+    *,
+    content_hash: str | None,
+    stored_revision: dict[str, str | None],
+    current_revision: dict[str, str | None],
+) -> tuple[bool, str | None, str | None]:
+    """Старые Evidence сравниваются строго; новые — по содержимому.
+
+    Нельзя преобразовать прежний hash *изменений* в hash всех файлов.
+    Отсутствие нового поля не даёт права угадать content equivalence.
+    """
+    if content_hash is None:
+        valid = stored_revision == current_revision
+        return valid, None if valid else "VERIFICATION_SUBJECT_STALE", None
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", content_hash) is None:
+        return False, "VERIFICATION_CONTENT_IDENTITY_INVALID", None
+    actual = verification_subject_content_hash(root, step_id)
+    return (
+        content_hash == actual,
+        None if content_hash == actual else "VERIFICATION_SUBJECT_STALE",
+        actual,
+    )
+
+
 def verification_command_evidence(
     root: Path,
     step_id: str,
@@ -271,12 +303,16 @@ def verification_command_evidence(
             "reasonCode": "VERIFICATION_CONTRACT_STALE",
             "command": command,
         }
-    if stored_subject != current_subject:
+    same, reason, current_content = _subject_freshness(
+        root, step_id,
+        content_hash=field("Subject content hash"),
+        stored_revision=stored_subject,
+        current_revision=current_subject,
+    )
+    if not same:
         return {
-            "status": "STALE",
-            "fresh": False,
-            "reasonCode": "VERIFICATION_SUBJECT_STALE",
-            "command": command,
+            "status": "STALE", "fresh": False,
+            "reasonCode": reason, "command": command,
         }
 
     pattern = re.compile(
@@ -346,11 +382,17 @@ def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
             "storedContractBasis": stored_basis,
             "currentContractBasis": current_basis,
         }
-    if stored_subject != current_subject:
+    same, reason, current_content = _subject_freshness(
+        root, step_id,
+        content_hash=field("Subject content hash"),
+        stored_revision=stored_subject,
+        current_revision=current_subject,
+    )
+    if not same:
         return {
             "status": status,
             "fresh": False,
-            "reasonCode": "VERIFICATION_SUBJECT_STALE",
+            "reasonCode": reason,
             "storedSubjectRevision": stored_subject,
             "currentSubjectRevision": current_subject,
         }
@@ -360,6 +402,7 @@ def verification_freshness(root: Path, step_id: str) -> dict[str, Any]:
         "reasonCode": None if status == "PASS" else "VERIFICATION_NOT_PASS",
         "contractBasis": current_basis,
         "subjectRevision": current_subject,
+        "subjectContentHash": current_content,
     }
 
 
@@ -572,6 +615,8 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Verification contract basis: {result['contractBasis']}",
         f"- Subject git head: {result['subjectRevision'].get('git_head') or 'none'}",
         f"- Subject worktree hash: {result['subjectRevision'].get('worktree_hash') or 'clean'}",
+        *([f"- Subject content hash: {result['subjectContentHash']}"]
+          if result.get("subjectContentHash") else []),
         "",
         "### Automated verification",
     ]
@@ -713,6 +758,7 @@ def run_step_verification(
         revision = repository_revision(root)
         contract_basis = verification_contract_basis(root, step_id)
         subject_revision = verification_subject_revision(root, step_id)
+        subject_content_hash = verification_subject_content_hash(root, step_id)
     except (OSError, ValueError) as exc:
         return {
             "schemaVersion": 1,
@@ -818,6 +864,7 @@ def run_step_verification(
         "revision": revision,
         "contractBasis": contract_basis,
         "subjectRevision": subject_revision,
+        "subjectContentHash": subject_content_hash,
         "timeoutSeconds": timeout,
         "commands": commands,
         "product": product,
@@ -847,5 +894,6 @@ __all__ = [
     "verification_contract_basis",
     "verification_freshness",
     "verification_subject_revision",
+    "verification_subject_content_hash",
     "validate_verification_entries",
 ]
