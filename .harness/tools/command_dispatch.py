@@ -61,6 +61,7 @@ from planning_contract import step_completion_proof
 from step_context import build_step_context
 from step_next import resolve_step_action, resolve_step_next
 from verification import run_step_verification, write_verification_evidence, verification_freshness
+from operational_reports import COMMAND_KINDS, operational_completion_blocker
 from fix_delta import capture_fix, complete_fix, review_scope, request_full_review, FixDeltaError
 
 
@@ -1215,6 +1216,40 @@ def complete_dispatch(
                         "command": command,
                         "reasonCode": "PORTABLE_PLAN_RECHECK_REQUIRED",
                         "message": "New independent planning review has not been proven",
+                    }
+            # Отчёты PROJECT RECONCILE, STEP AUDIT, RELEASE CHECK и SKILL FIND
+            # являются обязательным terminal evidence, но не все SUCCESS
+            # требуют reports. После handoff writer оставил validated receipt
+            # в ЭТОЙ running execution; проверяем его повторно под status lock.
+            if (
+                result in {"SUCCESS", "PASS"}
+                and (completed_route.get("domain"), completed_route.get("operation"))
+                in COMMAND_KINDS
+            ):
+                live_report_owner = _active_execution(root, root_command)
+                if (
+                    live_report_owner is None
+                    or live_report_owner.get("executionId") != execution_id
+                ):
+                    return {
+                        "schemaVersion": SCHEMA_VERSION,
+                        "status": "BLOCKED",
+                        "rootCommand": root_command,
+                        "command": command,
+                        "reasonCode": "STALE_SEMANTIC_RESULT",
+                        "message": "current report owner is not this execution",
+                    }
+                blocker = operational_completion_blocker(
+                    root, live_report_owner, command,
+                )
+                if blocker is not None:
+                    return {
+                        "schemaVersion": SCHEMA_VERSION,
+                        "status": "BLOCKED",
+                        "rootCommand": root_command,
+                        "executionId": execution_id,
+                        "command": command,
+                        **blocker,
                     }
             if (
                 result in {"SUCCESS", "PASS"}
