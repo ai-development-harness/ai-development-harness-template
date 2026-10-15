@@ -438,7 +438,15 @@ def selective_invalidation_preview(root: Path, changed: list[str]) -> dict[str, 
             "direct": explicit,
             "dependencyPath": source,
             "reasons": sorted(set(reasons)),
-            "plan": plan,
+            "plan": {
+                **plan,
+                # A plan_staleness() diagnostic may contain STEP PLAN, but a
+                # repository-wide impact preview cannot recommend executing
+                # it for every invalidated STEP in advance.
+                "action": None,
+                "deferredAction": plan.get("action"),
+                "refreshPolicy": "when-selected-by-STEP-NEXT",
+            },
             "evidence": {
                 "review": evidence_decision,
                 "verification": evidence_decision,
