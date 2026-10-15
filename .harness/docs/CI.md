@@ -6,6 +6,8 @@
 
 Workflow: `.github/workflows/harness-integrity.yml`.
 
+Все три задания Harness Integrity имеют лимит 15 минут, чтобы полный набор проверок успевал завершиться на загруженном runner.
+
 Validator написан на Python и использует только standard library. Минимальная версия — Python 3.11+, потому что структурная проверка TOML опирается на `tomllib`. Это осознанная небольшая tooling dependency Harness, а не зависимость будущего продукта.
 
 Bash не используется как реализация validator: текущие проверки требуют корректного TOML parsing, работы с Git index, glob/path semantics, UTF-8/binary content и структурой skills/configs. Перенос в shell либо ослабил бы эти проверки, либо добавил внешние parser dependencies. Docker также не является обязательным runtime, чтобы локальная validation не зависела от daemon/image/network.
