@@ -12,6 +12,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import subprocess
 from typing import Any
 
 from completion_gate import CompletionGateError
@@ -101,6 +102,30 @@ def _full_review_source(
     raise CompletionGateError("FIX delta review chain exceeds bounded history depth")
 
 
+def _unchanged_pre_fix_full_report(
+    root: Path, source: str, current: bytes, before_tree: Any,
+) -> bool:
+    """Проверить, что прошлый полный REVIEW существовал ДО FIX без мутаций.
+
+    capture_fix() записывает real Git tree до первой правки, включая
+    nonignored untracked reports. Поэтому проверка не зависит от Git HEAD,
+    но препятствует тихой подмене baseline report после FIX.
+    """
+    if not isinstance(before_tree, str) or not re.fullmatch(
+        r"[0-9a-f]{40}(?:[0-9a-f]{24})?", before_tree
+    ):
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "show", before_tree + ":" + source],
+            cwd=root.resolve(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=False, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout == current
+
+
 def validate_fix_delta_coverage_reuse(
     root: Path, step_id: str, completion: Any, scope: dict[str, Any],
 ) -> dict[str, str] | None:
@@ -133,6 +158,13 @@ def validate_fix_delta_coverage_reuse(
     )
     # Contract identity is semantic (REQ/ADR/STEP/plan); a different Git HEAD
     # after FIX does not invalidate the original inspected contract.
+    if not _unchanged_pre_fix_full_report(
+        root, full_rel, full_path.read_bytes(), scope.get("beforeTree"),
+    ):
+        raise CompletionGateError(
+            "FIX delta full REVIEW differs from pre-FIX Git tree snapshot"
+        )
+
     baseline_basis = full["frontmatter"].get("contract_basis")
     if not isinstance(baseline_basis, str) or not _SHA256.fullmatch(baseline_basis):
         raise CompletionGateError("previous full review has no trusted contract basis")
