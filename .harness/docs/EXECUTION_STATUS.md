@@ -526,3 +526,36 @@ new independent command
 ## Side-effect checkpoint
 
 Mutation-команды могут хранить optional `current.context.sideEffect` по contract из [`SIDE_EFFECT_RECOVERY.md`](SIDE_EFFECT_RECOVERY.md). Это bounded per-attempt proof, а не новый журнал и не command transition state. CTS остаётся source of truth для переходов; execution state отвечает за resume invocation; checkpoint нужен только для reconciliation внешнего side effect после interruption.
+
+
+## Согласование зависшего STEP с уже завершённым lifecycle
+
+Если локальная execution осталась на `STEP IMPLEMENT`, `STEP FIX` или
+`STEP REVIEW`, но сам STEP позднее был завершён отдельными canonical
+invocations, обычный `RESUME` не должен повторно запускать реализацию и
+перезаписывать Verification Evidence.
+
+Общий resolver сначала сопоставляет локальный checkpoint с canonical STEP.
+Статус `completed` **сам по себе недостаточен**: нужны успешный
+`step_completion_proof`, свежая Verification для текущего Git/контракта и
+актуальный schema-valid REVIEW с `PASS` по коду и Completion Contract.
+
+- Для однородной цепочки команд **того же STEP** подтверждённое завершение
+  позволяет закрыть старый root с reasonCode `STEP_ALREADY_COMPLETED`,
+  сохранив execution identity и recovery provenance в локальном состоянии.
+- Если proof отсутствует, Verification устарела или последний review не PASS,
+  возвращается `BLOCKED` с кодом
+  `COMPLETED_STEP_RECOVERY_CONFLICT`. Нельзя исправлять конфликт повторным
+  `complete SUCCESS` или ручным удалением execution-status.
+- Смешанные цепочки (другой STEP, Git и прочие операции) не считаются
+  завершёнными на основании одного STEP. Нужна отдельная сверка невыполненных
+  команд.
+- Незавершённый STEP с неизменённым Intent Basis по-прежнему может
+  возобновляться как обычно.
+- `STEP NEXT` проверяет этот результат **без записи** состояния. Записывающий
+  `HARNESS RESUME` применяет согласование под существующей блокировкой.
+
+Если текущий Git HEAD или рабочее дерево изменились после Verification,
+старое доказательство не подменяет новую проверку: результат блокируется до
+согласования фактической revision.
+
