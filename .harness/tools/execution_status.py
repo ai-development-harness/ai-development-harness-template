@@ -3061,6 +3061,112 @@ def _apply_recovered_completion(
 
 
 
+
+def _completed_step_recovery(root: Path, execution: dict[str, Any]) -> dict[str, Any] | None:
+    """Resolve an obsolete STEP cursor against canonical completion, never status alone.
+
+    A completed STEP is not permission to replay IMPLEMENT (or to overwrite
+    Verification Evidence).  Freshness and the latest review are checked before
+    deciding whether the old execution may be retired without any product work.
+    """
+    current = execution.get("current") or {}
+    if current.get("status") != "running":
+        return None
+    parsed = normalize_single_command(root, str(current.get("command") or ""))
+    if parsed.get("domain") != "STEP" or parsed.get("operation") not in {"IMPLEMENT", "FIX", "REVIEW"}:
+        return None
+    step_id = parsed.get("target")
+    if not isinstance(step_id, str):
+        return None
+    try:
+        task = read_planning_task(root, step_id)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if task["frontmatter"].get("status") != "completed":
+        return None
+
+    blocker = {
+        "reasonCode": "COMPLETED_STEP_RECOVERY_CONFLICT",
+        "message": "Local running command conflicts with an already completed STEP.",
+        "stepId": step_id,
+        "remediation": (
+            f"Inspect STEP {step_id} canonical completion, Verification and review; "
+            "reconcile the interrupted execution without rerunning IMPLEMENT."
+        ),
+    }
+    try:
+        from verification import verification_freshness
+
+        proof = step_completion_proof(root, step_id)
+        verification = verification_freshness(root, step_id)
+        review = latest_review(root, step_id, require_current_revision=True)
+        valid = (
+            proof.get("complete") is True
+            and verification.get("status") == "PASS"
+            and verification.get("fresh") is True
+            and review is not None
+            and review.get("verdict") == "PASS"
+            and review.get("completionResult") == "PASS"
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        blocker["details"] = {"proofError": str(exc)}
+        return {"kind": "blocked", "blocker": blocker}
+    if not valid:
+        blocker["details"] = {
+            "proofReasons": proof.get("reasons"),
+            "verification": verification.get("reasonCode"),
+            "review": review.get("verdict") if review else None,
+        }
+        return {"kind": "blocked", "blocker": blocker}
+
+    # A homogeneous STEP chain can be retired because the final canonical
+    # lifecycle was already proved. Never skip Git or another STEP in a chain.
+    sequence = execution.get("sequence") or [execution.get("rootCommand")]
+    try:
+        same_step = all(
+            (part := normalize_single_command(root, command)).get("domain") == "STEP"
+            and part.get("target") == step_id
+            and part.get("operation") in {"PLAN", "IMPLEMENT", "FIX", "REVIEW", "RUN"}
+            for command in sequence
+        )
+    except (ValueError, TypeError):
+        same_step = False
+    if not same_step:
+        return {"kind": "blocked", "blocker": blocker}
+    return {
+        "kind": "reconciled",
+        "stepId": step_id,
+        "proofHash": proof.get("proof_hash"),
+        "review": review.get("path"),
+    }
+
+
+def _apply_completed_step_recovery(
+    root: Path,
+    status: dict[str, Any],
+    execution: dict[str, Any],
+    decision: dict[str, Any],
+) -> None:
+    """Retire only this invocation under the existing execution-state lock."""
+    current = execution["current"]
+    current["status"] = "complete"
+    current["result"] = "SUCCESS"
+    current["completedAt"] = utc_now()
+    current["recoveredFromDurableState"] = True
+    current["recovery"] = {
+        "reasonCode": "STEP_ALREADY_COMPLETED",
+        "stepId": decision["stepId"],
+        "proofHash": decision["proofHash"],
+        "review": decision["review"],
+    }
+    execution["notExecuted"] = (
+        execution.get("sequence", [])[int(execution.get("currentIndex") or 0) + 1:]
+        if execution.get("mode") == "chain" else []
+    )
+    _mark_root_complete(execution)
+    save_status(root, status)
+
+
 # Главный deterministic resolver одной root execution: RESUME running command либо NEXT/DONE/BLOCKED по mode и CTS.
 def resolve_execution(
     root: Path,
@@ -3110,6 +3216,34 @@ def _resolve_execution_inner(
 
     current = execution["current"]
     if current.get("status") == "running":
+        completed_decision = _completed_step_recovery(root, execution)
+        if completed_decision is not None:
+            if completed_decision["kind"] == "reconciled":
+                if mutate:
+                    status = load_status(root)
+                    stored = _latest_execution(
+                        status, execution_id=execution["executionId"],
+                    )
+                    if stored is not None and stored.get("status") == "running":
+                        _apply_completed_step_recovery(root, status, stored, completed_decision)
+                return {
+                    "status": "DONE",
+                    "executionId": execution["executionId"],
+                    "rootCommand": execution["rootCommand"],
+                    "command": None,
+                    "reasonCode": "STEP_ALREADY_COMPLETED",
+                    "recovery": completed_decision,
+                }
+            blocker = completed_decision["blocker"]
+            if mutate:
+                status = load_status(root)
+                stored = _latest_execution(
+                    status, execution_id=execution["executionId"],
+                )
+                if stored is not None and stored.get("status") == "running":
+                    _apply_intent_blocker(stored, blocker)
+                    save_status(root, status)
+            return _intent_blocked_resolution(execution, blocker)
         blocker = _intent_resume_blocker(root, execution)
         if blocker is not None:
             if mutate:
