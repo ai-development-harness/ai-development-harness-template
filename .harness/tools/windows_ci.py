@@ -1,6 +1,6 @@
 """Три изолированные группы Windows CI и общий обязательный результат (#339).
 
-Группы владеют непересекающимися частями прежнего набора из 13 self-tests.
+Группы владеют непересекающимися наборами self-tests, включая проверку очистки (#334).
 Итоговый check принимает только успех всех трёх jobs; пропуск или отмена
 не становятся успехом даже при успешных оставшихся группах.
 """
@@ -18,14 +18,14 @@ GROUPS = {
     "update": ("harness-config", "document-contract", "update-engine"),
     "resume": ("step-next", "portable-handoff", "portable-resume", "portable-resume-matrix"),
     "execution": ("execution", "verification", "reliable-orchestration-fault",
-                  "operational-reports", "operational-completion", "operational-integration"),
+                  "operational-reports", "operational-completion", "operational-integration", "local-cleanup"),
 }
 
 
 def validate_groups() -> None:
     names = [name for group in GROUPS.values() for name in group]
-    if len(names) != 13 or len(set(names)) != len(names):
-        raise ValueError("Windows-набор должен содержать 13 различных self-tests")
+    if len(names) != 14 or len(set(names)) != len(names):
+        raise ValueError("Windows-набор должен содержать 14 различных self-tests")
 
 
 def finalize(needs: dict) -> bool:
