@@ -165,7 +165,7 @@ def tree_snapshot(path: Path) -> dict[str, tuple[int, int, int, int, int]]:
     return result
 
 
-def canonical_texts(root: Path) -> list[str]:
+def canonical_texts(root: Path) -> list[tuple[Path, str]]:
     """Читать configured artifacts без следования ссылкам; неизвестный формат запрещает уборку."""
     manifest = load_manifest(root)
     paths = []
@@ -189,7 +189,7 @@ def canonical_texts(root: Path) -> list[str]:
             for child in path.iterdir():
                 visit(child)
         else:
-            texts.append(path.read_text(encoding='utf-8'))
+            texts.append((path, path.read_text(encoding='utf-8')))
     for relative in paths:
         try:
             safe_path(root, relative.parent)
@@ -223,7 +223,7 @@ def step_ids(item: dict[str, Any]) -> set[str]:
     return set(re.findall(r'\bSTEP-\d+\b', item['rootCommand']))
 
 
-def eligibility(root: Path, state: dict[str, Any], execution_id: str, texts: list[str]) -> str:
+def eligibility(root: Path, state: dict[str, Any], execution_id: str, texts: list[tuple[Path, str]]) -> str:
     owner = next((item for item in records(state) if item['executionId'] == execution_id), None)
     if owner is None:
         return 'OWNER_PROOF_MISSING'
@@ -236,9 +236,20 @@ def eligibility(root: Path, state: dict[str, Any], execution_id: str, texts: lis
     for step_id in sorted(steps):
         if step_completion_proof(root, step_id).get('complete') is not True:
             return 'STEP_NOT_COMPLETE'
-    candidate_path = (BASE / execution_id).as_posix()
-    if any(candidate_path in unquote(value).replace('\\', '/') for value in texts):
-        return 'CANONICAL_REFERENCE'
+    candidate = root / BASE / execution_id
+    for document, text in texts:
+        normalized = re.sub('/+', '/', unquote(text).replace('\\', '/'))
+        # Metadata execution_id не ссылка. Токен с path-разделителем
+        # проверяем и как repository path, и относительно исходного документа.
+        for token in re.findall(r"[^\s<>\"'`()]*" + re.escape(execution_id) + r"[^\s<>\"'`()]*", normalized):
+            token = token.split('#', 1)[0].split('?', 1)[0]
+            if '/' not in token:
+                continue
+            target = Path(token)
+            for base in (root, document.parent):
+                resolved = (base / target).resolve()
+                if resolved == candidate or candidate in resolved.parents:
+                    return 'CANONICAL_REFERENCE'
     return 'ELIGIBLE'
 
 
@@ -290,9 +301,10 @@ def windows_handle(path: Path, *, delete: bool = False):
     close = kernel.CloseHandle
     close.argtypes = [wintypes.HANDLE]
     close.restype = wintypes.BOOL
-    # Предкам достаточно READ_ATTRIBUTES: DELETE конфликтует с Windows cwd handle.
+    # Предкам достаточно LIST_DIRECTORY + READ_ATTRIBUTES: DELETE конфликтует с cwd handle.
+    # LIST_DIRECTORY включает share accounting, в отличие от одного metadata access.
     # DELETE запрашиваем только для удаляемого объекта; sharing запрещает подмену/запись.
-    access = 0x80 | (0x10000 if delete else 0)
+    access = 0x81 | (0x10000 if delete else 0)
     handle = create(str(path), access, 1, None, 3, 0x02000000 | 0x00200000, None)
     if handle == wintypes.HANDLE(-1).value:
         raise CleanupError('HANDLE_UNAVAILABLE:' + str(ctypes.get_last_error()))

@@ -99,6 +99,18 @@ def main() -> int:
         result = start_dispatch(root, 'HARNESS CLEANUP APPLY')
         assert result['status'] == 'DONE' and not path.exists(), result
 
+        # Markdown path разрешается относительно canonical документа, включая URL encoding.
+        value, path = handoff(root); checkpoint(root, value)
+        protocol = root / '.harness/docs/EXECUTION_PROTOCOL.md'
+        saved_protocol = protocol.read_text(encoding='utf-8')
+        for target in (f'../local/tmp/{value["executionId"]}/before.txt',
+                       f'../local/tmp/{value["executionId"]}/before%2Etxt'):
+            protocol.write_text(saved_protocol + f'\n[материал]({target})\n', encoding='utf-8')
+            assert reason(root, path) == 'CANONICAL_REFERENCE'
+            cleaner.cleanup(root, apply=True); assert (path / 'before.txt').exists()
+        protocol.write_text(saved_protocol, encoding='utf-8')
+        cleaner.cleanup(root, apply=True); assert not path.exists()
+
         # Configured relocation тоже проверяется, без привязки к planning/tasks.
         manifest = root / '.harness/manifest.yaml'; original = manifest.read_text(encoding='utf-8')
         manifest.write_text(original.replace('taskDirectory: planning/tasks', 'taskDirectory: custom/tasks'), encoding='utf-8')
@@ -252,6 +264,35 @@ def main() -> int:
             with patch.object(cleaner.os, 'unlink', side_effect=leaf_race):
                 cleaner.cleanup(root, apply=True)
             assert attempted and (path / 'before.txt').read_text(encoding='utf-8') == 'новые данные'
+
+        if os.name == 'nt':
+            # Проверяем реальную защиту ancestor от rename, а не только flags.
+            probe = Path(tmp) / 'handle-probe'; probe.mkdir()
+            renamed = probe.with_name('renamed-probe')
+            with cleaner.windows_handle(probe):
+                try:
+                    probe.rename(renamed)
+                except OSError as exc:
+                    assert exc.winerror == 32, exc.winerror
+                else:
+                    raise AssertionError('открытый ancestor handle допускает rename')
+            probe.rename(renamed)
+            assert renamed.is_dir()
+        else:
+            # Подмена tmp сразу после mkdir не перенаправляет marker наружу.
+            isolated = Path(tmp) / 'parent-race'; isolated.mkdir(); fixture(isolated)
+            original_mkdir = os.mkdir
+            def parent_race(name, *args, **kwargs):
+                result = original_mkdir(name, *args, **kwargs)
+                if name == 'tmp' and kwargs.get('dir_fd') is not None:
+                    parent = isolated / cleaner.BASE
+                    parent.rename(parent.with_name('tmp-original'))
+                    parent.symlink_to(outside, target_is_directory=True)
+                return result
+            with patch.object(cleaner.os, 'mkdir', side_effect=parent_race):
+                result = start_dispatch(isolated, COMMAND)
+            assert result['status'] == 'BLOCKED' and sentinel.read_text() == 'keep'
+            assert list(outside.iterdir()) == [sentinel]
 
         # STEP PLAN/IMPLEMENT success не заменяет completion proof всего STEP.
         spec = importlib.util.spec_from_file_location('execution_fixture', SOURCE / '.harness/tools/execution-self-test.py')
