@@ -238,11 +238,13 @@ def eligibility(root: Path, state: dict[str, Any], execution_id: str, texts: lis
             return 'STEP_NOT_COMPLETE'
     candidate = root / BASE / execution_id
     for document, text in texts:
-        normalized = re.sub('/+', '/', unquote(text).replace('\\', '/'))
+        normalized = re.sub('/+', '/', text.replace('\\', '/'))
+        if (BASE / execution_id).as_posix() in unquote(normalized):
+            return 'CANONICAL_REFERENCE'
         # Metadata execution_id не ссылка. Токен с path-разделителем
         # проверяем и как repository path, и относительно исходного документа.
         for token in re.findall(r"[^\s<>\"'`()]*" + re.escape(execution_id) + r"[^\s<>\"'`()]*", normalized):
-            token = token.split('#', 1)[0].split('?', 1)[0]
+            token = unquote(token.split('#', 1)[0].split('?', 1)[0])
             if '/' not in token:
                 continue
             target = Path(token)

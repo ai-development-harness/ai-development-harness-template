@@ -331,6 +331,15 @@ def main() -> int:
         complete_command(root, chain, 'GIT CHECK', 'PASS', expected_execution_id=owner['executionId'])
         assert reason(root, chain_path) == 'OWNER_NOT_COMPLETE'
         assert cleaner.cleanup(root, apply=True)['status'] == 'PASS' and chain_path.exists()
+        # URL decoding не должен разбивать absolute path проекта с пробелами.
+        spaced = Path(tmp) / 'Project With Spaces'; spaced.mkdir(); fixture(spaced)
+        value, path = handoff(spaced); checkpoint(spaced, value)
+        reference = spaced / 'planning/tasks/cleanup-reference.md'
+        target = str(path / 'before.txt').replace('\\', '/').replace(' ', '%20')
+        reference.write_text(f'[материал]({target})', encoding='utf-8')
+        assert reason(spaced, path) == 'CANONICAL_REFERENCE'
+        cleaner.cleanup(spaced, apply=True); assert (path / 'before.txt').exists()
+
         # Immutable planning-review provenance не является ссылкой на временный файл.
         isolated = Path(tmp) / 'planning-provenance'; isolated.mkdir(); fixture(isolated)
         spec = importlib.util.spec_from_file_location('semantic_fixture', SOURCE / '.harness/tools/semantic-artifacts-self-test.py')
