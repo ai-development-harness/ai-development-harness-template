@@ -152,7 +152,6 @@ Fixture.
 """
 
 
-
 def blocked_dag_regression() -> None:
     """#340: общий BLOCKED узел вычисляется один раз, причины не меняются."""
     import planning_contract as pc

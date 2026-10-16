@@ -1264,7 +1264,6 @@ def test_bridge_release_gate(root: Path) -> None:
     require(not bridge_edge_errors(edge("v0.8.1", "v0.8.2")), "gate rejected valid v0.8.2 bridge edge")
 
 
-
 def test_blocked_dag_hotfix_route(root: Path) -> None:
     """#340: v0.11.6 не запускает дефектный target validator v0.12.0/1."""
     from harness_update import _route, _validate_graph
@@ -1278,8 +1277,13 @@ def test_blocked_dag_hotfix_route(root: Path) -> None:
     require(not any(hop.target in {"v0.12.0", "v0.12.1"} for hop in route),
             "recovery route must skip broken target validators")
     for installed in ("v0.12.0", "v0.12.1"):
-        require(any(hop.target == "v0.12.2" for hop in _route(installed, latest, outgoing)),
-                f"{installed} lost its route through the hotfix")
+        installed_route = _route(installed, latest, outgoing)
+        require(installed_route[0].target == "v0.12.2",
+                f"{installed} must update directly to the hotfix")
+        require(installed_route[0].reload_required,
+                f"{installed} hotfix transition requires reload")
+        require(not any(hop.target in {"v0.12.0", "v0.12.1"} for hop in installed_route),
+                f"{installed} route must skip broken target validators")
 
 
 def main() -> int:
