@@ -296,27 +296,30 @@ Synthetic regression должен доказывать минимум:
 7. semantic contract edit не проходит QUICK FIX policy;
 8. impact analysis не мутирует immutable historical review.
 
-## Историческое завершение и актуальность для новой работы
+## Завершённый STEP — исторический факт
 
-`historical_completion_projection_proof()` проверяет принятую историю через
-общий type-specific proof: доверенный immutable PASS, Evidence, результат
-Verification, существование зависимостей и отсутствие циклов остаются обязательными.
-Сравнение исторического `contract_basis` с сегодняшним контекстом и актуальность
-`dependency_completion_basis` относятся к разрешению новой работы. Их несовпадение
-не отменяет историческое завершение, в том числе после изменения общего
-архитектурного описания. Отсутствие dependency metadata допустимо только для старого
-REVIEW без `reviewed_subject_content_hash`; новый неполный REVIEW остаётся ошибкой.
+`step_completion_proof()` и compatibility wrapper
+`historical_completion_projection_proof()` проверяют сохранность принятого
+результата: собственные Evidence, generated Verification и trusted immutable
+PASS REVIEW, либо предусмотренный type-specific proof. Старые reports без
+поздней metadata сохраняются без изменений. Superseded ADR остаётся принятым
+историческим решением.
 
-Общий structural validator во всех режимах, включая commit/push/CI, requirements
-STATUS и traceability coverage используют историческую проверку. У completed STEP
-устаревший context старого Ready plan не является обязательной очередью PLAN/REVIEW.
-Immutable REVIEW/AUDIT не изменяются, новые fingerprints в них не добавляются.
+Завершённый STEP не сравнивается с сегодняшним REQ/ADR/PRN/architecture context,
+не пересчитывает dependency basis старого REVIEW и не обходит нынешний
+`depends_on`. Изменение этих входов после приёмки не отменяет прошлое завершение
+и не требует повторного PLAN/IMPLEMENT/Verification/REVIEW. Новые proof artifacts
+и дополнительные команды для этого не нужны. Read-only диагностика плана
+возвращает `status: historical`, `action: null`; сегодняшние OQ, статусы ADR
+и переименование architecture anchor не блокируют исторический Ready plan.
 
-`step_completion_proof()`, `dependency_completion_failures()` и execution gates
-сохраняют строгий текущий контракт и прежний proof hash. При новой зависимой работе
-неподтверждённая актуальность возвращает BLOCKED до product mutation. PLAN сохраняет
-прежние правила. Исторический PASS не выдаёт разрешение на новый execution.
+Новая работа проверяет собственные текущие требования, архитектуру, Ready plan,
+Verification и независимый REVIEW. Её прямые completed prerequisites должны иметь
+сохранный completion proof; за этим историческим узлом обход останавливается.
+Missing/повреждённый REVIEW, отсутствие Evidence или generated Verification FAIL
+у прямого prerequisite остаются BLOCKED. Незавершённые зависимости, отсутствующие
+STEP и циклы активного графа не становятся допустимыми. Общий schema validator
+продолжает проверять структурную целостность ссылок и графа.
 
-Реальный текущий defect или semantic drift получает отдельный finding и corrective
-owner в reconcile. Само несовпадение historical fingerprint не доказывает regression
-и не требует массовой повторной Verification/REVIEW для публикации обновления.
+Реальный defect старой реализации получает отдельную corrective задачу.
+Несовпадение historical fingerprint само по себе таким defect не является.
