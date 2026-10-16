@@ -21,6 +21,8 @@ from harness_config import (task_directory, review_directory, requirements_direc
                             adr_directory, architecture_path, status_path, update_report_directory,
                             load_update_policy)
 from harness_update import _ownership, _classify
+from document_contract import markdown_headings
+from planning_contract import architecture_refs, read_task, planning_context_basis, _heading_slug
 
 
 def run(command: list[str], cwd: Path) -> str:
@@ -72,19 +74,27 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
             if state == 'publication-history-stale-architecture':
                 # Меняем prose существующего referenced раздела; REVIEW и его
                 # basis остаются настоящими неизменёнными артефактами canary.
-                path = architecture_path(work)
+                task = next(read_task(work, path.stem) for path in steps
+                            if architecture_refs(read_task(work, path.stem)))
+                sid = task['frontmatter']['id']
+                ref = architecture_refs(task)[0]
+                rel, _, anchor = ref.partition('#')
+                path = work / rel
                 text = path.read_text(encoding='utf-8')
-                marker = '\n## '
-                start = text.index(marker)
-                end = text.index('\n', start + len(marker))
-                path.write_text(text[:end + 1] + '\nУточнение описания после исторической приёмки.\n' + text[end + 1:], encoding='utf-8')
+                lines = text.splitlines(keepends=True)
+                selected = next(index for index, _level, title in markdown_headings(text)
+                                if not anchor or _heading_slug(title) == anchor)
+                prior_basis = planning_context_basis(work, sid)
+                lines.insert(selected + 1, '\nУточнение описания после исторической приёмки.\n')
+                path.write_text(''.join(lines), encoding='utf-8')
+                assert planning_context_basis(work, sid) != prior_basis, ref
             if state.startswith('publication-history'):
                 # Подготовка disposable baseline отделена от публикации update.
                 # Все последующие commit/push исполняет настоящий Git executor.
                 run(['git', 'config', 'user.name', 'Harness Canary'], work)
                 run(['git', 'config', 'user.email', 'canary@example.invalid'], work)
                 if state.endswith('architecture'):
-                    run(['git', 'add', '--', str(architecture_path(work).relative_to(work))], work)
+                    run(['git', 'add', '--', str(path.relative_to(work))], work)
                     run(['git', 'commit', '-m', 'docs: уточнить описание архитектуры'], work)
                 remote = Path(temporary) / (state + '.git')
                 run(['git', 'clone', '--quiet', '--bare', str(work), str(remote)], work)
@@ -180,6 +190,15 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
                 immutable = {str(path.relative_to(work)): path.read_bytes()
                              for path in reviews.rglob('*.md')}
                 run([sys.executable, str(work / '.harness/tools/sync-projections.py')], work)
+                if state.endswith('architecture'):
+                    # Тот же настоящий исторический PASS допускает публикацию,
+                    # но не становится актуальным prerequisite новой работы.
+                    code = ("import sys; from pathlib import Path; "
+                            "sys.path.insert(0, '.harness/tools'); "
+                            "from planning_contract import step_completion_proof, historical_completion_projection_proof; "
+                            f"assert not step_completion_proof(Path.cwd(), {sid!r})['complete']; "
+                            f"assert historical_completion_projection_proof(Path.cwd(), {sid!r})['complete']")
+                    run([sys.executable, '-c', code], work)
                 for mode in ('commit', 'ci'):
                     run([sys.executable, str(work / '.harness/tools/validate.py'), '--mode', mode], work)
                 message = work / '.harness/local/git/commit-message.txt'
