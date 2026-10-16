@@ -69,7 +69,7 @@ def main() -> int:
 
         value, path = handoff(root)
         before = contents(root)
-        assert reason(root, path) == 'OWNER_NOT_COMPLETE'
+        assert reason(root, path) == 'OWNER_NOT_COMPLETE', cleaner.cleanup(root)
         assert cleaner.cleanup(root, apply=True)['status'] == 'PASS' and path.exists()
         assert contents(root) == before
         resumed = resume_dispatch(root, COMMAND)
@@ -104,7 +104,7 @@ def main() -> int:
         manifest.write_text(original.replace('taskDirectory: planning/tasks', 'taskDirectory: custom/tasks'), encoding='utf-8')
         reference = root / 'custom/tasks/evidence.md'; reference.parent.mkdir(parents=True)
         value, path = handoff(root); checkpoint(root, value)
-        reference.write_text(value['executionId'], encoding='utf-8')
+        reference.write_text(value['temporaryDirectory'] + '/before.txt', encoding='utf-8')
         assert reason(root, path) == 'CANONICAL_REFERENCE'
         reference.write_bytes(b'\xff')
         assert reason(root, path) == 'REFERENCES_UNAVAILABLE'
@@ -271,6 +271,18 @@ def main() -> int:
         assert reason(root, step_path) == 'ELIGIBLE', reason(root, step_path)
         cleaner.cleanup(root, apply=True); assert not step_path.exists()
 
+        # Явный architecture input вне configured roots тоже canonical.
+        value, path = handoff(root); checkpoint(root, value)
+        subsystem = root / 'docs/subsystems/runtime.md'; subsystem.parent.mkdir(exist_ok=True)
+        subsystem.write_text(value['temporaryDirectory'] + '/before.txt', encoding='utf-8')
+        task.write_text(text.replace('architecture_refs: []', 'architecture_refs:\n  - docs/subsystems/runtime.md'), encoding='utf-8')
+        assert reason(root, path) == 'CANONICAL_REFERENCE'
+        cleaner.cleanup(root, apply=True); assert (path / 'before.txt').exists()
+        subsystem.unlink()
+        assert reason(root, path) == 'REFERENCES_UNAVAILABLE'
+        task.write_text(text, encoding='utf-8')
+        cleaner.cleanup(root, apply=True); assert not path.exists()
+
         # Child CHECK внутри незавершённой цепочки не разрешает очистку root.
         chain = 'GIT CHECK > COMMIT'
         owner = start_execution(root, chain)
@@ -278,6 +290,32 @@ def main() -> int:
         complete_command(root, chain, 'GIT CHECK', 'PASS', expected_execution_id=owner['executionId'])
         assert reason(root, chain_path) == 'OWNER_NOT_COMPLETE'
         assert cleaner.cleanup(root, apply=True)['status'] == 'PASS' and chain_path.exists()
+        # Immutable planning-review provenance не является ссылкой на временный файл.
+        isolated = Path(tmp) / 'planning-provenance'; isolated.mkdir(); fixture(isolated)
+        spec = importlib.util.spec_from_file_location('semantic_fixture', SOURCE / '.harness/tools/semantic-artifacts-self-test.py')
+        semantic_fixture = importlib.util.module_from_spec(spec); spec.loader.exec_module(semantic_fixture)
+        from semantic_artifacts import write_plan_draft, write_planning_review
+        task = isolated / 'planning/tasks/STEP-001.md'
+        task.write_text(semantic_fixture.task().replace('type: implementation', 'type: research'), encoding='utf-8')
+        write_plan_draft(isolated, 'STEP-001', {
+            'implementationPlan': [{'title': 'Изучить контракт', 'actions': ['Записать результат исследования.']}],
+            'verification': [{'kind': 'command', 'value': 'python3 -V'}],
+        })
+        owner = start_execution(isolated, 'STEP PLAN STEP-001')
+        directory = isolated / cleaner.temporary_directory(isolated, owner['executionId'])
+        (directory / 'scratch.log').write_text('временный файл', encoding='utf-8')
+        review = write_planning_review(isolated, 'STEP-001', {
+            'verdict': 'pass', 'findings': [], 'rationale': 'Исследовательский план согласован.',
+        })
+        assert review['status'] == 'PASS', review
+        complete_command(isolated, 'STEP PLAN STEP-001', 'STEP PLAN STEP-001', 'SUCCESS', expected_execution_id=owner['executionId'])
+        task.write_text(task.read_text(encoding='utf-8').replace('status: planned', 'status: completed').replace('## Evidence\n\n—', '## Evidence\n\nРезультат исследования сохранён.'), encoding='utf-8')
+        assert cleaner.step_completion_proof(isolated, 'STEP-001')['complete']
+        report = (isolated / review['report']).read_text(encoding='utf-8')
+        assert [line for line in report.splitlines() if owner['executionId'] in line] == ['execution_id: ' + owner['executionId']]
+        assert cleaner.cleanup(isolated, apply=True)['status'] == 'PASS'
+        assert not directory.exists()
+
     print('LOCAL CLEANUP SELF-TEST: PASS')
     return 0
 

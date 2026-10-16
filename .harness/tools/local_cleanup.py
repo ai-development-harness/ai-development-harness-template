@@ -10,10 +10,12 @@ from pathlib import Path
 import re
 import stat
 import uuid
+from urllib.parse import unquote
 from typing import Any
 
 from execution_status import execution_state_lock, load_status
-from harness_config import load_manifest, update_report_directory
+from harness_config import load_manifest, update_report_directory, task_directory
+from document_contract import parse_document
 from planning_contract import step_completion_proof
 
 BASE = Path('.harness/local/tmp')
@@ -80,6 +82,7 @@ def owner_marker(path: Path, execution_id: str) -> dict[str, Any]:
 
 def temporary_directory(root: Path, execution_id: str) -> str:
     """Выдать только зарегистрированному владельцу каталог; повторный handoff его сохраняет."""
+    root = root.resolve()
     if not EXECUTION_ID.fullmatch(execution_id):
         raise CleanupError('INVALID_EXECUTION_ID')
     with execution_state_lock(root):
@@ -196,6 +199,22 @@ def canonical_texts(root: Path) -> list[str]:
             # чтения существующего artifact обрабатывается fail-closed ниже.
             if (root / relative).exists():
                 raise CleanupError('REFERENCES_UNAVAILABLE') from None
+    # STEP может явно подключать subsystem docs вне configured roots.
+    # Это canonical context, поэтому его ссылки тоже удерживают tmp (#334).
+    tasks = task_directory(root)
+    for path in list(seen):
+        if path.parent != tasks or not re.fullmatch(r'STEP-[0-9]+\.md', path.name):
+            continue
+        refs = parse_document(path)['frontmatter'].get('architecture_refs')
+        if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+            raise CleanupError('REFERENCES_UNAVAILABLE')
+        for ref in refs:
+            value = ref.partition('#')[0]
+            relative = Path(value)
+            if not value or relative.is_absolute() or '..' in relative.parts:
+                raise CleanupError('REFERENCES_UNAVAILABLE')
+            safe_path(root, relative.parent)
+            visit(root / relative)
     return texts
 
 
@@ -217,7 +236,8 @@ def eligibility(root: Path, state: dict[str, Any], execution_id: str, texts: lis
     for step_id in sorted(steps):
         if step_completion_proof(root, step_id).get('complete') is not True:
             return 'STEP_NOT_COMPLETE'
-    if any(execution_id in value for value in texts):
+    candidate_path = (BASE / execution_id).as_posix()
+    if any(candidate_path in unquote(value).replace('\\', '/') for value in texts):
         return 'CANONICAL_REFERENCE'
     return 'ELIGIBLE'
 
@@ -258,7 +278,7 @@ def inspect(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 @contextmanager
-def windows_handle(path: Path):
+def windows_handle(path: Path, *, delete: bool = False):
     """Удержать Windows path от rename/reparse-подмены до удаления через тот же handle."""
     import ctypes
     from ctypes import wintypes
@@ -270,10 +290,12 @@ def windows_handle(path: Path):
     close = kernel.CloseHandle
     close.argtypes = [wintypes.HANDLE]
     close.restype = wintypes.BOOL
-    # DELETE + FILE_READ_ATTRIBUTES; без share-delete/write запрещены подмена и запись.
-    handle = create(str(path), 0x10000 | 0x80, 1, None, 3, 0x02000000 | 0x00200000, None)
+    # Предкам достаточно READ_ATTRIBUTES: DELETE конфликтует с Windows cwd handle.
+    # DELETE запрашиваем только для удаляемого объекта; sharing запрещает подмену/запись.
+    access = 0x80 | (0x10000 if delete else 0)
+    handle = create(str(path), access, 1, None, 3, 0x02000000 | 0x00200000, None)
     if handle == wintypes.HANDLE(-1).value:
-        raise CleanupError('DELETE_UNAVAILABLE')
+        raise CleanupError('HANDLE_UNAVAILABLE:' + str(ctypes.get_last_error()))
     try:
         safe_info(path)
         yield kernel, handle
@@ -299,7 +321,7 @@ def remove_tree(root: Path, name: str, expected: dict[str, Any]) -> None:
                 current = current / part
                 stack.enter_context(windows_handle(current))
             def remove(current: Path, rel: str) -> None:
-                with windows_handle(current) as (kernel, handle):
+                with windows_handle(current, delete=True) as (kernel, handle):
                     info = safe_info(current)
                     if (*identity(info), info.st_mode, info.st_size, info.st_mtime_ns) != expected[rel]:
                         raise CleanupError('CANDIDATE_CHANGED')
@@ -367,6 +389,7 @@ def remove_tree(root: Path, name: str, expected: dict[str, Any]) -> None:
 
 def cleanup(root: Path, *, apply: bool = False) -> dict[str, Any]:
     """CHECK ничего не пишет. APPLY удерживает общий lock вместе с повторной проверкой."""
+    root = root.resolve()
     try:
         if not apply:
             return inspect(root)[0]
