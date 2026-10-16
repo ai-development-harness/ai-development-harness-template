@@ -2264,3 +2264,10 @@ python3 .harness/tools/windows-ci.py finalize
 `run-self-tests.py`. Отдельный Windows-набор Release Qualification остаётся прежним:
 validator и шесть обязательных self-tests, с собственными exact-SHA evidence и timeout.
 Его распараллеливание не требуется для сохранения покрытия и не входит в #339.
+
+
+## Очистка временных файлов
+
+`.harness/tools/local-cleanup.py` — CLI над `local_cleanup.py`. Используется для проверки остатков после прерванной сессии; обычное завершение вызывает тот же модуль автоматически. Проверяет execution/completion proof, canonical ссылки, identity и безопасные пути.
+
+CLI: `python3 .harness/tools/local-cleanup.py check` или `python3 .harness/tools/local-cleanup.py apply`, без дополнительных аргументов. JSON содержит кандидатов, объём и причины сохранения; exit code `0` — проверка/очистка выполнена, `2` — предупреждение о невозможности безопасного выполнения. Наличие сохраняемых кандидатов само по себе не ошибка. `local-cleanup-self-test.py` проверяет реальные dispatcher paths и небезопасные сценарии на Linux и Windows. Границы: [LOCAL_CLEANUP.md](LOCAL_CLEANUP.md).
