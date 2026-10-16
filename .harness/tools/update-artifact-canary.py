@@ -69,7 +69,10 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
               'cyclic-steps', 'missing-review', 'failed-verification', 'malformed-req-adr',
               'custom-templates', 'dirty-staged-untracked', 'artifact-symlink',
               'unmerged-artifact-index', 'non-utf8-artifact-name',
-              'publication-history', 'publication-history-stale-architecture')
+              'publication-history', 'publication-history-stale-architecture',
+              'shared-project-regular', 'shared-project-executable',
+              'shared-project-dirty', 'shared-project-filemode-disabled',
+              'shared-project-deleted')
     records = []
     with tempfile.TemporaryDirectory(prefix='harness-artifact-canary-') as temporary:
         for number, state in enumerate(states):
@@ -181,6 +184,43 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
                     continue
                 subject.unlink(missing_ok=True)
                 subject.symlink_to('missing-user-artifact.md')
+            shared_path = work / '.github/local-update-mode-repro.yml'
+            shared_before = None
+            if state.startswith('shared-project-'):
+                # #352: настоящий tracked shared path, отсутствующий в BASE и
+                # TARGET. Отдельный snapshot нужен: общий исключает shared.
+                rel = shared_path.relative_to(work).as_posix()
+                assert all(_classify(rel, policy) == 'shared' for policy in policies), rel
+                for ref in (run(['git', 'rev-parse', 'HEAD'], work), target):
+                    repository = work if ref != target else mirror
+                    entry = run(['git', '-C', str(repository), 'ls-tree', ref, '--', rel], work)
+                    assert not entry, (state, ref, entry)
+                run(['git', 'config', 'core.filemode',
+                     'false' if state.endswith('disabled') else 'true'], work)
+                write(shared_path, b'version: 2\nupdates: []\n')
+                shared_path.chmod(0o755 if state.endswith('executable') else 0o644)
+                run(['git', 'add', '--', rel], work)
+                run(['git', '-c', 'user.name=Harness Canary',
+                     '-c', 'user.email=canary@example.invalid', 'commit', '-m',
+                     'test: добавить проектный shared-файл'], work)
+                if state.endswith('dirty'):
+                    write(shared_path, b'version: 2\nupdates: []\n# staged\n')
+                    run(['git', 'add', '--', rel], work)
+                    with shared_path.open('ab') as stream:
+                        stream.write(b'# unstaged\r\n')
+                elif state.endswith('deleted'):
+                    shared_path.unlink()
+                if shared_path.exists():
+                    shared_before = (shared_path.read_bytes(),
+                                     stat.S_IMODE(shared_path.stat().st_mode),
+                                     shared_path.stat().st_mtime_ns)
+            def assert_shared_preserved():
+                if not state.startswith('shared-project-'):
+                    return
+                actual = None if not shared_path.exists() else (
+                    shared_path.read_bytes(), stat.S_IMODE(shared_path.stat().st_mode),
+                    shared_path.stat().st_mtime_ns)
+                assert actual == shared_before, (state, 'shared bytes/mode/mtime changed')
             before = snapshot(work, policies)
             index = (work / '.git/index').read_bytes()
             current = json.loads((work / '.harness/harness.lock.json').read_text())['source']['ref']
@@ -190,16 +230,20 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
                 common += ['--to', target]
             checked = json.loads(run([sys.executable, str(engine), 'check', *common], work))
             assert checked['status'] == 'PASS' and checked['route'] == [current, target], checked
+            assert_shared_preserved()
             assert snapshot(work, policies) == before
             assert (work / '.git/index').read_bytes() == index
             applied = json.loads(run([sys.executable, str(engine), 'apply', *common], work))
             assert applied['status'] == 'UPDATED' and applied['current'] == target, applied
             assert applied['route'] == [current, target] and len(applied['reports']) == 1, applied
+            assert_shared_preserved()
             assert snapshot(work, policies) == before, state
             assert (work / '.git/index').read_bytes() == index, state
             repeat = json.loads(run([sys.executable, str(engine), 'apply', *common], work))
             assert repeat['status'] == 'NO_UPDATE' and not repeat['repositoryMutated'], repeat
+            assert_shared_preserved()
             assert snapshot(work, policies) == before, state
+            assert (work / '.git/index').read_bytes() == index, state
             publication = {}
             if state.startswith('publication-history'):
                 immutable = {str(path.relative_to(work)): path.read_bytes()
