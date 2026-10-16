@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -28,7 +29,18 @@ from planning_contract import architecture_refs, read_task, planning_context_bas
 def run(command: list[str], cwd: Path) -> str:
     result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
     if result.returncode:
-        raise RuntimeError(f'canary command failed ({result.returncode}): {command[0]}: {result.stderr[:300]}')
+        # Git executor возвращает причину в JSON stdout. Сохраняем только
+        # machine code, чтобы qualification не теряла blocker и не раскрывала
+        # произвольные diagnostics/пути из дочернего процесса.
+        reason = 'SUBPROCESS_FAILED'
+        try:
+            payload = json.loads(result.stdout)
+        except ValueError:
+            payload = None
+        code = payload.get('reasonCode') if isinstance(payload, dict) else None
+        if isinstance(code, str) and re.fullmatch(r'[A-Z][A-Z0-9_]*', code):
+            reason = code
+        raise RuntimeError(f'canary command failed ({result.returncode}): {reason}')
     return result.stdout.strip()
 
 
@@ -91,6 +103,10 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
             if state.startswith('publication-history'):
                 # Подготовка disposable baseline отделена от публикации update.
                 # Все последующие commit/push исполняет настоящий Git executor.
+                # Actions checkout exact SHA не обязан иметь локальные ветки.
+                # Публикационный fixture создаёт собственную disposable ветку;
+                # production DETACHED_HEAD gate при этом остаётся строгим.
+                run(['git', 'switch', '-c', 'codex/qualification-publication'], work)
                 run(['git', 'config', 'user.name', 'Harness Canary'], work)
                 run(['git', 'config', 'user.email', 'canary@example.invalid'], work)
                 if state.endswith('architecture'):
@@ -103,7 +119,6 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
                 # Immutable legacy reports lack fields introduced by newer contracts.
                 for report in reviews.glob('STEP-*/REVIEW-*.md'):
                     text = report.read_text()
-                    import re
                     text = re.sub(r'(?m)^(?:dependency_completion_basis|reviewed_subject_content_hash):.*\n', '', text)
                     report.write_text(text)
                 write(reviews / 'STEP-991/REVIEW-historical.md',
