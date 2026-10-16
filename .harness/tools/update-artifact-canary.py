@@ -54,7 +54,8 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
               'stale-projections', 'missing-step', 'malformed-step', 'non-utf8-step',
               'cyclic-steps', 'missing-review', 'failed-verification', 'malformed-req-adr',
               'custom-templates', 'dirty-staged-untracked', 'artifact-symlink',
-              'unmerged-artifact-index', 'non-utf8-artifact-name')
+              'unmerged-artifact-index', 'non-utf8-artifact-name',
+              'publication-history', 'publication-history-stale-architecture')
     records = []
     with tempfile.TemporaryDirectory(prefix='harness-artifact-canary-') as temporary:
         for number, state in enumerate(states):
@@ -68,6 +69,26 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
             def write(path: Path, content: bytes):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(content)
+            if state == 'publication-history-stale-architecture':
+                # Меняем prose существующего referenced раздела; REVIEW и его
+                # basis остаются настоящими неизменёнными артефактами canary.
+                path = architecture_path(work)
+                text = path.read_text(encoding='utf-8')
+                marker = '\n## '
+                start = text.index(marker)
+                end = text.index('\n', start + len(marker))
+                path.write_text(text[:end + 1] + '\nУточнение описания после исторической приёмки.\n' + text[end + 1:], encoding='utf-8')
+            if state.startswith('publication-history'):
+                # Подготовка disposable baseline отделена от публикации update.
+                # Все последующие commit/push исполняет настоящий Git executor.
+                run(['git', 'config', 'user.name', 'Harness Canary'], work)
+                run(['git', 'config', 'user.email', 'canary@example.invalid'], work)
+                if state.endswith('architecture'):
+                    run(['git', 'add', '--', str(architecture_path(work).relative_to(work))], work)
+                    run(['git', 'commit', '-m', 'docs: уточнить описание архитектуры'], work)
+                remote = Path(temporary) / (state + '.git')
+                run(['git', 'clone', '--quiet', '--bare', str(work), str(remote)], work)
+                run(['git', 'remote', 'set-url', 'origin', str(remote)], work)
             if state.startswith('historical-review'):
                 # Immutable legacy reports lack fields introduced by newer contracts.
                 for report in reviews.glob('STEP-*/REVIEW-*.md'):
@@ -154,7 +175,31 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
             repeat = json.loads(run([sys.executable, str(engine), 'apply', *common], work))
             assert repeat['status'] == 'NO_UPDATE' and not repeat['repositoryMutated'], repeat
             assert snapshot(work, policies) == before, state
-            records.append({'state': state, 'status': 'PASS', 'protectedFiles': len(before)})
+            publication = {}
+            if state.startswith('publication-history'):
+                immutable = {str(path.relative_to(work)): path.read_bytes()
+                             for path in reviews.rglob('*.md')}
+                run([sys.executable, str(work / '.harness/tools/sync-projections.py')], work)
+                for mode in ('commit', 'ci'):
+                    run([sys.executable, str(work / '.harness/tools/validate.py'), '--mode', mode], work)
+                message = work / '.harness/local/git/commit-message.txt'
+                write(message, 'chore: обновить Harness\n\nУстановлено обновление; исторические REVIEW сохранены.\n'.encode('utf-8'))
+                # Executor получает exact staged scope и повторяет validator
+                # перед commit и push; remote существует только в temporary dir.
+                run(['git', 'add', '--all'], work)
+                committed = json.loads(run([sys.executable, str(work / '.harness/tools/git-action.py'),
+                    'commit', '--commit-type', 'chore', '--slug', 'historical-update',
+                    '--message-file', str(message), '--json'], work))
+                assert committed['status'] == 'SUCCESS', committed
+                pushed = json.loads(run([sys.executable, str(work / '.harness/tools/git-action.py'),
+                    'push', '--json'], work))
+                assert pushed['status'] == 'SUCCESS', pushed
+                for rel, content in immutable.items():
+                    assert (work / rel).read_bytes() == content, rel
+                publication = {'commit': 'PASS', 'push': 'PASS', 'ciValidation': 'PASS',
+                               'immutableReviews': len(immutable)}
+            records.append({'state': state, 'status': 'PASS', 'protectedFiles': len(before),
+                            **publication})
     return {'status': 'PASS', 'count': len(states), 'cases': records}
 
 
