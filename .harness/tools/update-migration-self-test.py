@@ -1264,6 +1264,28 @@ def test_bridge_release_gate(root: Path) -> None:
     require(not bridge_edge_errors(edge("v0.8.1", "v0.8.2")), "gate rejected valid v0.8.2 bridge edge")
 
 
+def test_blocked_dag_hotfix_route(root: Path) -> None:
+    """#340: v0.11.6 не запускает дефектный target validator v0.12.0/1."""
+    from harness_update import _route, _validate_graph
+
+    graph = load_json(update_manifest_path(root))
+    latest, outgoing = _validate_graph(graph, r"^v\d+\.\d+\.\d+$")
+    route = _route("v0.11.6", latest, outgoing)
+    require(bool(route), "missing recovery route from v0.11.6")
+    require(route[0].target == "v0.12.2", "v0.11.6 must enter fixed validator v0.12.2")
+    require(route[0].reload_required, "v0.11.6 hotfix transition requires reload")
+    require(not any(hop.target in {"v0.12.0", "v0.12.1"} for hop in route),
+            "recovery route must skip broken target validators")
+    for installed in ("v0.12.0", "v0.12.1"):
+        installed_route = _route(installed, latest, outgoing)
+        require(installed_route[0].target == "v0.12.2",
+                f"{installed} must update directly to the hotfix")
+        require(installed_route[0].reload_required,
+                f"{installed} hotfix transition requires reload")
+        require(not any(hop.target in {"v0.12.0", "v0.12.1"} for hop in installed_route),
+                f"{installed} route must skip broken target validators")
+
+
 def main() -> int:
     root = repo_root()
     tests = [
@@ -1277,6 +1299,7 @@ def main() -> int:
         ("release metadata", lambda: test_release_metadata(root)),
         ("installed release metadata under Harness Actions", test_release_metadata_initialized_downstream),
         ("journaled-engine bridge release gate", lambda: test_bridge_release_gate(root)),
+        ("BLOCKED DAG hotfix recovery route", lambda: test_blocked_dag_hotfix_route(root)),
     ]
     for name, test in tests:
         test()

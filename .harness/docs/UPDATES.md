@@ -74,6 +74,15 @@ Moving default branch не является BASE/THEIRS content source. Файл
 
 Наличие tag без допустимого route недостаточно.
 
+Hotfix `v0.12.2` меняет официальный маршрут `v0.11.6 → v0.12.0` на
+`v0.11.6 → v0.12.2` с обязательным reload. Это позволяет установить исправленный
+validator, минуя экспоненциальный обход исторических BLOCKED dependency proofs
+в `v0.12.0`/`v0.12.1` (#340). Для уже установленных `v0.12.0` и `v0.12.1`
+также задан прямой переход в `v0.12.2` с reload, без проблемного промежуточного
+validator. Target validation и проверки completion остаются
+обязательными; BLOCKED не превращается в PASS. После reload повтори исходную
+`HARNESS UPDATE APPLY`.
+
 Graph обязан быть связным: `latest` — конечный узел без outgoing transition, и из каждого упомянутого release цепочка transitions доходит до `latest`. Тупиковый release отклоняется как `INVALID_UPDATE_GRAPH`, поэтому release gate (`update-engine-self-test.py`) не пропустит graph, на котором какой-то проект не смог бы обновиться.
 
 ## CHECK

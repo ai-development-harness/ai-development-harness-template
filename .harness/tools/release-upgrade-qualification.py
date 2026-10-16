@@ -525,6 +525,13 @@ def qualify(
                     "validate",
                     [sys.executable, ".harness/tools/validate.py", "--mode", "manual"],
                 ),
+                # Отдельное evidence для #340: initialized upgrade проверяется
+                # также на разветвлённом BLOCKED DAG с историческими REVIEW.
+                # Full suite ниже сохраняется; линейной PASS-цепочки мало.
+                (
+                    "blocked-dependency-dag",
+                    [sys.executable, ".harness/tools/dependency-evidence-self-test.py"],
+                ),
                 (
                     "self-tests",
                     [sys.executable, ".harness/tools/run-self-tests.py", "--json"],
