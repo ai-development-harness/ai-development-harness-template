@@ -111,6 +111,8 @@ def candidate_source(root: Path) -> tuple[str, str]:
             }
         ),
     )
+    write(root, ".harness/tools/update-artifact-canary.py",
+          'import json\nprint(json.dumps({"status":"PASS","count":14}))\n')
     candidate = commit_all(root, "candidate")
     return stable, candidate
 
@@ -324,6 +326,15 @@ def main() -> int:
         direct_pass = invoke(root, direct, direct_sha, source, candidate, expect=0)
         assert direct_pass["status"] == "PASS", direct_pass
         assert any(stage["result"] == "UPDATED" for stage in direct_pass["stages"] if stage["id"].startswith("apply-")), direct_pass
+
+        broken_matrix = root / "broken-matrix-source"
+        run(["git", "clone", "--quiet", str(source), str(broken_matrix)], cwd=root)
+        git(broken_matrix, "config", "user.name", "test")
+        git(broken_matrix, "config", "user.email", "test@example.invalid")
+        write(broken_matrix, ".harness/tools/update-artifact-canary.py", "raise SystemExit(1)\n")
+        bad_matrix_sha = commit_all(broken_matrix, "failed artifact matrix")
+        rejected_matrix = invoke(root, direct, direct_sha, broken_matrix, bad_matrix_sha, expect=1)
+        assert rejected_matrix["reasonCode"] == "ARTIFACT_MATRIX_FAILED", rejected_matrix
 
         # Ошибка workload #340 обязана блокировать initialized qualification.
         blocked_dag = root / "blocked-dag-failure"
