@@ -53,7 +53,8 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
     states = ('unchanged', 'historical-review', 'historical-review-stale-architecture',
               'stale-projections', 'missing-step', 'malformed-step', 'non-utf8-step',
               'cyclic-steps', 'missing-review', 'failed-verification', 'malformed-req-adr',
-              'custom-templates', 'dirty-staged-untracked', 'artifact-symlink')
+              'custom-templates', 'dirty-staged-untracked', 'artifact-symlink',
+              'unmerged-artifact-index', 'non-utf8-artifact-name')
     records = []
     with tempfile.TemporaryDirectory(prefix='harness-artifact-canary-') as temporary:
         for number, state in enumerate(states):
@@ -107,6 +108,27 @@ def qualify(baseline: Path, mirror: Path, target: str) -> dict:
                 run(['git', 'add', '--', str(subject.relative_to(work))], work)
                 write(subject, subject.read_bytes() + b'\nunstaged user change\n')
                 write(tasks / 'STEP-992.md', b'untracked incomplete draft\n')
+            elif state == 'unmerged-artifact-index':
+                rel = subject.relative_to(work).as_posix()
+                objects = [run(['git', 'hash-object', '-w', '--', str(subject)], work)]
+                # Distinct valid blob objects in three conflict stages; the
+                # working file and conflict index must remain untouched.
+                for content in (b'ours\n', b'theirs\n'):
+                    proc = subprocess.run(['git', 'hash-object', '-w', '--stdin'], cwd=work,
+                                          input=content, capture_output=True, check=True)
+                    objects.append(proc.stdout.decode().strip())
+                data = f'0 {"0" * 40}\t{rel}\n' + ''.join(
+                    f'100644 {oid} {stage}\t{rel}\n'
+                    for stage, oid in enumerate(objects, 1))
+                subprocess.run(['git', 'update-index', '--index-info'], cwd=work,
+                               input=data.encode(), check=True)
+            elif state == 'non-utf8-artifact-name':
+                if os.name == 'nt':
+                    records.append({'state': state, 'status': 'UNSUPPORTED_PLATFORM'})
+                    continue
+                odd = tasks / os.fsdecode(b'STEP-opaque-\xff.md')
+                write(odd, b'user document with opaque filename\n')
+                run(['git', 'add', '--', str(odd.relative_to(work))], work)
             elif state == 'artifact-symlink':
                 if os.name == 'nt':
                     records.append({'state': state, 'status': 'UNSUPPORTED_PLATFORM'})

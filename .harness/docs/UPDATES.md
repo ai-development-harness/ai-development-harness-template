@@ -139,7 +139,7 @@ migration версии требуют отдельной миграции. Ес�
 Linux 3.11 и Windows 3.13, pristine initialized canary upgrade и отдельную
 `update-artifact-canary.py` matrix на disposable copies того же canary.
 Матрица проверяет latest/TO, единственную установку, сохранение bytes/modes и
-Git index для 14 состояний artifacts, read-only CHECK и повторный NO_UPDATE.
+Git index для 16 состояний artifacts, read-only CHECK и повторный NO_UPDATE.
 Любой FAIL блокирует release. Полный project validator нужен в pristine lane
 для проверки нормальной работы продукта; он не является updater postcondition.
 

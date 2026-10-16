@@ -112,7 +112,7 @@ def candidate_source(root: Path) -> tuple[str, str]:
         ),
     )
     write(root, ".harness/tools/update-artifact-canary.py",
-          'import json\nprint(json.dumps({"status":"PASS","count":14}))\n')
+          'import json\nprint(json.dumps({"status":"PASS","count":16}))\n')
     candidate = commit_all(root, "candidate")
     return stable, candidate
 

@@ -2,6 +2,8 @@
 """#342: direct TO/latest и полная независимость установки от project artifacts."""
 from pathlib import Path
 import json
+import os
+import subprocess
 import runpy
 import tempfile
 from unittest.mock import patch
@@ -34,6 +36,11 @@ def main() -> int:
             manifest.write_text(manifest.read_text().replace('initialized: false', 'initialized: true'))
             for rel, content in files.items():
                 path = project / rel; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(content)
+            if name == 'non-utf8-step' and os.name != 'nt':
+                odd = os.fsdecode(b'planning/tasks/STEP-raw-\xff.md')
+                files[odd] = b'opaque user artifact filename\n'
+                (project / odd).write_bytes(files[odd])
+                subprocess.run(['git', 'add', '--', odd], cwd=project, check=True)
             index = (project / '.git/index').read_bytes()
             # Ни обход графа STEP, ни даже запуск старого/нового full validator
             # не должен произойти при CHECK или APPLY.

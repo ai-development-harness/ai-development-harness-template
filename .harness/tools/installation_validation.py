@@ -45,7 +45,7 @@ def installation_errors(root: Path) -> list[str]:
     # Unknown ignored files below broad service globs are never captured.
     indexed = subprocess.run(["git", "ls-files", "--cached", "-z"], cwd=root,
                              capture_output=True, check=True).stdout
-    concrete = set(indexed.decode("utf-8").split("\0")) - {""}
+    concrete = set(os.fsdecode(indexed).split("\0")) - {""}
     journal = load_journal(root)
     if journal:
         concrete.update(entry["path"] for entry in journal.get("entries", []))

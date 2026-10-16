@@ -353,7 +353,7 @@ class WorkingTree:
 
     def tracked(self) -> set[str]:
         proc = self.git("ls-files", "-z")
-        return {item.decode("utf-8") for item in proc.stdout.split(b"\0") if item}
+        return {os.fsdecode(item) for item in proc.stdout.split(b"\0") if item}
 
     def ignored(self, path: str) -> bool:
         proc = self.git("check-ignore", "-q", "--no-index", "--", path, check=False)
