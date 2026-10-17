@@ -12,6 +12,10 @@ description: Produce, independently review, fingerprint and persist a concrete i
 
 Execution Status ведёт global wrapper. Active legacy schema после Harness update является blocker: сначала `PROJECT RECONCILE`.
 
+## Ранний output gate
+
+Перед PLAN действует `planning-state.py output-contract STEP-NNN`: ADR-STEP обязан иметь непустой `adr_outputs`; явные ADR/architecture результаты в Deliverables и Files должны иметь соответствующие declarations. Files плана перечисляет только изменяемые paths/anchors. Чтение входа описывай в Actions/Context, не в Files. Для whole-file Files с входными и выходными anchors объяви только изменяемые refs; остальные сохраняются входами. При обнаружении недостающего output после начала PLAN останови эту invocation, уточни owning STEP contract и начни новый PLAN: не меняй frozen input внутри той же execution. Draft writer, planning-review, stamp и completion повторяют gate.
+
 ## Phase A — requirements quality / clarification
 
 До consistency reasoning выполни Requirements Quality Gate по STEP и linked owning artifacts. Сначала получи ответ из existing REQ/ADR/OQ/architecture/codebase; не спрашивай то, что уже зафиксировано. Верни schema-v1 quality payload и проверь его через:

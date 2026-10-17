@@ -187,6 +187,91 @@ def architecture_outputs(task: dict[str, Any]) -> list[str]:
     return values
 
 
+def _output_reference(value: str) -> str:
+    """Извлечь явный ID/path из Files или пункта Deliverables, без NLP."""
+    value = value.strip()
+    match = re.match(r"^\[[^\]]+\]\(([^)]+)\)|^`([^`]+)`|^(\S+)", value)
+    if match is None:
+        return ""
+    return next(part for part in match.groups() if part is not None).removeprefix("./")
+
+
+class OutputDeclarationError(ValueError):
+    """Ранний blocker результата; dispatcher сохраняет стабильный reason code."""
+
+    code = "OUTPUT_DECLARATIONS_REQUIRED"
+
+    def __init__(self, issues: list[str]):
+        self.details = {"issues": issues, "remediation": "Уточни outputs в owning STEP contract до PLAN"}
+        super().__init__(self.code + ": " + "; ".join(issues))
+
+
+def _output_items(text: str, *, files_only: bool = False) -> list[str]:
+    """Читать пункты вне fenced examples через общий Markdown parser."""
+    lines = text.replace("\r\n", "\n").splitlines()
+    bullets = {index: match.group(1) for index, line in enumerate(lines)
+               if (match := re.match(r"^ {0,3}(?:[-*+]|\d+[.)])\s+(.+)$", line))}
+    projected = ["### __output_item__" if index in bullets or line.strip() == "**Files:**" else line
+                 for index, line in enumerate(lines)]
+    visible = {index for index, _level, title in markdown_headings("\n".join(projected)) if title == "__output_item__"}
+    result: list[str] = []
+    in_files = False
+    for index, line in enumerate(lines):
+        if index in visible and line.strip() == "**Files:**":
+            in_files = True
+        elif index in visible and index in bullets:
+            if not files_only or in_files:
+                result.append(bullets[index])
+        elif line.strip():
+            in_files = False
+    return result
+
+
+def output_declaration_issues(
+    root: Path, task: dict[str, Any], *, planned_files: list[str] | None = None,
+) -> list[str]:
+    """Проверить известные результаты до ADD/PLAN completion (#360).
+
+    Только Deliverables и Files считаются объявлениями результата. Ссылки в
+    Context/Actions не превращаются в разрешение менять архитектурные входы.
+    """
+    own_adrs = adr_outputs(task)
+    own_architecture = set(architecture_outputs(task))
+    issues: list[str] = []
+    if task["frontmatter"].get("type") == "adr" and not own_adrs:
+        issues.append("adr_outputs: ADR-STEP должен заранее объявить хотя бы один ADR результата")
+
+    references = _output_items(task["sections"].get("Deliverables", ""))
+    if planned_files is None:
+        # Writer хранит Files в canonical Markdown. Повторная проверка на
+        # stamp/complete не позволяет обойти gate ручной записью draft.
+        references.extend(_output_items(task["sections"].get("Implementation plan", ""), files_only=True))
+    else:
+        references.extend(planned_files)
+
+    adr_prefix = _repo_relative(root, adr_directory(root)) + "/"
+    refs = architecture_refs(task)
+    # Files — структурированные paths, в том числе с пробелами. Сначала
+    # сопоставляем полное значение, затем ID/path из Markdown-пункта.
+    candidates = dict.fromkeys(ref for value in references for ref in
+                               (value.strip().removeprefix("./"), _output_reference(value)))
+    for ref in candidates:
+        adr_id = ref if ADR_ID_RE.fullmatch(ref) else None
+        if ref.startswith(adr_prefix):
+            match = re.match(r"(ADR-\d{3,})(?:-|\.md$)", ref.partition("#")[0].rsplit("/", 1)[-1])
+            adr_id = match.group(1) if match else None
+        if adr_id is not None and adr_id not in own_adrs:
+            issues.append(f"adr_outputs: результат {adr_id} не объявлен (требуется type: adr)")
+
+        # Whole-file Files может менять выходной раздел рядом с входным:
+        # требуем явный output этого файла, не исключая остальные anchors.
+        matching = [item for item in refs if item == ref or
+                    (item.partition("#")[0] == ref.partition("#")[0] and ("#" not in ref or "#" not in item))]
+        if matching and not own_architecture.intersection(matching):
+            issues.append(f"architecture_outputs: изменяемый результат {ref} входит в architecture_refs, но не объявлен")
+    return list(dict.fromkeys(issues))
+
+
 def canonical_requirement_path(root: Path, req_id: str) -> Path:
     if REQ_ID_RE.fullmatch(req_id) is None:
         raise ValueError(f"invalid REQ id: {req_id}")
@@ -708,9 +793,16 @@ def planning_context_components(root: Path, step_id: str) -> list[str]:
 def planning_context_fingerprints(
     root: Path,
     step_id: str,
+    *,
+    plan_execution: bool = False,
 ) -> tuple[str, list[str]]:
     """Compute basis + diagnostic components from one coherent parsed snapshot."""
     snapshot = planning_context_snapshot(root, step_id)
+    if plan_execution:
+        # PLAN writer создаёт и Implementation plan, и Verification. Только
+        # intent этой фазы исключает её собственный output; Ready/review basis
+        # и последующие IMPLEMENT/FIX по-прежнему связывают полный Verification.
+        snapshot["step"]["sections"].pop("Verification", None)
     return (
         stable_hash(snapshot),
         _planning_context_components_from_snapshot(snapshot, step_id),
