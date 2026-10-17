@@ -353,3 +353,38 @@ Acceptance или самого плана по-прежнему блокируе
 contract и один раз выполни PLAN. Старый immutable review не переписывай.
 При отсутствии деклараций прежний basis сохраняется; Harness не угадывает
 результаты по reverse traceability или свободному тексту плана.
+
+## Ранняя проверка объявлений результатов
+
+`python3 .harness/tools/planning-state.py output-contract STEP-NNN` проверяет
+контракт без записи state. При пропуске возвращаются `BLOCKED`, ненулевой exit
+code и `OUTPUT_DECLARATIONS_REQUIRED` с конкретными результатами.
+
+- `type: adr` требует непустой `adr_outputs` уже до начала PLAN.
+- Явные ADR IDs/paths в Deliverables и изменяемые ADR-файлы в Files должны
+  присутствовать в `adr_outputs`.
+- Архитектурный результат в Deliverables/Files, пересекающийся с
+  `architecture_refs`, требует соответствующего `architecture_outputs`.
+  Сопоставляются whole-file refs, anchors, paths с пробелами и Markdown links.
+  Соседние входные разделы не исключаются из basis автоматически.
+- Fenced examples не считаются настоящими объявлениями. Чтение входа в
+  Context/Actions также не считается его изменением; Files перечисляет мутации.
+
+Dispatcher проверяет новые STEP текущей invocation перед успешным завершением
+ADD; существующие чужие задачи не становятся blocker этой команды. PLAN
+проверяется до старта, до записи draft, при PASS planning-review, Ready stamp
+и completion. Ручная запись draft не обходит gate. Пропуск, обнаруженный после
+начала PLAN, требует остановить invocation, уточнить owning STEP contract и
+начать новый PLAN; менять frozen declarations внутри того же PLAN нельзя.
+
+Проверка опирается на структурные признаки, а не пытается угадать мутации по
+произвольному тексту. Агент обязан перечислить canonical IDs/paths результатов;
+смысловую полноту этого перечня проверяет независимый planning-review.
+Исторические completed STEP и их принятые proofs этим gate не пересматриваются.
+
+При проверке активной PLAN invocation её собственный раздел `Verification`
+не входит во входной intent basis: canonical plan writer заполняет его вместе
+с планом. Ready/review fingerprint и IMPLEMENT/FIX продолжают учитывать полный
+контракт Verification. Изменения Scope, declarations и остальных входов PLAN
+по-прежнему блокируют completion. Старый активный PLAN checkpoint с прежним
+basis может потребовать один новый PLAN; принятые historical proofs не меняются.
