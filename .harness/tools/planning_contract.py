@@ -161,6 +161,32 @@ def architecture_refs(task: dict[str, Any]) -> list[str]:
     return _list(task["frontmatter"], "architecture_refs")
 
 
+def adr_outputs(task: dict[str, Any]) -> set[str]:
+    """Результаты ADR-STEP объявляются до PLAN, а не выводятся из traceability.
+
+    ADR.steps содержит и потребителей решения, поэтому обратная ссылка сама
+    по себе не доказывает авторство (#360). Декларация входит в STEP basis.
+    """
+    values, errors = string_list(task["frontmatter"].get("adr_outputs", []), "adr_outputs")
+    if errors:
+        raise ValueError("; ".join(errors))
+    if values and task["frontmatter"].get("type") != "adr":
+        raise ValueError("adr_outputs require type: adr")
+    if any(ADR_ID_RE.fullmatch(value) is None for value in values):
+        raise ValueError("adr_outputs must contain exact ADR IDs")
+    return set(values)
+
+
+def architecture_outputs(task: dict[str, Any]) -> list[str]:
+    """Точные изменяемые refs объявляются до PLAN и входят в STEP contract."""
+    values, errors = string_list(task["frontmatter"].get("architecture_outputs", []), "architecture_outputs")
+    if errors:
+        raise ValueError("; ".join(errors))
+    if any(ref not in architecture_refs(task) for ref in values):
+        raise ValueError("architecture_outputs must be exact architecture_refs entries")
+    return values
+
+
 def canonical_requirement_path(root: Path, req_id: str) -> Path:
     if REQ_ID_RE.fullmatch(req_id) is None:
         raise ValueError(f"invalid REQ id: {req_id}")
@@ -239,6 +265,15 @@ def task_contract_snapshot(root: Path, step_id: str) -> dict[str, Any]:
             "requirements", "adrs", "architecture_refs", "risk_flags",
         )
     }
+    # Добавление ссылки на заранее объявленный ADR output не меняет вход
+    # STEP. Остальные ссылки и явные output declarations заморожены.
+    own_adrs = adr_outputs(task)
+    machine["adrs"] = [item for item in adr_ids(task) if item not in own_adrs]
+    outputs = architecture_outputs(task)
+    if outputs:
+        machine["architecture_outputs"] = outputs
+    if own_adrs:
+        machine["adr_outputs"] = sorted(own_adrs)
     return {
         "frontmatter": machine,
         "sections": _semantic_sections(task, CONTRACT_SECTIONS),
@@ -321,6 +356,7 @@ def relevant_open_questions(root: Path, task: dict[str, Any]) -> list[dict[str, 
         task["frontmatter"].get("id"),
         *requirement_ids(task),
         *adr_ids(task),
+        *_list(task["frontmatter"], "adr_outputs"),
     }
     return [
         item for item in open_questions(root)
@@ -414,6 +450,8 @@ def step_completion_proof(
         if not task["sections"].get("Deliverables", "").strip():
             reasons.append("research step has no Deliverables")
     elif step_type == "adr":
+        for output in sorted(adr_outputs(task) - set(adr_ids(task))):
+            reasons.append(f"ADR output is not linked: {output}")
         if not evidence:
             reasons.append("ADR step has no durable Evidence")
         for adr_id in adr_ids(task):
@@ -593,10 +631,12 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
         requirements[req_id] = requirement_contract_snapshot(document)
 
     adrs: dict[str, Any] = {}
+    authored = adr_outputs(task)
     for adr_id in adr_ids(task):
         path = canonical_adr_path(root, adr_id)
         document = _parse_canonical_document(path, adr_id)
-        adrs[adr_id] = adr_contract_snapshot(document)
+        if adr_id not in authored:
+            adrs[adr_id] = adr_contract_snapshot(document)
 
     dependencies: dict[str, Any] = {}
     for dependency_id in dependency_ids(task):
@@ -604,10 +644,13 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
             "contract": task_contract_snapshot(root, dependency_id),
         }
 
-    architecture = [
-        _architecture_ref_snapshot(root, ref)
-        for ref in architecture_refs(task)
-    ]
+    outputs = architecture_outputs(task)
+    architecture = []
+    for ref in architecture_refs(task):
+        # Output освобождается только от content hash, но не от проверки
+        # существования, anchor и containment внутри репозитория.
+        selected = _architecture_ref_snapshot(root, ref)
+        architecture.append({"ref": ref, "output": "declared"} if ref in outputs else selected)
 
     oqs: dict[str, Any] = {}
     for item in relevant_open_questions(root, task):
@@ -1077,6 +1120,11 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
 
     refs, issues = string_list(meta.get("architecture_refs"), "architecture_refs")
     errors.extend(f"{prefix}: {issue}" for issue in issues)
+    for resolve_outputs in (architecture_outputs, adr_outputs):
+        try:
+            resolve_outputs(task)
+        except ValueError as exc:
+            errors.append(f"{prefix}: {exc}")
     risks, issues = string_list(meta.get("risk_flags"), "risk_flags")
     errors.extend(f"{prefix}: {issue}" for issue in issues)
     if not risks:

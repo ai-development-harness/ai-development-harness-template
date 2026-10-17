@@ -14,6 +14,8 @@ description: Convert a short user request into a versioned, traceable, dependenc
   - protocol-English `type` / `priority`;
   - `phase`;
   - strict lists `depends_on`, `requirements`, `adrs`, `architecture_refs`, `risk_flags`;
+  - optional `adr_outputs` — точные ADR IDs результатов только для `type: adr`, объявленные до создания ADR; внешние ADR остаются в `adrs` входами (#360);
+  - optional `architecture_outputs` — точное подмножество `architecture_refs`, которое STEP должен изменить как результат; объяви до PLAN, сохрани остальные refs входами (#360);
   - `plan.status: not_planned`.
 - Новый REQ создавай только для нового product contract в configured `sources.requirements`; обновляй двустороннюю REQ↔STEP traceability.
 - Durable decision → ADR/RESEARCH prerequisite. Обновляй ADR↔STEP traceability.

@@ -300,3 +300,56 @@ https://github.com/ai-development-harness/ai-development-harness-template/issues
 ## Portable Intent Basis (#302)
 
 Нельзя копировать Intent Basis чужой машины. В новом clone fresh PLAN фиксирует текущие canonical REQ/ADR/STEP/OQ/PRN, а любое изменение смысла после handoff блокирует восстановление до новой публикации. Отдельный кодовый commit после снимка также устаревает: семантические hashes сами по себе не доказывают отсутствие новой реализации. Верификация, FIX/REVIEW и внешние эффекты остаются локальными и проверяются отдельными gates. См. [PORTABLE_RESUME.md](PORTABLE_RESUME.md).
+
+## Входы и результаты STEP (#360)
+
+Собственные ADR у `type: adr` заранее объявляются через optional strict list
+`adr_outputs` с точными ADR IDs. Декларация входит во входной STEP contract:
+
+```yaml
+type: adr
+adrs:
+  - ADR-001
+adr_outputs:
+  - ADR-002
+```
+
+Здесь ADR-001 остаётся внешним входом, ADR-002 — результат. ADR-002 можно
+объявить ещё до создания файла, а после создания добавить его в `adrs` для
+обязательной обратной traceability. Текст и lifecycle status объявленного
+результата не меняют planning/intent basis. Завершение ADR-STEP требует ссылки
+на каждый объявленный результат и обычного accepted/superseded ADR proof.
+`steps` в ADR не доказывает авторство: эта обратная связь нужна и потребителям
+решения. Объявление результата не разрешает переписывать ранее принятое решение:
+для изменения accepted ADR создаётся superseding ADR по обычным правилам.
+
+Если STEP должен синхронизировать раздел архитектуры, объяви его результатом
+**до первого PLAN** через optional strict list `architecture_outputs`:
+
+```yaml
+architecture_refs:
+  - docs/architecture.md#runtime-contract
+  - docs/architecture.md#implementation-status
+architecture_outputs:
+  - docs/architecture.md#implementation-status
+```
+
+Элементы `architecture_outputs` обязаны точно совпадать с элементами
+`architecture_refs`; glob, directory prefix и неявное совпадение по имени файла
+не поддерживаются. Хэш входного раздела остаётся в basis, содержимое выходного
+раздела заменяется стабильной меткой. Существование файла, anchor и containment
+проверяются для обоих. Само объявление output входит в STEP contract: добавить
+его посреди IMPLEMENT/FIX без нового PLAN нельзя. `Files` Implementation plan
+описывает изменения для reviewer, но не является неявным разрешением исключить
+весь файл из basis.
+
+Изменение результата по Ready-плану не требует PLAN и сохраняет FIX → REVIEW
+в режиме `fix_delta`. Изменение REQ, внешнего ADR, входного раздела, Scope,
+Acceptance или самого плана по-прежнему блокирует продолжение. Verification,
+проверка exact revision и independent REVIEW оценивают фактические результаты;
+исключение из входного basis не является их автоматической приёмкой.
+
+Для существующего STEP добавь `adr_outputs` / `architecture_outputs` в owning
+contract и один раз выполни PLAN. Старый immutable review не переписывай.
+При отсутствии деклараций прежний basis сохраняется; Harness не угадывает
+результаты по reverse traceability или свободному тексту плана.
