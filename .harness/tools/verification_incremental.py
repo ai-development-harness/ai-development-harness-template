@@ -81,7 +81,10 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
     seen_commands: set[str] = set()
     obligations: set[str] = set()
     for check in raw:
-        if not isinstance(check, dict) or set(check) != {"id", "command", "inputs", "dependsOn", "acceptance", "reusable"}:
+        if not isinstance(check, dict) or set(check) not in (
+            {"id", "command", "inputs", "dependsOn", "acceptance", "reusable"},
+            {"id", "command", "inputs", "dependsOn", "acceptance", "reusable", "groups"},
+        ):
             raise IncrementalError("CHECK_SCHEMA_INVALID")
         cid, command = check["id"], check["command"]
         if not isinstance(cid, str) or not _CHECK_ID.fullmatch(cid) or cid in ids:
@@ -100,6 +103,64 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
         if not isinstance(covered, list) or not covered or not all(isinstance(c, str) and c in acceptance for c in covered):
             raise IncrementalError("ACCEPTANCE_COVERAGE_INVALID")
         obligations.update(covered)
+        if "groups" in check:
+            # Группы — project-owned адаптер ОДНОЙ монолитной команды.
+            # Первый полный Verification обязан успешно прогнать исходную
+            # команду И все группы до того, как Core сможет их переиспользовать.
+            groups = check["groups"]
+            if not isinstance(groups, list) or len(groups) < 2:
+                raise IncrementalError("COMPOSITE_GROUPS_REQUIRED")
+            group_ids: set[str] = set()
+            group_commands: set[str] = set()
+            group_coverage: set[str] = set()
+            for group in groups:
+                if not isinstance(group, dict) or set(group) != {
+                    "id", "command", "inputs", "dependsOn", "acceptance", "reusable"
+                }:
+                    raise IncrementalError("COMPOSITE_GROUP_SCHEMA_INVALID")
+                group_id, group_command = group["id"], group["command"]
+                if (not isinstance(group_id, str) or not _CHECK_ID.fullmatch(group_id)
+                        or group_id in group_ids):
+                    raise IncrementalError("COMPOSITE_GROUP_ID_INVALID")
+                if (not isinstance(group_command, str) or group_command == command
+                        or group_command in commands or group_command in group_commands):
+                    raise IncrementalError("COMPOSITE_COMMAND_INVALID")
+                # Запускает тот же argv parser, что и обычная Verification.
+                from verification import _argv
+                _argv(group_command)
+                _validate_patterns(group["inputs"], nonempty=True)
+                if type(group["reusable"]) is not bool:
+                    raise IncrementalError("COMPOSITE_REUSABLE_INVALID")
+                deps = group["dependsOn"]
+                if (not isinstance(deps, list) or not all(isinstance(x, str) for x in deps)
+                        or len(deps) != len(set(deps))):
+                    raise IncrementalError("COMPOSITE_DEPENDENCIES_INVALID")
+                obligations_group = group["acceptance"]
+                if (not isinstance(obligations_group, list) or not obligations_group
+                        or not all(isinstance(x, str) and x in covered for x in obligations_group)):
+                    raise IncrementalError("COMPOSITE_ACCEPTANCE_INVALID")
+                group_coverage.update(obligations_group)
+                group_ids.add(group_id)
+                group_commands.add(group_command)
+            if group_coverage != set(covered):
+                raise IncrementalError("COMPOSITE_ACCEPTANCE_INCOMPLETE")
+            graph = {group["id"]: group["dependsOn"] for group in groups}
+            active: set[str] = set()
+            completed: set[str] = set()
+            def inspect_group(group_id: str) -> None:
+                if group_id in active:
+                    raise IncrementalError("COMPOSITE_DEPENDENCY_CYCLE")
+                if group_id in completed:
+                    return
+                active.add(group_id)
+                for dep in graph[group_id]:
+                    if dep not in group_ids or dep == group_id:
+                        raise IncrementalError("COMPOSITE_DEPENDENCY_INVALID")
+                    inspect_group(dep)
+                active.remove(group_id)
+                completed.add(group_id)
+            for group_id in group_ids:
+                inspect_group(group_id)
     if seen_commands != set(commands) or len(commands) != len(seen_commands):
         raise IncrementalError("COMMAND_COVERAGE_INCOMPLETE")
     if obligations != set(acceptance):
