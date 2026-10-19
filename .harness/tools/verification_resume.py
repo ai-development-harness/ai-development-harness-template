@@ -80,6 +80,7 @@ def remember_pending(
         {key: item.get(key) for key in (
             "kind", "command", "argv", "status", "exitCode", "durationMs",
             "stdoutSha256", "stderrSha256", "stdoutBytes", "stderrBytes",
+            "groups", "composite",
         )}
         for item in commands
     ]
