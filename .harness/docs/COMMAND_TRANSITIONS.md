@@ -175,7 +175,7 @@ Edge `REVIEW → FIX` разрешён при `FAIL` или по подтвер�
 | `STEP NEXT` | no | — | standalone-only |
 | `STEP PLAN STEP-NNN` | yes | STEP IMPLEMENT | IMPLEMENT: result=SUCCESS; pre=step-implement-ready |
 | `STEP IMPLEMENT STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
-| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL/PASS/SUCCESS; pre=confirmed-late-defect (FAIL разрешён без observation) |
+| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL/SUCCESS/PASS; pre=confirmed-late-defect |
 | `STEP FIX STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
 | `STEP RUN STEP-NNN` | no | — | standalone-only |
 | `STEP AUDIT STEP-NNN` | no | — | standalone-only |
