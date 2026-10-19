@@ -41,7 +41,10 @@ from project_verification import (
 from review_contract import repository_revision, repository_subject_content_hash
 from verification_resume import remember_pending, reuse_pending, forget_pending
 from verification_proof import record_verification_proof, verification_proof_error
-from verification_incremental import prepare as prepare_incremental, record as record_incremental
+from verification_incremental import (
+    prepare as prepare_incremental, record as record_incremental,
+    reuse_targeted,
+)
 
 
 COMMAND_RE = re.compile(r"^- command:\s*\x60([^\x60]+)\x60\s*$")
@@ -730,6 +733,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Verification mode: {result.get('verificationMode', 'full')}",
         f"- Incremental executed checks: {result.get('executedCount', len(result.get('commands', [])))}",
         f"- Incremental reused checks: {result.get('reusedCount', 0)}",
+        f"- Targeted feedback reused: {result.get('targetedReusedCount', 0)}",
         f"- Incremental fallback reason: {result.get('fallbackReason') or 'none'}",
         f"- Git head: {revision.get('git_head') or 'none'}",
         f"- Worktree hash: {revision.get('worktree_hash') or 'clean'}",
@@ -1009,6 +1013,11 @@ def run_step_verification(
             if name in previous_failed_commands and name in selection["reused"]:
                 del selection["reused"][name]
                 selection["executed"].append(name)
+    targeted = reuse_targeted(
+        root, step_id, selection=selection, commands=command_names,
+        contract_basis=contract_basis, context_basis=context_basis,
+        timeout=timeout, subject_hash=subject_content_hash,
+    )
     reused = None
     if manual_results is not None or product_results is not None:
         reused = reuse_pending(
@@ -1022,6 +1031,9 @@ def run_step_verification(
                 continue
             if selection["mode"] == "incremental" and entry["value"] in selection["reused"]:
                 commands.append(selection["reused"][entry["value"]])
+                continue
+            if entry["value"] in targeted:
+                commands.append(targeted[entry["value"]])
                 continue
             before = repository_revision(root)
             if not _revision_equal(before, revision):
@@ -1125,9 +1137,14 @@ def run_step_verification(
         "status": status,
         "automatedResumed": reused is not None,
         "verificationMode": selection["mode"],
-        "executedChecks": [name for name in command_names if name in selection["executed"]],
-        "executedCount": 0 if reused is not None else len(selection["executed"]),
+        "executedChecks": [
+            name for name in command_names
+            if reused is None and name in selection["executed"] and name not in targeted
+        ],
+        "targetedChecks": [] if reused is not None else list(targeted),
+        "executedCount": 0 if reused is not None else len(selection["executed"]) - len(targeted),
         "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
+        "targetedReusedCount": 0 if reused is not None else len(targeted),
         "fallbackReason": selection.get("reasonCode"),
         "stepId": step_id,
         "runAt": utc_now(),
