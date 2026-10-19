@@ -308,6 +308,13 @@ def prepare(
             record = original[check["id"]]
             item = record.get("result")
             if "groups" in check:
+                # Parent input scope must be fully partitioned into approved
+                # groups. Otherwise the original monolith is the only proof.
+                for changed_path in meaningful:
+                    if (_match(changed_path, check["inputs"]) and not any(
+                        _match(changed_path, group["inputs"]) for group in check["groups"]
+                    )):
+                        return fallback("COMPOSITE_UNMAPPED_INPUT")
                 previous_groups = record.get("groupResults")
                 if (not isinstance(previous_groups, dict)
                         or set(previous_groups) != {g["id"] for g in check["groups"]}
@@ -321,7 +328,7 @@ def prepare(
                     group["id"] for group in check["groups"]
                     if (
                         check["id"] in affected
-                        and not check["reusable"]
+                        and (not check["reusable"] or record.get("inputBasis") == basis[check["id"]])
                     ) or not group["reusable"]
                     or previous_groups[group["id"]].get("inputBasis") != group_basis[group["id"]]
                 }
