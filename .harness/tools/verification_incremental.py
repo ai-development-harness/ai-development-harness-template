@@ -647,6 +647,43 @@ def record(
         return
 
 
+def validate_impact_map(root: Path) -> list[str]:
+    """Validate opt-in impact mappings at project/PLAN gate, not only at FIX."""
+    manifest = load_manifest(root)
+    configured = get(manifest, "verification.impactMap")
+    if configured is None:
+        return []
+    errors: list[str] = []
+    try:
+        path = resolve_repo_path(root, configured, label="verification.impactMap")
+        if path.is_symlink() or not path.is_file():
+            raise IncrementalError("impact map missing or symlink")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(data, dict) or data.get("schemaVersion") != 1
+                or not isinstance(data.get("steps"), dict)
+                or set(data) != {"schemaVersion", "steps"}):
+            raise IncrementalError("impact map root schema invalid")
+        from completion_gate import acceptance_criteria
+        from verification import parse_verification
+        from late_defect import read as read_observation
+        for sid, candidate in data["steps"].items():
+            try:
+                parsed = read_task(root, sid)
+                if parsed["frontmatter"].get("id") != sid:
+                    raise IncrementalError("map STEP id differs from canonical task")
+                entries = parse_verification(root, sid)
+                commands = [item["value"] for item in entries if item["kind"] == "command"]
+                policy = _source_map(root, sid, commands, acceptance_criteria(root, sid))
+                if policy.get("reuse") is not None:
+                    source = policy["reuse"]
+                    read_observation(root, source["sourceStep"], source["observation"])
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                errors.append(f"verification-impact-map: {sid}: {exc}")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        errors.append(f"verification-impact-map: {exc}")
+    return errors
+
+
 def _targeted_path(root: Path, step_id: str) -> Path:
     path = _state_path(root, step_id).with_suffix(".targeted.json")
     if path.is_symlink():
