@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -48,10 +49,12 @@ def main() -> int:
     from verification import run_step_verification
     from completion_gate import acceptance_criteria
 
+    delay = float(os.environ.get("PR368_CHECK_DELAY", "0.12"))
+    assert 0.0 <= delay <= 5.0
     # Runnable check commands: no dependencies and measurable, intentional work.
-    ui = ('python3 -c "import pathlib,sys,time;time.sleep(0.12);'
+    ui = (f'python3 -c "import pathlib,sys,time;time.sleep({delay});'
           'sys.exit(int(\'BROKEN\' in pathlib.Path(\'src/ui/button.tsx\').read_text()))"')
-    backend = ('python3 -c "import pathlib,sys,time;time.sleep(0.12);'
+    backend = (f'python3 -c "import pathlib,sys,time;time.sleep({delay});'
                'sys.exit(int(\'BROKEN\' in pathlib.Path(\'src/backend/service.py\').read_text()))"')
     rows = []
 
