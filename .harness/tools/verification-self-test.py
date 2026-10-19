@@ -242,7 +242,7 @@ def main() -> int:
             root, "STEP-001",
             manual_results=[{
                 "check": "Подтвердить semantic condition", "status": "PASS",
-                "observed": "Legacy PASS reused as input only after a fresh full verification.",
+                "observed": "Condition observed.",
             }],
         )
         assert refreshed["status"] == "PASS" and refreshed["verificationMode"] == "full", refreshed
