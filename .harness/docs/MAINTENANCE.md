@@ -12,6 +12,17 @@
 - schema/version migration strategy;
 - concurrency boundary, если файл мутируется несколькими sessions.
 
+Зарегистрирован optional cache инкрементальной Verification:
+`.harness/local/verification-incremental/STEP-NNN.json` и
+`.harness/local/verification-incremental/STEP-NNN.targeted.json`.
+SchemaVersion 1, owner — canonical Verification writer / verify-selected.
+Запись producer-bound PASS сериализуется `execution_state_lock`, после
+exact-subject проверки. При отсутствии/повреждении state, incompatible
+schema, потере Git tree после GC либо миграции — полный прогон. Следующий
+full PASS перезаписывает checkpoint; удаление любого cache безопасно.
+Это clone-local, не Git и не новый source of truth. Подробности:
+[INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
+
 Для temporary transport действует более узкое правило: Harness принимает только доказанный owned lexical path без symlink traversal, фиксирует exact content/identity и передаёт primary consumer-у captured snapshot, а не mutable path. После успешного postcondition удаляется только тот же unchanged file identity. Failure сохраняет input для retry. Ошибка secondary cleanup не меняет уже доказанный primary SUCCESS. Lock files cleanup-механизм не удаляет. Неизвестный local path без зарегистрированного lifecycle fail-safe не трогается.
 
 Изменение формата persistent local state без migration regression считается незавершённым protocol change.

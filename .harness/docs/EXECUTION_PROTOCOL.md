@@ -294,7 +294,7 @@ Execution tracking уже ведётся root execution wrapper. Заплани�
 6. Не реализовывать future/unrelated work.
 7. Добавить/обновить только tests с реальным provenance: explicit contract, reproduced defect или confirmed project-specific scenario.
 8. Если Ready plan содержит unresolved hypothesis/proof obligation, выполнить только запланированный bounded falsification/evidence check. Не материализовать production hardening/test из hypothesis автоматически: invalidated scenario отбросить; confirmed scenario, требующий новой production mutation, вернуть `BLOCKED` с handoff к свежему `STEP PLAN STEP-NNN`.
-9. При готовности реализации предложить command result `SUCCESS`; dispatcher сам запускает explicit `- command:` entries из `## Verification` без shell и обновляет generated Evidence.
+9. При готовности реализации предложить command result `SUCCESS`; dispatcher выполняет canonical Verification без shell, по умолчанию полный. При opt-in `verification.impactMap` допускается proof-checked incremental с новым generated Evidence для текущего subject. Выбранные тесты сами по себе не являются completion proof; при неполных данных Core делает полный прогон. См. [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
 10. `VERIFICATION_FAIL` возвращает factual command result в тот же IMPLEMENT; `VERIFICATION_MANUAL_REQUIRED` требует только listed manual checks; `VERIFICATION_BLOCKED` не обходится reasoning-ом.
 11. Не ставить `Выполнено` до required review PASS.
 12. Command завершается только после PASS deterministic/manual Verification contract.
