@@ -31,6 +31,9 @@ jobs:
       - name: Candidate at PR-derived test branch
         run: |
           python3 tests/pr368/independent_verification.py --repo "$GITHUB_WORKSPACE" --mode candidate | tee results/candidate.json
+      - name: Candidate long-running checks (one-second-per-command)
+        run: |
+          PR368_CHECK_DELAY=1.0 python3 tests/pr368/independent_verification.py --repo "$GITHUB_WORKSPACE" --mode candidate | tee results/candidate-long.json
       - name: Assert baseline/candidate contract and generate summary
         run: |
           python3 - <<'PY'
@@ -43,6 +46,9 @@ jobs:
           assert all(x['status']=='PASS' for x in old['cases'])
           assert any(x['case']=='ui-saved' and x['skipped_mandatory']==0 for x in new['cases'])
           assert len(new['cases'])>=9
+          long=json.loads(Path('results/candidate-long.json').read_text())
+          assert long['status']=='PASS'
+          assert any(x['case']=='ui-saved' for x in long['cases'])
           print('Independent differential Verification PASS')
           PY
       - uses: actions/upload-artifact@v4
