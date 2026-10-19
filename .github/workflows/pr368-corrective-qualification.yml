@@ -1,0 +1,102 @@
+name: PR 368 Corrective Regression
+
+on:
+  push:
+    branches: [test/pr368-regression-20261020]
+
+permissions:
+  contents: read
+
+jobs:
+  corrective:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+      - name: Checkout exact #375 corrective candidate
+        run: |
+          set -e
+          git clone --quiet https://github.com/ai-development-harness/ai-development-harness-template.git "$RUNNER_TEMP/corrective"
+          git -C "$RUNNER_TEMP/corrective" fetch -q origin 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          git -C "$RUNNER_TEMP/corrective" checkout -q --detach 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          test -z "$(git -C "$RUNNER_TEMP/corrective" status --porcelain)"
+      - name: Exact corrected Harness Integrity
+        run: |
+          cd "$RUNNER_TEMP/corrective"
+          python3 -m py_compile .harness/tools/verification_resume.py .harness/tools/verification-environment-self-test.py
+          python3 .harness/tools/validate.py --mode ci
+      - name: New environment and original incremental regressions
+        run: |
+          cd "$RUNNER_TEMP/corrective"
+          python3 .harness/tools/verification-environment-self-test.py
+          python3 .harness/tools/verification-incremental-self-test.py
+          python3 .harness/tools/late-defect-self-test.py
+          python3 .harness/tools/verification-selective-self-test.py
+      - name: Full discoverable self-tests including new regression
+        run: |
+          set -eo pipefail
+          cd "$RUNNER_TEMP/corrective"
+          python3 .harness/tools/run-self-tests.py --json > "$RUNNER_TEMP/corrective-self-tests.json"
+          python3 - <<'PY'
+          import json,os,pathlib
+          x=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'corrective-self-tests.json').read_text())
+          bad=[t['test'] for t in x['results'] if t['status']!='PASS']
+          assert x['status']=='PASS' and x['count']>=81, (x['status'],x['count'],bad)
+          assert any(t['test']=='verification-environment-self-test.py' for t in x['results'])
+          print(f"FULL CORRECTIVE REGRESSION: PASS ({x['count']} self-tests)")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr368-corrective-regression
+          path: ${{ runner.temp }}/corrective-self-tests.json
+          retention-days: 7
+  canary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+      - name: Create disposable canary with exact corrective patch
+        run: |
+          git clone -q https://github.com/ai-development-harness/release-canary.git "$RUNNER_TEMP/original"
+          git -C "$RUNNER_TEMP/original" checkout -q --detach 280e65cd233c71150abdc7a30dc1ca39fc7e2d0d
+          cp -a "$RUNNER_TEMP/original" "$RUNNER_TEMP/canary-corrected"
+          git clone -q https://github.com/ai-development-harness/ai-development-harness-template.git "$RUNNER_TEMP/correction"
+          git -C "$RUNNER_TEMP/correction" fetch -q origin 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          git -C "$RUNNER_TEMP/correction" checkout -q --detach 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          cp "$RUNNER_TEMP/correction/.harness/tools/verification_resume.py" "$RUNNER_TEMP/canary-corrected/.harness/tools/verification_resume.py"
+          cp "$RUNNER_TEMP/correction/.harness/tools/verification-environment-self-test.py" "$RUNNER_TEMP/canary-corrected/.harness/tools/verification-environment-self-test.py"
+          cp "$RUNNER_TEMP/correction/.harness/docs/INCREMENTAL_VERIFICATION.md" "$RUNNER_TEMP/canary-corrected/.harness/docs/INCREMENTAL_VERIFICATION.md"
+      - name: Validate fixed candidate on real initialized Canary
+        run: |
+          cd "$RUNNER_TEMP/canary-corrected"
+          python3 .harness/tools/validate.py --mode ci
+          python3 .harness/tools/verification-environment-self-test.py
+          python3 .harness/tools/verification-incremental-self-test.py
+          python3 .harness/tools/late-defect-self-test.py
+      - name: Ensure real Canary project artifacts preserved
+        run: |
+          python3 - <<'PY'
+          import os,pathlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])
+          base=root/'original'; patch=root/'canary-corrected'; count=0
+          for pref in ('docs/requirements','docs/adr','planning/tasks','planning/reviews','planning/plan-reviews','planning/init-reviews'):
+            top=base/pref
+            if not top.exists():continue
+            for p in top.rglob('*'):
+              if p.is_file():
+                assert p.read_bytes()==(patch/p.relative_to(base)).read_bytes(),p
+                count+=1
+          assert count>0
+          print(f"CANARY CORRECTIVE PRESERVATION PASS ({count} files)")
+          PY
