@@ -431,11 +431,31 @@ def record(
         executed = set(result.get("executedChecks", commands))
         for check in policy["checks"]:
             name = check["command"]
-            latest[check["id"]] = {
+            row = {
                 "inputBasis": _inputs_basis(entries, check["inputs"]),
                 "source": "execution" if name in executed else "reused",
                 "result": _safe_result(by_command[name]),
             }
+            if "groups" in check:
+                groups = by_command[name].get("groups")
+                if (not isinstance(groups, list) or
+                        len(groups) != len(check["groups"]) or
+                        {g.get("id") for g in groups if isinstance(g, dict)}
+                        != {g["id"] for g in check["groups"]}):
+                    raise IncrementalError("COMPOSITE_EVIDENCE_INCOMPLETE")
+                group_actual = {g["id"]: g for g in groups}
+                row["groupResults"] = {}
+                for group in check["groups"]:
+                    actual = group_actual[group["id"]]
+                    if (actual.get("command") != group["command"] or
+                            actual.get("status") != "PASS" or actual.get("exitCode") != 0):
+                        raise IncrementalError("COMPOSITE_GROUP_UNPROVEN")
+                    row["groupResults"][group["id"]] = {
+                        "inputBasis": _inputs_basis(entries, group["inputs"]),
+                        "source": actual.get("reusedFrom") or "executed",
+                        "result": _safe_result(actual),
+                    }
+            latest[check["id"]] = row
         state = {
             "schemaVersion": STATE_VERSION, "stepId": step_id,
             "policyHash": policy["hash"], "contractBasis": result["contractBasis"],
