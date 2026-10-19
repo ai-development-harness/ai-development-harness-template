@@ -27,4 +27,6 @@ Execution Status ведёт global wrapper.
 
 Command завершается только после PASS verification gate. Старый review не изменяй.
 
+Если дефект обнаружен **после** completed/PASS исходного STEP, не запускай скрытый FIX старой задачи: создай immutable observation через `.harness/tools/late-defect.py`, затем отдельный связанный corrective STEP с собственными Acceptance и независимым REVIEW. При наличии `verification.impactMap.reuse` Core может перенести только proven unaffected checks, но исправленный дефект и прямые регрессии обязательно проверяются заново. Historical PASS/STEP не изменяй.
+
 Single FIX после SUCCESS останавливается. Только explicit chain или `STEP RUN` может продолжить к свежему REVIEW. Количество `FIX → REVIEW` внутри STEP RUN ограничивает deterministic Execution Resolver по `execution.maxFixReviewCycles`; агент не должен вести собственный счётчик в памяти.
