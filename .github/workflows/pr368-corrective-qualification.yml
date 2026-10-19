@@ -79,31 +79,7 @@ jobs:
           # never mutate the stable Canary checkout.
           git -C "$RUNNER_TEMP/correction" diff --name-status \
             ead10e2fdb5740a3a2ce7e84825647d41bc351f8 1e4245d58f50035fa114fd97e1e6ec05903e741a -- .harness .agents |
-          while IFS=
-      - name: Validate fixed candidate on real initialized Canary
-        run: |
-          cd "$RUNNER_TEMP/canary-corrected"
-          python3 .harness/tools/validate.py --mode ci
-          python3 .harness/tools/verification-environment-self-test.py
-          python3 .harness/tools/verification-incremental-self-test.py
-          python3 .harness/tools/late-defect-self-test.py
-      - name: Ensure real Canary project artifacts preserved
-        run: |
-          python3 - <<'PY'
-          import os,pathlib
-          root=pathlib.Path(os.environ['RUNNER_TEMP'])
-          base=root/'original'; patch=root/'canary-corrected'; count=0
-          for pref in ('docs/requirements','docs/adr','planning/tasks','planning/reviews','planning/plan-reviews','planning/init-reviews'):
-            top=base/pref
-            if not top.exists():continue
-            for p in top.rglob('*'):
-              if p.is_file():
-                assert p.read_bytes()==(patch/p.relative_to(base)).read_bytes(),p
-                count+=1
-          assert count>0
-          print(f"CANARY CORRECTIVE PRESERVATION PASS ({count} files)")
-          PY
-\\t' read -r status name rest; do
+          while read -r status name; do
             case "$status" in
               D*) rm -f "$RUNNER_TEMP/canary-corrected/$name" ;;
               A*|M*) mkdir -p "$RUNNER_TEMP/canary-corrected/$(dirname "$name")"
@@ -134,3 +110,4 @@ jobs:
           assert count>0
           print(f"CANARY CORRECTIVE PRESERVATION PASS ({count} files)")
           PY
+\
