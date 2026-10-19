@@ -981,19 +981,34 @@ def run_step_verification(
         previous_section, re.S,
     )
     untrusted_evidence = True
+    previous_failed_commands: set[str] = set()
     if previous_block_match is not None:
         previous_block = previous_block_match.group(1)
         previous_status = re.search(r"(?m)^- Status: (PASS|FAIL|MANUAL_REQUIRED)\s*$", previous_block)
-        if previous_status is not None and previous_status.group(1) == "PASS":
+        if previous_status is not None:
             untrusted_evidence = verification_proof_error(
-                root, step_id, block=previous_block, status="PASS",
+                root, step_id, block=previous_block, status=previous_status.group(1),
             ) is not None
+            if not untrusted_evidence:
+                # A failed check cannot inherit an older cached PASS even when
+                # its declared inputs happen to be unchanged.
+                previous_failed_commands = {
+                    match.group(1) for match in re.finditer(
+                        r"(?m)^- Command: (.+)\s*\n  - Status: FAIL\s*$",
+                        previous_block,
+                    )
+                }
     selection = prepare_incremental(
         root, step_id, commands=command_names, acceptance=acceptance,
         contract_basis=contract_basis, context_basis=context_basis,
         timeout=timeout, subject_hash=subject_content_hash,
         full=force_full or untrusted_evidence,
     )
+    if selection["mode"] == "incremental" and previous_failed_commands:
+        for name in command_names:
+            if name in previous_failed_commands and name in selection["reused"]:
+                del selection["reused"][name]
+                selection["executed"].append(name)
     reused = None
     if manual_results is not None or product_results is not None:
         reused = reuse_pending(
@@ -1110,7 +1125,7 @@ def run_step_verification(
         "status": status,
         "automatedResumed": reused is not None,
         "verificationMode": selection["mode"],
-        "executedChecks": list(selection["executed"]),
+        "executedChecks": [name for name in command_names if name in selection["executed"]],
         "executedCount": 0 if reused is not None else len(selection["executed"]),
         "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
         "fallbackReason": selection.get("reasonCode"),
