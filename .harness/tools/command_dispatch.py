@@ -249,6 +249,7 @@ def _verification_before_completion(
         manual_results=manual_results,
         product_results=product_results,
         write_evidence=False,
+        force_full=bool(isinstance(details, dict) and details.get("forceFullVerification") is True),
     )
 
     # Verification commands may be long-running, so they execute without the
