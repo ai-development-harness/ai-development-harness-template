@@ -19,6 +19,7 @@ def main() -> int:
     parser.add_argument("--manual-json")
     parser.add_argument("--product-json")
     parser.add_argument("--no-write-evidence", action="store_true")
+    parser.add_argument("--full", action="store_true", help="Require the full contract, never reuse a baseline")
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
 
@@ -35,6 +36,7 @@ def main() -> int:
         manual_results=manual,
         product_results=product,
         write_evidence=not args.no_write_evidence,
+        force_full=args.full,
     )
     if args.pretty:
         print(json.dumps(result, ensure_ascii=False, indent=2))
