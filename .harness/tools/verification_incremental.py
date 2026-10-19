@@ -384,6 +384,31 @@ def _corrective_control_paths(
     return control
 
 
+def _environment_for_policy(commands: list[str], policy: dict[str, Any]) -> str:
+    """Включить executable каждого subgroup, не только родительских команд."""
+    actual = list(commands)
+    for check in policy["checks"]:
+        for group in check.get("groups", []):
+            if group["command"] not in actual:
+                actual.append(group["command"])
+    return _environment_basis(actual)
+
+
+def invalidate_failed_feedback(root: Path, step_id: str) -> None:
+    """Новый FAIL/BLOCKED прекращает доверие к прежним локальным PASS."""
+    from verification_resume import forget_pending
+    records = (
+        _state_path(root, step_id),
+        _targeted_path(root, step_id),
+        root / ".harness/local/verification-proofs" / (step_id + ".json"),
+    )
+    for path in records:
+        if path.is_symlink() or path.parent.is_symlink():
+            raise IncrementalError("cannot invalidate symlinked verification state")
+        path.unlink(missing_ok=True)
+    forget_pending(root, step_id)
+
+
 def prepare(
     root: Path, step_id: str, *, commands: list[str], acceptance: list[str],
     contract_basis: str, context_basis: str, timeout: int,
@@ -422,7 +447,7 @@ def prepare(
                 root, step_id, policy,
             )
             inherited = True
-        environment = _environment_basis(commands)
+        environment = _environment_for_policy(commands, policy)
         if not environment:
             return fallback("ENVIRONMENT_UNPROVEN")
         if checkpoint.get("timeout") != timeout or checkpoint.get("environmentBasis") != environment:
@@ -583,7 +608,7 @@ def record(
         return
     try:
         policy = _source_map(root, step_id, commands, acceptance)
-        environment = _environment_basis(commands)
+        environment = _environment_for_policy(commands, policy)
         if not environment:
             return
         # Snapshot на публикации cache обязан быть тем же subject, который
@@ -730,7 +755,7 @@ def remember_targeted(
     try:
         policy = _source_map(root, step_id, commands, acceptance)
         _read_checkpoint(root, step_id)  # targeted without full baseline is only feedback
-        environment = _environment_basis(commands)
+        environment = _environment_for_policy(commands, policy)
         selected = {item.get("command"): item for item in results if isinstance(item, dict)}
         allowed = set(commands)
         for check in policy["checks"]:
@@ -775,7 +800,7 @@ def reuse_targeted(
             data.get("contractBasis") != contract_basis,
             data.get("contextBasis") != context_basis,
             data.get("timeout") != timeout,
-            data.get("environmentBasis") != _environment_basis(commands),
+            data.get("environmentBasis") != _environment_for_policy(commands, selection["policy"]),
             data.get("subjectHash") != subject_hash,
         )):
             return {}
