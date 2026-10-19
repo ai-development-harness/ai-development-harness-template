@@ -204,6 +204,51 @@ def main() -> int:
         fresh = verification_freshness(root, "STEP-001")
         assert fresh["status"] == "PASS" and fresh["fresh"] is True, fresh
 
+        # Обратная совместимость #367: до инкрементального режима generated
+        # Evidence не содержал mode/executed/reused/provenance полей. Старый
+        # producer-bound PASS должен остаться читаемым побайтно и не требовать
+        # миграции STEP, REVIEW либо локального proof schema.
+        import re
+        from verification_proof import record_verification_proof
+        from planning_contract import generated_verification_status, read_task
+        before_legacy = step.read_text(encoding="utf-8")
+        legacy_lines = [
+            line for line in before_legacy.splitlines()
+            if not line.startswith((
+                "- Verification mode:",
+                "- Incremental executed checks:",
+                "- Incremental reused checks:",
+                "- Targeted feedback reused:",
+                "- Incremental fallback reason:",
+                "  - Provenance:",
+            ))
+        ]
+        legacy_text = "\n".join(legacy_lines) + "\n"
+        step.write_text(legacy_text, encoding="utf-8", newline="\n")
+        block = re.search(
+            r"<!-- VERIFICATION-EVIDENCE:START -->(.*?)<!-- VERIFICATION-EVIDENCE:END -->",
+            legacy_text, re.S,
+        )
+        assert block is not None
+        record_verification_proof(root, "STEP-001", block=block.group(1), result=passed)
+        legacy_fresh = verification_freshness(root, "STEP-001")
+        assert legacy_fresh["status"] == "PASS" and legacy_fresh["fresh"] is True, legacy_fresh
+        assert generated_verification_status(read_task(root, "STEP-001")) == "PASS"
+        assert step.read_text(encoding="utf-8") == legacy_text, "read-only checks changed legacy STEP"
+
+        # Отсутствие project-owned impact map означает прежний ПОЛНЫЙ прогон,
+        # а не автоматическое превращение ранее созданного PASS в cache.
+        refreshed = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition", "status": "PASS",
+                "observed": "Legacy PASS reused as input only after a fresh full verification.",
+            }],
+        )
+        assert refreshed["status"] == "PASS" and refreshed["verificationMode"] == "full", refreshed
+        assert refreshed["executedCount"] == 1 and refreshed["reusedCount"] == 0, refreshed
+        assert verification_freshness(root, "STEP-001")["fresh"] is True
+
         # Редактируемый STEP не является доверенным источником результатов.
         # Замена PASS/FAIL или manual observations должна инвалидировать
         # независимый proof, даже если код и acceptance остались неизменными.
