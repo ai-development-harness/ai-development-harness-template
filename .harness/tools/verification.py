@@ -442,7 +442,7 @@ def verification_command_evidence(
     tail = block[evidence_match.end():] if evidence_match else ""
     boundary = re.search(r"(?m)^- Command: |^### ", tail)
     command_evidence = tail[:boundary.start()] if boundary else tail
-    producer = re.search(r"(?m)^  - Provenance: (.+?)\\s*$", command_evidence)
+    producer = re.search(r"(?m)^  - Provenance: (.+?)\s*$", command_evidence)
     if producer is not None and producer.group(1).strip() != "executed":
         return {
             "status": "UNKNOWN",

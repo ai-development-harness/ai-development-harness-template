@@ -381,6 +381,38 @@ def _corrective_control_paths(
                        for name in ("SPEC.md", "STATUS.md"))
     except (ValueError, OSError):
         pass
+    # Реальная corrective работа добавляет durable REVIEW и PLAN-REVIEW
+    # после старого baseline. Исключаем только schema-valid immutable отчёты
+    # именно source/corrective STEP; произвольные файлы не игнорируются.
+    from harness_config import review_directory, planning_review_directory
+    from review_contract import validate_review_report
+    from planning_contract import validate_planning_review_report
+    from late_defect import read as read_observation
+    linked_stamp = observation["observedAt"]
+    for sid in (source_id, step_id):
+        folder = review_directory(root) / sid
+        if folder.is_dir():
+            for report in sorted(folder.glob("REVIEW-*.md")):
+                if validate_review_report(root, report, expected_step_id=sid):
+                    raise IncrementalError("INVALID_CORRECTIVE_REVIEW_HISTORY")
+                control.add(report.relative_to(root).as_posix())
+            for record in sorted(folder.glob("OBSERVATION-*.json")):
+                rel = record.relative_to(root).as_posix()
+                # Only source observations are eligible for this provenance
+                # chain. A new observation after the linked defect changes
+                # accepted obligations and requires full requalification.
+                if sid != source_id:
+                    raise IncrementalError("CORRECTIVE_OBSERVATION_REQUIRES_FULL")
+                verified = read_observation(root, sid, rel)
+                if verified["observedAt"] > linked_stamp:
+                    raise IncrementalError("NEW_SOURCE_OBSERVATION_REQUIRES_FULL")
+                control.add(rel)
+    plan_folder = planning_review_directory(root) / step_id
+    if plan_folder.is_dir():
+        for report in sorted(plan_folder.glob("PLAN-REVIEW-*.md")):
+            if validate_planning_review_report(root, report, expected_step_id=step_id):
+                raise IncrementalError("INVALID_CORRECTIVE_PLAN_REVIEW")
+            control.add(report.relative_to(root).as_posix())
     return control
 
 
