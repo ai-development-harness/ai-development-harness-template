@@ -109,6 +109,14 @@ def main() -> int:
         assert not _post_pass_fix_allowed(root, "STEP REVIEW STEP-001", "SUCCESS"), (
             "ordinary PASS must not open an implicit FIX without observation"
         )
+        no_observation_chain = (
+            "STEP REVIEW STEP-001 > STEP FIX STEP-001 > STEP REVIEW STEP-001"
+        )
+        start_execution(root, no_observation_chain)
+        complete_command(root, no_observation_chain, "STEP REVIEW STEP-001", "SUCCESS")
+        denied = resolve_root(root, no_observation_chain)
+        assert denied["status"] == "DONE" and denied["command"] is None, denied
+
         active_observation = record(
             root, "STEP-001", criterion=criteria[0],
             given="Button is present", when="The screen reader focuses it",
