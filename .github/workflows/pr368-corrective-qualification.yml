@@ -110,3 +110,28 @@ jobs:
           assert count>0
           print(f"CANARY CORRECTIVE PRESERVATION PASS ({count} files)")
           PY
+
+  windows-env:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13'
+      - name: Add python3 shim on Windows
+        shell: pwsh
+        run: |
+          $shim = Join-Path $env:RUNNER_TEMP "python3.cmd"
+          $line = '@"{0}\python.exe" %*' -f $env:pythonLocation
+          Set-Content -Path $shim -Value $line -Encoding ascii
+          Add-Content -Path $env:GITHUB_PATH -Value $env:RUNNER_TEMP
+      - name: Windows environment regression on exact corrected SHA
+        shell: pwsh
+        run: |
+          python .harness/tools/verification-environment-self-test.py
+          exit $LASTEXITCODE
