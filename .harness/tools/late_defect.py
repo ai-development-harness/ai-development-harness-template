@@ -63,6 +63,47 @@ def _origin(root: Path, step_id: str) -> dict[str, Any]:
     }
 
 
+def _reuse_origin(root: Path, step_id: str) -> dict[str, Any] | None:
+    """Pin the exact full Verification baseline if local producer proof exists."""
+    from verification import (
+        parse_verification, EVIDENCE_START, EVIDENCE_END,
+    )
+    from verification_incremental import _source_map, _state_path
+    from verification_proof import verification_proof_error
+    section = read_task(root, step_id)["sections"].get("Evidence", "")
+    match = re.search(
+        re.escape(EVIDENCE_START) + r"(.*?)" + re.escape(EVIDENCE_END),
+        section, re.S,
+    )
+    if match is None or verification_proof_error(
+        root, step_id, block=match.group(1), status="PASS",
+    ) is not None:
+        return None
+    names = [
+        value["value"] for value in parse_verification(root, step_id)
+        if value["kind"] == "command"
+    ]
+    try:
+        policy = _source_map(root, step_id, names, acceptance_criteria(root, step_id))
+        checkpoint_path = _state_path(root, step_id)
+        proof_path = root / ".harness/local/verification-proofs" / (step_id + ".json")
+        if (not checkpoint_path.is_file() or checkpoint_path.is_symlink()
+                or not proof_path.is_file() or proof_path.is_symlink()):
+            return None
+        raw = checkpoint_path.read_bytes()
+        check = json.loads(raw)
+        if (not isinstance(check, dict) or check.get("stepId") != step_id
+                or check.get("policyHash") != policy["hash"]):
+            return None
+        return {
+            "checkpointSha256": _digest(raw),
+            "proofSha256": _digest(proof_path.read_bytes()),
+            "checks": policy["checks"],
+        }
+    except (OSError, ValueError, UnicodeError):
+        return None
+
+
 def _directory(root: Path, step_id: str) -> Path:
     directory = review_directory(root) / step_id
     try:
@@ -112,6 +153,7 @@ def record(
         "schemaVersion": 1, "kind": "late-defect",
         "sourceStep": step_id, "observedAt": datetime.now(timezone.utc).isoformat(),
         "source": source,
+        "reuse": _reuse_origin(root, step_id),
         "finding": {
             "criterion": criterion,
             "given": given.strip(), "when": when.strip(),
@@ -155,7 +197,7 @@ def read(root: Path, source_id: str, relative: str) -> dict[str, Any]:
     except (OSError, ValueError, UnicodeError) as exc:
         raise ObservationError("observation is unreadable") from exc
     if (not isinstance(value, dict) or set(value) != {
-        "schemaVersion", "kind", "sourceStep", "observedAt", "source", "finding"}
+        "schemaVersion", "kind", "sourceStep", "observedAt", "source", "reuse", "finding"}
             or value["schemaVersion"] != 1 or value["kind"] != "late-defect"
             or value["sourceStep"] != source_id):
         raise ObservationError("observation schema invalid")
