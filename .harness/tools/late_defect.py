@@ -36,12 +36,21 @@ def _origin(root: Path, step_id: str) -> dict[str, Any]:
     if not STEP_ID.fullmatch(step_id):
         raise ObservationError("invalid source STEP id")
     task = read_task(root, step_id)
-    if task["frontmatter"].get("status") != "completed":
-        raise ObservationError("observation requires a completed source STEP")
-    proof = step_completion_proof(root, step_id, _historical=True)
-    if not proof.get("complete"):
-        raise ObservationError("source completion proof unavailable: " +
-                               "; ".join(proof.get("reasons", [])))
+    status = task["frontmatter"].get("status")
+    if status == "completed":
+        proof = step_completion_proof(root, step_id, _historical=True)
+        if not proof.get("complete"):
+            raise ObservationError("source completion proof unavailable: " +
+                                   "; ".join(proof.get("reasons", [])))
+    elif status == "in_progress":
+        # A reviewed-but-not-finalized STEP may receive a user observation.
+        # Its *current* producer-bound PASS must exist before the FIX starts.
+        from verification import verification_freshness
+        fresh = verification_freshness(root, step_id)
+        if fresh.get("status") != "PASS" or fresh.get("fresh") is not True:
+            raise ObservationError("active source requires fresh Verification PASS")
+    else:
+        raise ObservationError("observation requires completed or reviewed active STEP")
     trusted = latest_trusted_review(root, step_id)
     if trusted is None or trusted.get("verdict") != "PASS":
         raise ObservationError("source requires an independent trusted PASS REVIEW")
@@ -56,6 +65,7 @@ def _origin(root: Path, step_id: str) -> dict[str, Any]:
         raise ObservationError("source REVIEW is outside configured review directory")
     return {
         "review": rel,
+        "statusAtObservation": status,
         "reviewSha256": _digest(report.read_bytes()),
         "evidenceSha256": _digest(
             task["sections"].get("Evidence", "").encode("utf-8")),
@@ -220,7 +230,28 @@ def read(root: Path, source_id: str, relative: str) -> dict[str, Any]:
             or value["schemaVersion"] != 1 or value["kind"] != "late-defect"
             or value["sourceStep"] != source_id):
         raise ObservationError("observation schema invalid")
-    if value["source"] != _origin(root, source_id):
+    saved_source = value["source"]
+    if not isinstance(saved_source, dict):
+        raise ObservationError("source provenance invalid")
+    if saved_source.get("statusAtObservation") == "in_progress":
+        # FIX updates the active STEP's generated Evidence. The original
+        # producer-bound PASS is now pinned by immutable observation + original
+        # REVIEW bytes; do not demand current Evidence equal its old contents.
+        source_report = saved_source.get("review")
+        if not isinstance(source_report, str):
+            raise ObservationError("observation source REVIEW path invalid")
+        original = root / source_report
+        from review_contract import validate_review_report
+        if (original.parent != _directory(root, source_id) or
+                not original.is_file() or original.is_symlink() or
+                _digest(original.read_bytes()) != saved_source.get("reviewSha256")
+                or validate_review_report(root, original, expected_step_id=source_id)):
+            raise ObservationError("original reviewed PASS source is no longer trusted")
+        if read_task(root, source_id)["frontmatter"].get("status") not in {
+            "in_progress", "completed",
+        }:
+            raise ObservationError("active source changed lifecycle incompatibly")
+    elif saved_source != _origin(root, source_id):
         raise ObservationError("source REVIEW/Evidence changed since observation")
     finding = value["finding"]
     if not isinstance(finding, dict) or set(finding) != {
