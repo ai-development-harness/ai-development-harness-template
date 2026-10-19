@@ -435,6 +435,21 @@ def verification_command_evidence(
             "command": command,
         }
     status, exit_code = results[0]
+    # Exact command consumers (Semantic Blast Radius) require a real run.
+    # A synthetic composite or reused PASS is valid for aggregate completion,
+    # but cannot impersonate the execution of the original command.
+    evidence_match = pattern.search(block)
+    tail = block[evidence_match.end():] if evidence_match else ""
+    boundary = re.search(r"(?m)^- Command: |^### ", tail)
+    command_evidence = tail[:boundary.start()] if boundary else tail
+    producer = re.search(r"(?m)^  - Provenance: (.+?)\s*$", command_evidence)
+    if producer is not None and producer.group(1).strip() != "executed":
+        return {
+            "status": "UNKNOWN",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_EXACT_COMMAND_NOT_EXECUTED",
+            "command": command,
+        }
     return {
         "status": status,
         "fresh": True,
@@ -837,7 +852,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
                 f"  - stderr sha256: {item.get('stderrSha256')}",
                 f"  - stdout bytes: {item.get('stdoutBytes')}",
                 f"  - stderr bytes: {item.get('stderrBytes')}",
-                f"  - Provenance: {item.get('reusedFrom') or ('qualified-composite' if item.get('groups') else 'executed')}",
+                f"  - Provenance: {item.get('reusedFrom') or ('qualified-composite' if item.get('composite') else 'executed')}",
             ]
         )
         for group in (item.get("groups") or []):
@@ -1075,9 +1090,11 @@ def run_step_verification(
     # Проверяем producer-bound происхождение предыдущего Evidence ДО проверки
     # subject freshness. Иначе tampered Evidence со stale subject мог бы
     # замаскироваться кодом VERIFICATION_SUBJECT_STALE и разрешить cache reuse.
+    previous_read_ok = True
     try:
         previous_section = read_task(root, step_id)["sections"].get("Evidence", "")
     except (OSError, ValueError):
+        previous_read_ok = False
         # A STEP can change between the preflight snapshot and this read.
         # In that case nothing from the old cache is trustworthy; the
         # canonical final revision/CAS gate still decides completion.
@@ -1087,6 +1104,22 @@ def run_step_verification(
         previous_section, re.S,
     )
     untrusted_evidence = True
+    # First Verification of a new corrective STEP has no own producer proof.
+    # This is not the same as a tampered previous Evidence. Import is only
+    # considered if its own checkpoint and producer proof have never existed;
+    # _corrective_baseline() still validates all source observations and pins.
+    if previous_read_ok and previous_block_match is None and "VERIFICATION-EVIDENCE:" not in previous_section:
+        own_proof = root / ".harness/local/verification-proofs" / (step_id + ".json")
+        own_cache = root / ".harness/local/verification-incremental" / (step_id + ".json")
+        if not own_proof.exists() and not own_cache.exists():
+            try:
+                from planning_contract import read_task as _read_step
+                stage = _read_step(root, step_id)["frontmatter"].get("status")
+                candidate = _source_map(root, step_id, command_names, acceptance)
+                if candidate.get("reuse") is not None and stage in {"planned", "in_progress"}:
+                    untrusted_evidence = False
+            except (OSError, ValueError):
+                pass
     previous_failed_commands: set[str] = set()
     if previous_block_match is not None:
         previous_block = previous_block_match.group(1)
@@ -1137,7 +1170,7 @@ def run_step_verification(
             if group.get("reused") is None and command in targeted:
                 group["reused"] = targeted[command]
     reused = None
-    if not force_full and (manual_results is not None or product_results is not None):
+    if not force_full and not qualified_groups and (manual_results is not None or product_results is not None):
         reused = reuse_pending(
             root, step_id, contract=resume_basis,
             subject=subject_revision, names=command_names, timeout=timeout,
@@ -1266,12 +1299,12 @@ def run_step_verification(
             "commands": commands,
         }
 
-    if status == "MANUAL_REQUIRED" and reused is None:
+    if status == "MANUAL_REQUIRED" and reused is None and not qualified_groups:
         remember_pending(
             root, step_id, contract=resume_basis,
             subject=subject_revision, commands=commands, timeout=timeout,
         )
-    elif status != "MANUAL_REQUIRED":
+    elif status != "MANUAL_REQUIRED" or qualified_groups:
         forget_pending(root, step_id)
 
     result = {

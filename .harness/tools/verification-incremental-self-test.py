@@ -10,6 +10,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 
 from completion_gate import acceptance_criteria
 from verification import run_step_verification, verification_freshness, verification_command_evidence
@@ -82,7 +83,11 @@ def main() -> int:
         assert first["status"] == "PASS" and first["verificationMode"] == "incremental", first
         assert first["executedChecks"] == [ui] and first["reusedCount"] == 1, first
         assert verification_freshness(root, step_id)["fresh"] is True
-        assert verification_command_evidence(root, step_id, backend)["fresh"] is True
+        # Aggregate PASS of the reused backend check remains current, but
+        # an exact-command consumer must not mistake reuse for a new execution.
+        exact_backend = verification_command_evidence(root, step_id, backend)
+        assert exact_backend["fresh"] is False
+        assert exact_backend["reasonCode"] == "VERIFICATION_EXACT_COMMAND_NOT_EXECUTED", exact_backend
         assert "Verification mode: incremental" in step.read_text(encoding="utf-8")
         assert "Provenance: " in step.read_text(encoding="utf-8")
         assert json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"] == baseline
@@ -193,15 +198,27 @@ def main() -> int:
                 }},
             }
             write(second_root / "docs/verification/impact-map.json", json.dumps(compound))
+            from verification_incremental import _environment_for_policy, _source_map
+            group_policy = _source_map(second_root, "STEP-001", [monolith], composite_criteria)
+            with patch("verification_incremental._environment_basis", return_value="environment") as observed_env:
+                assert _environment_for_policy([monolith], group_policy) == "environment"
+                assert set(observed_env.call_args.args[0]) == {
+                    monolith, group_ui, group_backend
+                }, observed_env.call_args
             seeded = run_step_verification(second_root, "STEP-001", manual_results=observation())
             assert seeded["status"] == "PASS" and seeded["verificationMode"] == "full", seeded
             assert [item["status"] for item in seeded["commands"][0]["groups"]] == ["PASS", "PASS"], seeded
             counter = second_root / ".harness/local/monolith-count.txt"
             assert counter.read_text(encoding="utf-8") == "1"
+            assert verification_command_evidence(
+                second_root, "STEP-001", monolith,
+            )["fresh"] is True, "full baseline must prove exact executed command"
             write(second_root / "src/ui/button.tsx", 'export const title = "Accessible";\n')
             composite_result = run_step_verification(second_root, "STEP-001", manual_results=observation())
             assert composite_result["status"] == "PASS" and composite_result["verificationMode"] == "incremental", composite_result
             assert counter.read_text(encoding="utf-8") == "1", "qualified monolith was rerun"
+            proof = verification_command_evidence(second_root, "STEP-001", monolith)
+            assert proof["fresh"] is False and proof["reasonCode"] == "VERIFICATION_EXACT_COMMAND_NOT_EXECUTED", proof
             groups = composite_result["commands"][0]["groups"]
             assert [g["id"] for g in groups] == ["ui", "backend"], groups
             assert "reusedFrom" not in groups[0] and groups[1].get("reusedFrom"), groups
@@ -213,6 +230,22 @@ def main() -> int:
             blocked_selection = run_step_verification(second_root, "STEP-001", manual_results=observation())
             assert blocked_selection["verificationMode"] == "full", blocked_selection
             assert counter.read_text(encoding="utf-8") == "11", "full fallback omitted monolith"
+
+        # Новый targeted FAIL отменяет предыдущий producer-bound PASS:
+        # обычная Verification возвращается к полному режиму, не наследуя
+        # старый тестовый результат из локального checkpoint.
+        from verification_selective import run_selected
+        assert verification_freshness(root, step_id)["fresh"] is True
+        with patch("verification_selective._run_command", return_value={
+            "command": ui, "status": "FAIL", "exitCode": 3,
+        }):
+            observed_fail = run_selected(root, step_id, [ui])
+        assert observed_fail["status"] == "FAIL", observed_fail
+        assert not checkpoint.exists(), "cached prior PASS survived targeted FAIL"
+        assert verification_freshness(root, step_id)["fresh"] is False
+        assert verification_freshness(root, step_id)["reasonCode"] == "VERIFICATION_PROOF_MISSING"
+        recovered = run_step_verification(root, step_id, manual_results=observation())
+        assert recovered["status"] == "PASS" and recovered["verificationMode"] == "full", recovered
 
         print("INCREMENTAL VERIFICATION SELF-TEST: PASS")
         return 0

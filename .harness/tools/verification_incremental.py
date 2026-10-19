@@ -381,7 +381,64 @@ def _corrective_control_paths(
                        for name in ("SPEC.md", "STATUS.md"))
     except (ValueError, OSError):
         pass
+    # Реальная corrective работа добавляет durable REVIEW и PLAN-REVIEW
+    # после старого baseline. Исключаем только schema-valid immutable отчёты
+    # именно source/corrective STEP; произвольные файлы не игнорируются.
+    from harness_config import review_directory, planning_review_directory
+    from review_contract import validate_review_report
+    from planning_contract import validate_planning_review_report
+    from late_defect import read as read_observation
+    linked_stamp = observation["observedAt"]
+    for sid in (source_id, step_id):
+        folder = review_directory(root) / sid
+        if folder.is_dir():
+            for report in sorted(folder.glob("REVIEW-*.md")):
+                if validate_review_report(root, report, expected_step_id=sid):
+                    raise IncrementalError("INVALID_CORRECTIVE_REVIEW_HISTORY")
+                control.add(report.relative_to(root).as_posix())
+            for record in sorted(folder.glob("OBSERVATION-*.json")):
+                rel = record.relative_to(root).as_posix()
+                # Only source observations are eligible for this provenance
+                # chain. A new observation after the linked defect changes
+                # accepted obligations and requires full requalification.
+                if sid != source_id:
+                    raise IncrementalError("CORRECTIVE_OBSERVATION_REQUIRES_FULL")
+                verified = read_observation(root, sid, rel)
+                if verified["observedAt"] > linked_stamp:
+                    raise IncrementalError("NEW_SOURCE_OBSERVATION_REQUIRES_FULL")
+                control.add(rel)
+    plan_folder = planning_review_directory(root) / step_id
+    if plan_folder.is_dir():
+        for report in sorted(plan_folder.glob("PLAN-REVIEW-*.md")):
+            if validate_planning_review_report(root, report, expected_step_id=step_id):
+                raise IncrementalError("INVALID_CORRECTIVE_PLAN_REVIEW")
+            control.add(report.relative_to(root).as_posix())
     return control
+
+
+def _environment_for_policy(commands: list[str], policy: dict[str, Any]) -> str:
+    """Включить executable каждого subgroup, не только родительских команд."""
+    actual = list(commands)
+    for check in policy["checks"]:
+        for group in check.get("groups", []):
+            if group["command"] not in actual:
+                actual.append(group["command"])
+    return _environment_basis(actual)
+
+
+def invalidate_failed_feedback(root: Path, step_id: str) -> None:
+    """Новый FAIL/BLOCKED прекращает доверие к прежним локальным PASS."""
+    from verification_resume import forget_pending
+    records = (
+        _state_path(root, step_id),
+        _targeted_path(root, step_id),
+        root / ".harness/local/verification-proofs" / (step_id + ".json"),
+    )
+    for path in records:
+        if path.is_symlink() or path.parent.is_symlink():
+            raise IncrementalError("cannot invalidate symlinked verification state")
+        path.unlink(missing_ok=True)
+    forget_pending(root, step_id)
 
 
 def prepare(
@@ -422,7 +479,7 @@ def prepare(
                 root, step_id, policy,
             )
             inherited = True
-        environment = _environment_basis(commands)
+        environment = _environment_for_policy(commands, policy)
         if not environment:
             return fallback("ENVIRONMENT_UNPROVEN")
         if checkpoint.get("timeout") != timeout or checkpoint.get("environmentBasis") != environment:
@@ -583,7 +640,7 @@ def record(
         return
     try:
         policy = _source_map(root, step_id, commands, acceptance)
-        environment = _environment_basis(commands)
+        environment = _environment_for_policy(commands, policy)
         if not environment:
             return
         # Snapshot на публикации cache обязан быть тем же subject, который
@@ -730,7 +787,7 @@ def remember_targeted(
     try:
         policy = _source_map(root, step_id, commands, acceptance)
         _read_checkpoint(root, step_id)  # targeted without full baseline is only feedback
-        environment = _environment_basis(commands)
+        environment = _environment_for_policy(commands, policy)
         selected = {item.get("command"): item for item in results if isinstance(item, dict)}
         allowed = set(commands)
         for check in policy["checks"]:
@@ -775,7 +832,7 @@ def reuse_targeted(
             data.get("contractBasis") != contract_basis,
             data.get("contextBasis") != context_basis,
             data.get("timeout") != timeout,
-            data.get("environmentBasis") != _environment_basis(commands),
+            data.get("environmentBasis") != _environment_for_policy(commands, selection["policy"]),
             data.get("subjectHash") != subject_hash,
         )):
             return {}

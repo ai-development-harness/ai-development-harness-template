@@ -323,11 +323,21 @@ Reviewer независим и read-only относительно product code. 
 
 При старте command Execution Status запоминает предыдущий immutable review report. Если session оборвалась после создания нового report, resolver может восстановить verdict без повторного expensive review.
 
-Single REVIEW после verdict останавливается. Внутри chain/RUN CTS активирует FIX только при `FAIL`; PASS/BLOCKED не создают скрытый переход.
+Single REVIEW после verdict останавливается. Внутри chain/RUN CTS активирует
+FIX по прежнему `FAIL` либо после `PASS/SUCCESS` при связанном,
+подтверждённом immutable late-defect observation и свежем Verification PASS.
+Обычный PASS не создаёт скрытый FIX; `BLOCKED` не разрешает переход.
 
 ## 11. `STEP FIX STEP-NNN`
 
-1. Получить latest evidence-gated Review Contract v3 через `python3 .harness/tools/review_findings.py --step STEP-NNN --json`. Historical v1/v2 остаются валидной immutable history, но не дают deterministic FIX handoff: нужен свежий REVIEW v3.
+1. Получить latest evidence-gated Review Contract v3 через
+`python3 .harness/tools/review_findings.py --step STEP-NNN --json`.
+Historical v1/v2 остаются валидной immutable history, но не дают
+deterministic FIX handoff. Для `REVIEW FAIL` требуются evidence-gated findings,
+а для позднего дефекта **после PASS** — зарегистрированный `late-defect.py`
+observation (reproducer, exact Acceptance, invalidatedChecks).
+Предыдущий FAIL запрещено подделывать. Для completed STEP оформляется
+новый corrective STEP.
 2. Исправлять только findings категорий `implementation`/`evidence` и необходимый supporting code в scope; identity между циклами отслеживать по stable `fingerprint`. Граница `evidenceBasis` не разрешает расширять finding в соседние теоретические угрозы.
 3. Новый regression/security test должен иметь provenance: explicit REQ/ADR/STEP invariant, reproduced defect либо текущий confirmed `F-NNN`. Новый speculative scenario сначала возвращается в REVIEW/Evidence Gate, а не реализуется скрыто внутри FIX.
 4. Contract finding, изменение Acceptance/REQ/ADR/dependencies или missing prerequisite → `BLOCKED` + corrective STEP/RESEARCH/ADR; не превращать FIX в скрытый scope expansion.

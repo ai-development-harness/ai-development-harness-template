@@ -17,7 +17,14 @@ from verification import (
     verification_contract_basis, verification_context_basis,
     verification_subject_content_hash,
 )
-from verification_incremental import remember_targeted
+from verification_incremental import remember_targeted, invalidate_failed_feedback
+
+
+def _invalidate_selected(root: Path, step_id: str) -> None:
+    """Не оставлять прежний producer-bound PASS после нового FAIL."""
+    from execution_status import execution_state_lock
+    with execution_state_lock(root):
+        invalidate_failed_feedback(root, step_id)
 
 
 def run_selected(root: Path, step_id: str, commands: list[str]) -> dict[str, Any]:
@@ -48,10 +55,13 @@ def run_selected(root: Path, step_id: str, commands: list[str]) -> dict[str, Any
         record = _run_command(root, command, timeout_seconds=timeout)
         results.append(record)
         if repository_revision(root) != revision or _refs_snapshot(root) != refs:
+            _invalidate_selected(root, step_id)
             return {"status": "BLOCKED", "reasonCode": "SELECTED_COMMAND_MUTATED_REPOSITORY"}
         if record["status"] == "BLOCKED":
+            _invalidate_selected(root, step_id)
             return {"status": "BLOCKED", "reasonCode": record.get("reasonCode"), "commands": results}
         if record["status"] == "FAIL":
+            _invalidate_selected(root, step_id)
             return {"status": "FAIL", "commands": results,
                     "fullVerificationRequired": True, "completionProof": False}
     # Сами выбранные команды не создают completion proof. Они могут войти в

@@ -17,7 +17,7 @@ from typing import Any
 from completion_gate import acceptance_criteria
 from harness_config import review_directory
 from planning_contract import read_task, step_completion_proof
-from review_contract import latest_trusted_review
+from review_contract import latest_trusted_review, latest_review
 
 STEP_ID = re.compile(r"STEP-\d{3,}\Z")
 NAME = re.compile(r"OBSERVATION-(\d{8}T\d{6}Z)-([0-9a-f]{12})\.json\Z")
@@ -51,7 +51,12 @@ def _origin(root: Path, step_id: str) -> dict[str, Any]:
             raise ObservationError("active source requires fresh Verification PASS")
     else:
         raise ObservationError("observation requires completed or reviewed active STEP")
-    trusted = latest_trusted_review(root, step_id)
+    # Незавершённый STEP имеет право на trusted REVIEW PASS с blocked
+    # completion; это не доказательство завершения самого STEP.
+    trusted = (
+        latest_trusted_review(root, step_id) if status == "completed"
+        else latest_review(root, step_id, require_current_revision=True)
+    )
     if trusted is None or trusted.get("verdict") != "PASS":
         raise ObservationError("source requires an independent trusted PASS REVIEW")
     report = trusted["path"]
