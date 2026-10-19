@@ -1,0 +1,41 @@
+name: PR 368 Exact Source Export
+
+on:
+  push:
+    branches:
+      - test/pr368-regression-20261020
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Snapshot exact public sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results
+          git clone --quiet https://github.com/ai-development-harness/ai-development-harness-template.git "$RUNNER_TEMP/harness-main"
+          git -C "$RUNNER_TEMP/harness-main" checkout -q --detach ead10e2fdb5740a3a2ce7e84825647d41bc351f8
+          git clone --quiet https://github.com/ai-development-harness/ai-development-harness-template.git "$RUNNER_TEMP/harness-candidate"
+          git -C "$RUNNER_TEMP/harness-candidate" fetch -q origin cf90edb6065ca62baa3497154ad471f0f161629a
+          git -C "$RUNNER_TEMP/harness-candidate" checkout -q --detach cf90edb6065ca62baa3497154ad471f0f161629a
+          git clone --quiet https://github.com/ai-development-harness/release-canary.git "$RUNNER_TEMP/release-canary"
+          git -C "$RUNNER_TEMP/release-canary" checkout -q --detach 280e65cd233c71150abdc7a30dc1ca39fc7e2d0d
+          for dir in harness-main harness-candidate release-canary; do
+            test -z "$(git -C "$RUNNER_TEMP/$dir" status --porcelain)"
+            printf '%s %s\n' "$dir" "$(git -C "$RUNNER_TEMP/$dir" rev-parse HEAD)" >> results/SHA256-SOURCE-REFS.txt
+            tar --create --gzip --file "results/$dir.tar.gz" -C "$RUNNER_TEMP" "$dir"
+          done
+          sha256sum results/*.tar.gz | tee results/checksums.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr368-exact-source-snapshots
+          path: results/
+          retention-days: 5
