@@ -1122,6 +1122,11 @@ def run_step_verification(
         }
     except (OSError, ValueError):
         qualified_groups = {}
+    for composite in selection.get("composites", {}).values():
+        for group in composite["groups"]:
+            command = group["spec"]["command"]
+            if group.get("reused") is None and command in targeted:
+                group["reused"] = targeted[command]
     reused = None
     if not force_full and (manual_results is not None or product_results is not None):
         reused = reuse_pending(
