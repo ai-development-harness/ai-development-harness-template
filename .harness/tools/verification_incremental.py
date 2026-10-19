@@ -303,6 +303,17 @@ def _corrective_baseline(
             not all(_same_check_contract(a, b)
                     for a, b in zip(pinned["checks"], policy["checks"]))):
         raise IncrementalError("CORRECTIVE_CHECK_CONTRACT_CHANGED")
+    from verification import parse_verification
+    from completion_gate import acceptance_criteria
+    original_commands = [
+        item["value"] for item in parse_verification(root, source_id)
+        if item["kind"] == "command"
+    ]
+    current_origin_policy = _source_map(
+        root, source_id, original_commands, acceptance_criteria(root, source_id),
+    )
+    if current_origin_policy["checks"] != pinned["checks"]:
+        raise IncrementalError("SOURCE_VERIFICATION_POLICY_CHANGED")
     source_path = _state_path(root, source_id)
     proof_path = root / ".harness/local/verification-proofs" / (source_id + ".json")
     if (not source_path.is_file() or source_path.is_symlink()
