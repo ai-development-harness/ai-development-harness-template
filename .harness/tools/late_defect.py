@@ -20,9 +20,9 @@ from harness_config import review_directory
 from planning_contract import read_task, step_completion_proof
 from review_contract import latest_trusted_review
 
-STEP_ID = re.compile(r"STEP-\\d{3,}\\Z")
-NAME = re.compile(r"OBSERVATION-(\\d{8}T\\d{6}Z)-([0-9a-f]{12})\\.json\\Z")
-SHA = re.compile(r"sha256:[0-9a-f]{64}\\Z")
+STEP_ID = re.compile(r"STEP-\d{3,}\Z")
+NAME = re.compile(r"OBSERVATION-(\d{8}T\d{6}Z)-([0-9a-f]{12})\.json\Z")
+SHA = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 class ObservationError(ValueError):
