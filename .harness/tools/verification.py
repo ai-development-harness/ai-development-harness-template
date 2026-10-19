@@ -979,7 +979,13 @@ def run_step_verification(
     # Проверяем producer-bound происхождение предыдущего Evidence ДО проверки
     # subject freshness. Иначе tampered Evidence со stale subject мог бы
     # замаскироваться кодом VERIFICATION_SUBJECT_STALE и разрешить cache reuse.
-    previous_section = read_task(root, step_id)["sections"].get("Evidence", "")
+    try:
+        previous_section = read_task(root, step_id)["sections"].get("Evidence", "")
+    except (OSError, ValueError):
+        # A STEP can change between the preflight snapshot and this read.
+        # In that case nothing from the old cache is trustworthy; the
+        # canonical final revision/CAS gate still decides completion.
+        previous_section = ""
     previous_block_match = re.search(
         rf"{re.escape(EVIDENCE_START)}(.*?){re.escape(EVIDENCE_END)}",
         previous_section, re.S,
@@ -1019,7 +1025,7 @@ def run_step_verification(
         timeout=timeout, subject_hash=subject_content_hash,
     )
     reused = None
-    if manual_results is not None or product_results is not None:
+    if not force_full and (manual_results is not None or product_results is not None):
         reused = reuse_pending(
             root, step_id, contract=resume_basis,
             subject=subject_revision, names=command_names, timeout=timeout,
