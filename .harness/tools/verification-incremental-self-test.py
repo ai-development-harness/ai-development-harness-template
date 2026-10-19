@@ -106,6 +106,33 @@ def main() -> int:
         assert second["executedChecks"] == [backend], second
         assert json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"] == baseline
 
+        # Rename, test-only change и staged/untracked sources тоже влияют на
+        # Git tree input fingerprints, без зависимости от HEAD.
+        (root / "src/ui/button.tsx").rename(root / "src/ui/renamed-button.tsx")
+        renamed = run_step_verification(root, step_id, manual_results=observation())
+        assert renamed["status"] == "PASS" and renamed["verificationMode"] == "incremental", renamed
+        assert renamed["executedChecks"] == [ui], renamed
+        write(root / "tests/ui/accessible.test.ts", "test accessible name\n")
+        from subprocess import run as subprocess_run
+        staged = subprocess_run(["git", "add", "tests/ui/accessible.test.ts"],
+                                cwd=root, capture_output=True, check=False)
+        assert staged.returncode == 0, staged.stderr
+        test_only = run_step_verification(root, step_id, manual_results=observation())
+        assert test_only["status"] == "PASS" and test_only["executedChecks"] == [ui], test_only
+
+        # Если карта кэша повреждена, полный запуск безопасно пересоздаёт её.
+        checkpoint.write_text("{invalid json", encoding="utf-8")
+        corrupted = run_step_verification(root, step_id, manual_results=observation())
+        assert corrupted["status"] == "PASS" and corrupted["verificationMode"] == "full", corrupted
+        assert corrupted["fallbackReason"] == "FULL_BASELINE_CORRUPT", corrupted
+
+        # Изменение общего config/lockfile требует полного Verify даже при
+        # формально неизменных исходниках UI/backend.
+        write(root / "package-lock.json", '{"new":true}\n')
+        infrastructure = run_step_verification(root, step_id, manual_results=observation())
+        assert infrastructure["status"] == "PASS" and infrastructure["verificationMode"] == "full", infrastructure
+        assert infrastructure["fallbackReason"] == "TEST_INFRASTRUCTURE_CHANGED", infrastructure
+
         # Новый файл вне объявленного покрытия приводит к объяснимому полному прогону.
         write(root / "unmapped.txt", "unknown change\n")
         fallback = run_step_verification(root, step_id, manual_results=observation())
