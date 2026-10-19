@@ -43,7 +43,7 @@ from verification_resume import remember_pending, reuse_pending, forget_pending
 from verification_proof import record_verification_proof, verification_proof_error
 from verification_incremental import (
     prepare as prepare_incremental, record as record_incremental,
-    reuse_targeted,
+    reuse_targeted, _source_map,
 )
 
 
@@ -661,6 +661,83 @@ def _run_command(
     return result
 
 
+def _run_composite_groups(
+    root: Path,
+    parent: str,
+    groups: list[dict[str, Any]],
+    *,
+    timeout: int,
+    revision: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Execute/reuse all qualified groups with a per-command mutation guard.
+
+    A group PASS never becomes a replacement for a monolith on its own:
+    the caller still builds one fully covered canonical parent result.
+    """
+    outcome: list[dict[str, Any]] = []
+    for item in groups:
+        spec = item["spec"]
+        reused = item.get("reused")
+        if isinstance(reused, dict):
+            result = dict(reused)
+        else:
+            before = repository_revision(root)
+            if not _revision_equal(before, revision):
+                raise VerificationInputsStale("subject changed before composite group")
+            refs = _refs_snapshot(root)
+            result = _run_command(root, spec["command"], timeout_seconds=timeout)
+            if refs != _refs_snapshot(root):
+                raise VerificationInputsStale("composite group mutated Git refs")
+            if not _revision_equal(repository_revision(root), revision):
+                raise VerificationInputsStale("composite group mutated repository")
+        outcome.append({"id": spec["id"], "command": spec["command"],
+                        "acceptance": list(spec["acceptance"]), **result})
+        if result.get("status") == "BLOCKED":
+            raise VerificationError("composite group is BLOCKED: " + spec["command"])
+    return outcome
+
+
+def _aggregate_composite(
+    command: str,
+    groups: list[dict[str, Any]],
+    *,
+    full_command_result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Represent proven groups as one canonical command entry for Completion Gate."""
+    if not groups:
+        raise VerificationError("composite must cover at least one group")
+    statuses = [item.get("status") for item in groups]
+    if any(value not in {"PASS", "FAIL"} for value in statuses):
+        raise VerificationError("composite group has unsupported status")
+    passed = all(value == "PASS" for value in statuses)
+    if full_command_result is not None:
+        value = dict(full_command_result)
+        if not passed and value.get("status") == "PASS":
+            value["status"] = "FAIL"
+            value["exitCode"] = 1
+            value["reasonCode"] = "COMPOSITE_GROUP_FAILED"
+    else:
+        # Only a qualified *full baseline* permits this aggregate. Its nested
+        # group observations are part of producer-bound Evidence/operational cache.
+        identity = json.dumps(groups, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        value = {
+            "kind": "command",
+            "command": command,
+            "argv": _argv(command),
+            "status": "PASS" if passed else "FAIL",
+            "exitCode": 0 if passed else 1,
+            "durationMs": sum(int(g.get("durationMs") or 0)
+                              for g in groups if not g.get("reusedFrom")),
+            "stdoutSha256": hashlib.sha256(identity).hexdigest(),
+            "stderrSha256": hashlib.sha256(b"").hexdigest(),
+            "stdoutBytes": 0,
+            "stderrBytes": 0,
+            "composite": True,
+        }
+    value["groups"] = groups
+    return value
+
+
 def _refs_snapshot(root: Path) -> str:
     """Все refs и HEAD: Verification не должна создавать/двигать ветки и теги."""
     refs = subprocess.run(
@@ -760,9 +837,19 @@ def _evidence_block(result: dict[str, Any]) -> str:
                 f"  - stderr sha256: {item.get('stderrSha256')}",
                 f"  - stdout bytes: {item.get('stdoutBytes')}",
                 f"  - stderr bytes: {item.get('stderrBytes')}",
-                f"  - Provenance: {item.get('reusedFrom') or 'executed'}",
+                f"  - Provenance: {item.get('reusedFrom') or ('qualified-composite' if item.get('groups') else 'executed')}",
             ]
         )
+        for group in item.get("groups", []):
+            lines.extend([
+                f"  - Group id: {group['id']}",
+                f"    - Group command: {group['command']}",
+                f"    - Group status: {group['status']}",
+                f"    - Group exit code: {group.get('exitCode')}",
+                f"    - Group duration ms: {group.get('durationMs')}",
+                f"    - Group provenance: {group.get('reusedFrom') or 'executed'}",
+                f"    - Group acceptance: {json.dumps(group['acceptance'], ensure_ascii=False)}",
+            ])
 
     lines.extend(["", "### Product verification"])
     product = result.get("product", [])
@@ -1024,6 +1111,17 @@ def run_step_verification(
         contract_basis=contract_basis, context_basis=context_basis,
         timeout=timeout, subject_hash=subject_content_hash,
     )
+    # A group adapter is permitted only if the entire configured map is
+    # valid. If the map is invalid, do not run any adapter commands: fallback
+    # to the historical full Verification contract.
+    try:
+        group_policy = _source_map(root, step_id, command_names, acceptance)
+        qualified_groups = {
+            item["command"]: item["groups"] for item in group_policy["checks"]
+            if "groups" in item
+        }
+    except (OSError, ValueError):
+        qualified_groups = {}
     reused = None
     if not force_full and (manual_results is not None or product_results is not None):
         reused = reuse_pending(
@@ -1038,8 +1136,18 @@ def run_step_verification(
             if selection["mode"] == "incremental" and entry["value"] in selection["reused"]:
                 commands.append(selection["reused"][entry["value"]])
                 continue
-            if entry["value"] in targeted:
+            if entry["value"] in targeted and entry["value"] not in qualified_groups:
                 commands.append(targeted[entry["value"]])
+                continue
+            composite_plan = selection.get("composites", {}).get(entry["value"])
+            if composite_plan is not None:
+                group_results = _run_composite_groups(
+                    root, entry["value"], composite_plan["groups"],
+                    timeout=timeout, revision=revision,
+                )
+                commands.append(_aggregate_composite(
+                    entry["value"], group_results, full_command_result=None,
+                ))
                 continue
             before = repository_revision(root)
             if not _revision_equal(before, revision):
@@ -1057,6 +1165,20 @@ def run_step_verification(
                 entry["value"],
                 timeout_seconds=timeout,
             )
+            if item["status"] == "PASS" and entry["value"] in qualified_groups:
+                # The first full run qualifies the declared decomposition by
+                # executing the monolith and all its groups on the same subject.
+                group_plan = [
+                    {"spec": group, "reused": None}
+                    for group in qualified_groups[entry["value"]]
+                ]
+                results = _run_composite_groups(
+                    root, entry["value"], group_plan, timeout=timeout,
+                    revision=revision,
+                )
+                item = _aggregate_composite(
+                    entry["value"], results, full_command_result=item,
+                )
             commands.append(item)
             if _refs_snapshot(root) != refs_before:
                 return {
@@ -1151,6 +1273,14 @@ def run_step_verification(
         "executedCount": 0 if reused is not None else len(selection["executed"]) - len(targeted),
         "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
         "targetedReusedCount": 0 if reused is not None else len(targeted),
+        "groupExecutedCount": sum(
+            1 for item in commands for group in item.get("groups", [])
+            if not group.get("reusedFrom")
+        ),
+        "groupReusedCount": sum(
+            1 for item in commands for group in item.get("groups", [])
+            if group.get("reusedFrom")
+        ),
         "fallbackReason": selection.get("reasonCode"),
         "stepId": step_id,
         "runAt": utc_now(),
