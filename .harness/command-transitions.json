@@ -394,9 +394,13 @@
           "from": "REVIEW",
           "to": "FIX",
           "onPreviousResult": [
-            "FAIL"
+            "FAIL",
+            "SUCCESS",
+            "PASS"
           ],
-          "runtimePreconditions": []
+          "runtimePreconditions": [
+            "confirmed-late-defect"
+          ]
         },
         {
           "from": "FIX",

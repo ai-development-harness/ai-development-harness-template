@@ -2378,6 +2378,37 @@ def _edge_for(
 
 
 
+def _post_pass_fix_allowed(root: Path, current_command: str, result: str) -> bool:
+    """Разрешить REVIEW PASS → FIX только после подтверждённого observation."""
+    if result == "FAIL":
+        return True
+    if result not in {"SUCCESS", "PASS"}:
+        return False
+    parsed = normalize_single_command(root, current_command)
+    if parsed.get("domain") != "STEP" or parsed.get("operation") != "REVIEW":
+        return False
+    step_id = parsed.get("target")
+    if not isinstance(step_id, str):
+        return False
+    try:
+        from review_findings import latest_structured_findings
+        from fix_delta import _reviewed_observation
+        review = latest_structured_findings(root, step_id)
+        return (review.get("verdict") == "pass" and not review.get("findings")
+                and _reviewed_observation(root, step_id, review["report"]) is not None)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def _cts_result_allowed(root: Path, command: str, result: str, edge: dict[str, Any]) -> bool:
+    """Одинаковая проверка edge для CTS, chain и orchestration."""
+    if result not in edge.get("onPreviousResult", []):
+        return False
+    if "confirmed-late-defect" in edge.get("runtimePreconditions", []):
+        return _post_pass_fix_allowed(root, command, result)
+    return True
+
+
 # Выполнить read-only Git probe для runtime preconditions. Сетевые операции здесь
 # намеренно не выполняются: command skill позже делает полный fetch/preflight.
 def _git_probe(root: Path, *args: str) -> tuple[int, str]:
@@ -2536,6 +2567,13 @@ def _runtime_precondition_failures(
             issue = _git_runtime_precondition(root, name)
         elif name == "matching-update-target-and-route":
             issue = _update_runtime_precondition(root, current, next_command)
+        elif name == "confirmed-late-defect":
+            previous_result = str(current.get("result") or "")
+            issue = (
+                None if _post_pass_fix_allowed(
+                    root, str(current.get("command") or ""), previous_result
+                ) else "no verified late-defect observation"
+            )
         elif name == "step-implement-ready":
             command_failures = _command_dispatch_precondition_failures(
                 root,
@@ -2670,7 +2708,7 @@ def complete_command(
         else:
             next_command = sequence[index + 1]
             edge = _edge_for(root, current["command"], next_command)
-            if edge is None or result not in edge.get("onPreviousResult", []):
+            if edge is None or not _cts_result_allowed(root, current["command"], result, edge):
                 execution["notExecuted"] = sequence[index + 1 :]
                 _mark_root_complete(execution)
     elif mode == "orchestration":
@@ -3415,7 +3453,7 @@ def _apply_recovered_completion(
             _mark_root_complete(execution)
         else:
             edge = _edge_for(root, current["command"], sequence[index + 1])
-            if edge is None or result not in edge.get("onPreviousResult", []):
+            if edge is None or not _cts_result_allowed(root, current["command"], result, edge):
                 execution["notExecuted"] = sequence[index + 1 :]
                 _mark_root_complete(execution)
     elif execution["mode"] == "orchestration" and current["command"] == execution["rootCommand"]:
@@ -3739,7 +3777,7 @@ def _resolve_execution_inner(
             }
         next_command = sequence[index + 1]
         edge = _edge_for(root, current["command"], next_command)
-        if edge is None or result not in edge.get("onPreviousResult", []):
+        if edge is None or not _cts_result_allowed(root, current["command"], result, edge):
             return {
                 "status": "DONE",
                 "executionId": execution["executionId"],
@@ -3782,7 +3820,7 @@ def _resolve_execution_inner(
             edge
             for edge in domain.get("transitions", [])
             if edge.get("from") == parsed.get("operation")
-            and result in edge.get("onPreviousResult", [])
+            and _cts_result_allowed(root, current["command"], result, edge)
         ]
         if len(candidates) == 1:
             # execution.maxFixReviewCycles — deterministic orchestration budget,
