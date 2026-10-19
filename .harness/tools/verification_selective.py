@@ -27,6 +27,15 @@ def run_selected(root: Path, step_id: str, commands: list[str]) -> dict[str, Any
         entry["value"] for entry in parse_verification(root, step_id)
         if entry["kind"] == "command"
     ]
+    try:
+        from completion_gate import acceptance_criteria
+        from verification_incremental import _source_map
+        mapped = _source_map(root, step_id, available, acceptance_criteria(root, step_id))
+        for check in mapped["checks"]:
+            available.extend(group["command"] for group in check.get("groups", []))
+    except (OSError, ValueError):
+        # Некорректный адаптер не расширяет разрешённый набор команд.
+        pass
     if any(command not in available for command in commands):
         return {"status": "BLOCKED", "reasonCode": "UNCONFIGURED_COMMAND"}
     revision = repository_revision(root)
@@ -53,7 +62,9 @@ def run_selected(root: Path, step_id: str, commands: list[str]) -> dict[str, Any
         with execution_state_lock(root):
             if repository_revision(root) == revision and _refs_snapshot(root) == refs:
                 remember_targeted(
-                    root, step_id, results=results, commands=available,
+                    root, step_id, results=results,
+                    commands=[entry["value"] for entry in parse_verification(root, step_id)
+                              if entry["kind"] == "command"],
                     acceptance=acceptance_criteria(root, step_id),
                     contract_basis=verification_contract_basis(root, step_id),
                     context_basis=verification_context_basis(root, step_id),
