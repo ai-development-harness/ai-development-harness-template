@@ -313,3 +313,79 @@ def record(
     except (OSError, ValueError):
         # Cache is optional. Its loss means full-run fallback, not failed PASS.
         return
+
+
+def _targeted_path(root: Path, step_id: str) -> Path:
+    path = _state_path(root, step_id).with_suffix(".targeted.json")
+    if path.is_symlink():
+        raise IncrementalError("targeted cache path must not be a symlink")
+    return path
+
+
+def remember_targeted(
+    root: Path, step_id: str, *, results: list[dict[str, Any]],
+    commands: list[str], acceptance: list[str], contract_basis: str,
+    context_basis: str, timeout: int, subject_hash: str,
+) -> None:
+    """Save trusted selected command results, not a completion proof."""
+    try:
+        policy = _source_map(root, step_id, commands, acceptance)
+        _read_checkpoint(root, step_id)  # targeted without full baseline is only feedback
+        environment = _environment_basis(commands)
+        selected = {item.get("command"): item for item in results if isinstance(item, dict)}
+        if (not environment or len(selected) != len(results) or not selected
+                or not set(selected).issubset(set(commands))
+                or any(item.get("status") != "PASS" or item.get("exitCode") != 0 for item in selected.values())):
+            return
+        payload = {
+            "schemaVersion": STATE_VERSION, "producer": "targeted-verification",
+            "stepId": step_id, "policyHash": policy["hash"],
+            "contractBasis": contract_basis, "contextBasis": context_basis,
+            "timeout": timeout, "environmentBasis": environment,
+            "subjectHash": subject_hash,
+            "commands": {name: _safe_result(item) for name, item in selected.items()},
+        }
+        path = _targeted_path(root, step_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(path, json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n")
+    except (OSError, ValueError):
+        return
+
+
+def reuse_targeted(
+    root: Path, step_id: str, *, selection: dict[str, Any],
+    commands: list[str], contract_basis: str, context_basis: str,
+    timeout: int, subject_hash: str,
+) -> dict[str, dict[str, Any]]:
+    """Consume selected feedback only for checks Core already selected to execute."""
+    if selection.get("mode") != "incremental":
+        return {}
+    try:
+        path = _targeted_path(root, step_id)
+        if not path.is_file():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or any((
+            data.get("schemaVersion") != STATE_VERSION,
+            data.get("producer") != "targeted-verification",
+            data.get("stepId") != step_id,
+            data.get("policyHash") != selection["policy"]["hash"],
+            data.get("contractBasis") != contract_basis,
+            data.get("contextBasis") != context_basis,
+            data.get("timeout") != timeout,
+            data.get("environmentBasis") != _environment_basis(commands),
+            data.get("subjectHash") != subject_hash,
+        )):
+            return {}
+        stored = data.get("commands")
+        if not isinstance(stored, dict):
+            return {}
+        return {
+            name: {**item, "reusedFrom": "targeted-feedback"}
+            for name, item in stored.items()
+            if (name in selection["executed"] and isinstance(item, dict)
+                and item.get("command") == name and item.get("status") == "PASS"
+                and item.get("exitCode") == 0)
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
