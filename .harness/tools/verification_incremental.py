@@ -69,8 +69,21 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
     if not isinstance(steps, dict) or step_id not in steps:
         raise IncrementalError("STEP_MAP_MISSING")
     policy = steps[step_id]
-    if not isinstance(policy, dict) or set(policy) != {"checks", "infrastructure"}:
+    valid_schema = {"checks", "infrastructure"}
+    if not isinstance(policy, dict) or set(policy) not in (
+        valid_schema, valid_schema | {"reuse"},
+    ):
         raise IncrementalError("STEP_MAP_SCHEMA_INVALID")
+    if "reuse" in policy:
+        linked = policy["reuse"]
+        if not isinstance(linked, dict) or set(linked) != {"sourceStep", "observation"}:
+            raise IncrementalError("CORRECTIVE_REUSE_SCHEMA_INVALID")
+        if (not isinstance(linked["sourceStep"], str)
+                or not re.fullmatch(r"STEP-\d{3,}", linked["sourceStep"])
+                or linked["sourceStep"] == step_id
+                or not isinstance(linked["observation"], str)
+                or not linked["observation"].strip()):
+            raise IncrementalError("CORRECTIVE_SOURCE_INVALID")
     raw = policy["checks"]
     if not isinstance(raw, list) or not raw:
         raise IncrementalError("CHECK_MAP_EMPTY")
@@ -183,7 +196,11 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
         visited.add(cid)
     for cid in ids:
         visit(cid)
-    return {"checks": raw, "infrastructure": policy["infrastructure"], "hash": _digest(data), "mapPath": path.relative_to(root.resolve()).as_posix()}
+    return {
+        "checks": raw, "infrastructure": policy["infrastructure"],
+        "hash": _digest(data), "mapPath": path.relative_to(root.resolve()).as_posix(),
+        "reuse": policy.get("reuse"),
+    }
 
 
 def _validate_patterns(patterns: Any, *, nonempty: bool = False) -> None:
@@ -250,6 +267,95 @@ def _read_checkpoint(root: Path, step_id: str) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("schemaVersion") != STATE_VERSION or value.get("stepId") != step_id:
         raise IncrementalError("FULL_BASELINE_INVALID")
     return value
+
+
+def _same_check_contract(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    """Compare verifiable test semantics, excluding STEP-local acceptance text."""
+    def identity(item: dict[str, Any]) -> dict[str, Any]:
+        core = {k: item[k] for k in (
+            "id", "command", "inputs", "dependsOn", "reusable"
+        )}
+        if "groups" in item:
+            core["groups"] = [identity(group) for group in item["groups"]]
+        return core
+    return identity(left) == identity(right)
+
+
+def _corrective_baseline(
+    root: Path, step_id: str, policy: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], set[str]]:
+    """Import source PASS only when immutable observation and local proof match."""
+    link = policy.get("reuse")
+    if not isinstance(link, dict):
+        raise IncrementalError("CORRECTIVE_LINK_MISSING")
+    from late_defect import read as read_observation, _digest
+    from verification_proof import verification_proof_error
+    from verification import EVIDENCE_START, EVIDENCE_END
+    source_id = link["sourceStep"]
+    observation = read_observation(root, source_id, link["observation"])
+    pinned = observation.get("reuse")
+    if not isinstance(pinned, dict) or set(pinned) != {
+        "checkpointSha256", "proofSha256", "checks",
+    }:
+        raise IncrementalError("SOURCE_BASELINE_NOT_PINNED")
+    if (not isinstance(pinned["checks"], list) or
+            len(pinned["checks"]) != len(policy["checks"]) or
+            not all(_same_check_contract(a, b)
+                    for a, b in zip(pinned["checks"], policy["checks"]))):
+        raise IncrementalError("CORRECTIVE_CHECK_CONTRACT_CHANGED")
+    source_path = _state_path(root, source_id)
+    proof_path = root / ".harness/local/verification-proofs" / (source_id + ".json")
+    if (not source_path.is_file() or source_path.is_symlink()
+            or not proof_path.is_file() or proof_path.is_symlink()
+            or _digest(source_path.read_bytes()) != pinned["checkpointSha256"]
+            or _digest(proof_path.read_bytes()) != pinned["proofSha256"]):
+        raise IncrementalError("SOURCE_LOCAL_PROOF_CHANGED")
+    source_task = read_task(root, source_id)
+    section = source_task["sections"].get("Evidence", "")
+    block = re.search(
+        re.escape(EVIDENCE_START) + r"(.*?)" + re.escape(EVIDENCE_END),
+        section, re.S,
+    )
+    if block is None or verification_proof_error(
+        root, source_id, block=block.group(1), status="PASS",
+    ) is not None:
+        raise IncrementalError("SOURCE_EVIDENCE_UNPROVEN")
+    checkpoint = _read_checkpoint(root, source_id)
+    if (checkpoint.get("status") not in (None, "PASS")
+            or not isinstance(checkpoint.get("latestChecks"), dict)):
+        raise IncrementalError("SOURCE_CACHE_INVALID")
+    invalidated = observation["finding"]["invalidatedChecks"]
+    declared = {check["id"] for check in policy["checks"]}
+    for check in policy["checks"]:
+        declared.update(group["id"] for group in check.get("groups", []))
+    if any(name not in declared for name in invalidated):
+        raise IncrementalError("OBSERVATION_CHECK_UNKNOWN")
+    # Only immutable control-plane artifacts may be absent from the old tree.
+    control = {
+        task_path(root, source_id).relative_to(root).as_posix(),
+        task_path(root, step_id).relative_to(root).as_posix(),
+        observation["source"]["review"],
+        link["observation"],
+        policy["mapPath"],
+    }
+    # Project projections are generated, not test/source inputs. Canonical
+    # REQ/ADR/product files still trigger the ordinary unknown-path fallback.
+    from harness_config import (
+        roadmap_path, status_path, open_questions_index_path,
+        requirements_directory,
+    )
+    for resolve in (roadmap_path, status_path, open_questions_index_path):
+        try:
+            control.add(resolve(root).relative_to(root).as_posix())
+        except (ValueError, OSError):
+            pass
+    try:
+        req = requirements_directory(root)
+        control.update((req / name).relative_to(root).as_posix()
+                       for name in ("SPEC.md", "STATUS.md"))
+    except (ValueError, OSError):
+        pass
+    return checkpoint, observation, control
 
 
 def prepare(
