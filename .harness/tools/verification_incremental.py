@@ -295,8 +295,7 @@ def prepare(
         basis = {c["id"]: _inputs_basis(entries, c["inputs"]) for c in policy["checks"]}
         affected = {c["id"] for c in policy["checks"] if not c["reusable"] or
                     original[c["id"]].get("inputBasis") != basis[c["id"]]}
-        # Зависимым тестам недостаточно собственного неизменённого glob, если
-        # пересмотрена логика, на которую они опираются.
+        # Зависимым проверкам недостаточно собственного неизменённого glob.
         while True:
             extended = affected | {c["id"] for c in policy["checks"] if set(c["dependsOn"]) & affected}
             if extended == affected:
@@ -304,12 +303,70 @@ def prepare(
             affected = extended
         executed: list[str] = []
         reused: dict[str, dict[str, Any]] = {}
+        composites: dict[str, dict[str, Any]] = {}
         for check in policy["checks"]:
             record = original[check["id"]]
             item = record.get("result")
-            if (check["id"] in affected or not isinstance(item, dict) or
-                    item.get("status") != "PASS" or item.get("exitCode") != 0 or
-                    item.get("command") != check["command"] or not _HASH.fullmatch(str(record.get("inputBasis")))):
+            if "groups" in check:
+                previous_groups = record.get("groupResults")
+                if (not isinstance(previous_groups, dict)
+                        or set(previous_groups) != {g["id"] for g in check["groups"]}
+                        or any(not isinstance(x, dict) for x in previous_groups.values())):
+                    return fallback("COMPOSITE_BASELINE_MISSING")
+                group_basis = {
+                    group["id"]: _inputs_basis(entries, group["inputs"])
+                    for group in check["groups"]
+                }
+                dirty_groups = {
+                    group["id"] for group in check["groups"]
+                    if (
+                        check["id"] in affected
+                        and not check["reusable"]
+                    ) or not group["reusable"]
+                    or previous_groups[group["id"]].get("inputBasis") != group_basis[group["id"]]
+                }
+                while True:
+                    expanded = dirty_groups | {
+                        group["id"] for group in check["groups"]
+                        if set(group["dependsOn"]) & dirty_groups
+                    }
+                    if expanded == dirty_groups:
+                        break
+                    dirty_groups = expanded
+                group_plan = []
+                for group in check["groups"]:
+                    gid = group["id"]
+                    previous = previous_groups[gid]
+                    last = previous.get("result")
+                    if (not isinstance(last, dict) or last.get("status") != "PASS"
+                            or last.get("exitCode") != 0 or last.get("command") != group["command"]
+                            or not _HASH.fullmatch(str(previous.get("inputBasis")))):
+                        dirty_groups.add(gid)
+                # Dependency propagation must include invalid prior evidence.
+                while True:
+                    expanded = dirty_groups | {
+                        group["id"] for group in check["groups"]
+                        if set(group["dependsOn"]) & dirty_groups
+                    }
+                    if expanded == dirty_groups:
+                        break
+                    dirty_groups = expanded
+                for group in check["groups"]:
+                    previous = previous_groups[group["id"]]
+                    group_plan.append({
+                        "spec": group,
+                        "reused": None if group["id"] in dirty_groups else {
+                            **previous["result"], "reusedFrom": previous.get("source") or "full-baseline"
+                        },
+                    })
+                composites[check["command"]] = {"groups": group_plan}
+                # Parent command receives a new aggregate result. The monolith
+                # itself runs only during full baseline qualification.
+                executed.append(check["command"])
+            elif (check["id"] in affected or not isinstance(item, dict) or
+                  item.get("status") != "PASS" or item.get("exitCode") != 0 or
+                  item.get("command") != check["command"] or
+                  not _HASH.fullmatch(str(record.get("inputBasis")))):
                 executed.append(check["command"])
             else:
                 reused[check["command"]] = {**item, "reusedFrom": record.get("source") or "full-baseline"}
@@ -319,6 +376,7 @@ def prepare(
             "mode": "incremental", "reasonCode": None,
             "executed": executed, "reused": reused, "snapshot": current,
             "policy": policy, "checkpoint": checkpoint, "inputBases": basis,
+            "composites": composites,
             "changedPaths": meaningful, "subjectHash": subject_hash,
         }
     except (IncrementalError, OSError, ValueError) as exc:
