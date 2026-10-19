@@ -46,15 +46,17 @@ def _environment_basis(commands: list[str]) -> str:
         except OSError:
             return ""
         executables.append((resolved, stat.st_size, stat.st_mtime_ns))
+    # Subprocess inherits the *entire* process environment, not just PATH and
+    # runtime selectors. A test can depend on any variable (feature flags,
+    # credentials, database endpoints). Reusing PASS after an untracked env
+    # change would be a false positive. Only the digest is persisted, never
+    # individual variable names or values from this snapshot.
     environment = {
-        "path": os.environ.get("PATH"),
-        "virtualEnv": os.environ.get("VIRTUAL_ENV"),
-        "pythonPath": os.environ.get("PYTHONPATH"),
-        "nodeOptions": os.environ.get("NODE_OPTIONS"),
+        "inheritedEnvironment": sorted(os.environ.items()),
         "python": sys.version,
         "executables": executables,
     }
-    return hashlib.sha256(json.dumps(environment, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(environment, ensure_ascii=True, sort_keys=True).encode()).hexdigest()
 
 
 def _eligible(root: Path, step_id: str) -> bool:
