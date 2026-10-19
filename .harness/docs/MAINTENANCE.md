@@ -17,8 +17,12 @@
 `.harness/local/verification-incremental/STEP-NNN.targeted.json`.
 SchemaVersion 1, owner — canonical Verification writer / verify-selected.
 Запись producer-bound PASS сериализуется `execution_state_lock`, после
-exact-subject проверки. При отсутствии/повреждении state, incompatible
-schema, потере Git tree после GC либо миграции — полный прогон. Следующий
+exact-subject проверки. SHA-256 точного checkpoint записывается в уже
+созданный local Verification producer proof; без этой привязки (старый
+cache после обновления, crash между записями, правка одного поля) повторное
+использование запрещено. Producer-bound Evidence при этом остаётся валидным;
+cache имеет optional lifecycle и полный fallback. При отсутствии/повреждении
+state, incompatible schema, потере Git tree после GC либо миграции — полный прогон. Следующий
 full PASS перезаписывает checkpoint; удаление любого cache безопасно.
 Это clone-local, не Git и не новый source of truth. Подробности:
 [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).

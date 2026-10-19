@@ -77,6 +77,20 @@ def main() -> int:
         assert checkpoint.is_file()
         baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
 
+        # Новый настоящий immutable REVIEW после полного baseline не должен
+        # выглядеть как неизвестный product input: это обычный FIX workflow.
+        reviewer_spec = importlib.util.spec_from_file_location(
+            "execution_review_fixture", Path(__file__).with_name("execution-self-test.py")
+        )
+        assert reviewer_spec is not None and reviewer_spec.loader is not None
+        reviewer = importlib.util.module_from_spec(reviewer_spec)
+        reviewer_spec.loader.exec_module(reviewer)
+        review_rel = reviewer.review_report(
+            root, "PASS", "REVIEW-20261019T130000Z.md", completion_result="BLOCKED",
+        )
+        from review_contract import validate_review_report
+        assert not validate_review_report(root, root / review_rel, expected_step_id=step_id)
+
         # Дефект UI не должен заставлять повторять доказанно независимый backend.
         write(root / "src/ui/button.tsx", 'export const label = "Accessible button";\n')
         first = run_step_verification(root, step_id, manual_results=observation())
@@ -91,6 +105,28 @@ def main() -> int:
         assert "Verification mode: incremental" in step.read_text(encoding="utf-8")
         assert "Provenance: " in step.read_text(encoding="utf-8")
         assert json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"] == baseline
+
+        # Изменение только cache fingerprint не может превратить старый PASS
+        # в proof для другого input basis: hash cache хранится в producer proof.
+        altered = json.loads(checkpoint.read_text(encoding="utf-8"))
+        altered["latestChecks"]["backend"]["inputBasis"] = "sha256:" + "f" * 64
+        checkpoint.write_text(json.dumps(altered) + "\n", encoding="utf-8")
+        tampered = run_step_verification(root, step_id, manual_results=observation())
+        assert tampered["status"] == "PASS" and tampered["verificationMode"] == "full", tampered
+        assert tampered["fallbackReason"] == "CHECKPOINT_PRODUCER_MISMATCH", tampered
+        baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
+
+        # Report, который уже ВХОДИЛ в новый полный baseline, не должен
+        # автоматически исключаться как новый. Его изменение — full fallback.
+        review_path = root / review_rel
+        review_path.write_text(
+            review_path.read_text(encoding="utf-8") + "\nChanged historical review.\n",
+            encoding="utf-8",
+        )
+        changed_history = run_step_verification(root, step_id, manual_results=observation())
+        assert changed_history["status"] == "PASS" and changed_history["verificationMode"] == "full", changed_history
+        assert changed_history["fallbackReason"] == "HISTORICAL_REVIEW_CHANGED", changed_history
+        baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
 
         # Выбранную UI-проверку, уже пройденную на этой exact revision,
         # повторно при completion не запускаем.

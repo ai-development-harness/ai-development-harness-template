@@ -143,7 +143,10 @@ baseline, но само по себе не доказывает полноту �
    каждого check. Изменение `HEAD` при неизменных файлах само по себе не
    отменяет content proof.
 2. В следующем прогоне Core сравнивает **накопленный** diff с исходным полным
-   tree, проверяет покрытие каждого изменённого пути и для каждой группы
+   tree. Новые schema-valid `REVIEW-*.md` **только этого STEP**, не
+   относящиеся к заявленным check inputs, не считаются изменением продукта;
+   изменение/удаление существовавшего в исходном snapshot отчёта не исключается.
+   Затем Core проверяет покрытие каждого изменённого product path и для каждой группы
    сравнивает текущее содержимое её inputs с состоянием последнего PASS.
    Неизменённые группы переиспользуются, затронутые и их dependents
    выполняются. После нескольких исправлений исходный baseline не сдвигается.
@@ -173,10 +176,16 @@ python3 .harness/tools/verify-step.py STEP-017 --full
 
 - Нет карты, исходного полного PASS, локального checkpoint или пригодного
   Git tree; policy/map повреждены, нет точного покрытия изменённых путей.
+  Сохранённые результаты команд имеют право на reuse только если **все bytes**
+  versioned local checkpoint привязаны SHA-256 к canonical producer proof.
+  Изменение одного `latestChecks`, отсутствие pin или crash между записью
+  cache и proof дают полный fallback, без миграции исторических Evidence.
 - Изменились Acceptance/REQ/ADR/plan, команда/timeout, map, общий
   инфраструктурный вход, environment или идентичность инструментов.
-- Любой risk flag: `security-sensitive`, `data-migration`,
-  `external-integration`, `destructive`, `release-critical`.
+- Любой risk flag **текущего или исходного STEP при corrective reuse**:
+  `security-sensitive`, `data-migration`, `external-integration`,
+  `destructive`, `release-critical`. Исторический высокорисковый
+  STEP нельзя использовать как источник инкрементальных проверок.
 - Предыдущий Evidence не подтверждается canonical producer proof.
   FAIL конкретной проверки никогда не переиспользуется как PASS.
 - Изменение subject во время исполнения, попытка теста изменить Git refs
@@ -256,7 +265,12 @@ REVIEW имеет PASS, но Completion ещё BLOCKED, observation можно
 - `.harness/local/verification-incremental/STEP-NNN.json` — versioned
   `schemaVersion=1`, owner: canonical Evidence writer, запись под
   `execution_state_lock`, сохранение только после producer-bound PASS.
-  Содержит исходный полный Git tree и последний PASS каждой группы.
+  Содержит исходный полный Git tree и последний PASS каждой группы. SHA-256
+  **точных bytes** checkpoint записывается в связанный local producer proof
+  только canonical writer; legacy cache без нового pin безопасно пересоздаётся
+  полным прогоном. Дополнительный pin не меняет старый формат Evidence и
+  не является криптографической защитой от процесса, редактирующего сразу
+  все локальные proof-файлы.
 - `.harness/local/verification-incremental/STEP-NNN.targeted.json` —
   необязательный PASS `verify-selected`, сохраняется под тем же lock,
   допускается к reuse только после повторной проверки exact subject/inputs.

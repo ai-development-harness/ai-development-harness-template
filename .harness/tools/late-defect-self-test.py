@@ -223,6 +223,25 @@ def main() -> int:
         assert review_path.read_bytes() == review_bytes, "trusted REVIEW mutated"
         assert (root / obs_rel).read_bytes() == original_observation, "observation mutated"
 
+        # Исторический security-sensitive STEP запрещает унаследованный
+        # cache, даже если текущий corrective STEP помечен как low risk.
+        corrective_checkpoint = root / ".harness/local/verification-incremental/STEP-002.json"
+        corrective_checkpoint.unlink()
+        original_completed = source.read_text(encoding="utf-8")
+        assert "risk_flags:\n  - none" in original_completed
+        write(source, original_completed.replace(
+            "risk_flags:\n  - none", "risk_flags:\n  - security-sensitive",
+        ))
+        high_risk = run_step_verification(
+            root, "STEP-002", manual_results=[{
+                "check": "Проверить доступное имя кнопки",
+                "status": "PASS", "observed": "High-risk source forces all checks.",
+            }],
+        )
+        assert high_risk["status"] == "PASS" and high_risk["verificationMode"] == "full", high_risk
+        assert high_risk["fallbackReason"] == "SOURCE_RISK_REQUIRES_FULL", high_risk
+        write(source, original_completed)
+
         # Lost/moved source operational proof => full Verification, never
         # synthetic PASS from orphaned source CHECK records.
         (root / ".harness/local/verification-incremental/STEP-002.json").unlink()
