@@ -83,7 +83,11 @@ def main() -> int:
         assert first["status"] == "PASS" and first["verificationMode"] == "incremental", first
         assert first["executedChecks"] == [ui] and first["reusedCount"] == 1, first
         assert verification_freshness(root, step_id)["fresh"] is True
-        assert verification_command_evidence(root, step_id, backend)["fresh"] is True
+        # Aggregate PASS of the reused backend check remains current, but
+        # an exact-command consumer must not mistake reuse for a new execution.
+        exact_backend = verification_command_evidence(root, step_id, backend)
+        assert exact_backend["fresh"] is False
+        assert exact_backend["reasonCode"] == "VERIFICATION_EXACT_COMMAND_NOT_EXECUTED", exact_backend
         assert "Verification mode: incremental" in step.read_text(encoding="utf-8")
         assert "Provenance: " in step.read_text(encoding="utf-8")
         assert json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"] == baseline
