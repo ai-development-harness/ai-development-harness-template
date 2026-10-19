@@ -972,15 +972,22 @@ def run_step_verification(
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
     from completion_gate import acceptance_criteria
     acceptance = acceptance_criteria(root, step_id)
-    # Предыдущий Evidence должен быть producer-bound; stale subject допускается,
-    # подделанный/утраченный proof запрещает reuse и требует полного запуска.
-    previous = verification_freshness(root, step_id)
-    untrusted_evidence = previous.get("reasonCode") in {
-        "VERIFICATION_PROOF_MISSING", "VERIFICATION_PROOF_INVALID",
-        "VERIFICATION_PROOF_MISMATCH", "VERIFICATION_FRESHNESS_UNKNOWN",
-    }
-    if previous.get("status") not in {"PASS", "MISSING"}:
-        untrusted_evidence = True
+    # Проверяем producer-bound происхождение предыдущего Evidence ДО проверки
+    # subject freshness. Иначе tampered Evidence со stale subject мог бы
+    # замаскироваться кодом VERIFICATION_SUBJECT_STALE и разрешить cache reuse.
+    previous_section = read_task(root, step_id)["sections"].get("Evidence", "")
+    previous_block_match = re.search(
+        rf"{re.escape(EVIDENCE_START)}(.*?){re.escape(EVIDENCE_END)}",
+        previous_section, re.S,
+    )
+    untrusted_evidence = True
+    if previous_block_match is not None:
+        previous_block = previous_block_match.group(1)
+        previous_status = re.search(r"(?m)^- Status: (PASS|FAIL|MANUAL_REQUIRED)\s*$", previous_block)
+        if previous_status is not None and previous_status.group(1) == "PASS":
+            untrusted_evidence = verification_proof_error(
+                root, step_id, block=previous_block, status="PASS",
+            ) is not None
     selection = prepare_incremental(
         root, step_id, commands=command_names, acceptance=acceptance,
         contract_basis=contract_basis, context_basis=context_basis,
