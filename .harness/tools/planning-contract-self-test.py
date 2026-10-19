@@ -17,6 +17,8 @@ from planning_contract import (
     latest_matching_init_review,
     latest_matching_planning_review,
     plan_content_hash,
+    output_declaration_issues,
+    read_task,
     planning_context_basis,
     task_path,
     validate_init_review_report,
@@ -436,14 +438,14 @@ def main() -> int:
             "## Deliverables\n\n- spec/architecture.md#storage",
         )
         write(root / "work/tasks/STEP-1000.md", doc_output)
-        missing_doc_output = validate_planning_contracts(root)
+        missing_doc_output = output_declaration_issues(root, read_task(root, "STEP-1000"))
         assert any("architecture_outputs" in item for item in missing_doc_output), missing_doc_output
         declared_doc_output = doc_output.replace(
             "risk_flags:\n  - none",
             'architecture_outputs:\n  - "spec/architecture.md#storage"\nrisk_flags:\n  - none',
         )
         write(root / "work/tasks/STEP-1000.md", declared_doc_output)
-        declared_errors = validate_planning_contracts(root)
+        declared_errors = output_declaration_issues(root, read_task(root, "STEP-1000"))
         assert not any("architecture_outputs" in item for item in declared_errors), declared_errors
         before_delivery_basis = planning_context_basis(root, "STEP-1000")
         write(root / "spec/architecture.md", "# Architecture\n\n## Storage\n\nStorage feature delivered.\n\n## Auth\n\nAuth A.\n")
