@@ -332,6 +332,12 @@ def _corrective_baseline(
     ) is not None:
         raise IncrementalError("SOURCE_EVIDENCE_UNPROVEN")
     checkpoint = _read_checkpoint(root, source_id)
+    run_match = re.search(r"(?m)^- Verification run: (.+)$", section)
+    subject_match = re.search(r"(?m)^- Subject content hash: (sha256:[0-9a-f]{64})$", section)
+    if (run_match is None or subject_match is None or
+            checkpoint.get("latestRunAt") != run_match.group(1) or
+            checkpoint.get("latestSubjectHash") != subject_match.group(1)):
+        raise IncrementalError("SOURCE_CHECKPOINT_PROVENANCE_MISMATCH")
     if (checkpoint.get("status") not in (None, "PASS")
             or not isinstance(checkpoint.get("latestChecks"), dict)):
         raise IncrementalError("SOURCE_CACHE_INVALID")
@@ -401,6 +407,17 @@ def prepare(
             return fallback("ENVIRONMENT_UNPROVEN")
         if checkpoint.get("timeout") != timeout or checkpoint.get("environmentBasis") != environment:
             return fallback("SEMANTIC_OR_ENVIRONMENT_CHANGED")
+        # Local cache is not independent evidence. It must identify exactly
+        # the canonical producer-bound Evidence that was just authenticated
+        # by verification.py. Old cache without these fields is discarded.
+        if not inherited:
+            section = read_task(root, step_id)["sections"].get("Evidence", "")
+            run_match = re.search(r"(?m)^- Verification run: (.+)$", section)
+            subject_match = re.search(r"(?m)^- Subject content hash: (sha256:[0-9a-f]{64})$", section)
+            if (run_match is None or subject_match is None or
+                    checkpoint.get("latestRunAt") != run_match.group(1) or
+                    checkpoint.get("latestSubjectHash") != subject_match.group(1)):
+                return fallback("CHECKPOINT_PROVENANCE_MISMATCH")
         if not inherited and (
             checkpoint.get("contractBasis") != contract_basis or
             checkpoint.get("contextBasis") != context_basis
@@ -603,6 +620,8 @@ def record(
             "policyHash": policy["hash"], "contractBasis": result["contractBasis"],
             "contextBasis": result["contextBasis"], "environmentBasis": environment,
             "timeout": result["timeoutSeconds"], "fullBaseline": baseline,
+            "latestRunAt": result["runAt"],
+            "latestSubjectHash": result["subjectContentHash"],
             "latestChecks": latest,
         }
         # External editor мог изменить файлы во время чтения Git tree.
