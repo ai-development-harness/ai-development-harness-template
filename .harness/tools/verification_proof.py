@@ -97,6 +97,12 @@ def record_verification_proof(
         "contextBasis": result.get("contextBasis"),
         "subjectRevision": result.get("subjectRevision"),
         "blockSha256": _digest(block),
+        # Composite PASS remains bound to the immutable full-origin record.
+        "incrementalBaselineDigest": (
+            result["incremental"]["baselineDigest"]
+            if isinstance(result.get("incremental"), dict)
+               and result["incremental"].get("baselineDigest") else None
+        ),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(path, json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
@@ -134,4 +140,20 @@ def verification_proof_error(
         return "VERIFICATION_PROOF_INVALID"
     if saved.get("status") != status or saved.get("blockSha256") != _digest(block):
         return "VERIFICATION_PROOF_MISMATCH"
+    origin = saved.get("incrementalBaselineDigest")
+    if origin is not None:
+        # Do not accept a composite PASS once the full-origin local evidence
+        # disappears or changes. Project files alone cannot recreate it.
+        from verification_impact import digest
+        if not isinstance(origin, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", origin) is None:
+            return "VERIFICATION_INCREMENTAL_BASELINE_INVALID"
+        baseline = root / ".harness/local/verification-incremental" / (step_id + ".json")
+        if baseline.is_symlink() or not baseline.is_file() or baseline.stat().st_size > 3_000_000:
+            return "VERIFICATION_INCREMENTAL_BASELINE_MISSING"
+        try:
+            original = json.loads(baseline.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError):
+            return "VERIFICATION_INCREMENTAL_BASELINE_INVALID"
+        if digest(original) != origin:
+            return "VERIFICATION_INCREMENTAL_BASELINE_STALE"
     return None
