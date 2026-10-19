@@ -1,0 +1,113 @@
+name: PR 368 Independent Regression
+
+on:
+  push:
+    branches:
+      - test/pr368-regression-20261020
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  differential:
+    name: Differential Verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - name: Baseline at exact main SHA
+        run: |
+          git clone --quiet https://github.com/ai-development-harness/ai-development-harness-template.git "$RUNNER_TEMP/harness-main"
+          git -C "$RUNNER_TEMP/harness-main" checkout --quiet ead10e2fdb5740a3a2ce7e84825647d41bc351f8
+          mkdir -p results
+          python3 tests/pr368/independent_verification.py --repo "$RUNNER_TEMP/harness-main" --mode baseline | tee results/baseline.json
+      - name: Candidate at PR-derived test branch
+        run: |
+          python3 tests/pr368/independent_verification.py --repo "$GITHUB_WORKSPACE" --mode candidate | tee results/candidate.json
+      - name: Assert baseline/candidate contract and generate summary
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          old=json.loads(Path('results/baseline.json').read_text())
+          new=json.loads(Path('results/candidate.json').read_text())
+          assert old['status']==new['status']=='PASS'
+          assert {x['case'] for x in old['cases']} == {'initial-full','ui-change'}
+          assert all(x['status']=='PASS' for x in old['cases'])
+          assert any(x['case']=='ui-saved' and x['skipped_mandatory']==0 for x in new['cases'])
+          assert len(new['cases'])>=9
+          print('Independent differential Verification PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr368-differential-results
+          path: results/
+          if-no-files-found: warn
+
+  canary:
+    name: Canary Overlay / Artifact Compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+      - name: Checkout exact Canary stable state
+        run: |
+          git clone --quiet https://github.com/ai-development-harness/release-canary.git "$RUNNER_TEMP/canary-base"
+          git -C "$RUNNER_TEMP/canary-base" checkout --quiet 280e65cd233c71150abdc7a30dc1ca39fc7e2d0d
+          cp -a "$RUNNER_TEMP/canary-base" "$RUNNER_TEMP/canary-candidate"
+          test "$(git -C "$RUNNER_TEMP/canary-base" rev-parse HEAD)" = 280e65cd233c71150abdc7a30dc1ca39fc7e2d0d
+      - name: Read-only stable Canary integrity
+        run: |
+          ( cd "$RUNNER_TEMP/canary-base" && python3 .harness/tools/validate.py --mode ci )
+      - name: Apply exact PR diff to disposable Canary copy, never stable or main
+        shell: bash
+        run: |
+          git diff --name-status ead10e2fdb5740a3a2ce7e84825647d41bc351f8 cf90edb6065ca62baa3497154ad471f0f161629a -- .harness .agents |
+          while IFS=$'\t' read -r status name rest; do
+            case "$status" in
+              D*) rm -f "$RUNNER_TEMP/canary-candidate/$name" ;;
+              A*|M*) mkdir -p "$RUNNER_TEMP/canary-candidate/$(dirname "$name")"
+                      cp "$GITHUB_WORKSPACE/$name" "$RUNNER_TEMP/canary-candidate/$name" ;;
+              *) echo "Unsupported change $status: $name"; exit 1 ;;
+            esac
+          done
+          git -C "$RUNNER_TEMP/canary-base" diff --quiet
+      - name: Candidate Canary integration validation
+        run: |
+          ( cd "$RUNNER_TEMP/canary-candidate" && python3 .harness/tools/validate.py --mode ci )
+          ( cd "$RUNNER_TEMP/canary-candidate" && python3 .harness/tools/verification-incremental-self-test.py )
+          ( cd "$RUNNER_TEMP/canary-candidate" && python3 .harness/tools/late-defect-self-test.py )
+      - name: Verify unchanged real project artifacts
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, os
+          a=pathlib.Path(os.environ['RUNNER_TEMP'])/'canary-base'
+          b=pathlib.Path(os.environ['RUNNER_TEMP'])/'canary-candidate'
+          prefixes=('docs/requirements','docs/adr','planning/tasks','planning/reviews','planning/plan-reviews')
+          total=0
+          for pref in prefixes:
+              if not (a/pref).exists(): continue
+              for src in (a/pref).rglob('*'):
+                  if not src.is_file(): continue
+                  rel=src.relative_to(a)
+                  assert (b/rel).is_file(), rel
+                  assert src.read_bytes()==(b/rel).read_bytes(), rel
+                  total+=1
+          assert total>0
+          assert os.system(f'git -C "{a}" diff --quiet')==0
+          print(f'CANARY PRESERVATION: PASS ({total} real artifacts)')
+          PY
