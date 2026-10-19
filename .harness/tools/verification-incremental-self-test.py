@@ -150,6 +150,70 @@ def main() -> int:
             "\nverification:\n  impactMap: docs/verification/impact-map.json\n", "\n"))
         legacy = run_step_verification(root, step_id, manual_results=observation())
         assert legacy["status"] == "PASS" and legacy["verificationMode"] == "full", legacy
+        # Монолитный command остаётся источником baseline: только полный
+        # initial PASS вместе с обоими PASS групп разрешает decomposition.
+        # После локального UI delta сам monolith второй раз не запускается.
+        with tempfile.TemporaryDirectory(prefix="harness-composite-") as folder2:
+            second_root = Path(folder2)
+            fixture["prepare"](second_root)
+            composite_step = second_root / "planning/tasks/STEP-001.md"
+            monolith = (
+                'python3 -c "from pathlib import Path;'
+                " p=Path('.harness/local/monolith-count.txt');"
+                " p.parent.mkdir(parents=True, exist_ok=True);"
+                " p.open('a').write('1')"
+                '"'
+            )
+            group_ui = 'python3 -c "print(12)"'
+            group_backend = 'python3 -c "print(34)"'
+            write(composite_step, fixture["task"](
+                fixture["command_line"](monolith)
+                + "\n- manual: Проверить доступное имя кнопки"
+            ))
+            composite_manifest = second_root / ".harness/manifest.yaml"
+            write(composite_manifest, composite_manifest.read_text(encoding="utf-8")
+                  + "\nverification:\n  impactMap: docs/verification/impact-map.json\n")
+            write(second_root / "src/ui/button.tsx", 'export const title = "Button";\n')
+            write(second_root / "src/backend/logic.py", "print('backend')\n")
+            composite_criteria = acceptance_criteria(second_root, "STEP-001")
+            compound = {
+                "schemaVersion": 1, "steps": {"STEP-001": {
+                    "checks": [{
+                        "id": "all", "command": monolith, "inputs": ["src/ui/**", "src/backend/**"],
+                        "dependsOn": [], "acceptance": composite_criteria, "reusable": True,
+                        "groups": [
+                            {"id": "ui", "command": group_ui, "inputs": ["src/ui/**"],
+                             "dependsOn": [], "acceptance": composite_criteria, "reusable": True},
+                            {"id": "backend", "command": group_backend,
+                             "inputs": ["src/backend/**"],
+                             "dependsOn": [], "acceptance": composite_criteria, "reusable": True},
+                        ],
+                    }],
+                    "infrastructure": [".harness/manifest.yaml", "docs/verification/**"],
+                }},
+            }
+            write(second_root / "docs/verification/impact-map.json", json.dumps(compound))
+            seeded = run_step_verification(second_root, "STEP-001", manual_results=observation())
+            assert seeded["status"] == "PASS" and seeded["verificationMode"] == "full", seeded
+            assert [item["status"] for item in seeded["commands"][0]["groups"]] == ["PASS", "PASS"], seeded
+            counter = second_root / ".harness/local/monolith-count.txt"
+            assert counter.read_text(encoding="utf-8") == "1"
+            write(second_root / "src/ui/button.tsx", 'export const title = "Accessible";\n')
+            composite_result = run_step_verification(second_root, "STEP-001", manual_results=observation())
+            assert composite_result["status"] == "PASS" and composite_result["verificationMode"] == "incremental", composite_result
+            assert counter.read_text(encoding="utf-8") == "1", "qualified monolith was rerun"
+            groups = composite_result["commands"][0]["groups"]
+            assert [g["id"] for g in groups] == ["ui", "backend"], groups
+            assert "reusedFrom" not in groups[0] and groups[1].get("reusedFrom"), groups
+            assert verification_freshness(second_root, "STEP-001")["fresh"] is True
+            # A path covered by parent but NOT by a group cannot be skipped.
+            compound["steps"]["STEP-001"]["checks"][0]["inputs"].append("src/extra/**")
+            write(second_root / "docs/verification/impact-map.json", json.dumps(compound))
+            write(second_root / "src/extra/ambiguous.ts", "export const value = 1;\n")
+            blocked_selection = run_step_verification(second_root, "STEP-001", manual_results=observation())
+            assert blocked_selection["verificationMode"] == "full", blocked_selection
+            assert counter.read_text(encoding="utf-8") == "11", "full fallback omitted monolith"
+
         print("INCREMENTAL VERIFICATION SELF-TEST: PASS")
         return 0
 
