@@ -424,6 +424,35 @@ def main() -> int:
         assert task_path(root, "STEP-1000") == root / "work/tasks/STEP-1000.md"
         assert not validate_planning_contracts(root), validate_planning_contracts(root)
 
+        # #366: future -> delivered — документ становится результатом того же STEP.
+        # Структурный gate проверяет declarations; semantic claims — planning-review.
+        doc_before = (root / "spec/architecture.md").read_bytes()
+        task_before = (root / "work/tasks/STEP-1000.md").read_bytes()
+        dependency_before = (root / "work/tasks/STEP-1001.md").read_bytes()
+        adr_before_doc_sync = (root / "spec/adr/ADR-1000-test.md").read_bytes()
+        write(root / "spec/architecture.md", "# Architecture\n\n## Storage\n\nStorage feature is future.\n\n## Auth\n\nAuth A.\n")
+        doc_output = task("STEP-1000", depends=["STEP-1001"], adrs=["ADR-1000"]).replace(
+            "## Deliverables\n\n- fixture.",
+            "## Deliverables\n\n- spec/architecture.md#storage",
+        )
+        write(root / "work/tasks/STEP-1000.md", doc_output)
+        missing_doc_output = validate_planning_contracts(root)
+        assert any("architecture_outputs" in item for item in missing_doc_output), missing_doc_output
+        declared_doc_output = doc_output.replace(
+            "risk_flags:\n  - none",
+            'architecture_outputs:\n  - "spec/architecture.md#storage"\nrisk_flags:\n  - none',
+        )
+        write(root / "work/tasks/STEP-1000.md", declared_doc_output)
+        declared_errors = validate_planning_contracts(root)
+        assert not any("architecture_outputs" in item for item in declared_errors), declared_errors
+        before_delivery_basis = planning_context_basis(root, "STEP-1000")
+        write(root / "spec/architecture.md", "# Architecture\n\n## Storage\n\nStorage feature delivered.\n\n## Auth\n\nAuth A.\n")
+        assert before_delivery_basis == planning_context_basis(root, "STEP-1000")
+        assert (root / "work/tasks/STEP-1001.md").read_bytes() == dependency_before
+        assert (root / "spec/adr/ADR-1000-test.md").read_bytes() == adr_before_doc_sync
+        (root / "spec/architecture.md").write_bytes(doc_before)
+        (root / "work/tasks/STEP-1000.md").write_bytes(task_before)
+
         # status=completed без type-specific durable proof не является
         # допустимым lifecycle state даже если сам STEP schema-valid.
         completed_dependency = (
