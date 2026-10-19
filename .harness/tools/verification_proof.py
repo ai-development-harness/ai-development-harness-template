@@ -52,6 +52,18 @@ def _consistent_status(result: dict[str, Any]) -> bool:
             return False
         if item["status"] == "PASS" and item.get("exitCode") != 0:
             return False
+    # Legacy results have no groups. For a qualified decomposition,
+    # the canonical parent PASS requires PASS from every included child.
+    for item in groups[0]:
+        nested = item.get("groups")
+        if nested is None:
+            continue
+        if (not isinstance(nested, list) or len(nested) < 2 or
+                any(not isinstance(child, dict) or
+                    child.get("status") != "PASS" or child.get("exitCode") != 0
+                    for child in nested)):
+            if item.get("status") == "PASS":
+                return False
     for group in groups[1:]:
         if any(
             not isinstance(item, dict) or item.get("status") not in {"PASS", "FAIL"}
