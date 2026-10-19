@@ -230,6 +230,16 @@ def current_legacy_review_snapshots(root: Path) -> dict[str, str]:
     directory = review_directory(root)
     if not directory.is_dir():
         return snapshots
+    # Late user observations live alongside immutable REVIEW, but their
+    # schema/provenance is different: never manufacture a FAIL report.
+    from late_defect import ObservationError, read as read_late_defect
+    for path in sorted(directory.glob("STEP-*/OBSERVATION-*.json")):
+        try:
+            read_late_defect(root, path.parent.name, path.relative_to(root).as_posix())
+        except (ObservationError, OSError, ValueError) as exc:
+            errors.append(
+                f"review: invalid late defect observation {path.relative_to(root)}: {exc}"
+            )
     for path in sorted(directory.glob("STEP-*/REVIEW-*.md")):
         if path.is_symlink():
             continue
@@ -1508,6 +1518,7 @@ def _immutable_report_patterns(root: Path) -> tuple[tuple[str, re.Pattern[str]],
     result: list[tuple[str, re.Pattern[str]]] = []
     surfaces = (
         (review_directory, r"^STEP-\d{3,}/REVIEW-.+\.md$"),
+        (review_directory, r"^STEP-\d{3,}/OBSERVATION-\d{8}T\d{6}Z-[0-9a-f]{12}\.json$"),
         (planning_review_directory, r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$"),
         (init_review_directory, r"^INIT-REVIEW-.+\.md$"),
         (audit_directory, r"^(?:MIGRATION|AUDIT)-.+\.md$"),
