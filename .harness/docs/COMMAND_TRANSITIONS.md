@@ -111,7 +111,7 @@ INVALID_CHAIN
 
 - `GIT CHECK → GIT PUSH` требует `git-push-ready`;
 - `GIT CHECK → GIT PR` требует `git-pr-ready`;
-- `STEP REVIEW → STEP FIX` выполняется только при результате review `FAIL`;
+- `STEP REVIEW → STEP FIX` выполняется при `FAIL` либо при `PASS/SUCCESS` **только после подтверждённого immutable late-defect observation**;
 - внутри chain `HARNESS UPDATE CHECK → HARNESS UPDATE APPLY` требуется matching target/route; standalone APPLY выполняет собственный fresh deterministic preflight.
 
 Отсутствие runtime precondition не превращает цепочку в `INVALID_CHAIN`. Структура остаётся валидной, но исполнение может завершиться `BLOCKED` или остановить оставшиеся segments.
@@ -156,7 +156,7 @@ Segment структурно допустим, но execution до него не
 STEP REVIEW STEP-024 > FIX > REVIEW
 ```
 
-Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтому `FAIL` здесь не является универсальным «остановить chain» — transition graph определяет допустимый следующий шаг.
+Edge `REVIEW → FIX` разрешён при `FAIL` или по подтверждённому наблюдению о позднем дефекте после `PASS/SUCCESS`. Обычный PASS без observation завершает выполнение, не открывая FIX. Поэтому `FAIL` здесь не является универсальным «остановить chain» — transition graph определяет допустимый следующий шаг.
 
 ## Полная таблица команд и переходов
 
@@ -175,7 +175,7 @@ Edge `REVIEW → FIX` разрешён именно при `FAIL`. Поэтом�
 | `STEP NEXT` | no | — | standalone-only |
 | `STEP PLAN STEP-NNN` | yes | STEP IMPLEMENT | IMPLEMENT: result=SUCCESS; pre=step-implement-ready |
 | `STEP IMPLEMENT STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
-| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL; pre=— |
+| `STEP REVIEW STEP-NNN` | yes | STEP FIX | FIX: result=FAIL/PASS/SUCCESS; pre=confirmed-late-defect (FAIL разрешён без observation) |
 | `STEP FIX STEP-NNN` | yes | STEP REVIEW | REVIEW: result=SUCCESS; pre=— |
 | `STEP RUN STEP-NNN` | no | — | standalone-only |
 | `STEP AUDIT STEP-NNN` | no | — | standalone-only |
@@ -325,6 +325,16 @@ STEP RUN STEP-024 > GIT COMMIT
 ### `git-pr-ready`
 
 После `GIT CHECK` branch должна уже быть опубликована в состоянии, пригодном для `GIT PR`. Наличие unpublished local commit делает shortcut `GIT CHECK → GIT PR` blocked; для нового commit нужен путь через `GIT PUSH`.
+
+### `confirmed-late-defect`
+
+Для `REVIEW FAIL → FIX` действует прежний маршрут без observation. При
+`REVIEW PASS/SUCCESS → FIX` Core требует `in_progress` STEP, действующий
+producer-bound Verification PASS, schema-valid REVIEW PASS и связанный с ним
+неизменяемый late-defect observation. Без observation PASS завершает RUN.
+Если observation появился уже после RUN, используйте отдельный
+`STEP FIX STEP-NNN`. Completed STEP не переоткрывается: создаётся
+корректирующий STEP.
 
 ### `matching-update-target-and-route`
 

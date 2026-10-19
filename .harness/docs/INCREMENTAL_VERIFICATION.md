@@ -228,11 +228,28 @@ python3 .harness/tools/verify-step.py STEP-017 --full
 использования не будет. Запускается обычная полная Verification.
 Именно поэтому mechanism не требует миграции завершённых STEP.
 
-**Предел текущей версии:** отдельное наблюдение рассчитано на уже
-завершённый STEP. Ситуация, когда независимый REVIEW PASS записан, но
-completion старого STEP ещё заблокирован, требует дополнительной маршрутизации
-наблюдения через текущий FIX lifecycle; не следует подменять её
-поддельным FAIL review.
+**REVIEW PASS при `in_progress` STEP:** когда независимый schema-valid
+REVIEW имеет PASS, но Completion ещё BLOCKED, observation можно
+зарегистрировать на том же STEP при свежем producer-bound Verification PASS.
+Это доказательство REVIEW, а **не** подтверждение completed STEP.
+`STEP FIX STEP-NNN` сохраняет pre-FIX Git baseline, затем отдельный
+`fix_delta` REVIEW проверяет исправление. CTS допускает `REVIEW PASS → FIX`
+в chain/RUN только после verified observation; когда RUN уже завершён,
+вызывается явный `STEP FIX`. После completed STEP — отдельная corrective
+работа, без изменения исторического REVIEW/STEP.
+
+**Exact proof-команды:** синтетический parent PASS после выполнения групп
+достаточен для aggregate Verification, но не является доказательством запуска
+самой родительской команды. Consumers, которым требуется фактическое
+выполнение exact command (например `semantic-blast-radius`), не могут
+использовать `qualified-composite`/`reused` как `executed`.
+
+**Targeted FAIL/BLOCKED:** новый провал `verify-selected` аннулирует текущие
+локальные checkpoints/producer proof; следующий canonical Verification
+начинается с полного прогона, а не наследует прежний PASS.
+
+**Environment:** identity исполняемых файлов всех родительских и вложенных
+команд входит в basis; смена toolchain инвалидирует reuse.
 
 ## Local state и безопасность
 
