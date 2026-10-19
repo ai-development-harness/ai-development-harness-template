@@ -23,6 +23,17 @@ full PASS перезаписывает checkpoint; удаление любого
 Это clone-local, не Git и не новый source of truth. Подробности:
 [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
 
+Новые файлы `OBSERVATION-<UTC>-<sha256-prefix>.json` в configured
+`protocol.reviewDirectory/STEP-NNN/` являются **project-owned immutable
+supplemental evidence**, а не локальным operational state и не REVIEW/FAIL.
+Ими владеет `late_defect.py`; файл создаётся через `O_EXCL`, содержание
+проверяется по digest в имени и source trusted PASS/reproducer hash, а
+existing tracked modifications/renames/deletions блокирует immutable-report
+Git gate. Они не создают повторных claims о старом completion. Опциональный
+source cache для corrective STEP проверяется по pinned sha256; его потеря
+переходит в полный Verification. Подробнее:
+[INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
+
 Для temporary transport действует более узкое правило: Harness принимает только доказанный owned lexical path без symlink traversal, фиксирует exact content/identity и передаёт primary consumer-у captured snapshot, а не mutable path. После успешного postcondition удаляется только тот же unchanged file identity. Failure сохраняет input для retry. Ошибка secondary cleanup не меняет уже доказанный primary SUCCESS. Lock files cleanup-механизм не удаляет. Неизвестный local path без зарегистрированного lifecycle fail-safe не трогается.
 
 Изменение формата persistent local state без migration regression считается незавершённым protocol change.
