@@ -465,9 +465,13 @@ def prepare(
             return fallback("UNMAPPED_CHANGED_PATH")
         entries = _tree_entries(root, current)
         basis = {c["id"]: _inputs_basis(entries, c["inputs"]) for c in policy["checks"]}
+        # The reported defect invalidates its source PASS once. After the
+        # corrective STEP has produced its own fresh PASS, subsequent deltas
+        # follow normal per-input freshness instead of repeatedly discarding
+        # a proven repaired check.
         invalidated = set(
             observation["finding"]["invalidatedChecks"]
-        ) if observation is not None else set()
+        ) if inherited and observation is not None else set()
         affected = {c["id"] for c in policy["checks"] if not c["reusable"] or
                     c["id"] in invalidated or
                     original[c["id"]].get("inputBasis") != basis[c["id"]]}
