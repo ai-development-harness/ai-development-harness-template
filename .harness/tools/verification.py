@@ -840,7 +840,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
                 f"  - Provenance: {item.get('reusedFrom') or ('qualified-composite' if item.get('groups') else 'executed')}",
             ]
         )
-        for group in item.get("groups", []):
+        for group in (item.get("groups") or []):
             lines.extend([
                 f"  - Group id: {group['id']}",
                 f"    - Group command: {group['command']}",
@@ -1279,11 +1279,11 @@ def run_step_verification(
         "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
         "targetedReusedCount": 0 if reused is not None else len(targeted),
         "groupExecutedCount": sum(
-            1 for item in commands for group in item.get("groups", [])
+            1 for item in commands for group in (item.get("groups") or [])
             if not group.get("reusedFrom")
         ),
         "groupReusedCount": sum(
-            1 for item in commands for group in item.get("groups", [])
+            1 for item in commands for group in (item.get("groups") or [])
             if group.get("reusedFrom")
         ),
         "fallbackReason": selection.get("reasonCode"),
