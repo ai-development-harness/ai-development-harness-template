@@ -347,7 +347,18 @@ def _corrective_baseline(
         declared.update(group["id"] for group in check.get("groups", []))
     if any(name not in declared for name in invalidated):
         raise IncrementalError("OBSERVATION_CHECK_UNKNOWN")
-    # Only immutable control-plane artifacts may be absent from the old tree.
+    return checkpoint, observation, _corrective_control_paths(
+        root, step_id, policy, observation,
+    )
+
+
+def _corrective_control_paths(
+    root: Path, step_id: str, policy: dict[str, Any],
+    observation: dict[str, Any],
+) -> set[str]:
+    """Only configured, provenance-checked control-plane files are exempt."""
+    link = policy["reuse"]
+    source_id = link["sourceStep"]
     control = {
         task_path(root, source_id).relative_to(root).as_posix(),
         task_path(root, step_id).relative_to(root).as_posix(),
@@ -355,8 +366,6 @@ def _corrective_baseline(
         link["observation"],
         policy["mapPath"],
     }
-    # Project projections are generated, not test/source inputs. Canonical
-    # REQ/ADR/product files still trigger the ordinary unknown-path fallback.
     from harness_config import (
         roadmap_path, status_path, open_questions_index_path,
         requirements_directory,
@@ -372,7 +381,7 @@ def _corrective_baseline(
                        for name in ("SPEC.md", "STATUS.md"))
     except (ValueError, OSError):
         pass
-    return checkpoint, observation, control
+    return control
 
 
 def prepare(
@@ -395,6 +404,17 @@ def prepare(
         observation: dict[str, Any] | None = None
         try:
             checkpoint = _read_checkpoint(root, step_id)
+            if checkpoint.get("inheritedOrigin") is not None:
+                if checkpoint["inheritedOrigin"] != policy.get("reuse"):
+                    return fallback("CORRECTIVE_ORIGIN_CHANGED")
+                from late_defect import read as read_observation
+                linked = policy["reuse"]
+                observation = read_observation(
+                    root, linked["sourceStep"], linked["observation"],
+                )
+                control_paths = _corrective_control_paths(
+                    root, step_id, policy, observation,
+                )
         except IncrementalError:
             if policy.get("reuse") is None:
                 raise
@@ -437,7 +457,7 @@ def prepare(
         task_relative = task_path(root, step_id).relative_to(root).as_posix()
         meaningful = [
             p for p in paths
-            if p != task_relative and (not inherited or p not in control_paths)
+            if p != task_relative and p not in control_paths
         ]
         if any(_match(p, policy["infrastructure"]) or p == policy["mapPath"] for p in meaningful):
             return fallback("TEST_INFRASTRUCTURE_CHANGED")
@@ -622,6 +642,12 @@ def record(
             "timeout": result["timeoutSeconds"], "fullBaseline": baseline,
             "latestRunAt": result["runAt"],
             "latestSubjectHash": result["subjectContentHash"],
+            "inheritedOrigin": (
+                plan["checkpoint"].get("inheritedOrigin")
+                or plan["policy"].get("reuse")
+            ) if result.get("verificationMode") == "incremental" and plan is not None
+                and (plan.get("inheritedSource") or
+                     plan["checkpoint"].get("inheritedOrigin")) else None,
             "latestChecks": latest,
         }
         # External editor мог изменить файлы во время чтения Git tree.
