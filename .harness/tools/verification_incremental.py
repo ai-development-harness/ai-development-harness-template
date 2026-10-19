@@ -7,10 +7,8 @@
 """
 from __future__ import annotations
 
-from fnmatch import fnmatchcase
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -96,7 +94,7 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
             raise IncrementalError("REUSABLE_MUST_BE_BOOLEAN")
         _validate_patterns(check["inputs"], nonempty=True)
         depends = check["dependsOn"]
-        if not isinstance(depends, list) or len(set(depends)) != len(depends) or not all(isinstance(d, str) for d in depends):
+        if not isinstance(depends, list) or not all(isinstance(d, str) for d in depends) or len(set(depends)) != len(depends):
             raise IncrementalError("DEPENDENCY_LIST_INVALID")
         covered = check["acceptance"]
         if not isinstance(covered, list) or not covered or not all(isinstance(c, str) and c in acceptance for c in covered):
@@ -128,7 +126,7 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
 
 
 def _validate_patterns(patterns: Any, *, nonempty: bool = False) -> None:
-    if not isinstance(patterns, list) or (nonempty and not patterns) or len(patterns) != len(set(patterns)):
+    if not isinstance(patterns, list) or (nonempty and not patterns) or not all(isinstance(p, str) for p in patterns) or len(patterns) != len(set(patterns)):
         raise IncrementalError("INPUT_PATTERNS_INVALID")
     for pattern in patterns:
         if (not isinstance(pattern, str) or not pattern or not _GLOB.fullmatch(pattern)
@@ -221,7 +219,8 @@ def prepare(
         if not isinstance(base, dict) or not re.fullmatch(r"[0-9a-f]{40,64}", str(base.get("tree", ""))):
             return fallback("BASELINE_TREE_INVALID")
         original = checkpoint.get("latestChecks")
-        if not isinstance(original, dict) or set(original) != {c["id"] for c in policy["checks"]}:
+        if (not isinstance(original, dict) or set(original) != {c["id"] for c in policy["checks"]}
+                or not all(isinstance(item, dict) for item in original.values())):
             return fallback("CHECKPOINT_COVERAGE_INVALID")
         current = _tree(root)
         paths = _changed_paths(root, base["tree"], current)
@@ -283,7 +282,7 @@ def record(
         if result.get("verificationMode") == "incremental":
             if plan is None or plan.get("mode") != "incremental" or plan["policy"]["hash"] != policy["hash"]:
                 raise IncrementalError("INCREMENTAL_BASELINE_CHANGED")
-            if set(plan["executed"]) != set(result.get("executedChecks", [])):
+            if not set(plan["executed"]).issubset(set(result.get("executedChecks", []))):
                 raise IncrementalError("INCREMENTAL_SELECTION_CHANGED")
             original = plan["checkpoint"]
             baseline = original["fullBaseline"]
