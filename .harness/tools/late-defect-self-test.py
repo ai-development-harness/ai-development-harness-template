@@ -128,6 +128,17 @@ def main() -> int:
             assert correction["verificationMode"] == "incremental", correction
             assert correction["executedChecks"] == [ui] and correction["reusedCount"] == 1, correction
             assert verification_freshness(root, "STEP-002")["fresh"] is True
+            # Next local FIX still compares with original full baseline,
+            # while the first corrected UI PASS is now a valid own proof.
+            write(root / "src/ui/Button.tsx", "export const label = 'Improved accessible name';\n")
+            another = run_step_verification(
+                root, "STEP-002", manual_results=[{
+                    "check": "Проверить доступное имя кнопки",
+                    "status": "PASS", "observed": "Improved accessible name checked.",
+                }],
+            )
+            assert another["status"] == "PASS" and another["verificationMode"] == "incremental", another
+            assert another["executedChecks"] == [ui] and another["reusedCount"] == 1, another
             assert source.read_bytes() == accepted_bytes, "completed STEP mutated"
             assert review_path.read_bytes() == review_bytes, "trusted REVIEW mutated"
             assert (root / obs_rel).read_bytes() == original_observation, "observation mutated"
