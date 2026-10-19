@@ -223,6 +223,8 @@ def read(root: Path, source_id: str, relative: str) -> dict[str, Any]:
         if hashlib.sha256(raw).hexdigest()[:12] != NAME.fullmatch(path.name).group(2):
             raise ObservationError("immutable observation content was changed")
         value = json.loads(raw.decode("utf-8"))
+    except ObservationError:
+        raise
     except (OSError, ValueError, UnicodeError) as exc:
         raise ObservationError("observation is unreadable") from exc
     if (not isinstance(value, dict) or set(value) != {
