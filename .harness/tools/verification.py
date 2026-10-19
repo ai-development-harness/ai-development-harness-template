@@ -41,6 +41,7 @@ from project_verification import (
 from review_contract import repository_revision, repository_subject_content_hash
 from verification_resume import remember_pending, reuse_pending, forget_pending
 from verification_proof import record_verification_proof, verification_proof_error
+from verification_incremental_runner import try_incremental, remember_full
 
 
 COMMAND_RE = re.compile(r"^- command:\s*\x60([^\x60]+)\x60\s*$")
@@ -726,6 +727,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Verification run: {result['runAt']}",
         f"- Status: {result['status']}",
         f"- Automated resumed: {str(result.get('automatedResumed', False)).lower()}",
+        f"- Verification mode: {result.get('mode', 'full')}",
         f"- Git head: {revision.get('git_head') or 'none'}",
         f"- Worktree hash: {revision.get('worktree_hash') or 'clean'}",
         f"- Verification contract basis: {result['contractBasis']}",
@@ -753,6 +755,21 @@ def _evidence_block(result: dict[str, Any]) -> str:
                 f"  - stderr bytes: {item.get('stderrBytes')}",
             ]
         )
+
+    # Parent commands in incremental mode are proven by check groups. Their
+    # stdout hashes are synthetic summaries, not a claim that the parent ran.
+    if result.get("incremental"):
+        details = result["incremental"]
+        lines.extend(["", "### Incremental verification",
+                      f"- Baseline subject: {details['baseline']}",
+                      f"- Baseline proof: {details['baselineDigest']}",
+                      f"- Executed checks: {details['executedCount']}",
+                      f"- Reused checks: {details['reusedCount']}"])
+        for group in details["groups"]:
+            source = "original full PASS" if group["reused"] else "current execution"
+            lines.append(f"- Check: {group['id']} | {group['status']} | {source} | {group['command']}")
+    if result.get("fallbackReason"):
+        lines.extend(["", "### Incremental fallback", f"- Reason: {result['fallbackReason']}"])
 
     lines.extend(["", "### Product verification"])
     product = result.get("product", [])
@@ -880,6 +897,9 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         record_verification_proof(
             root, step_id, block=match.group(1), result=result,
         )
+        # The complete baseline is captured only after a trusted full PASS.
+        # Any failure to cache it simply means that the next run is full.
+        remember_full(root, step_id, result)
 
 
 def write_verification_evidence(
@@ -898,6 +918,7 @@ def run_step_verification(
     manual_results: list[dict[str, Any]] | None = None,
     product_results: list[dict[str, Any]] | None = None,
     write_evidence: bool = True,
+    force_full: bool = False,
 ) -> dict[str, Any]:
     """Run explicit Verification contract and return factual result."""
     try:
@@ -944,15 +965,29 @@ def run_step_verification(
 
     resume_basis = _resume_contract_basis(contract_basis, context_basis)
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
+    impact_commands, impact_detail, impact_fallback = try_incremental(
+        root, step_id, commands=command_names, contract=contract_basis,
+        context=context_basis, revision=revision, timeout=timeout,
+        force_full=force_full,
+    )
+    if isinstance(impact_detail, dict) and impact_detail.get("blocked"):
+        return {
+            "schemaVersion": 1, "status": "BLOCKED", "stepId": step_id,
+            "reasonCode": "VERIFICATION_INCREMENTAL_BLOCKED",
+            "commands": impact_commands,
+        }
     reused = None
-    if manual_results is not None or product_results is not None:
+    if impact_commands is None and (manual_results is not None or product_results is not None):
         reused = reuse_pending(
             root, step_id, contract=resume_basis,
             subject=subject_revision, names=command_names, timeout=timeout,
         )
-    commands: list[dict[str, Any]] = list(reused) if reused is not None else []
+    commands: list[dict[str, Any]] = (
+        list(impact_commands) if impact_commands is not None
+        else list(reused) if reused is not None else []
+    )
     try:
-        for entry in ([] if reused is not None else entries):
+        for entry in ([] if (reused is not None or impact_commands is not None) else entries):
             if entry["kind"] != "command":
                 continue
             before = repository_revision(root)
@@ -1056,6 +1091,9 @@ def run_step_verification(
         "schemaVersion": 1,
         "status": status,
         "automatedResumed": reused is not None,
+        "mode": "incremental" if impact_detail else "full",
+        "incremental": impact_detail,
+        "fallbackReason": impact_fallback,
         "stepId": step_id,
         "runAt": utc_now(),
         "revision": revision,
