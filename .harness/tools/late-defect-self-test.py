@@ -9,7 +9,7 @@ from pathlib import Path
 import tempfile
 from review_contract import latest_review, latest_trusted_review, validate_review_report
 from execution_status import start_execution, complete_command, resolve_root, begin_command, block_execution
-from fix_delta import capture_fix
+from fix_delta import capture_fix, complete_fix, review_scope
 
 from completion_gate import acceptance_criteria
 from late_defect import ObservationError, read, record
@@ -136,6 +136,23 @@ def main() -> int:
         begun = begin_command(root, chain, "STEP FIX STEP-001")
         captured = capture_fix(root, "STEP-001", begun["executionId"])
         assert captured["observation"] == active_rel
+        # Реальный FIX меняет продукт, canonical Verification перепроверяет
+        # исправленный сценарий и только после PASS закрывает delta handoff.
+        write(root / "src/ui/Button.tsx", "export const label = 'Fixed accessible name';\\n")
+        verified_fix = run_step_verification(
+            root, "STEP-001", manual_results=[{
+                "check": "Проверить доступное имя кнопки",
+                "status": "PASS",
+                "observed": "Post-PASS defect fixed and screen-reader name confirmed.",
+            }],
+        )
+        assert verified_fix["status"] == "PASS", verified_fix
+        complete_fix(root, "STEP-001", begun["executionId"])
+        scoped = review_scope(root, "STEP-001")
+        assert scoped["mode"] == "fix_delta", scoped
+        assert scoped["observation"]["path"] == active_rel, scoped
+        assert scoped["previousFingerprints"] == [], "no forged FAIL findings"
+        assert "src/ui/Button.tsx" in scoped["changedPaths"], scoped
         block_execution(root, chain, command="STEP FIX STEP-001")
 
         # После завершения исходного STEP старый REVIEW/STEP не меняется.
