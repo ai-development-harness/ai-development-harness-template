@@ -459,6 +459,24 @@ def main() -> int:
         assert confirmed["status"] == "PASS", confirmed
         assert confirmed["automatedResumed"] is False, confirmed
 
+        # --full не имеет права использовать даже прежний 30-минутный
+        # cache автоматической стадии manual Verification: пользователь
+        # явно потребовал повторного выполнения каждой команды.
+        reset(root)
+        force_pending = run_step_verification(root, "STEP-001")
+        assert force_pending["status"] == "MANUAL_REQUIRED", force_pending
+        forced = run_step_verification(
+            root, "STEP-001",
+            manual_results=[{
+                "check": "Подтвердить semantic condition",
+                "status": "PASS", "observed": "Forced full verification.",
+            }],
+            force_full=True,
+        )
+        assert forced["status"] == "PASS" and forced["verificationMode"] == "full", forced
+        assert forced["automatedResumed"] is False, forced
+        assert forced["executedCount"] == 1 and forced["reusedCount"] == 0, forced
+
         # Direct evidence writer не должен сохранять результат для старой
         # ревизии, даже если проверки уже завершились успешно.
         reset(root)
