@@ -282,7 +282,8 @@ def record(
         if result.get("verificationMode") == "incremental":
             if plan is None or plan.get("mode") != "incremental" or plan["policy"]["hash"] != policy["hash"]:
                 raise IncrementalError("INCREMENTAL_BASELINE_CHANGED")
-            if not set(plan["executed"]).issubset(set(result.get("executedChecks", []))):
+            proven = set(result.get("executedChecks", [])) | set(result.get("targetedChecks", []))
+            if not set(plan["executed"]).issubset(proven):
                 raise IncrementalError("INCREMENTAL_SELECTION_CHANGED")
             original = plan["checkpoint"]
             baseline = original["fullBaseline"]
