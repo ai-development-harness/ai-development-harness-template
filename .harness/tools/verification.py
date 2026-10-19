@@ -41,6 +41,7 @@ from project_verification import (
 from review_contract import repository_revision, repository_subject_content_hash
 from verification_resume import remember_pending, reuse_pending, forget_pending
 from verification_proof import record_verification_proof, verification_proof_error
+from verification_incremental import prepare as prepare_incremental, record as record_incremental
 
 
 COMMAND_RE = re.compile(r"^- command:\s*\x60([^\x60]+)\x60\s*$")
@@ -726,6 +727,10 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Verification run: {result['runAt']}",
         f"- Status: {result['status']}",
         f"- Automated resumed: {str(result.get('automatedResumed', False)).lower()}",
+        f"- Verification mode: {result.get('verificationMode', 'full')}",
+        f"- Incremental executed checks: {result.get('executedCount', len(result.get('commands', [])))}",
+        f"- Incremental reused checks: {result.get('reusedCount', 0)}",
+        f"- Incremental fallback reason: {result.get('fallbackReason') or 'none'}",
         f"- Git head: {revision.get('git_head') or 'none'}",
         f"- Worktree hash: {revision.get('worktree_hash') or 'clean'}",
         f"- Verification contract basis: {result['contractBasis']}",
@@ -751,6 +756,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
                 f"  - stderr sha256: {item.get('stderrSha256')}",
                 f"  - stdout bytes: {item.get('stdoutBytes')}",
                 f"  - stderr bytes: {item.get('stderrBytes')}",
+                f"  - Provenance: {item.get('reusedFrom') or 'executed'}",
             ]
         )
 
@@ -880,6 +886,25 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         record_verification_proof(
             root, step_id, block=match.group(1), result=result,
         )
+        # Только штатный Evidence writer имеет право продвинуть checkpoint.
+        # При ошибке optional cache остаётся прежним; PASS не превращаем в FAIL.
+        from completion_gate import acceptance_criteria
+        commands = [entry["value"] for entry in parse_verification(root, step_id)
+                    if entry["kind"] == "command"]
+        plan = None
+        if result.get("verificationMode") == "incremental":
+            plan = prepare_incremental(
+                root, step_id, commands=commands,
+                acceptance=acceptance_criteria(root, step_id),
+                contract_basis=result["contractBasis"],
+                context_basis=result["contextBasis"],
+                timeout=result["timeoutSeconds"],
+                subject_hash=result["subjectContentHash"],
+            )
+        record_incremental(
+            root, step_id, result=result, plan=plan,
+            commands=commands, acceptance=acceptance_criteria(root, step_id),
+        )
 
 
 def write_verification_evidence(
@@ -898,8 +923,9 @@ def run_step_verification(
     manual_results: list[dict[str, Any]] | None = None,
     product_results: list[dict[str, Any]] | None = None,
     write_evidence: bool = True,
+    force_full: bool = False,
 ) -> dict[str, Any]:
-    """Run explicit Verification contract and return factual result."""
+    """Run canonical Verification, optionally reusing proven check inputs."""
     try:
         entries = parse_verification(root, step_id)
         timeout = verification_command_timeout_seconds(root)
@@ -944,6 +970,23 @@ def run_step_verification(
 
     resume_basis = _resume_contract_basis(contract_basis, context_basis)
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
+    from completion_gate import acceptance_criteria
+    acceptance = acceptance_criteria(root, step_id)
+    # Предыдущий Evidence должен быть producer-bound; stale subject допускается,
+    # подделанный/утраченный proof запрещает reuse и требует полного запуска.
+    previous = verification_freshness(root, step_id)
+    untrusted_evidence = previous.get("reasonCode") in {
+        "VERIFICATION_PROOF_MISSING", "VERIFICATION_PROOF_INVALID",
+        "VERIFICATION_PROOF_MISMATCH", "VERIFICATION_FRESHNESS_UNKNOWN",
+    }
+    if previous.get("status") not in {"PASS", "MISSING"}:
+        untrusted_evidence = True
+    selection = prepare_incremental(
+        root, step_id, commands=command_names, acceptance=acceptance,
+        contract_basis=contract_basis, context_basis=context_basis,
+        timeout=timeout, subject_hash=subject_content_hash,
+        full=force_full or untrusted_evidence,
+    )
     reused = None
     if manual_results is not None or product_results is not None:
         reused = reuse_pending(
@@ -954,6 +997,9 @@ def run_step_verification(
     try:
         for entry in ([] if reused is not None else entries):
             if entry["kind"] != "command":
+                continue
+            if selection["mode"] == "incremental" and entry["value"] in selection["reused"]:
+                commands.append(selection["reused"][entry["value"]])
                 continue
             before = repository_revision(root)
             if not _revision_equal(before, revision):
@@ -1056,6 +1102,11 @@ def run_step_verification(
         "schemaVersion": 1,
         "status": status,
         "automatedResumed": reused is not None,
+        "verificationMode": selection["mode"],
+        "executedChecks": list(selection["executed"]),
+        "executedCount": 0 if reused is not None else len(selection["executed"]),
+        "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
+        "fallbackReason": selection.get("reasonCode"),
         "stepId": step_id,
         "runAt": utc_now(),
         "revision": revision,
