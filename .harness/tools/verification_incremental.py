@@ -504,8 +504,11 @@ def remember_targeted(
         _read_checkpoint(root, step_id)  # targeted without full baseline is only feedback
         environment = _environment_basis(commands)
         selected = {item.get("command"): item for item in results if isinstance(item, dict)}
+        allowed = set(commands)
+        for check in policy["checks"]:
+            allowed.update(group["command"] for group in check.get("groups", []))
         if (not environment or len(selected) != len(results) or not selected
-                or not set(selected).issubset(set(commands))
+                or not set(selected).issubset(allowed)
                 or any(item.get("status") != "PASS" or item.get("exitCode") != 0 for item in selected.values())):
             return
         payload = {
@@ -551,10 +554,15 @@ def reuse_targeted(
         stored = data.get("commands")
         if not isinstance(stored, dict):
             return {}
+        eligible = set(selection["executed"])
+        for composite in selection.get("composites", {}).values():
+            for group in composite["groups"]:
+                if group.get("reused") is None:
+                    eligible.add(group["spec"]["command"])
         return {
             name: {**item, "reusedFrom": "targeted-feedback"}
             for name, item in stored.items()
-            if (name in selection["executed"] and isinstance(item, dict)
+            if (name in eligible and isinstance(item, dict)
                 and item.get("command") == name and item.get("status") == "PASS"
                 and item.get("exitCode") == 0)
         }
