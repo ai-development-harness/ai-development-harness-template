@@ -105,6 +105,10 @@ def main() -> int:
         assert blocked_review and blocked_review["verdict"] == "PASS"
         assert blocked_review["completionResult"] == "BLOCKED"
         assert latest_trusted_review(root, "STEP-001") is None
+        from execution_status import _post_pass_fix_allowed
+        assert not _post_pass_fix_allowed(root, "STEP REVIEW STEP-001", "SUCCESS"), (
+            "ordinary PASS must not open an implicit FIX without observation"
+        )
         active_observation = record(
             root, "STEP-001", criterion=criteria[0],
             given="Button is present", when="The screen reader focuses it",
