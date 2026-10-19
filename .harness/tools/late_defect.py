@@ -12,7 +12,6 @@ import json
 import os
 from pathlib import Path
 import re
-import secrets
 from typing import Any
 
 from completion_gate import acceptance_criteria
@@ -147,8 +146,6 @@ def record(
     directory = _directory(root, step_id)
     directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    name = f"OBSERVATION-{stamp}-{secrets.token_hex(6)}.json"
-    path = directory / name
     value = {
         "schemaVersion": 1, "kind": "late-defect",
         "sourceStep": step_id, "observedAt": datetime.now(timezone.utc).isoformat(),
@@ -163,6 +160,9 @@ def record(
         },
     }
     payload = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+    # Content-derived suffix prevents undetected edits to the observation.
+    name = f"OBSERVATION-{stamp}-{hashlib.sha256(payload).hexdigest()[:12]}.json"
+    path = directory / name
     # O_EXCL prevents overwrite or following a symlink on concurrent writers.
     fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     try:
@@ -193,7 +193,10 @@ def read(root: Path, source_id: str, relative: str) -> dict[str, Any]:
     if not path.is_file():
         raise ObservationError("observation is missing")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest()[:12] != NAME.fullmatch(path.name).group(2):
+            raise ObservationError("immutable observation content was changed")
+        value = json.loads(raw.decode("utf-8"))
     except (OSError, ValueError, UnicodeError) as exc:
         raise ObservationError("observation is unreadable") from exc
     if (not isinstance(value, dict) or set(value) != {
