@@ -31,7 +31,8 @@ Git tree остаётся в локальном хранилище Git-объе�
 
 Это операционное состояние, не отслеживаемое Git и не являющееся проектным
 Evidence. Оно привязано к конкретному `executionId` FIX, исходному
-неизменяемому FAIL-отчёту, fingerprints findings, pre-FIX Git tree и
+неизменяемому FAIL-отчёту или подтверждённому post-PASS observation,
+fingerprints findings (для post-PASS пустые), pre-FIX Git tree и
 post-FIX revision объекта проверки. Возобновление **того же** FIX не должно
 перезаписывать исходный snapshot. Новый FIX создаёт новый baseline.
 
