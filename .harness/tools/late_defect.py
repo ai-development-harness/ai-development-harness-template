@@ -142,7 +142,23 @@ def record(
     if not evidence.is_file() or evidence.is_symlink():
         raise ObservationError("reproducer evidence file must exist and not be a symlink")
     evidence_rel = evidence.relative_to(root).as_posix()
+    # A reproducer kept only in gitignored/local state disappears on checkout.
+    # Such a path cannot be a durable source of correction evidence.
+    import subprocess
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "--", evidence_rel],
+        cwd=root, capture_output=True, check=False,
+    )
+    if ignored.returncode != 1:
+        raise ObservationError("reproducer must be a non-ignored repository file")
     proof = {"path": evidence_rel, "sha256": _digest(evidence.read_bytes())}
+    reuse = _reuse_origin(root, step_id)
+    if reuse is not None:
+        available = {item["id"] for item in reuse["checks"]}
+        for item in reuse["checks"]:
+            available.update(child["id"] for child in item.get("groups", []))
+        if any(value not in available for value in invalidated_checks):
+            raise ObservationError("invalidatedChecks contains unknown check IDs")
     directory = _directory(root, step_id)
     directory.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -150,7 +166,7 @@ def record(
         "schemaVersion": 1, "kind": "late-defect",
         "sourceStep": step_id, "observedAt": datetime.now(timezone.utc).isoformat(),
         "source": source,
-        "reuse": _reuse_origin(root, step_id),
+        "reuse": reuse,
         "finding": {
             "criterion": criterion,
             "given": given.strip(), "when": when.strip(),
