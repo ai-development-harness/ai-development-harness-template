@@ -87,6 +87,18 @@ def main() -> int:
         assert "Provenance: " in step.read_text(encoding="utf-8")
         assert json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"] == baseline
 
+        # Выбранную UI-проверку, уже пройденную на этой exact revision,
+        # повторно при completion не запускаем.
+        from verification_selective import run_selected
+        write(root / "src/ui/button.tsx", 'export const label = "Updated accessible button";\n')
+        targeted = run_selected(root, step_id, [ui])
+        assert targeted["status"] == "PASS" and targeted["completionProof"] is False, targeted
+        targeted_completion = run_step_verification(root, step_id, manual_results=observation())
+        assert targeted_completion["status"] == "PASS", targeted_completion
+        assert targeted_completion["verificationMode"] == "incremental", targeted_completion
+        assert targeted_completion["executedCount"] == 0, targeted_completion
+        assert targeted_completion["targetedReusedCount"] == 1, targeted_completion
+
         # Повторное изменение другой подсистемы не теряет исходный полный baseline.
         write(root / "src/backend/service.py", 'print("backend updated")\n')
         second = run_step_verification(root, step_id, manual_results=observation())
