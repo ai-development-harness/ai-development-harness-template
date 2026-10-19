@@ -944,6 +944,28 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         stale_reason = _stale_inputs_reason(root, step_id, result)
         if stale_reason is not None:
             raise VerificationInputsStale(stale_reason)
+        # Для инкрементальной записи сохраняем точный validated selection
+        # *до* изменения Evidence: после публикации новый runAt уже не совпадёт
+        # с previous cache, и повторная prepare даст ложный full fallback.
+        from completion_gate import acceptance_criteria
+        verified_commands = [item["value"] for item in parse_verification(root, step_id)
+                             if item["kind"] == "command"]
+        criteria = acceptance_criteria(root, step_id)
+        incremental_plan = None
+        if result.get("verificationMode") == "incremental":
+            incremental_plan = prepare_incremental(
+                root, step_id, commands=verified_commands,
+                acceptance=criteria, contract_basis=result["contractBasis"],
+                context_basis=result["contextBasis"],
+                timeout=result["timeoutSeconds"],
+                subject_hash=result["subjectContentHash"],
+            )
+            if incremental_plan.get("mode") != "incremental":
+                # The computed result cannot be published as incremental if
+                # its proof basis has become stale since command selection.
+                raise VerificationInputsStale(
+                    "incremental verification selection changed before Evidence write"
+                )
         path = task_path(root, step_id)
         original = path.read_bytes()
         updated = _replace_evidence_block(
@@ -977,24 +999,11 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         record_verification_proof(
             root, step_id, block=match.group(1), result=result,
         )
-        # Только штатный Evidence writer имеет право продвинуть checkpoint.
-        # При ошибке optional cache остаётся прежним; PASS не превращаем в FAIL.
-        from completion_gate import acceptance_criteria
-        commands = [entry["value"] for entry in parse_verification(root, step_id)
-                    if entry["kind"] == "command"]
-        plan = None
-        if result.get("verificationMode") == "incremental":
-            plan = prepare_incremental(
-                root, step_id, commands=commands,
-                acceptance=acceptance_criteria(root, step_id),
-                contract_basis=result["contractBasis"],
-                context_basis=result["contextBasis"],
-                timeout=result["timeoutSeconds"],
-                subject_hash=result["subjectContentHash"],
-            )
+        # Record the validated pre-publication selection against the exact
+        # current producer-bound PASS. Optional local cache remains expendable.
         record_incremental(
-            root, step_id, result=result, plan=plan,
-            commands=commands, acceptance=acceptance_criteria(root, step_id),
+            root, step_id, result=result, plan=incremental_plan,
+            commands=verified_commands, acceptance=criteria,
         )
 
 
