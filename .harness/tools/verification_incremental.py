@@ -373,14 +373,29 @@ def prepare(
         if not isinstance(flags, list) or any(flag in NON_REUSABLE_FLAGS for flag in flags):
             return fallback("RISK_REQUIRES_FULL")
         policy = _source_map(root, step_id, commands, acceptance)
-        checkpoint = _read_checkpoint(root, step_id)
+        inherited = False
+        control_paths: set[str] = set()
+        observation: dict[str, Any] | None = None
+        try:
+            checkpoint = _read_checkpoint(root, step_id)
+        except IncrementalError:
+            if policy.get("reuse") is None:
+                raise
+            checkpoint, observation, control_paths = _corrective_baseline(
+                root, step_id, policy,
+            )
+            inherited = True
         environment = _environment_basis(commands)
         if not environment:
             return fallback("ENVIRONMENT_UNPROVEN")
-        if (checkpoint.get("contractBasis") != contract_basis or checkpoint.get("contextBasis") != context_basis
-                or checkpoint.get("timeout") != timeout or checkpoint.get("environmentBasis") != environment):
+        if checkpoint.get("timeout") != timeout or checkpoint.get("environmentBasis") != environment:
             return fallback("SEMANTIC_OR_ENVIRONMENT_CHANGED")
-        if checkpoint.get("policyHash") != policy["hash"]:
+        if not inherited and (
+            checkpoint.get("contractBasis") != contract_basis or
+            checkpoint.get("contextBasis") != context_basis
+        ):
+            return fallback("SEMANTIC_OR_ENVIRONMENT_CHANGED")
+        if not inherited and checkpoint.get("policyHash") != policy["hash"]:
             return fallback("IMPACT_MAP_CHANGED")
         base = checkpoint.get("fullBaseline")
         if not isinstance(base, dict) or not re.fullmatch(r"[0-9a-f]{40,64}", str(base.get("tree", ""))):
@@ -392,14 +407,21 @@ def prepare(
         current = _tree(root)
         paths = _changed_paths(root, base["tree"], current)
         task_relative = task_path(root, step_id).relative_to(root).as_posix()
-        meaningful = [p for p in paths if p != task_relative]
+        meaningful = [
+            p for p in paths
+            if p != task_relative and (not inherited or p not in control_paths)
+        ]
         if any(_match(p, policy["infrastructure"]) or p == policy["mapPath"] for p in meaningful):
             return fallback("TEST_INFRASTRUCTURE_CHANGED")
         if any(not any(_match(p, c["inputs"]) for c in policy["checks"]) for p in meaningful):
             return fallback("UNMAPPED_CHANGED_PATH")
         entries = _tree_entries(root, current)
         basis = {c["id"]: _inputs_basis(entries, c["inputs"]) for c in policy["checks"]}
+        invalidated = set(
+            observation["finding"]["invalidatedChecks"]
+        ) if observation is not None else set()
         affected = {c["id"] for c in policy["checks"] if not c["reusable"] or
+                    c["id"] in invalidated or
                     original[c["id"]].get("inputBasis") != basis[c["id"]]}
         # Зависимым проверкам недостаточно собственного неизменённого glob.
         while True:
@@ -434,8 +456,9 @@ def prepare(
                     group["id"] for group in check["groups"]
                     if (
                         check["id"] in affected
-                        and (not check["reusable"] or record.get("inputBasis") == basis[check["id"]])
-                    ) or not group["reusable"]
+                        and (not check["reusable"] or check["id"] in invalidated
+                             or record.get("inputBasis") == basis[check["id"]])
+                    ) or group["id"] in invalidated or not group["reusable"]
                     or previous_groups[group["id"]].get("inputBasis") != group_basis[group["id"]]
                 }
                 while True:
@@ -489,7 +512,9 @@ def prepare(
             "mode": "incremental", "reasonCode": None,
             "executed": executed, "reused": reused, "snapshot": current,
             "policy": policy, "checkpoint": checkpoint, "inputBases": basis,
-            "composites": composites,
+            "composites": composites, "inheritedSource": (
+                policy["reuse"]["sourceStep"] if inherited else None
+            ),
             "changedPaths": meaningful, "subjectHash": subject_hash,
         }
     except (IncrementalError, OSError, ValueError) as exc:
