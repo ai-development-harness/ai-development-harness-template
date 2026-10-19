@@ -472,7 +472,7 @@ def _new_valid_review_paths(
     allowed: set[str] = set()
     for name in candidates:
         candidate = root / name
-        if candidate.parent != folder or not re.fullmatch(r"REVIEW-\\d{8}T\\d{6}Z\\.md", candidate.name):
+        if candidate.parent != folder or not re.fullmatch(r"REVIEW-\d{8}T\d{6}Z\.md", candidate.name):
             continue
         if name in baseline_names:
             raise IncrementalError("HISTORICAL_REVIEW_CHANGED")
