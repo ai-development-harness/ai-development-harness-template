@@ -25,6 +25,10 @@ jobs:
           git -C "$RUNNER_TEMP/corrective" fetch -q origin 1e4245d58f50035fa114fd97e1e6ec05903e741a
           git -C "$RUNNER_TEMP/corrective" checkout -q --detach 1e4245d58f50035fa114fd97e1e6ec05903e741a
           test -z "$(git -C "$RUNNER_TEMP/corrective" status --porcelain)"
+      - name: Apply independent Windows path correction in disposable checkout
+        run: |
+          git -C "$RUNNER_TEMP/corrective" fetch -q origin 2652fd823a6a7f2101bf25be317bb4486d19bd6f
+          git -C "$RUNNER_TEMP/corrective" restore --source=2652fd823a6a7f2101bf25be317bb4486d19bd6f -- .harness/tools/verification_incremental.py .harness/tools/verification-incremental-self-test.py
       - name: Exact corrected Harness Integrity
         run: |
           cd "$RUNNER_TEMP/corrective"
@@ -74,6 +78,8 @@ jobs:
           git clone -q https://github.com/ai-development-harness/ai-development-harness-template.git "$RUNNER_TEMP/correction"
           git -C "$RUNNER_TEMP/correction" fetch -q origin 1e4245d58f50035fa114fd97e1e6ec05903e741a
           git -C "$RUNNER_TEMP/correction" checkout -q --detach 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          git -C "$RUNNER_TEMP/correction" fetch -q origin 2652fd823a6a7f2101bf25be317bb4486d19bd6f
+          git -C "$RUNNER_TEMP/correction" restore --source=2652fd823a6a7f2101bf25be317bb4486d19bd6f -- .harness/tools/verification_incremental.py .harness/tools/verification-incremental-self-test.py
           # An initialized 0.14.5 Canary does not have the PR's opt-in
           # verification entrypoint. Overlay the *whole* PR+fix surface,
           # never mutate the stable Canary checkout.
@@ -130,8 +136,17 @@ jobs:
           $line = '@"{0}\python.exe" %*' -f $env:pythonLocation
           Set-Content -Path $shim -Value $line -Encoding ascii
           Add-Content -Path $env:GITHUB_PATH -Value $env:RUNNER_TEMP
-      - name: Windows environment regression on exact corrected SHA
+      - name: Apply second correction to disposable Windows checkout
+        shell: pwsh
+        run: |
+          git fetch origin 2652fd823a6a7f2101bf25be317bb4486d19bd6f
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git restore --source=2652fd823a6a7f2101bf25be317bb4486d19bd6f -- .harness/tools/verification_incremental.py .harness/tools/verification-incremental-self-test.py
+          exit $LASTEXITCODE
+      - name: Windows environment and path-alias regression on combined PR #375 + #377
         shell: pwsh
         run: |
           python .harness/tools/verification-environment-self-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .harness/tools/verification-incremental-self-test.py
           exit $LASTEXITCODE
