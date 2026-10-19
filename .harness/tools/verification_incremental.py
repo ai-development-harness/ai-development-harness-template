@@ -277,6 +277,15 @@ def record(
         environment = _environment_basis(commands)
         if not environment:
             return
+        # Snapshot на публикации cache обязан быть тем же subject, который
+        # реально проверен Verification. Evidence write и cache write не
+        # атомарны вместе с произвольными внешними filesystem mutations.
+        from verification import verification_subject_content_hash, verification_subject_revision
+        verified_subject = result.get("subjectContentHash")
+        verified_revision = result.get("subjectRevision")
+        if (verification_subject_content_hash(root, step_id) != verified_subject
+                or verification_subject_revision(root, step_id) != verified_revision):
+            return
         current = _tree(root)
         entries = _tree_entries(root, current)
         if result.get("verificationMode") == "incremental":
@@ -308,9 +317,24 @@ def record(
             "timeout": result["timeoutSeconds"], "fullBaseline": baseline,
             "latestChecks": latest,
         }
+        # External editor мог изменить файлы во время чтения Git tree.
+        # Недоказанный checkpoint нельзя делать доступным для reuse.
+        if (current != _tree(root)
+                or verification_subject_content_hash(root, step_id) != verified_subject
+                or verification_subject_revision(root, step_id) != verified_revision):
+            return
         path = _state_path(root, step_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(path, json.dumps(state, sort_keys=True, ensure_ascii=False) + "\n")
+        encoded = json.dumps(state, sort_keys=True, ensure_ascii=False) + "\n"
+        atomic_write_text(path, encoded)
+        # Если редактор изменил product сразу после записи, удаляем только
+        # собственный неизменённый cache; остальной Evidence остаётся stale
+        # по штатному verification_freshness contract.
+        if (current != _tree(root)
+                or verification_subject_content_hash(root, step_id) != verified_subject
+                or verification_subject_revision(root, step_id) != verified_revision):
+            if path.is_file() and not path.is_symlink() and path.read_text(encoding="utf-8") == encoded:
+                path.unlink()
     except (OSError, ValueError):
         # Cache is optional. Its loss means full-run fallback, not failed PASS.
         return
