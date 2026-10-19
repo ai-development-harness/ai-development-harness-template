@@ -114,6 +114,55 @@ def record_verification_proof(
     atomic_write_text(path, json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def bind_incremental_cache_proof(
+    root: Path, step_id: str, *, run_at: str, checkpoint: bytes,
+) -> None:
+    """Привязать optional cache к уже опубликованному canonical PASS proof.
+
+    Evidence/producer остаются главным доказательством. Cache без этой
+    привязки не может разрешать пропуск test command после crash или
+    частичной записи и потребует обычного полного Verification.
+    """
+    path = _safe_proof_path(root, step_id)
+    original = path.read_bytes()
+    saved = json.loads(original.decode("utf-8"))
+    if (not isinstance(saved, dict)
+            or saved.get("schemaVersion") != PROOF_VERSION
+            or saved.get("producer") != "deterministic-step-verification"
+            or saved.get("stepId") != step_id
+            or saved.get("runAt") != run_at or saved.get("status") != "PASS"):
+        raise ValueError("verification producer proof changed before cache binding")
+    saved["incrementalCacheSha256"] = (
+        "sha256:" + hashlib.sha256(checkpoint).hexdigest()
+    )
+    atomic_write_text(
+        path,
+        json.dumps(saved, sort_keys=True, ensure_ascii=False) + "\n",
+        expected_bytes=original,
+    )
+
+
+def incremental_cache_proof_error(
+    root: Path, step_id: str, checkpoint: bytes,
+) -> str | None:
+    """Отдельная порча cache не должна порождать новый reused PASS."""
+    try:
+        path = _safe_proof_path(root, step_id)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return "CHECKPOINT_PRODUCER_UNAVAILABLE"
+    if (not isinstance(saved, dict)
+            or saved.get("schemaVersion") != PROOF_VERSION
+            or saved.get("producer") != "deterministic-step-verification"
+            or saved.get("stepId") != step_id
+            or saved.get("status") != "PASS"):
+        return "CHECKPOINT_PRODUCER_INVALID"
+    expected = "sha256:" + hashlib.sha256(checkpoint).hexdigest()
+    if saved.get("incrementalCacheSha256") != expected:
+        return "CHECKPOINT_PRODUCER_MISMATCH"
+    return None
+
+
 def verification_proof_error(
     root: Path,
     step_id: str,

@@ -261,11 +261,16 @@ def _read_checkpoint(root: Path, step_id: str) -> dict[str, Any]:
     if not path.is_file():
         raise IncrementalError("FULL_BASELINE_MISSING")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        original = path.read_bytes()
+        value = json.loads(original.decode("utf-8"))
     except (ValueError, OSError, UnicodeError) as exc:
         raise IncrementalError("FULL_BASELINE_CORRUPT") from exc
     if not isinstance(value, dict) or value.get("schemaVersion") != STATE_VERSION or value.get("stepId") != step_id:
         raise IncrementalError("FULL_BASELINE_INVALID")
+    from verification_proof import incremental_cache_proof_error
+    failed = incremental_cache_proof_error(root, step_id, original)
+    if failed is not None:
+        raise IncrementalError(failed)
     return value
 
 
@@ -292,6 +297,10 @@ def _corrective_baseline(
     from verification_proof import verification_proof_error
     from verification import EVIDENCE_START, EVIDENCE_END
     source_id = link["sourceStep"]
+    source_flags = read_task(root, source_id)["frontmatter"].get("risk_flags", [])
+    if (not isinstance(source_flags, list) or
+            any(flag in NON_REUSABLE_FLAGS for flag in source_flags)):
+        raise IncrementalError("SOURCE_RISK_REQUIRES_FULL")
     observation = read_observation(root, source_id, link["observation"])
     pinned = observation.get("reuse")
     if not isinstance(pinned, dict) or set(pinned) != {
@@ -441,6 +450,44 @@ def invalidate_failed_feedback(root: Path, step_id: str) -> None:
     forget_pending(root, step_id)
 
 
+def _new_valid_review_paths(
+    root: Path, step_id: str, *, base_tree: str,
+    paths: list[str], policy: dict[str, Any],
+) -> set[str]:
+    """Исключить только новые, schema-valid immutable REVIEW reports.
+
+    Существовавший в исходном baseline изменённый/удалённый REPORT никогда
+    не рассматривается как безопасный input. При явном project mapping
+    report остаётся обычным test input и не исключается.
+    """
+    from harness_config import review_directory
+    from review_contract import validate_review_report
+    folder = review_directory(root) / step_id
+    rel_dir = folder.relative_to(root.resolve()).as_posix()
+    prefix = rel_dir + "/REVIEW-"
+    candidates = [name for name in paths if name.startswith(prefix)]
+    if not candidates:
+        return set()
+    baseline_names = {name for name, _, _ in _tree_entries(root, base_tree)}
+    allowed: set[str] = set()
+    for name in candidates:
+        candidate = root / name
+        if candidate.parent != folder or not re.fullmatch(r"REVIEW-\\d{8}T\\d{6}Z\\.md", candidate.name):
+            continue
+        if name in baseline_names:
+            raise IncrementalError("HISTORICAL_REVIEW_CHANGED")
+        if (_match(name, policy["infrastructure"]) or any(
+            _match(name, check["inputs"]) for check in policy["checks"]
+        )):
+            continue
+        if candidate.is_symlink() or not candidate.is_file():
+            raise IncrementalError("NEW_REVIEW_INVALID")
+        if validate_review_report(root, candidate, expected_step_id=step_id):
+            raise IncrementalError("NEW_REVIEW_INVALID")
+        allowed.add(name)
+    return allowed
+
+
 def prepare(
     root: Path, step_id: str, *, commands: list[str], acceptance: list[str],
     contract_basis: str, context_basis: str, timeout: int,
@@ -462,6 +509,13 @@ def prepare(
         try:
             checkpoint = _read_checkpoint(root, step_id)
             if checkpoint.get("inheritedOrigin") is not None:
+                source_id = checkpoint["inheritedOrigin"].get("sourceStep")
+                if not isinstance(source_id, str):
+                    return fallback("CORRECTIVE_SOURCE_INVALID")
+                source_flags = read_task(root, source_id)["frontmatter"].get("risk_flags", [])
+                if (not isinstance(source_flags, list) or
+                        any(flag in NON_REUSABLE_FLAGS for flag in source_flags)):
+                    return fallback("SOURCE_RISK_REQUIRES_FULL")
                 if checkpoint["inheritedOrigin"] != policy.get("reuse"):
                     return fallback("CORRECTIVE_ORIGIN_CHANGED")
                 from late_defect import read as read_observation
@@ -511,10 +565,22 @@ def prepare(
             return fallback("CHECKPOINT_COVERAGE_INVALID")
         current = _tree(root)
         paths = _changed_paths(root, base["tree"], current)
+        new_reports = _new_valid_review_paths(
+            root, step_id, base_tree=base["tree"],
+            paths=paths, policy=policy,
+        )
+        # Corrective reuse already validates source/current review histories.
+        # But a report *present* in the original full tree must never be
+        # treated as a harmless newly created immutable report.
+        if control_paths:
+            original_names = {name for name, _, _ in _tree_entries(root, base["tree"])}
+            if any(p in control_paths and p in original_names and
+                   p.split("/")[-1].startswith("REVIEW-") for p in paths):
+                return fallback("HISTORICAL_REVIEW_CHANGED")
         task_relative = task_path(root, step_id).relative_to(root).as_posix()
         meaningful = [
             p for p in paths
-            if p != task_relative and p not in control_paths
+            if p != task_relative and p not in control_paths and p not in new_reports
         ]
         if any(_match(p, policy["infrastructure"]) or p == policy["mapPath"] for p in meaningful):
             return fallback("TEST_INFRASTRUCTURE_CHANGED")
@@ -729,6 +795,14 @@ def record(
                 or verification_subject_revision(root, step_id) != verified_revision):
             if path.is_file() and not path.is_symlink() and path.read_text(encoding="utf-8") == encoded:
                 path.unlink()
+            return
+        # Cache bytes are not a producer proof on their own. Only the
+        # canonical PASS writer may bind these exact bytes to its producer
+        # proof, after the Evidence and stable snapshot were published.
+        from verification_proof import bind_incremental_cache_proof
+        bind_incremental_cache_proof(
+            root, step_id, run_at=result["runAt"], checkpoint=encoded.encode("utf-8"),
+        )
     except (OSError, ValueError):
         # Cache is optional. Its loss means full-run fallback, not failed PASS.
         return
