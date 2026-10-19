@@ -116,6 +116,18 @@ def main() -> int:
         assert tampered["fallbackReason"] == "CHECKPOINT_PRODUCER_MISMATCH", tampered
         baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
 
+        # Report, который уже ВХОДИЛ в новый полный baseline, не должен
+        # автоматически исключаться как новый. Его изменение — full fallback.
+        review_path = root / review_rel
+        review_path.write_text(
+            review_path.read_text(encoding="utf-8") + "\nChanged historical review.\n",
+            encoding="utf-8",
+        )
+        changed_history = run_step_verification(root, step_id, manual_results=observation())
+        assert changed_history["status"] == "PASS" and changed_history["verificationMode"] == "full", changed_history
+        assert changed_history["fallbackReason"] == "HISTORICAL_REVIEW_CHANGED", changed_history
+        baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
+
         # Выбранную UI-проверку, уже пройденную на этой exact revision,
         # повторно при completion не запускаем.
         from verification_selective import run_selected
