@@ -249,6 +249,7 @@ def _verification_before_completion(
         manual_results=manual_results,
         product_results=product_results,
         write_evidence=False,
+        force_full=isinstance(details, dict) and details.get("fullVerification") is True,
     )
 
     # Verification commands may be long-running, so they execute without the
@@ -298,12 +299,15 @@ def _verification_before_completion(
         compact = {
             key: value
             for key, value in (details or {}).items()
-            if key not in {"manualVerification", "productVerification"}
+            if key not in {"manualVerification", "productVerification", "fullVerification"}
         }
         compact["verification"] = {
             "status": "PASS",
             "runAt": verification.get("runAt"),
             "revision": verification.get("revision"),
+            "mode": verification.get("verificationMode", "full"),
+            "executedChecks": verification.get("executedCount"),
+            "reusedChecks": verification.get("reusedCount"),
         }
         return None, compact
 

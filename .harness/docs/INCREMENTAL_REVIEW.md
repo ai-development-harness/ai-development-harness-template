@@ -31,7 +31,8 @@ Git tree остаётся в локальном хранилище Git-объе�
 
 Это операционное состояние, не отслеживаемое Git и не являющееся проектным
 Evidence. Оно привязано к конкретному `executionId` FIX, исходному
-неизменяемому FAIL-отчёту, fingerprints findings, pre-FIX Git tree и
+неизменяемому FAIL-отчёту или подтверждённому post-PASS observation,
+fingerprints findings (для post-PASS пустые), pre-FIX Git tree и
 post-FIX revision объекта проверки. Возобновление **того же** FIX не должно
 перезаписывать исходный snapshot. Новый FIX создаёт новый baseline.
 
@@ -186,8 +187,14 @@ STEP Evidence. Каждая команда обязана оставить Git r
 репозитория неизменными. Неизвестная команда, ошибка выполнения или
 модификация репозитория блокируют выборочную проверку.
 
-При `FIX SUCCESS` dispatcher всё равно выполняет **полный** Verification
-contract. Выборочное тестирование не может подделать итоговый PASS.
+При `FIX SUCCESS` dispatcher выполняет canonical Verification целиком по
+покрытию. Без opt-in `verification.impactMap` все команды запускаются.
+При проверенной карте Core может переиспользовать незатронутый PASS либо
+producer-bound результат `verify-selected` для exact current subject.
+Сам `verify-selected` по-прежнему возвращает `completionProof=false`:
+финальный PASS выпускает только canonical Evidence writer.
+
+Подробно: [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
 
 ## Переиспользование read-only gates
 
@@ -234,9 +241,9 @@ Reviewer должен переиспользовать действительн�
 а не заново исследовать несвязанную архитектуру.
 
 Произвольный выбор тестов по именам файлов или недостоверным предположениям
-модели **запрещён**. Для выборочной проверки нужна явная подтверждённая
-карта зависимостей «изменение → тест». При неопределённом покрытии
-выполняется полная Verification.
+модели **запрещён**. Для инкрементального completion нужна проверенная
+карта «изменение → тест», сохранённый полный baseline и новый составной
+proof текущего состояния. Неизвестное покрытие → полный Verification.
 
 Security preflight, Completion Gate и freshness gates нельзя пропускать
 на основании памяти LLM.

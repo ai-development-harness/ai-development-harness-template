@@ -41,6 +41,10 @@ from project_verification import (
 from review_contract import repository_revision, repository_subject_content_hash
 from verification_resume import remember_pending, reuse_pending, forget_pending
 from verification_proof import record_verification_proof, verification_proof_error
+from verification_incremental import (
+    prepare as prepare_incremental, record as record_incremental,
+    reuse_targeted, _source_map,
+)
 
 
 COMMAND_RE = re.compile(r"^- command:\s*\x60([^\x60]+)\x60\s*$")
@@ -431,6 +435,21 @@ def verification_command_evidence(
             "command": command,
         }
     status, exit_code = results[0]
+    # Exact command consumers (Semantic Blast Radius) require a real run.
+    # A synthetic composite or reused PASS is valid for aggregate completion,
+    # but cannot impersonate the execution of the original command.
+    evidence_match = pattern.search(block)
+    tail = block[evidence_match.end():] if evidence_match else ""
+    boundary = re.search(r"(?m)^- Command: |^### ", tail)
+    command_evidence = tail[:boundary.start()] if boundary else tail
+    producer = re.search(r"(?m)^  - Provenance: (.+?)\s*$", command_evidence)
+    if producer is not None and producer.group(1).strip() != "executed":
+        return {
+            "status": "UNKNOWN",
+            "fresh": False,
+            "reasonCode": "VERIFICATION_EXACT_COMMAND_NOT_EXECUTED",
+            "command": command,
+        }
     return {
         "status": status,
         "fresh": True,
@@ -657,6 +676,83 @@ def _run_command(
     return result
 
 
+def _run_composite_groups(
+    root: Path,
+    parent: str,
+    groups: list[dict[str, Any]],
+    *,
+    timeout: int,
+    revision: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Execute/reuse all qualified groups with a per-command mutation guard.
+
+    A group PASS never becomes a replacement for a monolith on its own:
+    the caller still builds one fully covered canonical parent result.
+    """
+    outcome: list[dict[str, Any]] = []
+    for item in groups:
+        spec = item["spec"]
+        reused = item.get("reused")
+        if isinstance(reused, dict):
+            result = dict(reused)
+        else:
+            before = repository_revision(root)
+            if not _revision_equal(before, revision):
+                raise VerificationInputsStale("subject changed before composite group")
+            refs = _refs_snapshot(root)
+            result = _run_command(root, spec["command"], timeout_seconds=timeout)
+            if refs != _refs_snapshot(root):
+                raise VerificationInputsStale("composite group mutated Git refs")
+            if not _revision_equal(repository_revision(root), revision):
+                raise VerificationInputsStale("composite group mutated repository")
+        outcome.append({"id": spec["id"], "command": spec["command"],
+                        "acceptance": list(spec["acceptance"]), **result})
+        if result.get("status") == "BLOCKED":
+            raise VerificationError("composite group is BLOCKED: " + spec["command"])
+    return outcome
+
+
+def _aggregate_composite(
+    command: str,
+    groups: list[dict[str, Any]],
+    *,
+    full_command_result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Represent proven groups as one canonical command entry for Completion Gate."""
+    if not groups:
+        raise VerificationError("composite must cover at least one group")
+    statuses = [item.get("status") for item in groups]
+    if any(value not in {"PASS", "FAIL"} for value in statuses):
+        raise VerificationError("composite group has unsupported status")
+    passed = all(value == "PASS" for value in statuses)
+    if full_command_result is not None:
+        value = dict(full_command_result)
+        if not passed and value.get("status") == "PASS":
+            value["status"] = "FAIL"
+            value["exitCode"] = 1
+            value["reasonCode"] = "COMPOSITE_GROUP_FAILED"
+    else:
+        # Only a qualified *full baseline* permits this aggregate. Its nested
+        # group observations are part of producer-bound Evidence/operational cache.
+        identity = json.dumps(groups, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        value = {
+            "kind": "command",
+            "command": command,
+            "argv": _argv(command),
+            "status": "PASS" if passed else "FAIL",
+            "exitCode": 0 if passed else 1,
+            "durationMs": sum(int(g.get("durationMs") or 0)
+                              for g in groups if not g.get("reusedFrom")),
+            "stdoutSha256": hashlib.sha256(identity).hexdigest(),
+            "stderrSha256": hashlib.sha256(b"").hexdigest(),
+            "stdoutBytes": 0,
+            "stderrBytes": 0,
+            "composite": True,
+        }
+    value["groups"] = groups
+    return value
+
+
 def _refs_snapshot(root: Path) -> str:
     """Все refs и HEAD: Verification не должна создавать/двигать ветки и теги."""
     refs = subprocess.run(
@@ -726,6 +822,11 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Verification run: {result['runAt']}",
         f"- Status: {result['status']}",
         f"- Automated resumed: {str(result.get('automatedResumed', False)).lower()}",
+        f"- Verification mode: {result.get('verificationMode', 'full')}",
+        f"- Incremental executed checks: {result.get('executedCount', len(result.get('commands', [])))}",
+        f"- Incremental reused checks: {result.get('reusedCount', 0)}",
+        f"- Targeted feedback reused: {result.get('targetedReusedCount', 0)}",
+        f"- Incremental fallback reason: {result.get('fallbackReason') or 'none'}",
         f"- Git head: {revision.get('git_head') or 'none'}",
         f"- Worktree hash: {revision.get('worktree_hash') or 'clean'}",
         f"- Verification contract basis: {result['contractBasis']}",
@@ -751,8 +852,19 @@ def _evidence_block(result: dict[str, Any]) -> str:
                 f"  - stderr sha256: {item.get('stderrSha256')}",
                 f"  - stdout bytes: {item.get('stdoutBytes')}",
                 f"  - stderr bytes: {item.get('stderrBytes')}",
+                f"  - Provenance: {item.get('reusedFrom') or ('qualified-composite' if item.get('composite') else 'executed')}",
             ]
         )
+        for group in (item.get("groups") or []):
+            lines.extend([
+                f"  - Group id: {group['id']}",
+                f"    - Group command: {group['command']}",
+                f"    - Group status: {group['status']}",
+                f"    - Group exit code: {group.get('exitCode')}",
+                f"    - Group duration ms: {group.get('durationMs')}",
+                f"    - Group provenance: {group.get('reusedFrom') or 'executed'}",
+                f"    - Group acceptance: {json.dumps(group['acceptance'], ensure_ascii=False)}",
+            ])
 
     lines.extend(["", "### Product verification"])
     product = result.get("product", [])
@@ -847,6 +959,28 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         stale_reason = _stale_inputs_reason(root, step_id, result)
         if stale_reason is not None:
             raise VerificationInputsStale(stale_reason)
+        # Для инкрементальной записи сохраняем точный validated selection
+        # *до* изменения Evidence: после публикации новый runAt уже не совпадёт
+        # с previous cache, и повторная prepare даст ложный full fallback.
+        from completion_gate import acceptance_criteria
+        verified_commands = [item["value"] for item in parse_verification(root, step_id)
+                             if item["kind"] == "command"]
+        criteria = acceptance_criteria(root, step_id)
+        incremental_plan = None
+        if result.get("verificationMode") == "incremental":
+            incremental_plan = prepare_incremental(
+                root, step_id, commands=verified_commands,
+                acceptance=criteria, contract_basis=result["contractBasis"],
+                context_basis=result["contextBasis"],
+                timeout=result["timeoutSeconds"],
+                subject_hash=result["subjectContentHash"],
+            )
+            if incremental_plan.get("mode") != "incremental":
+                # The computed result cannot be published as incremental if
+                # its proof basis has become stale since command selection.
+                raise VerificationInputsStale(
+                    "incremental verification selection changed before Evidence write"
+                )
         path = task_path(root, step_id)
         original = path.read_bytes()
         updated = _replace_evidence_block(
@@ -880,6 +1014,12 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         record_verification_proof(
             root, step_id, block=match.group(1), result=result,
         )
+        # Record the validated pre-publication selection against the exact
+        # current producer-bound PASS. Optional local cache remains expendable.
+        record_incremental(
+            root, step_id, result=result, plan=incremental_plan,
+            commands=verified_commands, acceptance=criteria,
+        )
 
 
 def write_verification_evidence(
@@ -898,8 +1038,9 @@ def run_step_verification(
     manual_results: list[dict[str, Any]] | None = None,
     product_results: list[dict[str, Any]] | None = None,
     write_evidence: bool = True,
+    force_full: bool = False,
 ) -> dict[str, Any]:
-    """Run explicit Verification contract and return factual result."""
+    """Run canonical Verification, optionally reusing proven check inputs."""
     try:
         entries = parse_verification(root, step_id)
         timeout = verification_command_timeout_seconds(root)
@@ -944,8 +1085,92 @@ def run_step_verification(
 
     resume_basis = _resume_contract_basis(contract_basis, context_basis)
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
+    from completion_gate import acceptance_criteria
+    acceptance = acceptance_criteria(root, step_id)
+    # Проверяем producer-bound происхождение предыдущего Evidence ДО проверки
+    # subject freshness. Иначе tampered Evidence со stale subject мог бы
+    # замаскироваться кодом VERIFICATION_SUBJECT_STALE и разрешить cache reuse.
+    previous_read_ok = True
+    try:
+        previous_section = read_task(root, step_id)["sections"].get("Evidence", "")
+    except (OSError, ValueError):
+        previous_read_ok = False
+        # A STEP can change between the preflight snapshot and this read.
+        # In that case nothing from the old cache is trustworthy; the
+        # canonical final revision/CAS gate still decides completion.
+        previous_section = ""
+    previous_block_match = re.search(
+        rf"{re.escape(EVIDENCE_START)}(.*?){re.escape(EVIDENCE_END)}",
+        previous_section, re.S,
+    )
+    untrusted_evidence = True
+    # First Verification of a new corrective STEP has no own producer proof.
+    # This is not the same as a tampered previous Evidence. Import is only
+    # considered if its own checkpoint and producer proof have never existed;
+    # _corrective_baseline() still validates all source observations and pins.
+    if previous_read_ok and previous_block_match is None and "VERIFICATION-EVIDENCE:" not in previous_section:
+        own_proof = root / ".harness/local/verification-proofs" / (step_id + ".json")
+        own_cache = root / ".harness/local/verification-incremental" / (step_id + ".json")
+        if not own_proof.exists() and not own_cache.exists():
+            try:
+                from planning_contract import read_task as _read_step
+                stage = _read_step(root, step_id)["frontmatter"].get("status")
+                candidate = _source_map(root, step_id, command_names, acceptance)
+                if candidate.get("reuse") is not None and stage in {"planned", "in_progress"}:
+                    untrusted_evidence = False
+            except (OSError, ValueError):
+                pass
+    previous_failed_commands: set[str] = set()
+    if previous_block_match is not None:
+        previous_block = previous_block_match.group(1)
+        previous_status = re.search(r"(?m)^- Status: (PASS|FAIL|MANUAL_REQUIRED)\s*$", previous_block)
+        if previous_status is not None:
+            untrusted_evidence = verification_proof_error(
+                root, step_id, block=previous_block, status=previous_status.group(1),
+            ) is not None
+            if not untrusted_evidence:
+                # A failed check cannot inherit an older cached PASS even when
+                # its declared inputs happen to be unchanged.
+                previous_failed_commands = {
+                    match.group(1) for match in re.finditer(
+                        r"(?m)^- Command: (.+)\s*\n  - Status: FAIL\s*$",
+                        previous_block,
+                    )
+                }
+    selection = prepare_incremental(
+        root, step_id, commands=command_names, acceptance=acceptance,
+        contract_basis=contract_basis, context_basis=context_basis,
+        timeout=timeout, subject_hash=subject_content_hash,
+        full=force_full or untrusted_evidence,
+    )
+    if selection["mode"] == "incremental" and previous_failed_commands:
+        for name in command_names:
+            if name in previous_failed_commands and name in selection["reused"]:
+                del selection["reused"][name]
+                selection["executed"].append(name)
+    targeted = reuse_targeted(
+        root, step_id, selection=selection, commands=command_names,
+        contract_basis=contract_basis, context_basis=context_basis,
+        timeout=timeout, subject_hash=subject_content_hash,
+    )
+    # A group adapter is permitted only if the entire configured map is
+    # valid. If the map is invalid, do not run any adapter commands: fallback
+    # to the historical full Verification contract.
+    try:
+        group_policy = _source_map(root, step_id, command_names, acceptance)
+        qualified_groups = {
+            item["command"]: item["groups"] for item in group_policy["checks"]
+            if "groups" in item
+        }
+    except (OSError, ValueError):
+        qualified_groups = {}
+    for composite in selection.get("composites", {}).values():
+        for group in composite["groups"]:
+            command = group["spec"]["command"]
+            if group.get("reused") is None and command in targeted:
+                group["reused"] = targeted[command]
     reused = None
-    if manual_results is not None or product_results is not None:
+    if not force_full and not qualified_groups and (manual_results is not None or product_results is not None):
         reused = reuse_pending(
             root, step_id, contract=resume_basis,
             subject=subject_revision, names=command_names, timeout=timeout,
@@ -954,6 +1179,22 @@ def run_step_verification(
     try:
         for entry in ([] if reused is not None else entries):
             if entry["kind"] != "command":
+                continue
+            if selection["mode"] == "incremental" and entry["value"] in selection["reused"]:
+                commands.append(selection["reused"][entry["value"]])
+                continue
+            if entry["value"] in targeted and entry["value"] not in qualified_groups:
+                commands.append(targeted[entry["value"]])
+                continue
+            composite_plan = selection.get("composites", {}).get(entry["value"])
+            if composite_plan is not None:
+                group_results = _run_composite_groups(
+                    root, entry["value"], composite_plan["groups"],
+                    timeout=timeout, revision=revision,
+                )
+                commands.append(_aggregate_composite(
+                    entry["value"], group_results, full_command_result=None,
+                ))
                 continue
             before = repository_revision(root)
             if not _revision_equal(before, revision):
@@ -971,6 +1212,20 @@ def run_step_verification(
                 entry["value"],
                 timeout_seconds=timeout,
             )
+            if item["status"] == "PASS" and entry["value"] in qualified_groups:
+                # The first full run qualifies the declared decomposition by
+                # executing the monolith and all its groups on the same subject.
+                group_plan = [
+                    {"spec": group, "reused": None}
+                    for group in qualified_groups[entry["value"]]
+                ]
+                results = _run_composite_groups(
+                    root, entry["value"], group_plan, timeout=timeout,
+                    revision=revision,
+                )
+                item = _aggregate_composite(
+                    entry["value"], results, full_command_result=item,
+                )
             commands.append(item)
             if _refs_snapshot(root) != refs_before:
                 return {
@@ -1044,18 +1299,41 @@ def run_step_verification(
             "commands": commands,
         }
 
-    if status == "MANUAL_REQUIRED" and reused is None:
+    if status == "MANUAL_REQUIRED" and reused is None and not qualified_groups:
         remember_pending(
             root, step_id, contract=resume_basis,
             subject=subject_revision, commands=commands, timeout=timeout,
         )
-    elif status != "MANUAL_REQUIRED":
+    elif status != "MANUAL_REQUIRED" or qualified_groups:
         forget_pending(root, step_id)
 
     result = {
         "schemaVersion": 1,
         "status": status,
         "automatedResumed": reused is not None,
+        "verificationMode": selection["mode"],
+        "executedChecks": [
+            name for name in command_names
+            if reused is None and name in selection["executed"] and name not in targeted
+        ],
+        "targetedChecks": [] if reused is not None else list(targeted),
+        # Считаем только реальные запуски top-level команд. Синтетический
+        # aggregate и subgroup feedback учитываются отдельно от выполнения.
+        "executedCount": 0 if reused is not None else sum(
+            not item.get("reusedFrom") and not item.get("composite")
+            for item in commands
+        ),
+        "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
+        "targetedReusedCount": 0 if reused is not None else len(targeted),
+        "groupExecutedCount": sum(
+            1 for item in commands for group in (item.get("groups") or [])
+            if not group.get("reusedFrom")
+        ),
+        "groupReusedCount": sum(
+            1 for item in commands for group in (item.get("groups") or [])
+            if group.get("reusedFrom")
+        ),
+        "fallbackReason": selection.get("reasonCode"),
         "stepId": step_id,
         "runAt": utc_now(),
         "revision": revision,

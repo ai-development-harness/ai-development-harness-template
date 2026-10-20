@@ -269,21 +269,22 @@ Production code mutation запрещена.
 2. Static gate восстанавливает STEP, semantic contracts прямых dependencies, linked REQ/ADR, explicit `architecture_refs` и relevant canonical OQ. Completion dependency на стадии PLAN не требуется.
 3. Semantic gate проверяет внутреннюю непротиворечивость contract, feasibility Acceptance/Verification, prerequisites и ownership.
 4. **Evidence Gate действует уже на PLAN.** Новый security/failure/edge scenario без explicit project contract или reproduced evidence сначала является hypothesis. Неподтверждённая hypothesis может породить только bounded proof/falsification obligation — concrete check в Verification/plan. До confirmation framework/platform capability сама по себе не разрешает production mutation, regression/security test, hardening, ADR/OQ/prerequisite или blocker. Invalidated hypothesis отбрасывается; confirmed scenario может влиять на plan пропорционально contract.
-5. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
-6. После PASS запиши содержательный `Implementation plan` как draft. Production test/hardening work должен быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario; unresolved hypothesis допускается только как bounded proof obligation.
-7. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
+5. Внутри semantic consistency проведи bounded **current-state documentation check**: configured `sources.architecture`, `sources.projectOverview` и напрямую связанные subsystem docs по scope STEP. Для claims о фактической готовности/будущих функциях/ограничениях определи, что изменит поставка. Если нужно обновить описательный current state, это output **того же STEP**: заранее уточни Scope/Mutation policy/Deliverables, `architecture_outputs` для изменяемых `architecture_refs`, точные actions и semantic Verification. Ранний output gate и frozen-input policy обязательны: новый undeclared output после начала PLAN → BLOCKED, contract correction и fresh PLAN. PLAN не объявляет planned capability готовой. Нет delta → нет фиктивной документационной работы/отдельного STEP. Accepted ADR/REQ и исторические proof-артефакты не переписывай; drift вне scope — отдельная corrective работа.
+6. Contract defect/missing decision/impossible acceptance → `BLOCKED`.
+7. После PASS запиши содержательный `Implementation plan` как draft. Production test/hardening work должен быть traceable к explicit contract, reproduced defect или confirmed project-specific scenario; unresolved hypothesis допускается только как bounded proof obligation.
+8. `planning-state.py plan-context STEP-NNN` возвращает два независимых fingerprints:
    - `contextBasis` schema v4 — semantic STEP/dependency contracts + semantic linked REQ/ADR + referenced architecture sections + relevant OQ; priority/phase, reverse traceability и dependency completion state исключены;
    - `planContentHash` — нормализованный текст самого Implementation plan.
-8. **Каждый** PLAN обязан пройти independent semantic planning-review. Reviewer также применяет Evidence Gate: speculative work в draft является defect плана, а новая неподтверждённая hypothesis reviewer-а сама по себе не может BLOCK-ировать PLAN. Immutable schema-v1 report в configured `protocol.planningReviewDirectory` хранит verdict + оба fingerprints.
-9. Только matching PASS разрешает `execution-state.py stamp-plan STEP-NNN`. Stamp atomically пишет `plan.status=ready`, revision, context/content hashes, reviewed report и timestamp.
-10. Изменение plan body делает stale content hash; изменение relevant upstream input делает stale context basis.
-11. Resolver признаёт interrupted PLAN завершённым только при полном совпадении Ready metadata и matching PASS report.
+9. **Каждый** PLAN обязан пройти independent semantic planning-review. Он также проверяет material current-state documentation delta в owning Scope/outputs/plan/Verification; отсутствие нужного output блокирует PASS, но prose не подлежит универсальному regex-анализу. Reviewer также применяет Evidence Gate: speculative work в draft является defect плана, а новая неподтверждённая hypothesis reviewer-а сама по себе не может BLOCK-ировать PLAN. Immutable schema-v1 report в configured `protocol.planningReviewDirectory` хранит verdict + оба fingerprints.
+10. Только matching PASS разрешает `execution-state.py stamp-plan STEP-NNN`. Stamp atomically пишет `plan.status=ready`, revision, context/content hashes, reviewed report и timestamp.
+11. Изменение plan body делает stale content hash; изменение relevant upstream input делает stale context basis.
+12. Resolver признаёт interrupted PLAN завершённым только при полном совпадении Ready metadata и matching PASS report.
 
 Single PLAN после SUCCESS останавливается; продолжение к IMPLEMENT возможно только explicit chain/STEP RUN.
 
 ## 9. `STEP IMPLEMENT STEP-NNN`
 
-Execution tracking уже ведётся root execution wrapper. До semantic handoff wrapper фиксирует durable `implementationBaseline`: exact Git HEAD до первой product mutation. Proof хранится в execution state, переживает restart и переносится в последующие REVIEW/FIX; повторный IMPLEMENT для уже `in_progress` lifecycle не имеет права молча сдвигать baseline.
+Execution tracking уже ведётся root execution wrapper. Запланированные current-state documentation outputs синхронизируются через `documentation-sync` **после подтверждённой реализации, до final canonical Verification/independent REVIEW**: только факты о поставленной подсистеме, без изменения Accepted ADR/REQ, history и несвязанных будущих функций. Semantic REVIEW сверяет material claims с code/Evidence. Структурный output gate доказывает declarations, но не смысловую правдивость произвольной прозы. До semantic handoff wrapper фиксирует durable `implementationBaseline`: exact Git HEAD до первой product mutation. Proof хранится в execution state, переживает restart и переносится в последующие REVIEW/FIX; повторный IMPLEMENT для уже `in_progress` lifecycle не имеет права молча сдвигать baseline.
 
 1. До dispatch execution layer применяет deterministic `step-implement-ready`: требует актуальный Ready plan/matching review и completion proofs всех direct dependencies. Agent не повторяет эту проверку reasoning-ом.
 2. Explicit user override не обходит runtime prerequisite safety gate; изменение contract оформляется через PLAN/reconciliation.
@@ -293,7 +294,7 @@ Execution tracking уже ведётся root execution wrapper. До semantic h
 6. Не реализовывать future/unrelated work.
 7. Добавить/обновить только tests с реальным provenance: explicit contract, reproduced defect или confirmed project-specific scenario.
 8. Если Ready plan содержит unresolved hypothesis/proof obligation, выполнить только запланированный bounded falsification/evidence check. Не материализовать production hardening/test из hypothesis автоматически: invalidated scenario отбросить; confirmed scenario, требующий новой production mutation, вернуть `BLOCKED` с handoff к свежему `STEP PLAN STEP-NNN`.
-9. При готовности реализации предложить command result `SUCCESS`; dispatcher сам запускает explicit `- command:` entries из `## Verification` без shell и обновляет generated Evidence.
+9. При готовности реализации предложить command result `SUCCESS`; dispatcher выполняет canonical Verification без shell, по умолчанию полный. При opt-in `verification.impactMap` допускается proof-checked incremental с новым generated Evidence для текущего subject. Выбранные тесты сами по себе не являются completion proof; при неполных данных Core делает полный прогон. См. [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
 10. `VERIFICATION_FAIL` возвращает factual command result в тот же IMPLEMENT; `VERIFICATION_MANUAL_REQUIRED` требует только listed manual checks; `VERIFICATION_BLOCKED` не обходится reasoning-ом.
 11. Не ставить `Выполнено` до required review PASS.
 12. Command завершается только после PASS deterministic/manual Verification contract.
@@ -322,11 +323,21 @@ Reviewer независим и read-only относительно product code. 
 
 При старте command Execution Status запоминает предыдущий immutable review report. Если session оборвалась после создания нового report, resolver может восстановить verdict без повторного expensive review.
 
-Single REVIEW после verdict останавливается. Внутри chain/RUN CTS активирует FIX только при `FAIL`; PASS/BLOCKED не создают скрытый переход.
+Single REVIEW после verdict останавливается. Внутри chain/RUN CTS активирует
+FIX по прежнему `FAIL` либо после `PASS/SUCCESS` при связанном,
+подтверждённом immutable late-defect observation и свежем Verification PASS.
+Обычный PASS не создаёт скрытый FIX; `BLOCKED` не разрешает переход.
 
 ## 11. `STEP FIX STEP-NNN`
 
-1. Получить latest evidence-gated Review Contract v3 через `python3 .harness/tools/review_findings.py --step STEP-NNN --json`. Historical v1/v2 остаются валидной immutable history, но не дают deterministic FIX handoff: нужен свежий REVIEW v3.
+1. Получить latest evidence-gated Review Contract v3 через
+`python3 .harness/tools/review_findings.py --step STEP-NNN --json`.
+Historical v1/v2 остаются валидной immutable history, но не дают
+deterministic FIX handoff. Для `REVIEW FAIL` требуются evidence-gated findings,
+а для позднего дефекта **после PASS** — зарегистрированный `late-defect.py`
+observation (reproducer, exact Acceptance, invalidatedChecks).
+Предыдущий FAIL запрещено подделывать. Для completed STEP оформляется
+новый corrective STEP.
 2. Исправлять только findings категорий `implementation`/`evidence` и необходимый supporting code в scope; identity между циклами отслеживать по stable `fingerprint`. Граница `evidenceBasis` не разрешает расширять finding в соседние теоретические угрозы.
 3. Новый regression/security test должен иметь provenance: explicit REQ/ADR/STEP invariant, reproduced defect либо текущий confirmed `F-NNN`. Новый speculative scenario сначала возвращается в REVIEW/Evidence Gate, а не реализуется скрыто внутри FIX.
 4. Contract finding, изменение Acceptance/REQ/ADR/dependencies или missing prerequisite → `BLOCKED` + corrective STEP/RESEARCH/ADR; не превращать FIX в скрытый scope expansion.

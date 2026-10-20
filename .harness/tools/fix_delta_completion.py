@@ -181,6 +181,29 @@ def validate_fix_delta_coverage_reuse(
     ):
         raise CompletionGateError("FIX delta coverage reuse requires fresh Verification PASS")
 
+    # A PASS reviewer may have been unable to finalize this active STEP.
+    # Observation-based FIX must not reuse criteria that the preceding full
+    # completion explicitly marked missing or blocked.
+    if scope.get("observation") is not None:
+        section = full["sections"].get("Completion convergence", "")
+        match = re.fullmatch(r"\s*```json\s*(\{.*\})\s*```\s*", section, re.S)
+        if match is None:
+            raise CompletionGateError("post-PASS observation lacks prior completion coverage")
+        try:
+            old_completion = json.loads(match.group(1))
+        except json.JSONDecodeError as exc:
+            raise CompletionGateError("prior completion coverage is invalid") from exc
+        previous_covered = {
+            item.get("criterion") for item in old_completion.get("coverage", [])
+            if isinstance(item, dict) and item.get("status") == "covered"
+            and isinstance(item.get("evidence"), list) and item["evidence"]
+        }
+        for row in reused:
+            if row.get("criterion") not in previous_covered:
+                raise CompletionGateError(
+                    "post-PASS observation cannot reuse previously unproven criterion"
+                )
+
     full_reference = "previous-review:" + full_rel
     verification_reference = "verification:" + subject
     for row in reused:

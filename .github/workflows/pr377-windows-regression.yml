@@ -1,0 +1,84 @@
+# Регрессия #377 на настоящем Windows runner без merge в общую ветку.
+# Имя workflow или шага в Actions. Пример: Windows incremental regression.
+name: PR 377 Windows regression
+
+# События запуска проверки. Пример: push в ветку исправления.
+on:
+  # Запуск после публикации исправления. Пример: push нового HEAD #377.
+  push:
+    # Ограничение целевой веткой. Пример: fix/376-windows-incremental-paths.
+    branches:
+      - fix/376-windows-incremental-paths
+
+# Минимальные права проверки. Пример: contents: read.
+permissions:
+  # Чтение исходников без записи. Пример: read.
+  contents: read
+
+# Набор проверок. Пример: windows-regression.
+jobs:
+  # Проверка Windows-путей REVIEW. Пример: Windows 2025 и Python 3.13.
+  windows-regression:
+    # Образ настоящего Windows runner. Пример: windows-2025.
+    runs-on: windows-2025
+    # Лимит длительности job в минутах. Пример: 15.
+    timeout-minutes: 15
+    # Последовательность подготовки и проверок. Пример: checkout, Python, тесты.
+    steps:
+      # Имя workflow или шага в Actions. Пример: Windows incremental regression.
+      - name: Checkout exact branch commit
+        # Action закреплён точным SHA. Пример: actions/checkout@<commit>.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        # Параметры action. Пример: persist-credentials: false.
+        with:
+          # Не сохранять credentials в Git config. Пример: false.
+          persist-credentials: false
+      # Имя workflow или шага в Actions. Пример: Windows incremental regression.
+      - name: Setup Python
+        # Action закреплён точным SHA. Пример: actions/checkout@<commit>.
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        # Параметры action. Пример: persist-credentials: false.
+        with:
+          # Версия интерпретатора. Пример: 3.13.
+          python-version: '3.13'
+      # Synthetic команды Harness используют python3; shim выбирает setup-python.
+      # Имя workflow или шага в Actions. Пример: Windows incremental regression.
+      - name: Configure python3
+        # Оболочка Windows-команд. Пример: pwsh.
+        shell: pwsh
+        # Команды шага с передачей exit code. Пример: python <self-test.py>.
+        run: |
+          $shim = Join-Path $env:RUNNER_TEMP "python3.cmd"
+          $line = '@"{0}\python.exe" %*' -f $env:pythonLocation
+          Set-Content -Path $shim -Value $line -Encoding ascii
+          Add-Content -Path $env:GITHUB_PATH -Value $env:RUNNER_TEMP
+      # Имя workflow или шага в Actions. Пример: Windows incremental regression.
+      - name: Windows incremental regression on exact PR head
+        # Оболочка Windows-команд. Пример: pwsh.
+        shell: pwsh
+        # Команды шага с передачей exit code. Пример: python <self-test.py>.
+        run: |
+          python .harness/tools/verification-incremental-self-test.py
+          exit $LASTEXITCODE
+      # Повторяем состав #39336501595: #377 плюс два файла исправления #375.
+      # Overlay существует только на runner и не меняет GitHub-ветки.
+      # Имя workflow или шага в Actions. Пример: Windows incremental regression.
+      - name: Apply pinned environment correction in disposable checkout
+        # Оболочка Windows-команд. Пример: pwsh.
+        shell: pwsh
+        # Команды шага с передачей exit code. Пример: python <self-test.py>.
+        run: |
+          git fetch origin 1e4245d58f50035fa114fd97e1e6ec05903e741a
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git restore --source=1e4245d58f50035fa114fd97e1e6ec05903e741a -- .harness/tools/verification_resume.py .harness/tools/verification-environment-self-test.py
+          exit $LASTEXITCODE
+      # Имя workflow или шага в Actions. Пример: Windows incremental regression.
+      - name: Windows combined environment and incremental regression
+        # Оболочка Windows-команд. Пример: pwsh.
+        shell: pwsh
+        # Команды шага с передачей exit code. Пример: python <self-test.py>.
+        run: |
+          python .harness/tools/verification-environment-self-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .harness/tools/verification-incremental-self-test.py
+          exit $LASTEXITCODE

@@ -1508,6 +1508,7 @@ def _immutable_report_patterns(root: Path) -> tuple[tuple[str, re.Pattern[str]],
     result: list[tuple[str, re.Pattern[str]]] = []
     surfaces = (
         (review_directory, r"^STEP-\d{3,}/REVIEW-.+\.md$"),
+        (review_directory, r"^STEP-\d{3,}/OBSERVATION-\d{8}T\d{6}Z-[0-9a-f]{12}\.json$"),
         (planning_review_directory, r"^STEP-\d{3,}/PLAN-REVIEW-.+\.md$"),
         (init_review_directory, r"^INIT-REVIEW-.+\.md$"),
         (audit_directory, r"^(?:MIGRATION|AUDIT)-.+\.md$"),
@@ -1640,6 +1641,16 @@ def validate_all_review_reports(root: Path, *, ci_mode: bool = False) -> list[st
     directory = review_directory(root)
     if not directory.is_dir():
         return errors
+    # Observation имеет отдельный schema/provenance contract; повреждение
+    # возвращаем как диагностику, не смешивая с legacy snapshots.
+    from late_defect import ObservationError, read as read_late_defect
+    for path in sorted(directory.glob("STEP-*/OBSERVATION-*.json")):
+        try:
+            read_late_defect(root, path.parent.name, path.relative_to(root).as_posix())
+        except (ObservationError, OSError, ValueError) as exc:
+            errors.append(
+                f"review: invalid late defect observation {path.relative_to(root)}: {exc}"
+            )
     try:
         pins = legacy_review_pins(root)
     except ValueError as exc:

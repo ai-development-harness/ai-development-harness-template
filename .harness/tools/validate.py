@@ -722,6 +722,11 @@ def validate_project_surface(
             ci_mode=mode == "ci",
         )
     )
+    # Opt-in verification map is also a planning contract. An invalid
+    # selection must not pass Ready-plan/integrity gates and then fail open
+    # only when FIX begins.
+    from verification_incremental import validate_impact_map
+    errors.extend(validate_impact_map(root))
 
 
 

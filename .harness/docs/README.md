@@ -37,6 +37,7 @@
 - [`HIGH_RIGOR.md`](HIGH_RIGOR.md) — optional Arena/Interrogate fan-out, activation policy, exact input/result trace, budgets и DEGRADED semantics.
 - [`BENCHMARK_METHODOLOGY.md`](BENCHMARK_METHODOLOGY.md) — optional performance methodology, reproducible evidence contract, repeated-run statistics и deterministic PASS/INCONCLUSIVE gate.
 - [`PR_MAINTENANCE.md`](PR_MAINTENANCE.md) — read-only provider snapshot, CI/review feedback triage, reviewability guidance и bounded PR babysit без mutation authority.
+- [`INCREMENTAL_VERIFICATION.md`](INCREMENTAL_VERIFICATION.md) — опциональная проверка затронутых групп с producer-bound составным PASS и безопасным полным fallback.
 - [`PROJECT_VERIFICATION.md`](PROJECT_VERIFICATION.md) — project-owned Verification Driver, feature map, qualification, drift detection и `product: FEATURE-*` evidence через реальную пользовательскую поверхность.
 - [`COMPLETION_GATE.md`](COMPLETION_GATE.md) — отдельная convergence-проверка полноты Acceptance после REVIEW PASS, routing FIX/BLOCKED и crash-safe completion recovery.
 - [`EXECUTION_GROUPS.md`](EXECUTION_GROUPS.md) — optional machine-readable dependency groups внутри Implementation plan, mutation conflict boundaries и sequential scheduling semantics.

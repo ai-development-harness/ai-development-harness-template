@@ -80,17 +80,59 @@ def _save(root: Path, step_id: str, data: dict[str, Any]) -> None:
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
 
 
+def _reviewed_observation(
+    root: Path, step_id: str, review_path: str,
+) -> dict[str, Any] | None:
+    """Allow post-PASS FIX only for a durable, current user observation."""
+    from harness_config import review_directory
+    from late_defect import read as read_observation, active_source_freshness, _digest
+    from planning_contract import read_task
+    if read_task(root, step_id)["frontmatter"].get("status") != "in_progress":
+        return None
+    folder = review_directory(root) / step_id
+    reports = sorted(folder.glob("OBSERVATION-*.json"))
+    if not reports:
+        return None
+    candidate = reports[-1]
+    rel = candidate.relative_to(root).as_posix()
+    value = read_observation(root, step_id, rel)
+    source = value["source"]
+    # Перед FIX снова подтверждаем, что кроме нового reproducer входы
+    # исходного PASS не менялись; observation само по себе этого не разрешает.
+    if not active_source_freshness(
+        root, step_id, value["finding"]["reproducerEvidence"]["path"], rel,
+    ):
+        return None
+    if source.get("evidenceSha256") != _digest(
+        read_task(root, step_id)["sections"].get("Evidence", "").encode("utf-8")
+    ):
+        return None
+    if (source.get("statusAtObservation") != "in_progress"
+            or source.get("review") != review_path):
+        raise FixDeltaError("late observation is not linked to current PASS REVIEW")
+    return {"path": rel, "finding": value["finding"]}
+
+
 def capture_fix(root: Path, step_id: str, execution_id: str) -> dict[str, Any]:
     existing = _load(root, step_id)
     if existing and existing.get("executionId") == execution_id:
         return existing  # resume must not overwrite the original pre-FIX snapshot
     review = latest_structured_findings(root, step_id)
-    if review.get("verdict") != "fail" or not review.get("findings"):
-        raise FixDeltaError("FIX requires a current FAIL review with findings")
+    observation: dict[str, Any] | None = None
+    if review.get("verdict") == "fail" and review.get("findings"):
+        prior_fingerprints = [item["fingerprint"] for item in review["findings"]]
+    elif review.get("verdict") == "pass" and not review.get("findings"):
+        observation = _reviewed_observation(root, step_id, review["report"])
+        if observation is None:
+            raise FixDeltaError("post-PASS FIX requires a current immutable defect observation")
+        prior_fingerprints = []  # Never fabricate a previous FAIL/finding.
+    else:
+        raise FixDeltaError("FIX requires FAIL findings or a current PASS observation")
     data = {
         "schemaVersion": 1, "stepId": step_id, "executionId": execution_id,
         "sourceReport": review["report"],
-        "findings": [item["fingerprint"] for item in review["findings"]],
+        "findings": prior_fingerprints,
+        "observation": observation["path"] if observation is not None else None,
         "beforeTree": _snapshot_tree(root), "complete": False,
     }
     _save(root, step_id, data)
@@ -143,6 +185,20 @@ def review_scope(root: Path, step_id: str) -> dict[str, Any]:
         patch = _run(root, "diff", "--binary", "--no-ext-diff", "--no-renames", before, after)
     if len(patch) > MAX_PATCH_BYTES:
         raise FixDeltaError("FIX patch exceeds bounded review handoff budget")
+    observation: dict[str, Any] | None = None
+    if data.get("observation") is not None:
+        from late_defect import read as read_observation
+        rel = data["observation"]
+        # Observation must be the exact pre-FIX immutable file, not a
+        # replaced/relocated candidate supplied after product mutation.
+        previous = _run(root, "show", before + ":" + rel)
+        current = (root / rel).read_bytes()
+        if previous != current:
+            raise FixDeltaError("late observation changed since FIX baseline")
+        observation = {
+            "path": rel,
+            "finding": read_observation(root, step_id, rel)["finding"],
+        }
     patch_path = _path(root, step_id).with_suffix(".patch")
     if patch_path.is_symlink():
         raise FixDeltaError("FIX patch path must not be a symlink")
@@ -152,6 +208,7 @@ def review_scope(root: Path, step_id: str) -> dict[str, Any]:
         "mode": "fix_delta",
         "sourceReport": data["sourceReport"],
         "previousFingerprints": data["findings"],
+        "observation": observation,
         "beforeTree": before,
         "afterTree": after,
         "changedPaths": paths,
