@@ -98,6 +98,12 @@ def main() -> int:
         from review_contract import validate_review_report
         assert not validate_review_report(root, root / review_rel, expected_step_id=step_id)
 
+        # Новый REVIEW сам по себе не меняет проверенные product inputs.
+        # Это также проверяет сравнение Windows short alias с полным путём.
+        reviewed = run_step_verification(root, step_id, manual_results=observation())
+        assert reviewed["status"] == "PASS" and reviewed["verificationMode"] == "incremental", reviewed
+        assert reviewed["executedCount"] == 0 and reviewed["reusedCount"] == 2, reviewed
+
         # Дефект UI не должен заставлять повторять доказанно независимый backend.
         write(root / "src/ui/button.tsx", 'export const label = "Accessible button";\n')
         first = run_step_verification(root, step_id, manual_results=observation())

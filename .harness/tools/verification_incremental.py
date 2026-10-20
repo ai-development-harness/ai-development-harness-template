@@ -463,7 +463,7 @@ def _new_valid_review_paths(
     from harness_config import review_directory
     from review_contract import validate_review_report
     folder = review_directory(root) / step_id
-    rel_dir = folder.relative_to(root.resolve()).as_posix()
+    rel_dir = _repo_relative(root, folder)
     prefix = rel_dir + "/REVIEW-"
     candidates = [name for name in paths if name.startswith(prefix)]
     if not candidates:
@@ -472,7 +472,9 @@ def _new_valid_review_paths(
     allowed: set[str] = set()
     for name in candidates:
         candidate = root / name
-        if candidate.parent != folder or not re.fullmatch(r"REVIEW-\d{8}T\d{6}Z\.md", candidate.name):
+        # Windows 8.3 alias и полный путь обозначают один каталог REVIEW.
+        # Нормализуем только родителя, сохраняя проверку symlink самого отчёта.
+        if candidate.parent.resolve() != folder.resolve() or not re.fullmatch(r"REVIEW-\d{8}T\d{6}Z\.md", candidate.name):
             continue
         if name in baseline_names:
             raise IncrementalError("HISTORICAL_REVIEW_CHANGED")
