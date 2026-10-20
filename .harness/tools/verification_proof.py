@@ -163,6 +163,43 @@ def incremental_cache_proof_error(
     return None
 
 
+def record_targeted_proof(root: Path, step_id: str, checkpoint: bytes) -> None:
+    """Закрепить bytes targeted PASS отдельно от редактируемого cache.
+
+    Canonical Evidence не изменяется: targeted feedback остаётся только
+    кандидатом на reuse, пока Core не проверит актуальный subject и coverage.
+    """
+    path = _safe_proof_path(root, step_id).with_suffix(".targeted.json")
+    if path.is_symlink():
+        raise ValueError("targeted proof path must not be a symlink")
+    payload = {
+        "schemaVersion": PROOF_VERSION, "stepId": step_id,
+        "producer": "deterministic-targeted-verification",
+        "checkpointSha256": "sha256:" + hashlib.sha256(checkpoint).hexdigest(),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(path, json.dumps(payload, sort_keys=True) + "\n")
+
+
+def targeted_proof_error(root: Path, step_id: str, checkpoint: bytes) -> str | None:
+    """Одиночная правка targeted cache требует реального запуска команды."""
+    try:
+        path = _safe_proof_path(root, step_id).with_suffix(".targeted.json")
+        if path.is_symlink():
+            return "TARGETED_PRODUCER_INVALID"
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return "TARGETED_PRODUCER_UNAVAILABLE"
+    expected = "sha256:" + hashlib.sha256(checkpoint).hexdigest()
+    if (not isinstance(saved, dict)
+            or saved.get("schemaVersion") != PROOF_VERSION
+            or saved.get("stepId") != step_id
+            or saved.get("producer") != "deterministic-targeted-verification"
+            or saved.get("checkpointSha256") != expected):
+        return "TARGETED_PRODUCER_MISMATCH"
+    return None
+
+
 def verification_proof_error(
     root: Path,
     step_id: str,

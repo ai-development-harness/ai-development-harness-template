@@ -117,15 +117,46 @@ def main() -> int:
         denied = resolve_root(root, no_observation_chain)
         assert denied["status"] == "DONE" and denied["command"] is None, denied
 
-        active_observation = record(
-            root, "STEP-001", criterion=criteria[0],
-            given="Button is present", when="The screen reader focuses it",
-            expected="Accessible name is announced",
-            observed="No accessible name was announced",
-            evidence_path="docs/architecture.md", invalidated_checks=["ui"],
-        )
+        # Reproducer действительно появляется после REVIEW; старый PASS
+        # остаётся stale для completion, исключение действует только на FIX.
+        reproducer = root / "docs/reproductions/late-button.txt"
+        write(reproducer, "Нет доступного имени кнопки.\n")
+        assert verification_freshness(root, "STEP-001")["fresh"] is False
+        def record_active(evidence: str = "docs/reproductions/late-button.txt") -> dict:
+            return record(
+                root, "STEP-001", criterion=criteria[0],
+                given="Кнопка отображается", when="Фокус экранного диктора",
+                expected="Доступное имя объявлено", observed="Доступное имя отсутствует",
+                evidence_path=evidence, invalidated_checks=["ui"],
+            )
+        # Изменение продукта, старого evidence и посторонний новый файл
+        # запрещены даже при наличии корректного нового reproducer.
+        for path in (root / "src/ui/Button.tsx", root / "docs/architecture.md", root / "docs/extra.txt"):
+            saved = path.read_bytes() if path.exists() else None
+            write(path, "Непроверенное изменение.\n")
+            try:
+                record_active()
+            except ObservationError:
+                pass
+            else:
+                raise AssertionError("Принято постороннее изменение до регистрации observation")
+            if saved is None:
+                path.unlink()
+            else:
+                path.write_bytes(saved)
+        active_observation = record_active()
         active_rel = active_observation["path"]
         assert read(root, "STEP-001", active_rel)["source"]["statusAtObservation"] == "in_progress"
+
+        # Добавление продукта после регистрации observation также не даёт FIX.
+        ui_path = root / "src/ui/Button.tsx"
+        original_ui = ui_path.read_bytes()
+        write(ui_path, "Непроверенное изменение после observation.\n")
+        from fix_delta import _reviewed_observation
+        assert _reviewed_observation(root, "STEP-001", blocked_report) is None
+        ui_path.write_bytes(original_ui)
+        assert verification_freshness(root, "STEP-001")["fresh"] is False
+        original_review = (root / blocked_report).read_bytes()
 
         # CTS не открывает FIX после PASS без durable observation.
         chain = "STEP REVIEW STEP-001 > STEP FIX STEP-001"
@@ -153,6 +184,7 @@ def main() -> int:
         assert scoped["observation"]["path"] == active_rel, scoped
         assert scoped["previousFingerprints"] == [], "no forged FAIL findings"
         assert "src/ui/Button.tsx" in scoped["changedPaths"], scoped
+        assert (root / blocked_report).read_bytes() == original_review
         block_execution(root, chain, command="STEP FIX STEP-001")
 
         # После завершения исходного STEP старый REVIEW/STEP не меняется.
@@ -254,6 +286,18 @@ def main() -> int:
         )
         assert fallback["status"] == "PASS" and fallback["verificationMode"] == "full", fallback
         assert fallback["executedCount"] == 2, fallback
+
+        # Повреждённое observation диагностируется validator-ом. Legacy
+        # snapshots и schema migration не падают из-за отсутствующего errors.
+        from review_contract import current_legacy_review_snapshots, validate_all_review_reports
+        from project_migration import migration_preflight, legacy_schema_pending
+        malformed = root / "planning/reviews/STEP-001/OBSERVATION-20261020T000000Z-000000000000.json"
+        write(malformed, "{}\n")
+        errors = validate_all_review_reports(root)
+        assert any("invalid late defect observation" in item and malformed.name in item for item in errors), errors
+        current_legacy_review_snapshots(root)
+        migration_preflight(root)
+        legacy_schema_pending(root)
 
     print("LATE DEFECT SELF-TEST: PASS")
     return 0

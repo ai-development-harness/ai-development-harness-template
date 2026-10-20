@@ -442,6 +442,7 @@ def invalidate_failed_feedback(root: Path, step_id: str) -> None:
         _state_path(root, step_id),
         _targeted_path(root, step_id),
         root / ".harness/local/verification-proofs" / (step_id + ".json"),
+        root / ".harness/local/verification-proofs" / (step_id + ".targeted.json"),
     )
     for path in records:
         if path.is_symlink() or path.parent.is_symlink():
@@ -634,6 +635,9 @@ def prepare(
                     if (
                         check["id"] in affected
                         and (not check["reusable"] or check["id"] in invalidated
+                             # Зависимость родителя затрагивает все группы,
+                             # даже если одновременно изменились его inputs.
+                             or bool(set(check["dependsOn"]) & affected)
                              or record.get("inputBasis") == basis[check["id"]])
                     ) or group["id"] in invalidated or not group["reusable"]
                     or previous_groups[group["id"]].get("inputBasis") != group_basis[group["id"]]
@@ -882,7 +886,10 @@ def remember_targeted(
         }
         path = _targeted_path(root, step_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(path, json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n")
+        encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n"
+        atomic_write_text(path, encoded)
+        from verification_proof import record_targeted_proof
+        record_targeted_proof(root, step_id, encoded.encode("utf-8"))
     except (OSError, ValueError):
         return
 
@@ -899,7 +906,11 @@ def reuse_targeted(
         path = _targeted_path(root, step_id)
         if not path.is_file():
             return {}
-        data = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
+        from verification_proof import targeted_proof_error
+        if targeted_proof_error(root, step_id, raw) is not None:
+            return {}
+        data = json.loads(raw.decode("utf-8"))
         if not isinstance(data, dict) or any((
             data.get("schemaVersion") != STATE_VERSION,
             data.get("producer") != "targeted-verification",

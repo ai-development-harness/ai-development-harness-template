@@ -85,14 +85,9 @@ def _reviewed_observation(
 ) -> dict[str, Any] | None:
     """Allow post-PASS FIX only for a durable, current user observation."""
     from harness_config import review_directory
-    from late_defect import read as read_observation
+    from late_defect import read as read_observation, active_source_freshness, _digest
     from planning_contract import read_task
-    from verification import verification_freshness
     if read_task(root, step_id)["frontmatter"].get("status") != "in_progress":
-        return None
-    # The original PASS must still be fresh before the first correction.
-    original = verification_freshness(root, step_id)
-    if original.get("fresh") is not True or original.get("status") != "PASS":
         return None
     folder = review_directory(root) / step_id
     reports = sorted(folder.glob("OBSERVATION-*.json"))
@@ -102,6 +97,16 @@ def _reviewed_observation(
     rel = candidate.relative_to(root).as_posix()
     value = read_observation(root, step_id, rel)
     source = value["source"]
+    # Перед FIX снова подтверждаем, что кроме нового reproducer входы
+    # исходного PASS не менялись; observation само по себе этого не разрешает.
+    if not active_source_freshness(
+        root, step_id, value["finding"]["reproducerEvidence"]["path"], rel,
+    ):
+        return None
+    if source.get("evidenceSha256") != _digest(
+        read_task(root, step_id)["sections"].get("Evidence", "").encode("utf-8")
+    ):
+        return None
     if (source.get("statusAtObservation") != "in_progress"
             or source.get("review") != review_path):
         raise FixDeltaError("late observation is not linked to current PASS REVIEW")

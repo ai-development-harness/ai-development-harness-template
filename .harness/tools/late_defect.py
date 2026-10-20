@@ -32,7 +32,68 @@ def _digest(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def _origin(root: Path, step_id: str) -> dict[str, Any]:
+def active_source_freshness(
+    root: Path, step_id: str, evidence_rel: str, observation_rel: str | None = None,
+) -> bool:
+    """Разрешить только добавление reproducer к producer-bound reviewed subject.
+
+    Исключение единственного нового файла должно в точности восстановить hash
+    исходных входов. Изменение старого evidence или продукта сюда не проходит.
+    """
+    from verification import (
+        verification_freshness, verification_contract_basis,
+        verification_context_basis, EVIDENCE_START, EVIDENCE_END,
+    )
+    from verification_proof import verification_proof_error
+    from planning_contract import task_path
+    from review_contract import repository_subject_content_hash, repository_revision
+    fresh = verification_freshness(root, step_id)
+    if fresh.get("fresh") is True and fresh.get("status") == "PASS":
+        if observation_rel is None:
+            review = latest_review(root, step_id, require_current_revision=True)
+            return review is not None and review.get("verdict") == "PASS"
+        review = latest_review(root, step_id)
+        return bool(
+            review is not None and review.get("verdict") == "PASS"
+            and review["document"]["frontmatter"].get("reviewed_revision")
+            == repository_revision(root, ignored_paths={observation_rel})
+        )
+    if fresh.get("reasonCode") != "VERIFICATION_SUBJECT_STALE":
+        return False
+    section = read_task(root, step_id)["sections"].get("Evidence", "")
+    match = re.search(
+        re.escape(EVIDENCE_START) + r"(.*?)" + re.escape(EVIDENCE_END), section, re.S,
+    )
+    if match is None:
+        return False
+    block = match.group(1)
+
+    def field(label: str) -> str | None:
+        found = re.search(rf"(?m)^- {re.escape(label)}: (.+?)\s*$", block)
+        return found.group(1).strip() if found else None
+
+    if (field("Status") != "PASS"
+            or field("Verification contract basis") != verification_contract_basis(root, step_id)
+            or field("Verification context basis") != verification_context_basis(root, step_id)
+            or verification_proof_error(root, step_id, block=block, status="PASS") is not None):
+        return False
+    task_rel = task_path(root, step_id).resolve().relative_to(root.resolve()).as_posix()
+    if evidence_rel == task_rel:
+        return False
+    baseline = repository_subject_content_hash(root, ignored_paths={task_rel, evidence_rel})
+    review = latest_review(root, step_id)
+    ignored = {evidence_rel}
+    if observation_rel is not None:
+        ignored.add(observation_rel)
+    return bool(
+        field("Subject content hash") == baseline
+        and review is not None and review.get("verdict") == "PASS"
+        and review["document"]["frontmatter"].get("reviewed_revision")
+        == repository_revision(root, ignored_paths=ignored)
+    )
+
+
+def _origin(root: Path, step_id: str, evidence_rel: str | None = None) -> dict[str, Any]:
     if not STEP_ID.fullmatch(step_id):
         raise ObservationError("invalid source STEP id")
     task = read_task(root, step_id)
@@ -43,11 +104,8 @@ def _origin(root: Path, step_id: str) -> dict[str, Any]:
             raise ObservationError("source completion proof unavailable: " +
                                    "; ".join(proof.get("reasons", [])))
     elif status == "in_progress":
-        # A reviewed-but-not-finalized STEP may receive a user observation.
-        # Its *current* producer-bound PASS must exist before the FIX starts.
-        from verification import verification_freshness
-        fresh = verification_freshness(root, step_id)
-        if fresh.get("status") != "PASS" or fresh.get("fresh") is not True:
+        # Новый reproducer дополняет исходный PASS, но не обновляет его subject.
+        if evidence_rel is None or not active_source_freshness(root, step_id, evidence_rel):
             raise ObservationError("active source requires fresh Verification PASS")
     else:
         raise ObservationError("observation requires completed or reviewed active STEP")
@@ -55,7 +113,7 @@ def _origin(root: Path, step_id: str) -> dict[str, Any]:
     # completion; это не доказательство завершения самого STEP.
     trusted = (
         latest_trusted_review(root, step_id) if status == "completed"
-        else latest_review(root, step_id, require_current_revision=True)
+        else latest_review(root, step_id)
     )
     if trusted is None or trusted.get("verdict") != "PASS":
         raise ObservationError("source requires an independent trusted PASS REVIEW")
@@ -139,7 +197,8 @@ def record(
 ) -> dict[str, Any]:
     """Reserve an immutable file only after source and evidence are verified."""
     root = root.resolve()
-    source = _origin(root, step_id)
+    if not STEP_ID.fullmatch(step_id):
+        raise ObservationError("invalid source STEP id")
     if criterion not in acceptance_criteria(root, step_id):
         raise ObservationError("criterion must exactly match source Acceptance")
     for label, value in (
@@ -166,6 +225,7 @@ def record(
     )
     if ignored.returncode != 1:
         raise ObservationError("reproducer must be a non-ignored repository file")
+    source = _origin(root, step_id, evidence_rel)
     proof = {"path": evidence_rel, "sha256": _digest(evidence.read_bytes())}
     reuse = _reuse_origin(root, step_id)
     if reuse is not None:

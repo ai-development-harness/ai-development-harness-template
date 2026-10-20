@@ -17,10 +17,11 @@ on:
   # После merge PR GitHub создаёт push в main — это отдельная финальная проверка.
   # Пример: squash merge PR → push нового commit в main → Harness Integrity.
   push:
-    # Не запускать CI для обычных push в feature/release-ветки.
-    # Пример: только main.
+    # Полный CI также проверяет изолированное исправление review #368.
+    # Пример: main или codex/pr368-review-fixes, без merge в main.
     branches:
       - main
+      - codex/pr368-review-fixes
 
 # Минимальные GitHub token permissions всего workflow.
 # Пример: только `contents: read`, потому что workflow ничего не публикует.

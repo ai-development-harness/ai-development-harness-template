@@ -193,9 +193,13 @@ python3 .harness/tools/verify-step.py STEP-017 --full
 - `manual`/`product` не подтверждены для текущего запуска: итог
   `MANUAL_REQUIRED` или `FAIL`, не `PASS`.
 
-Измерения `executedCount`/`reusedCount` сообщают **число команд**, а
-`durationMs` каждого результата показывает время фактического исполнения
-либо исходного PASS; `targetedReusedCount` выделяется отдельно. Это не
+`executedCount` сообщает число фактически запущенных родительских команд;
+синтетический aggregate в него не входит. `reusedCount` считает сохранённые
+родительские результаты. `executedChecks` перечисляет заново вычисленные
+обязательства, включая aggregate: это provenance, а не счётчик процессов.
+Группы считаются отдельно в `groupExecutedCount`/`groupReusedCount`,
+а `targetedReusedCount` выделяет использованные targeted-команды, включая группы.
+`durationMs` показывает время фактического исполнения либо исходного PASS. Это не
 доказательство сокращения времени без сравнительного полного прогона.
 
 ## Поздний дефект после REVIEW PASS
@@ -209,6 +213,15 @@ python3 .harness/tools/verify-step.py STEP-017 --full
    Acceptance-критерий, Given/When/Expected/Observed, hash reproducer evidence
    и список `invalidatedChecks`. Содержание файла связано с именем
    через digest; незаметная правка меняет identity и блокируется validator-ом.
+   Для активного STEP (`in_progress`) новый reproducer может быть единственным
+   добавленным входом после REVIEW PASS. Регистрация и начало FIX проверяют,
+   что исключение ровно этого файла восстанавливает исходный content hash,
+   contract/context и producer proof неизменны, а исходный REVIEW относится
+   к прежней revision. Изменение продукта, старого evidence или добавление
+   второго файла блокирует переход. Сам observation исключается из повторного
+   сравнения revision только после проверки его неизменности и происхождения.
+   Это разрешает регистрацию и FIX, но не делает старый Verification свежим:
+   после исправления требуются новый canonical Verification и независимый REVIEW.
 2. Для completed source STEP создай отдельный корректирующий STEP обычным
    `STEP ADD`, запланируй исправление и регрессионные проверки. В контексте
    укажи путь observation. В карте нового STEP допустимо добавить:
@@ -288,6 +301,10 @@ observations на актуальном subject.
 - `.harness/local/verification-incremental/STEP-NNN.targeted.json` —
   необязательный PASS `verify-selected`, сохраняется под тем же lock,
   допускается к reuse только после повторной проверки exact subject/inputs.
+  Его точные bytes закреплены отдельным producer proof
+  `.harness/local/verification-proofs/STEP-NNN.targeted.json`.
+  Изменение cache или потеря этого pin требуют фактического запуска команды;
+  canonical Evidence не выдаётся на основании самодекларированного subjectHash.
 - Данные clone-local, в Git не входят. Утрата, несовместимость версии,
   истечение жизни Git tree после GC или удаление файла → обычный полный
   Verification. Snapshot нельзя принимать вместо исходников или

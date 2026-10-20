@@ -1317,7 +1317,12 @@ def run_step_verification(
             if reused is None and name in selection["executed"] and name not in targeted
         ],
         "targetedChecks": [] if reused is not None else list(targeted),
-        "executedCount": 0 if reused is not None else len(selection["executed"]) - len(targeted),
+        # Считаем только реальные запуски top-level команд. Синтетический
+        # aggregate и subgroup feedback учитываются отдельно от выполнения.
+        "executedCount": 0 if reused is not None else sum(
+            not item.get("reusedFrom") and not item.get("composite")
+            for item in commands
+        ),
         "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
         "targetedReusedCount": 0 if reused is not None else len(targeted),
         "groupExecutedCount": sum(
