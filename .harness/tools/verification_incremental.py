@@ -16,7 +16,7 @@ from typing import Any
 
 from document_contract import atomic_write_text
 from harness_config import get, load_manifest, resolve_repo_path
-from planning_contract import read_task, task_path
+from planning_contract import _repo_relative, read_task, task_path
 from verification_resume import NON_REUSABLE_FLAGS, _environment_basis
 
 STATE_VERSION = 1
@@ -369,8 +369,8 @@ def _corrective_control_paths(
     link = policy["reuse"]
     source_id = link["sourceStep"]
     control = {
-        task_path(root, source_id).relative_to(root).as_posix(),
-        task_path(root, step_id).relative_to(root).as_posix(),
+        _repo_relative(root, task_path(root, source_id)),
+        _repo_relative(root, task_path(root, step_id)),
         observation["source"]["review"],
         link["observation"],
         policy["mapPath"],
@@ -381,12 +381,12 @@ def _corrective_control_paths(
     )
     for resolve in (roadmap_path, status_path, open_questions_index_path):
         try:
-            control.add(resolve(root).relative_to(root).as_posix())
+            control.add(_repo_relative(root, resolve(root)))
         except (ValueError, OSError):
             pass
     try:
         req = requirements_directory(root)
-        control.update((req / name).relative_to(root).as_posix()
+        control.update(_repo_relative(root, req / name)
                        for name in ("SPEC.md", "STATUS.md"))
     except (ValueError, OSError):
         pass
@@ -404,9 +404,9 @@ def _corrective_control_paths(
             for report in sorted(folder.glob("REVIEW-*.md")):
                 if validate_review_report(root, report, expected_step_id=sid):
                     raise IncrementalError("INVALID_CORRECTIVE_REVIEW_HISTORY")
-                control.add(report.relative_to(root).as_posix())
+                control.add(_repo_relative(root, report))
             for record in sorted(folder.glob("OBSERVATION-*.json")):
-                rel = record.relative_to(root).as_posix()
+                rel = _repo_relative(root, record)
                 # Only source observations are eligible for this provenance
                 # chain. A new observation after the linked defect changes
                 # accepted obligations and requires full requalification.
@@ -421,7 +421,7 @@ def _corrective_control_paths(
         for report in sorted(plan_folder.glob("PLAN-REVIEW-*.md")):
             if validate_planning_review_report(root, report, expected_step_id=step_id):
                 raise IncrementalError("INVALID_CORRECTIVE_PLAN_REVIEW")
-            control.add(report.relative_to(root).as_posix())
+            control.add(_repo_relative(root, report))
     return control
 
 
@@ -463,7 +463,7 @@ def _new_valid_review_paths(
     from harness_config import review_directory
     from review_contract import validate_review_report
     folder = review_directory(root) / step_id
-    rel_dir = folder.relative_to(root.resolve()).as_posix()
+    rel_dir = _repo_relative(root, folder)
     prefix = rel_dir + "/REVIEW-"
     candidates = [name for name in paths if name.startswith(prefix)]
     if not candidates:
@@ -472,7 +472,9 @@ def _new_valid_review_paths(
     allowed: set[str] = set()
     for name in candidates:
         candidate = root / name
-        if candidate.parent != folder or not re.fullmatch(r"REVIEW-\d{8}T\d{6}Z\.md", candidate.name):
+        # Windows 8.3 alias и полный путь обозначают один каталог REVIEW.
+        # Нормализуем только родителя, сохраняя проверку symlink самого отчёта.
+        if candidate.parent.resolve() != folder.resolve() or not re.fullmatch(r"REVIEW-\d{8}T\d{6}Z\.md", candidate.name):
             continue
         if name in baseline_names:
             raise IncrementalError("HISTORICAL_REVIEW_CHANGED")
@@ -577,7 +579,7 @@ def prepare(
             if any(p in control_paths and p in original_names and
                    p.split("/")[-1].startswith("REVIEW-") for p in paths):
                 return fallback("HISTORICAL_REVIEW_CHANGED")
-        task_relative = task_path(root, step_id).relative_to(root).as_posix()
+        task_relative = _repo_relative(root, task_path(root, step_id))
         meaningful = [
             p for p in paths
             if p != task_relative and p not in control_paths and p not in new_reports

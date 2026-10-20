@@ -77,6 +77,13 @@ def main() -> int:
         assert checkpoint.is_file()
         baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
 
+        # Windows runners can expose the same directory as RUNNER~1 and
+        # runneradmin. With no changed files, canonical Verification must
+        # reuse both checks; an alias mismatch must not silently force full.
+        unchanged = run_step_verification(root, step_id, manual_results=observation())
+        assert unchanged["status"] == "PASS" and unchanged["verificationMode"] == "incremental", unchanged
+        assert unchanged["executedCount"] == 0 and unchanged["reusedCount"] == 2, unchanged
+
         # Новый настоящий immutable REVIEW после полного baseline не должен
         # выглядеть как неизвестный product input: это обычный FIX workflow.
         reviewer_spec = importlib.util.spec_from_file_location(
@@ -90,6 +97,12 @@ def main() -> int:
         )
         from review_contract import validate_review_report
         assert not validate_review_report(root, root / review_rel, expected_step_id=step_id)
+
+        # Новый REVIEW сам по себе не меняет проверенные product inputs.
+        # Это также проверяет сравнение Windows short alias с полным путём.
+        reviewed = run_step_verification(root, step_id, manual_results=observation())
+        assert reviewed["status"] == "PASS" and reviewed["verificationMode"] == "incremental", reviewed
+        assert reviewed["executedCount"] == 0 and reviewed["reusedCount"] == 2, reviewed
 
         # Дефект UI не должен заставлять повторять доказанно независимый backend.
         write(root / "src/ui/button.tsx", 'export const label = "Accessible button";\n')
