@@ -186,6 +186,12 @@ def _lane_commands(
     if lane in {"current", "minimum"}:
         commands = [
             (
+                # Managed workflows не должны нести временные PR-артефакты (#379).
+                "release-artifact-hygiene",
+                [py, ".harness/tools/release-artifact-hygiene.py"],
+                gate_timeout_seconds,
+            ),
+            (
                 "validate-ci",
                 [py, ".harness/tools/validate.py", "--mode", "ci"],
                 gate_timeout_seconds,

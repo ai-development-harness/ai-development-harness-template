@@ -17,15 +17,17 @@ import time
 GROUPS = {
     "update": ("harness-config", "document-contract", "update-engine"),
     "resume": ("step-next", "portable-handoff", "portable-resume", "portable-resume-matrix"),
-    "execution": ("execution", "verification", "reliable-orchestration-fault",
-                  "operational-reports", "operational-completion", "operational-integration", "local-cleanup"),
+    # Incremental/environment Verification зависят от Windows 8.3 path aliases (#376).
+    "execution": ("execution", "verification", "verification-incremental", "verification-environment",
+                  "reliable-orchestration-fault", "operational-reports", "operational-completion",
+                  "operational-integration", "local-cleanup"),
 }
 
 
 def validate_groups() -> None:
     names = [name for group in GROUPS.values() for name in group]
-    if len(names) != 14 or len(set(names)) != len(names):
-        raise ValueError("Windows-набор должен содержать 14 различных self-tests")
+    if len(names) != 16 or len(set(names)) != len(names):
+        raise ValueError("Windows-набор должен содержать 16 различных self-tests")
 
 
 def finalize(needs: dict) -> bool:

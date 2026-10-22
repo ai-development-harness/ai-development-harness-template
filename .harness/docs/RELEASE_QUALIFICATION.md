@@ -32,11 +32,21 @@ python3 .harness/tools/release-qualification.py \
 
 | Lane | Назначение |
 |---|---|
-| `current` | основной supported Linux/Python runtime: validator + полный discoverable synthetic suite + mandatory bounded stress suite (20 iterations) |
+| `current` | основной supported Linux/Python runtime: release artifact hygiene + validator + полный discoverable synthetic suite + mandatory bounded stress suite (20 iterations) |
 | `minimum` | та же deterministic surface строго на Python 3.11 |
 | `windows` | validator + targeted Windows-specific process/locking/update boundaries |
 
 Один и тот же entrypoint используется external release orchestrator-ом во всех lanes. Workflow не должен вручную копировать список core qualification commands.
+
+## Release artifact hygiene
+
+Gate `release-artifact-hygiene` (`.harness/tools/release-artifact-hygiene.py`) проверяет tracked `.github/workflows/*`: эти paths managed и устанавливаются в каждый downstream-проект (#379). Candidate получает `FAIL`, если workflow содержит:
+
+- `TEMPORARY_WORKFLOW_FILE` — файл с именем `pr<NNN>*`;
+- `TEMPORARY_BRANCH_TRIGGER` — значение `branches` / `branches-ignore` кроме `main` и `feature/**` (например `codex/*`, `fix/*`, `pr<NNN>*`), в том числе в flow sequence и flow mapping вида `push: {branches: [main, fix/x]}`;
+- `PINNED_UPSTREAM_COMMIT` — полный commit SHA (40 hex) вне `uses: <action>@<sha>`: `git fetch` / `git restore --source=` / `git checkout`, `actions/checkout` с `ref: <sha>`, в том числе через `env`, перенос строки или flow mapping.
+
+Pinned `uses: <action>@<sha>` разрешён: это supply-chain pinning, а не overlay upstream commit. Временные workflow и триггеры для проверки отдельной ветки удаляются до release tag; отказ gate нельзя обходить.
 
 ## Exact revision
 

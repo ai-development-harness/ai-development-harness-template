@@ -1917,6 +1917,8 @@ Validation mode принимает semantic archaeology payload и optional Cont
 
 - `.harness/tools/release-qualification.py`
 - `.harness/tools/release-qualification-self-test.py`
+- `.harness/tools/release-artifact-hygiene.py`
+- `.harness/tools/release-artifact-hygiene-self-test.py`
 
 ## Роль
 
@@ -1934,7 +1936,7 @@ python3 .harness/tools/release-qualification.py \
 
 `--lane` обязателен:
 
-- `current` — validator + полный discoverable self-test suite;
+- `current` — release artifact hygiene + validator + полный discoverable self-test suite;
 - `minimum` — тот же core contract строго на Python 3.11;
 - `windows` — validator + targeted Windows-specific boundaries.
 
@@ -1952,6 +1954,7 @@ python3 .harness/tools/release-qualification.py \
 - dirty checkout не квалифицируется;
 - после gates повторно проверяется tracked/untracked state;
 - stdout/stderr в compact JSON представлены hash + byte count, полный вывод остаётся job log;
+- tracked workflows без временных PR-файлов, рабочих branch triggers и pinned upstream commit overlay (`release-artifact-hygiene.py --json`, #379);
 - Windows lane нельзя случайно запустить на POSIX;
 - minimum lane нельзя засчитать не на Python 3.11.
 
@@ -2236,8 +2239,10 @@ Negative scenarios: missing/wrong receipt, previous executionId, modified file, 
 
 **Файлы:** `windows-ci.py`, `windows_ci.py`, `windows-ci-self-test.py`.
 
-**Роль:** выполнять прежние 13 Windows self-tests тремя непересекающимися группами
+**Роль:** выполнять 16 Windows self-tests тремя непересекающимися группами
 на отдельных runners и сохранять итоговый check `Validate Windows boundaries` (#339).
+Группа `execution` включает incremental/environment Verification: они проверяют
+Windows 8.3 path aliases на настоящем runner (#376).
 
 **Когда использовать:** Harness Integrity вызывает reusable `harness-windows-group.yml`
 для `update`, `resume`, `execution`. Финализатор зависит от всех трёх jobs того же SHA.
