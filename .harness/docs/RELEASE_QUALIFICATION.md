@@ -44,7 +44,7 @@ Gate `release-artifact-hygiene` (`.harness/tools/release-artifact-hygiene.py`) �
 
 - `TEMPORARY_WORKFLOW_FILE` — файл с именем `pr<NNN>*`;
 - `TEMPORARY_BRANCH_TRIGGER` — значение `branches` / `branches-ignore` кроме `main` и `feature/**` (например `codex/*`, `fix/*`, `pr<NNN>*`);
-- `PINNED_UPSTREAM_COMMIT` — `git fetch` / `git restore --source=` / `git checkout` и т. п. с полным commit SHA.
+- `PINNED_UPSTREAM_COMMIT` — `git fetch` / `git restore --source=` / `git checkout` и т. п. (в том числе `git -C <dir> …`) с полным commit SHA либо `actions/checkout` с `ref: <sha>`.
 
 Pinned `uses: <action>@<sha>` разрешён: это supply-chain pinning, а не overlay upstream commit. Временные workflow и триггеры для проверки отдельной ветки удаляются до release tag; отказ gate нельзя обходить.
 

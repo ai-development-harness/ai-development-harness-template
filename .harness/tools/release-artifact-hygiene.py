@@ -22,10 +22,14 @@ ALLOWED_BRANCH_FILTERS = frozenset({"main", "feature/**"})
 TEMPORARY_WORKFLOW_RE = re.compile(r"^pr[-_]?\d+", re.IGNORECASE)
 BRANCH_KEY_RE = re.compile(r"^(?P<indent>\s*)(?:branches|branches-ignore)\s*:\s*(?P<inline>.*)$")
 LIST_ITEM_RE = re.compile(r"^(?P<indent>\s*)-\s*(?P<value>.+?)\s*$")
+# Global options перед subcommand тоже считаются. Пример: git -C upstream fetch origin <sha>.
 PINNED_GIT_RE = re.compile(
-    r"\bgit\s+(?:fetch|restore|checkout|switch|reset|cherry-pick|merge|rebase)\b.*\b[0-9a-f]{40}\b",
+    r"\bgit(?:\s+-[Cc]\s+\S+)*\s+(?:fetch|restore|checkout|switch|reset|cherry-pick|merge|rebase)\b"
+    r".*\b[0-9a-f]{40}\b",
     re.IGNORECASE,
 )
+# Тот же overlay через actions/checkout. Пример: `ref: <sha>` в `with:`.
+PINNED_REF_RE = re.compile(r"^\s*ref\s*:\s*['\"]?[0-9a-f]{40}['\"]?$", re.IGNORECASE)
 
 
 def _strip_comment(line: str) -> str:
@@ -99,7 +103,7 @@ def inspect(root: Path) -> list[dict[str, object]]:
             if branch not in ALLOWED_BRANCH_FILTERS:
                 violations.append({"code": "TEMPORARY_BRANCH_TRIGGER", "path": rel, "line": line_no, "value": branch})
         for line_no, line in enumerate(lines, start=1):
-            if PINNED_GIT_RE.search(line):
+            if PINNED_GIT_RE.search(line) or PINNED_REF_RE.match(line):
                 violations.append({"code": "PINNED_UPSTREAM_COMMIT", "path": rel, "line": line_no,
                                    "value": line.strip()})
     return violations

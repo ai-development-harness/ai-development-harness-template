@@ -47,6 +47,10 @@ jobs:
       - run: |
           git fetch origin 1e4245d58f50035fa114fd97e1e6ec05903e741a
           git restore --source=1e4245d58f50035fa114fd97e1e6ec05903e741a -- tool.py
+          git -C upstream checkout 1e4245d58f50035fa114fd97e1e6ec05903e741a
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: '1e4245d58f50035fa114fd97e1e6ec05903e741a'
 """
 
 
@@ -88,8 +92,9 @@ def main() -> int:
         report = invoke(root, 1)
         assert [v["code"] for v in report["violations"]] == [
             "TEMPORARY_WORKFLOW_FILE", "PINNED_UPSTREAM_COMMIT", "PINNED_UPSTREAM_COMMIT",
+            "PINNED_UPSTREAM_COMMIT", "PINNED_UPSTREAM_COMMIT",
         ], report
-        assert [v["line"] for v in report["violations"]] == [None, 9, 10], report
+        assert [v["line"] for v in report["violations"]] == [None, 9, 10, 11, 14], report
 
         # Gate проверяет поставляемые (tracked) paths, а не локальный мусор.
         git(root, "rm", "-q", "--cached", ".github/workflows/pr377-windows-regression.yml")
