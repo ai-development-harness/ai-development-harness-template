@@ -60,6 +60,18 @@ jobs:
         with: {ref: 1e4245d58f50035fa114fd97e1e6ec05903e741a}
 """
 
+# Flow mapping trigger с несколькими ключами и ключ в кавычках;
+# `branches:` внутри текста команды ключом не является.
+FLOW_MAPPING = """on:
+  push: {branches: [main, fix/x], branches-ignore: codex/y}
+  pull_request: {'branches': ['feature/**',
+    pr380-check]}
+jobs:
+  validate:
+    steps:
+      - run: echo "protected branches: main"
+"""
+
 PINNED = """on:
   pull_request:
     branches:
@@ -118,6 +130,13 @@ def main() -> int:
             ("PINNED_UPSTREAM_COMMIT", 11), ("PINNED_UPSTREAM_COMMIT", 17), ("PINNED_UPSTREAM_COMMIT", 19),
         ], report
         assert [v["value"] for v in report["violations"][:2]] == ["fix/x", "codex/z"], report
+
+        fixture(root, {"harness-integrity.yml": FLOW_MAPPING})
+        report = invoke(root, 1)
+        assert [(v["code"], v["line"], v["value"]) for v in report["violations"]] == [
+            ("TEMPORARY_BRANCH_TRIGGER", 2, "fix/x"), ("TEMPORARY_BRANCH_TRIGGER", 2, "codex/y"),
+            ("TEMPORARY_BRANCH_TRIGGER", 3, "pr380-check"),
+        ], report
 
         fixture(root, {"harness-integrity.yml": CLEAN, "pr377-windows-regression.yml": PINNED})
         report = invoke(root, 1)

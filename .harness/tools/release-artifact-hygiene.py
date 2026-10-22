@@ -20,7 +20,9 @@ WORKFLOW_DIRECTORY = ".github/workflows"
 # Долгоживущие integration targets Harness. Пример: main, feature/**.
 ALLOWED_BRANCH_FILTERS = frozenset({"main", "feature/**"})
 TEMPORARY_WORKFLOW_RE = re.compile(r"^pr[-_]?\d+", re.IGNORECASE)
-BRANCH_KEY_RE = re.compile(r"^(?P<indent>\s*)(?:branches|branches-ignore)\s*:\s*(?P<inline>.*)$")
+# Ключ фильтра веток в начале строки или внутри flow mapping, в том числе в кавычках.
+# Пример: `branches:`, `'branches-ignore':`, `push: {branches: [main, fix/x]}`.
+BRANCH_KEY_RE = re.compile(r"(?P<lead>^\s*|[{,]\s*)(?P<quote>['\"]?)(?:branches-ignore|branches)(?P=quote)\s*:")
 LIST_ITEM_RE = re.compile(r"^(?P<indent>\s*)-\s*(?P<value>.+?)\s*$")
 # Любой полный commit SHA считается overlay: git fetch/restore, checkout `ref:`,
 # значение в `env:` или продолжение команды на следующей строке.
@@ -63,45 +65,64 @@ def _flow_items(text: str) -> list[str]:
     return [_unquote(item) for item in body.split(",") if item.strip()]
 
 
-def _branch_filters(lines: list[str]) -> list[tuple[int, str]]:
-    found: list[tuple[int, str]] = []
-    index = 0
-    while index < len(lines):
-        match = BRANCH_KEY_RE.match(lines[index])
+def _flow_sequence(lines: list[str], index: int, text: str) -> str:
+    # Flow sequence заканчивается парной `]`, после неё может идти `}` flow mapping.
+    # Пример: `push: {branches: [main, fix/x]}` либо `[` … `]` на нескольких строках.
+    while True:
+        depth = 0
+        for pos, char in enumerate(text):
+            if char in "[]":
+                depth += 1 if char == "[" else -1
+                if depth == 0:
+                    return text[: pos + 1]
+        if index >= len(lines):
+            return text
+        text += " " + lines[index].strip()
         index += 1
-        if match is None:
-            continue
-        inline = match.group("inline").strip()
-        start = index
-        # Flow sequence может начинаться строкой ниже и занимать несколько строк.
-        # Пример: `branches:` + `  [main, fix/x]` либо `branches: [` … `]`.
-        if not inline:
-            while index < len(lines) and not lines[index].strip():
-                index += 1
-            if index < len(lines) and lines[index].lstrip().startswith("["):
-                inline = lines[index].strip()
-                index += 1
-                start = index
-        if inline.startswith("["):
-            while not inline.endswith("]") and index < len(lines):
-                inline += " " + lines[index].strip()
-                index += 1
-            found.extend((start, item) for item in _flow_items(inline))
-            continue
-        if inline:
-            found.append((start, _unquote(inline)))
-            continue
-        key_indent = len(match.group("indent"))
-        while index < len(lines):
-            line = lines[index]
-            if not line.strip():
-                index += 1
-                continue
-            item = LIST_ITEM_RE.match(line)
-            if item is None or len(item.group("indent")) < key_indent:
-                break
+
+
+def _branch_values(lines: list[str], number: int, match: re.Match[str]) -> list[tuple[int, str]]:
+    line = lines[number - 1]
+    value = line[match.end():].strip()
+    index = start = number
+    # Flow sequence может начинаться строкой ниже и занимать несколько строк.
+    # Пример: `branches:` + `  [main, fix/x]` либо `branches: [` … `]`.
+    if not value:
+        while index < len(lines) and not lines[index].strip():
             index += 1
-            found.append((index, _unquote(item.group("value"))))
+        if index < len(lines) and lines[index].lstrip().startswith("["):
+            value = lines[index].strip()
+            index += 1
+            start = index
+    if value.startswith("["):
+        return [(start, item) for item in _flow_items(_flow_sequence(lines, index, value))]
+    if value:
+        # Scalar внутри flow mapping заканчивается на `,` или `}`. Пример: `{branches: main}`.
+        if match.group("lead").strip():
+            value = re.split(r"[,}]", value, maxsplit=1)[0]
+        return [(start, _unquote(value))]
+    found: list[tuple[int, str]] = []
+    key_indent = len(line) - len(line.lstrip())
+    while index < len(lines):
+        if not lines[index].strip():
+            index += 1
+            continue
+        item = LIST_ITEM_RE.match(lines[index])
+        if item is None or len(item.group("indent")) < key_indent:
+            break
+        index += 1
+        found.append((index, _unquote(item.group("value"))))
+    return found
+
+
+def _branch_filters(lines: list[str]) -> list[tuple[int, str]]:
+    # Каждая строка сканируется целиком: flow mapping может нести несколько ключей,
+    # а значения уже разобранного ключа с BRANCH_KEY_RE не совпадают.
+    # Пример: `push: {branches: [main], branches-ignore: [fix/x]}`.
+    found: list[tuple[int, str]] = []
+    for number, line in enumerate(lines, start=1):
+        for match in BRANCH_KEY_RE.finditer(line):
+            found.extend(_branch_values(lines, number, match))
     return found
 
 

@@ -43,7 +43,7 @@ python3 .harness/tools/release-qualification.py \
 Gate `release-artifact-hygiene` (`.harness/tools/release-artifact-hygiene.py`) проверяет tracked `.github/workflows/*`: эти paths managed и устанавливаются в каждый downstream-проект (#379). Candidate получает `FAIL`, если workflow содержит:
 
 - `TEMPORARY_WORKFLOW_FILE` — файл с именем `pr<NNN>*`;
-- `TEMPORARY_BRANCH_TRIGGER` — значение `branches` / `branches-ignore` кроме `main` и `feature/**` (например `codex/*`, `fix/*`, `pr<NNN>*`);
+- `TEMPORARY_BRANCH_TRIGGER` — значение `branches` / `branches-ignore` кроме `main` и `feature/**` (например `codex/*`, `fix/*`, `pr<NNN>*`), в том числе в flow sequence и flow mapping вида `push: {branches: [main, fix/x]}`;
 - `PINNED_UPSTREAM_COMMIT` — полный commit SHA (40 hex) вне `uses: <action>@<sha>`: `git fetch` / `git restore --source=` / `git checkout`, `actions/checkout` с `ref: <sha>`, в том числе через `env`, перенос строки или flow mapping.
 
 Pinned `uses: <action>@<sha>` разрешён: это supply-chain pinning, а не overlay upstream commit. Временные workflow и триггеры для проверки отдельной ветки удаляются до release tag; отказ gate нельзя обходить.
