@@ -21,11 +21,12 @@ def invoke(root: Path, *args: str, expected: int = 0, needs: str = "null") -> st
 
 def main() -> int:
     expected = {"local-cleanup", "harness-config", "document-contract", "execution", "step-next", "verification",
+                "verification-incremental", "verification-environment",
                 "reliable-orchestration-fault", "portable-handoff", "portable-resume",
                 "portable-resume-matrix", "operational-reports", "operational-completion",
                 "operational-integration", "update-engine"}
     names = [name for group in ci.GROUPS.values() for name in group]
-    assert set(names) == expected and len(names) == len(expected) == 14
+    assert set(names) == expected and len(names) == len(expected) == 16
     ci.validate_groups()
     good = {"windows-" + name: {"result": "success"} for name in ci.GROUPS}
     assert ci.finalize(good)

@@ -61,6 +61,7 @@ def bootstrap(root: Path) -> str:
     write_tool(root, "validate.py", pass_script)
     write_tool(root, "run-self-tests.py", pass_script)
     write_tool(root, "run-stress-tests.py", pass_script)
+    write_tool(root, "release-artifact-hygiene.py", pass_script)
     for name in (
         "harness-config-self-test.py",
         "document-contract-self-test.py",
@@ -126,6 +127,7 @@ def main() -> int:
         assert payload["repositoryRevision"] == sha, payload
         assert payload["expectedRevision"] == sha, payload
         assert [item["id"] for item in payload["gates"]] == [
+            "release-artifact-hygiene",
             "validate-ci",
             "synthetic-self-tests",
             "bounded-stress-suite",
