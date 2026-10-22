@@ -37,6 +37,29 @@ TEMPORARY_TRIGGER = """on:
     branches-ignore: ["fix/376-windows-incremental-paths"]
 """
 
+# Обходы построчных шаблонов: flow sequence ниже ключа и на нескольких строках,
+# SHA в env, перенос git-команды и flow mapping checkout `with`.
+BYPASS = """on:
+  push:
+    branches:
+      [main, fix/x]
+  pull_request:
+    branches-ignore: [
+      'feature/**',
+      codex/z
+    ]
+env:
+  UPSTREAM: 1e4245d58f50035fa114fd97e1e6ec05903e741a
+jobs:
+  overlay:
+    steps:
+      - run: |
+          git fetch origin \\
+            1e4245d58f50035fa114fd97e1e6ec05903e741a
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with: {ref: 1e4245d58f50035fa114fd97e1e6ec05903e741a}
+"""
+
 PINNED = """on:
   pull_request:
     branches:
@@ -87,6 +110,14 @@ def main() -> int:
             ("TEMPORARY_BRANCH_TRIGGER", "fix/376-windows-incremental-paths"),
         ], report
         assert report["violations"][0]["line"] == 5, report
+
+        fixture(root, {"harness-integrity.yml": BYPASS})
+        report = invoke(root, 1)
+        assert [(v["code"], v["line"]) for v in report["violations"]] == [
+            ("TEMPORARY_BRANCH_TRIGGER", 4), ("TEMPORARY_BRANCH_TRIGGER", 6),
+            ("PINNED_UPSTREAM_COMMIT", 11), ("PINNED_UPSTREAM_COMMIT", 17), ("PINNED_UPSTREAM_COMMIT", 19),
+        ], report
+        assert [v["value"] for v in report["violations"][:2]] == ["fix/x", "codex/z"], report
 
         fixture(root, {"harness-integrity.yml": CLEAN, "pr377-windows-regression.yml": PINNED})
         report = invoke(root, 1)

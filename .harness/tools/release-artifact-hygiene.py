@@ -22,14 +22,12 @@ ALLOWED_BRANCH_FILTERS = frozenset({"main", "feature/**"})
 TEMPORARY_WORKFLOW_RE = re.compile(r"^pr[-_]?\d+", re.IGNORECASE)
 BRANCH_KEY_RE = re.compile(r"^(?P<indent>\s*)(?:branches|branches-ignore)\s*:\s*(?P<inline>.*)$")
 LIST_ITEM_RE = re.compile(r"^(?P<indent>\s*)-\s*(?P<value>.+?)\s*$")
-# Global options перед subcommand тоже считаются. Пример: git -C upstream fetch origin <sha>.
-PINNED_GIT_RE = re.compile(
-    r"\bgit(?:\s+-[Cc]\s+\S+)*\s+(?:fetch|restore|checkout|switch|reset|cherry-pick|merge|rebase)\b"
-    r".*\b[0-9a-f]{40}\b",
-    re.IGNORECASE,
-)
-# Тот же overlay через actions/checkout. Пример: `ref: <sha>` в `with:`.
-PINNED_REF_RE = re.compile(r"^\s*ref\s*:\s*['\"]?[0-9a-f]{40}['\"]?$", re.IGNORECASE)
+# Любой полный commit SHA считается overlay: git fetch/restore, checkout `ref:`,
+# значение в `env:` или продолжение команды на следующей строке.
+# Пример: `UPSTREAM: <sha>` + `git fetch origin "$UPSTREAM"`.
+FULL_SHA_RE = re.compile(r"\b[0-9a-f]{40}\b", re.IGNORECASE)
+# Supply-chain pinning action разрешён. Пример: `- uses: actions/checkout@<sha>`.
+ACTION_PIN_RE = re.compile(r"^\s*(?:-\s+)?uses\s*:\s*['\"]?[^\s'\"@]+@[0-9a-f]{40}['\"]?$", re.IGNORECASE)
 
 
 def _strip_comment(line: str) -> str:
@@ -60,6 +58,11 @@ def _workflow_files(root: Path) -> list[Path]:
     return sorted(root / name for name in names if name.endswith((".yml", ".yaml")))
 
 
+def _flow_items(text: str) -> list[str]:
+    body = text.strip().removeprefix("[").removesuffix("]")
+    return [_unquote(item) for item in body.split(",") if item.strip()]
+
+
 def _branch_filters(lines: list[str]) -> list[tuple[int, str]]:
     found: list[tuple[int, str]] = []
     index = 0
@@ -69,9 +72,24 @@ def _branch_filters(lines: list[str]) -> list[tuple[int, str]]:
         if match is None:
             continue
         inline = match.group("inline").strip()
+        start = index
+        # Flow sequence может начинаться строкой ниже и занимать несколько строк.
+        # Пример: `branches:` + `  [main, fix/x]` либо `branches: [` … `]`.
+        if not inline:
+            while index < len(lines) and not lines[index].strip():
+                index += 1
+            if index < len(lines) and lines[index].lstrip().startswith("["):
+                inline = lines[index].strip()
+                index += 1
+                start = index
+        if inline.startswith("["):
+            while not inline.endswith("]") and index < len(lines):
+                inline += " " + lines[index].strip()
+                index += 1
+            found.extend((start, item) for item in _flow_items(inline))
+            continue
         if inline:
-            items = inline[1:-1].split(",") if inline.startswith("[") and inline.endswith("]") else [inline]
-            found.extend((index, _unquote(item)) for item in items if item.strip())
+            found.append((start, _unquote(inline)))
             continue
         key_indent = len(match.group("indent"))
         while index < len(lines):
@@ -103,7 +121,7 @@ def inspect(root: Path) -> list[dict[str, object]]:
             if branch not in ALLOWED_BRANCH_FILTERS:
                 violations.append({"code": "TEMPORARY_BRANCH_TRIGGER", "path": rel, "line": line_no, "value": branch})
         for line_no, line in enumerate(lines, start=1):
-            if PINNED_GIT_RE.search(line) or PINNED_REF_RE.match(line):
+            if FULL_SHA_RE.search(line) and not ACTION_PIN_RE.match(line):
                 violations.append({"code": "PINNED_UPSTREAM_COMMIT", "path": rel, "line": line_no,
                                    "value": line.strip()})
     return violations
