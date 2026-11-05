@@ -82,7 +82,8 @@ state: каждый случай приводил к full fallback. Потеря
 
 ## Пределы подтверждения
 
-Нативный Windows runner и GitHub CI этого рабочего дерева не запускались.
+При первоначальной локальной проверке нативный Windows runner и GitHub CI
+ещё не запускались.
 Новый self-test добавлен в Windows `execution`, состав набора увеличен до 17,
 `windows-ci-self-test.py` прошёл на Linux. Это подтверждает регистрацию и
 границы runner, но не заменяет нативное выполнение Windows.
@@ -90,3 +91,36 @@ state: каждый случай приводил к full fallback. Потеря
 Не заявляются измеренная экономия времени, release qualification или принятие
 новой версии в canary. Commit/push/PR не выполнялись. Следующий разрешённый
 read-only Git gate: `GIT CHECK`.
+
+
+## Исправление первого Windows CI в PR #383
+
+Первый [Windows execution job](https://github.com/ai-development-harness/ai-development-harness-template/actions/runs/41996883805/job/127142134776)
+обнаружил отказ до high-risk FIX: resolver возвращал полный путь `runneradmin`,
+а parser REVIEW строил относительный путь от короткого alias `RUNNER~1`.
+Получался `FIX_BASELINE_BLOCKED`; остальные независимые jobs прошли,
+итоговый Windows check отражал отказ группы execution.
+
+Parser теперь использует существующий `planning_contract._repo_relative`,
+нормализующий обе стороны. В high-risk self-test добавлен lexical alias root:
+он воспроизвёл тот же `ValueError` на Linux до исправления, после исправления
+полный lifecycle прошёл. Отдельные `review-findings-self-test.py`,
+`incremental-review-self-test.py` и validator также прошли. Полномочия reuse,
+producer proofs и требования к выполнению проверок не менялись.
+Нативное подтверждение исправления относится к следующему GitHub CI PR.
+
+
+## Recovery после Verification FAIL: замечание P2
+
+[Комментарий пользователя](https://github.com/ai-development-harness/ai-development-harness-template/pull/383#issuecomment-6653920670)
+выявил скрытый полный прогон: FAIL расходовал result proof вместе с capture pin;
+после нового full PASS completion не мог доказать прежний capture и повторял
+все команды. Регрессия, проверяющая режим completion и сохранение нового full
+baseline, воспроизвела это до исправления.
+
+В существующем proof namespace добавлен отдельный producer-bound capture
+receipt. Только pre-FIX owner выдаёт его после CAS canonical PASS; writer
+не создаёт receipt после правок. FAIL по-прежнему инвалидирует результаты,
+а восстановить pin можно при новом full PASS на прежнем unchanged capture.
+Regression покрывает canonical и targeted FAIL, восстановление и отсутствие
+повторного full, invalid/foreign receipt, legacy absence и сохранность capture.

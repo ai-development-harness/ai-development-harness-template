@@ -448,6 +448,8 @@ def _environment_for_policy(commands: list[str], policy: dict[str, Any]) -> str:
 def invalidate_failed_feedback(root: Path, step_id: str) -> None:
     """Новый FAIL/BLOCKED прекращает доверие к прежним локальным PASS."""
     from verification_resume import forget_pending
+    # STEP.fix.json удостоверяет только исходный capture, не PASS результатов.
+    # Он переживает FAIL, чтобы новый full PASS не терял pre-FIX provenance.
     records = (
         _state_path(root, step_id),
         _targeted_path(root, step_id),

@@ -73,35 +73,88 @@ def planning_policy_basis(root: Path, step_id: str) -> dict[str, str] | None:
     return {"path": path.relative_to(root.resolve()).as_posix(), "sha256": _digest(raw)}
 
 
-def bind_fix(root: Path, step_id: str, raw: bytes) -> None:
-    """Capture owner закрепляет pre-FIX snapshot в текущем PASS producer proof.
+def _capture_proof_path(root: Path, step_id: str) -> Path:
+    """Разрешить существующий proof namespace без перехода через symlink."""
+    from verification_proof import _safe_proof_path
+    path = _safe_proof_path(root, step_id).with_suffix(".fix.json")
+    if path.is_symlink():
+        raise ValueError("HIGH_RISK_CAPTURE_PROOF_SYMLINK")
+    return path
 
-    Эта optional связь не разрешает reuse сама по себе. Потерянный/старый proof
-    не блокирует FIX: последующая Verification просто выполняет полный набор.
+
+def _capture_receipt(step_id: str, execution_id: str, raw: bytes) -> dict[str, Any]:
+    """Описать только происхождение capture; результаты проверок сюда не входят."""
+    return {"schemaVersion": 1, "producer": "deterministic-fix-capture",
+            "stepId": step_id, "executionId": execution_id,
+            "fixBaselineSha256": _digest(raw)}
+
+
+def _capture_binding_status(root: Path, step_id: str, execution_id: str, raw: bytes) -> bool | None:
+    """Отличить legacy absence от повреждённого существующего receipt.
+
+    Legacy может использовать ещё действующий PASS pin. Повреждённый receipt
+    нельзя маскировать этим fallback: нужен новый capture либо полный режим.
+    """
+    path = _capture_proof_path(root, step_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_bytes()) == _capture_receipt(step_id, execution_id, raw)
+    except (OSError, ValueError):
+        return False
+
+
+def bind_fix(root: Path, step_id: str, raw: bytes, *, capture: bool = False) -> None:
+    """Закрепить capture в PASS; отдельный receipt выдаёт только capture owner.
+
+    Receipt переживает invalidation результатов и FAIL, но не доказывает PASS.
+    Evidence writer переносит уже проверенную связь только в новый full PASS,
+    не создавая receipt из произвольно изменённого local JSON после правок.
     """
     from document_contract import atomic_write_text
-    from verification_proof import _safe_proof_path
+    from execution_status import active_execution_for_command, execution_state_lock
+    from verification_proof import _safe_proof_path, verification_proof_error
     try:
-        if planning_policy_basis(root, step_id) is None:
-            return
-        path = _safe_proof_path(root, step_id)
-        original = path.read_bytes()
-        proof = json.loads(original)
-        if (proof.get("producer") != "deterministic-step-verification"
-                or proof.get("stepId") != step_id or proof.get("status") != "PASS"):
-            return
-        proof["fixBaselineSha256"] = _digest(raw)
-        atomic_write_text(path, json.dumps(proof, sort_keys=True, ensure_ascii=False) + "\n",
-                          expected_bytes=original)
+        with execution_state_lock(root):
+            if planning_policy_basis(root, step_id) is None:
+                return
+            path = _safe_proof_path(root, step_id)
+            original = path.read_bytes()
+            proof = json.loads(original)
+            if (proof.get("producer") != "deterministic-step-verification"
+                    or proof.get("stepId") != step_id or proof.get("status") != "PASS"):
+                return
+            receipt = None
+            if capture:
+                from planning_contract import read_task
+                from verification import EVIDENCE_START, EVIDENCE_END
+                execution = active_execution_for_command(root, f"STEP FIX {step_id}")
+                data = json.loads(raw)
+                section = read_task(root, step_id)["sections"].get("Evidence", "")
+                block = re.search(re.escape(EVIDENCE_START) + r"(.*?)" + re.escape(EVIDENCE_END), section, re.S)
+                if (not execution or data.get("executionId") != execution["executionId"]
+                        or data.get("stepId") != step_id or data.get("complete") is not False
+                        or block is None or verification_proof_error(
+                            root, step_id, block=block.group(1), status="PASS") is not None):
+                    return
+                receipt = _capture_receipt(step_id, execution["executionId"], raw)
+                receipt_path = _capture_proof_path(root, step_id)
+            proof["fixBaselineSha256"] = _digest(raw)
+            atomic_write_text(path, json.dumps(proof, sort_keys=True, ensure_ascii=False) + "\n",
+                              expected_bytes=original)
+            if receipt is not None:
+                # Только успешный CAS canonical producer разрешает выдать
+                # capture receipt. Crash до этой записи безопасно теряет recovery.
+                atomic_write_text(receipt_path, json.dumps(receipt, sort_keys=True) + "\n")
     except (OSError, ValueError, TypeError, AttributeError):
         return
 
 
 def retained_fix_binding(root: Path, step_id: str) -> bytes | None:
-    """Сохранить действующий capture pin при новом full/aggregate PASS.
+    """Перенести только аутентифицированный capture при новом PASS.
 
-    Иначе явный --full внутри FIX терял бы собственный capture, а dispatcher
-    скрыто запускал бы всё ещё раз. Новый pin не создаётся из непроверенного JSON.
+    FAIL/targeted FAIL расходуют result proof, сохраняя отдельный capture receipt.
+    Его отсутствие либо порча не дают права пересоздать pre-FIX snapshot.
     """
     from execution_status import active_execution_for_command
     from fix_delta import _load, _path
@@ -112,6 +165,11 @@ def retained_fix_binding(root: Path, step_id: str) -> bytes | None:
         if not execution or not fix or fix.get("complete") is not False or fix.get("executionId") != execution["executionId"]:
             return None
         raw = _path(root, step_id).read_bytes()
+        binding = _capture_binding_status(root, step_id, execution["executionId"], raw)
+        if binding is not None:
+            return raw if binding else None
+        # Совместимость с capture до появления отдельного receipt: действующий
+        # PASS pin пригоден, но утраченный pin нельзя восстановить догадкой.
         proof = json.loads(_safe_proof_path(root, step_id).read_bytes())
         if proof.get("status") == "PASS" and proof.get("fixBaselineSha256") == _digest(raw):
             return raw
@@ -159,6 +217,8 @@ def prepare_fix(
         raise ValueError("HIGH_RISK_ACTIVE_FIX_REQUIRED")
     raw = _path(root, step_id).read_bytes()
     receipt = {"fixBaselineSha256": _digest(raw), "executionId": fix["executionId"]}
+    if _capture_binding_status(root, step_id, execution["executionId"], raw) is False:
+        raise ValueError("HIGH_RISK_CAPTURE_PRODUCER_MISMATCH")
     proof = json.loads(_safe_proof_path(root, step_id).read_bytes())
     if (proof.get("fixBaselineSha256") != receipt["fixBaselineSha256"]
             and checkpoint.get("highRiskFixReceipt") != receipt):

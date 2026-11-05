@@ -139,7 +139,7 @@ def capture_fix(root: Path, step_id: str, execution_id: str) -> dict[str, Any]:
     # Opt-in Verification связывает exact pre-FIX tree и REVIEW с producer
     # proof. Без прежнего PASS этот optional pin не создаётся: будет full.
     from verification_high_risk import bind_fix
-    bind_fix(root, step_id, _path(root, step_id).read_bytes())
+    bind_fix(root, step_id, _path(root, step_id).read_bytes(), capture=True)
     return data
 
 

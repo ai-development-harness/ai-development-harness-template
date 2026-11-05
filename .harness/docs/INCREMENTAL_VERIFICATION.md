@@ -373,6 +373,18 @@ observations на актуальном subject.
   `.harness/local/verification-proofs/STEP-NNN.targeted.json`.
   Изменение cache или потеря этого pin требуют фактического запуска команды;
   canonical Evidence не выдаётся на основании самодекларированного subjectHash.
+- `.harness/local/verification-proofs/STEP-NNN.fix.json` — отдельный
+  schemaVersion=1 capture receipt, owner `fix_delta.capture_fix` после CAS
+  canonical PASS pin. Связывает STEP, executionId и exact bytes pre-FIX snapshot.
+  Он переживает canonical/targeted FAIL, пока result caches инвалидируются.
+  После исправления все проверки проходят новый full PASS; только затем writer
+  переносит прежний capture pin в новый producer перед сохранением baseline.
+  Это предотвращает скрытый повтор full при completion на том же subject.
+  Receipt не является test PASS и не создаётся из post-FIX JSON. Resume сохраняет
+  исходные bytes, следующий FIX получает новый receipt. Missing legacy receipt
+  допускает лишь surviving PASS pin; invalid schema/producer/owner/digest и
+  symlink дают полный режим, без маскировки legacy fallback. Очистка безопасно
+  теряет recovery; historical evidence не мигрируется. Namespace исключён из cleaner.
 - Данные clone-local, в Git не входят. Утрата, несовместимость версии,
   истечение жизни Git tree после GC или удаление файла → обычный полный
   Verification. Snapshot нельзя принимать вместо исходников или

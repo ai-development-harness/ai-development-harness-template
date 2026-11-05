@@ -1025,7 +1025,10 @@ Internal `verification_high_risk` не имеет самостоятельног
 planning fingerprints и Context Contract. `fix_delta.capture_fix` вызывает
 `bind_fix` для закрепления exact pre-FIX bytes; canonical Evidence writer
 переносит только уже проверенный pin через `retained_fix_binding` и сохраняет
-full provenance в существующем checkpoint. Cache и proof остаются optional:
+full provenance в существующем checkpoint. Только capture owner может выдать
+`STEP-NNN.fix.json` после CAS canonical PASS: этот отдельный receipt переживает
+FAIL, но не доказывает результаты; writer восстанавливает pin лишь при новом
+полном PASS, без пересоздания pre-FIX snapshot. Cache и proof остаются optional:
 потеря/порча/устаревание запрещают reuse, а не выдают PASS. Existing STEP
 Completion Gate, exact command consumers и independent reviewers не меняются.
 Policy/schema, lifecycle и примеры: [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md),
@@ -1569,6 +1572,7 @@ python3 .harness/tools/runtime_adapter_contract.py --runtime claude --json
 ## Роль
 
 `review_findings.py` задаёт machine-readable handoff `REVIEW → FIX`. Новый STEP REVIEW хранится как immutable Markdown с canonical JSON-блоком `## Machine-readable findings`.
+Путь `report` вычисляется общим alias-safe resolver: Windows 8.3 и полный путь одного repository root дают один repo-relative результат, без ослабления containment.
 
 Human-readable `## Findings` нужен человеку. FIX/orchestration не должен повторно интерпретировать этот prose: он использует deterministic parser.
 

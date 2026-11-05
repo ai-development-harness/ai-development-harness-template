@@ -166,8 +166,28 @@ def negative_cases(root: Path, sid: str, policy: dict, commands: list[str]) -> N
     altered = json.loads(original_fix)
     altered["beforeTree"] = git(root, "rev-parse", "HEAD^{tree}")
     write(fixed, json.dumps(altered))
-    full("HIGH_RISK_FIX_PRODUCER_MISMATCH")
+    full("HIGH_RISK_CAPTURE_PRODUCER_MISMATCH")
     fixed.write_bytes(original_fix)
+    # Capture receipt не является result cache: проверяется отдельно и не
+    # может быть заменён чужой execution или отредактированным local JSON.
+    from verification_high_risk import retained_fix_binding
+    capture_proof = root / f".harness/local/verification-proofs/{sid}.fix.json"
+    original_receipt = capture_proof.read_bytes()
+    for field, invalid in (("executionId", "exec-" + "f" * 32),
+                           ("fixBaselineSha256", "sha256:" + "f" * 64),
+                           ("schemaVersion", 2)):
+        edited = json.loads(original_receipt)
+        edited[field] = invalid
+        write(capture_proof, json.dumps(edited))
+        assert retained_fix_binding(root, sid) is None
+        full("HIGH_RISK_CAPTURE_PRODUCER_MISMATCH")
+    write(capture_proof, "{")
+    assert retained_fix_binding(root, sid) is None
+    full("HIGH_RISK_CAPTURE_PRODUCER_MISMATCH")
+    capture_proof.write_bytes(original_receipt)
+    capture_proof.unlink()
+    assert retained_fix_binding(root, sid) == original_fix
+    capture_proof.write_bytes(original_receipt)
     changed = json.loads(original_checkpoint)
     changed["latestChecks"]["backend"]["inputBasis"] = "sha256:" + "e" * 64
     write(checkpoint, json.dumps(changed))
@@ -304,7 +324,15 @@ print(sys.argv[1])
     assert initial["status"] == "PASS" and initial["verificationMode"] == "full", initial
     outside = run_step_verification(root, sid)
     assert outside["verificationMode"] == "full" and outside["fallbackReason"] == "HIGH_RISK_ACTIVE_FIX_REQUIRED", outside
-    review(root, sid, location="case/src/ui/form.txt")
+    source_review = review(root, sid, location="case/src/ui/form.txt")
+    # REVIEW resolver нормализует каталог, а caller может передать иной alias.
+    # Lexical alias воспроизводит Windows RUNNER~1/runneradmin без symlink прав.
+    from review_findings import latest_structured_findings
+    alias_directory = root / "lexical-root-alias"
+    alias_directory.mkdir()
+    aliased = latest_structured_findings(alias_directory / "..", sid)
+    assert aliased["report"] == source_review["report"], aliased
+    alias_directory.rmdir()
     fix = start_dispatch(root, f"STEP FIX {sid}")
     assert fix["status"] == "SEMANTIC", fix
     index = (root / ".git/index").read_bytes()
@@ -363,24 +391,50 @@ print(sys.argv[1])
     tamper = run_step_verification(root, sid)
     assert tamper["verificationMode"] == "full" and tamper["fallbackReason"] == "CHECKPOINT_PRODUCER_MISMATCH", tamper
 
-    # Более новый реальный targeted FAIL уничтожает прежний trusted cache.
-    # При одинаковом broken subject narrow и full оба должны увидеть FAIL.
+    # Canonical FAIL расходует результаты, сохраняя исходный capture receipt.
+    # Новый full PASS заново доказывает все команды и восстанавливает только pin.
+    capture_proof = root / f".harness/local/verification-proofs/{sid}.fix.json"
+    capture_before = capture_proof.read_bytes()
     cases = root / "case/tests/ui/cases.json"
     saved_cases = cases.read_bytes()
     write(cases, '["broken"]\n')
+    canonical_failed = run_step_verification(root, sid)
+    assert canonical_failed["status"] == "FAIL", canonical_failed
+    assert capture_proof.read_bytes() == capture_before
+    cases.write_bytes(saved_cases)
+    canonical_repaired = run_step_verification(root, sid)
+    assert canonical_repaired["status"] == "PASS" and canonical_repaired["verificationMode"] == "full", canonical_repaired
+    qualified_again = run_step_verification(root, sid, write_evidence=False)
+    assert qualified_again["verificationMode"] == "incremental" and qualified_again["reusedCount"] == 2, qualified_again
+
+    # Более новый реальный targeted FAIL уничтожает прежний trusted cache.
+    # Capture receipt остаётся тем же и не делает старый PASS пригодным.
+    write(cases, '["broken"]\n')
     failed_feedback = run_selected(root, sid, [commands[0]])
     assert failed_feedback["status"] == "FAIL", failed_feedback
+    assert not checkpoint.exists()
+    assert capture_proof.read_bytes() == capture_before
     failed_full = run_step_verification(root, sid)
     assert failed_full["status"] == "FAIL" and failed_full["verificationMode"] == "full", failed_full
     cases.write_bytes(saved_cases)
     repaired = run_step_verification(root, sid)
     assert repaired["status"] == "PASS" and repaired["verificationMode"] == "full", repaired
+    assert capture_proof.read_bytes() == capture_before
+    assert verification_freshness(root, sid)["fresh"]
 
     # Финальный lifecycle использует НОВЫЙ настоящий FAIL/FIX, чей pre-FIX
     # pin подтверждает текущий producer. Старые immutable reports не меняются.
     done = complete_dispatch(root, root_command=fix["rootCommand"], command=f"STEP FIX {sid}",
                              execution_id=fix["executionId"], result="SUCCESS")
     assert done["status"] == "DONE", done
+    # Fresh full PASS после FAIL уже переквалифицировал все проверки.
+    # Completion того же subject не должен скрыто повторять full ещё раз.
+    recovered_checkpoint = json.loads(checkpoint.read_text(encoding="utf-8"))
+    assert recovered_checkpoint["fullBaseline"]["runAt"] == repaired["runAt"], recovered_checkpoint
+    recovery_evidence = step.read_text(encoding="utf-8")
+    assert "- Verification mode: incremental\n" in recovery_evidence, done
+    assert f"- Incremental executed checks: {len(names) - 2}\n" in recovery_evidence, done
+    assert "- Incremental reused checks: 2\n" in recovery_evidence, done
     review(root, sid, location="case/src/ui/form.txt", repeated=True)
     final_fix = start_dispatch(root, f"STEP FIX {sid}")
     assert final_fix["status"] == "SEMANTIC", final_fix

@@ -58,3 +58,19 @@ Local state остаётся optional clone-local cache, не защищённы
 который одновременно переписывает все локальные proofs и project artifacts.
 Старые checkpoints без нового full provenance требуют переквалификации;
 миграция исторических reports и новых persistent каталогов не нужна.
+
+
+## Уточнение recovery после FAIL, 2026-11-05
+
+[Независимый комментарий к PR #383](https://github.com/ai-development-harness/ai-development-harness-template/pull/383#issuecomment-6653920670)
+подтвердил потерю capture pin при замене/удалении result proof после FAIL.
+Fresh full PASS восстанавливал результаты, но completion повторял full из-за
+утраченного provenance. Receipt capture отделён от расходуемого result proof:
+`verification-proofs/STEP-NNN.fix.json`, schemaVersion=1. Только capture owner
+после успешного CAS canonical PASS выдаёт STEP/execution/exact-bytes binding.
+Writer читает его для текущего unchanged capture и переносит pin в новый full
+PASS; не создаёт receipt после правок. FAIL по-прежнему инвалидирует результаты,
+receipt не разрешает reuse сам по себе. Invalid present receipt не маскируется
+legacy fallback; отсутствие допускает лишь действующий прежний PASS pin.
+Это recovery текущей границы доверия, без нового namespace и без ослабления
+полноты Verification. Lifecycle и migration: [MAINTENANCE.md](MAINTENANCE.md).
