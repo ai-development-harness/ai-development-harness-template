@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 
-from document_contract import atomic_write_text
+from document_contract import atomic_write_text, dump_yaml_subset
 from harness_config import (
     adr_directory,
     audit_directory,
@@ -26,6 +26,7 @@ from harness_config import (
     update_lock_path,
     update_manifest_path,
     load_update_policy,
+    parse_yaml_subset,
     repository_path,
 )
 from projection_contract import write_projections
@@ -169,6 +170,53 @@ def _reset_project_lifecycle(root: Path) -> None:
         atomic_write_text(path, updated)
 
 
+def set_fixture_verification(root: Path, config: dict | None) -> None:
+    """Заменить project-owned Verification config только внутри test fixture.
+
+    Parser и serializer владеют формой YAML; заменяется один top-level узел,
+    остальные настройки и их текст сохраняются. None удаляет host policy,
+    поэтому повторная настройка не создаёт duplicate section (#387).
+    """
+    path = root / ".harness/manifest.yaml"
+    original = path.read_bytes()
+    text = original.decode("utf-8")
+    expected = parse_yaml_subset(text)
+    if config is not None and not isinstance(config, dict):
+        raise ValueError("fixture Verification config must be a mapping or None")
+    if config:
+        expected["verification"] = config
+        lines = dump_yaml_subset({"verification": config})
+        documented = []
+        for line in lines:
+            if line.startswith(" ") and not line.lstrip().startswith("- "):
+                prefix = line[:len(line) - len(line.lstrip())]
+                documented.append(prefix + "# Параметр текущей fixture. Формат: restricted YAML mapping/list/scalar.")
+            documented.append(line)
+        block = "\n".join(documented) + "\n"
+    else:
+        expected.pop("verification", None)
+        block = ""
+    # Границы ищутся только после успешного parsing: duplicate/unsupported
+    # YAML не исправляется эвристикой и не превращается в другую policy.
+    nodes = list(re.finditer(r"(?m)^[A-Za-z0-9_.-]+\s*:", text))
+    node = next((i for i, match in enumerate(nodes)
+                 if match.group().split(":", 1)[0].strip() == "verification"), None)
+    if node is None:
+        if block:
+            separator = "" if not text or text.endswith("\n") else "\n"
+            updated = text + separator + "# Verification текущей fixture. Формат: mapping.\n" + block
+        else:
+            updated = text
+    else:
+        start = nodes[node].start()
+        end = nodes[node + 1].start() if node + 1 < len(nodes) else len(text)
+        updated = text[:start] + block + text[end:]
+    if parse_yaml_subset(updated) != expected:
+        raise ValueError("fixture Verification replacement changed unrelated configuration")
+    if updated != text:
+        atomic_write_text(path, updated, expected_bytes=original)
+
+
 def _restore_pre_init_templates(root: Path) -> None:
     """Восстановить exact protocol templates только внутри synthetic fixture.
 
@@ -191,6 +239,8 @@ def isolate_project_artifacts(root: Path) -> None:
     Self-tests копируют tracked checkout, чтобы использовать текущий Harness
     runtime. Canonical STEP/REQ/ADR/OQ/PRN, durable reports и projections при
     этом принадлежат host project и не должны влиять на synthetic expectations.
+    Verification policy удаляется вместе с её host STEP references; runtime
+    и сами project-owned файлы карты не подменяются чужим upstream checkout.
     После очистки fixture переводится в pre-INIT lifecycle state, а projections
     пересобираются из оставшегося canonical state.
     """
@@ -216,5 +266,6 @@ def isolate_project_artifacts(root: Path) -> None:
         _clear_generated_directory(directory)
 
     _reset_project_lifecycle(root)
+    set_fixture_verification(root, None)
     _restore_pre_init_templates(root)
     write_projections(root)

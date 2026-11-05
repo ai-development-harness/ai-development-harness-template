@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from self_test_fixture import set_fixture_verification
 import tempfile
 import subprocess
 import sys
@@ -64,9 +65,9 @@ sys.exit(9 if Path(".harness/local/force-fail").exists() else 0)
     manifest.write_text(manifest.read_text(encoding="utf-8")
                         .replace("  initialized: false", "  initialized: true")
                         .replace("  name: null", "  name: manual-continuation-fixture")
-                        .replace("  initializedAt: null", '  initializedAt: "2026-11-05T12:00:00Z"')
-                         + '\nverification:\n  manualContinuation:\n    STEP-001:\n      readOnly: true\n'
-                        + ''.join('      ' + key + (':\n' + ''.join('        - ' + json.dumps(c) + '\n' for c in policy[key]) if policy[key] else ': []\n') for key in ('localCommands', 'repeatCommands')), encoding="utf-8")
+                        .replace("  initializedAt: null", '  initializedAt: "2026-11-05T12:00:00Z"'),
+                        encoding="utf-8")
+    set_fixture_verification(root, {"manualContinuation": {SID: policy}})
     episode = start_execution(root, f"STEP PLAN {SID}")
     write_plan_draft(root, SID, {
         "implementationPlan": [{"title": "Проверить результат", "actions": ["Выполнить локальные проверки."], "files": ["case/**"]}],
@@ -161,7 +162,7 @@ def negatives(root: Path) -> None:
     original_manifest = manifest.read_bytes()
     manifest.write_bytes(original_manifest.replace(b'readOnly: true', b'readOnly: false'))
     assert preview(root)["reasonCode"] == "MANUAL_CONTINUATION_STATE_CHANGED"
-    manifest.write_bytes(original_manifest.split(b"\nverification:")[0])
+    set_fixture_verification(root, None)
     assert preview(root)["reasonCode"] == "MANUAL_CONTINUATION_POLICY_REQUIRED"
     manifest.write_bytes(original_manifest.replace(COMMANDS[0].encode(), b"unknown-command"))
     assert preview(root)["reasonCode"] == "MANUAL_CONTINUATION_COMMAND_COVERAGE_INVALID"

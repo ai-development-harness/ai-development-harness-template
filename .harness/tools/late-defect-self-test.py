@@ -6,6 +6,7 @@ from copy import deepcopy
 import importlib.util
 import json
 from pathlib import Path
+from self_test_fixture import set_fixture_verification
 import tempfile
 from review_contract import latest_review, latest_trusted_review, validate_review_report
 from execution_status import start_execution, complete_command, resolve_root, begin_command, block_execution
@@ -70,8 +71,7 @@ def main() -> int:
         )
         write(source, fx["task"](verification_text))
         manifest = root / ".harness/manifest.yaml"
-        write(manifest, manifest.read_text(encoding="utf-8")
-              + "\nverification:\n  impactMap: docs/verification/impact-map.json\n")
+        set_fixture_verification(root, {"impactMap": "docs/verification/impact-map.json"})
         write(root / "src/ui/Button.tsx", "export const label = 'Button';\n")
         write(root / "src/backend/service.py", "print('backend')\n")
         criteria = acceptance_criteria(root, "STEP-001")

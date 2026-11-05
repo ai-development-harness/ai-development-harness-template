@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from self_test_fixture import set_fixture_verification
 import tempfile
 from unittest.mock import patch
 
@@ -49,8 +50,7 @@ def main() -> int:
             + "\n- manual: Проверить доступное имя кнопки"
         ))
         manifest = root / ".harness/manifest.yaml"
-        write(manifest, manifest.read_text(encoding="utf-8")
-              + "\nverification:\n  impactMap: docs/verification/impact-map.json\n")
+        set_fixture_verification(root, {"impactMap": "docs/verification/impact-map.json"})
         write(root / "src/ui/button.tsx", 'export const title = "Button";\n')
         write(root / "src/backend/service.py", 'print("backend")\n')
         criteria = acceptance_criteria(root, step_id)
@@ -200,8 +200,7 @@ def main() -> int:
         assert changed_map["status"] == "PASS" and changed_map["verificationMode"] == "full", changed_map
 
         # Без карты проект сохраняет классическое поведение.
-        write(manifest, manifest.read_text(encoding="utf-8").replace(
-            "\nverification:\n  impactMap: docs/verification/impact-map.json\n", "\n"))
+        set_fixture_verification(root, None)
         legacy = run_step_verification(root, step_id, manual_results=observation())
         assert legacy["status"] == "PASS" and legacy["verificationMode"] == "full", legacy
         # Монолитный command остаётся источником baseline: только полный
@@ -225,8 +224,7 @@ def main() -> int:
                 + "\n- manual: Проверить доступное имя кнопки"
             ))
             composite_manifest = second_root / ".harness/manifest.yaml"
-            write(composite_manifest, composite_manifest.read_text(encoding="utf-8")
-                  + "\nverification:\n  impactMap: docs/verification/impact-map.json\n")
+            set_fixture_verification(second_root, {"impactMap": "docs/verification/impact-map.json"})
             write(second_root / "src/ui/button.tsx", 'export const title = "Button";\n')
             write(second_root / "src/backend/logic.py", "print('backend')\n")
             composite_criteria = acceptance_criteria(second_root, "STEP-001")
