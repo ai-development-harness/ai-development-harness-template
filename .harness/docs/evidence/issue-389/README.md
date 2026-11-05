@@ -105,3 +105,19 @@ benchmark и утверждений о CI-оборудовании. Провер
 включая прежние 11 execution-тестов, их native durations и финальный
 `Validate Windows boundaries: PASS`. Нужны также Linux CI Python 3.11/3.13.
 Локальные результаты не заменяют эти acceptance gates; issue не закрыт.
+
+## Совместимость late-defect после первого CI
+
+Первый [CI PR #390](https://github.com/ai-development-harness/ai-development-harness-template/actions/runs/42049931565)
+обнаружил ещё одного потребителя scaffold: `late-defect-self-test.py` использовал
+унаследованный `docs/architecture.md` как существующий evidence. Оба Linux jobs
+завершили 84 из 85 тестов успешно; единственная ошибка — отсутствие этого файла.
+High-risk прошёл за 27,974 с на Python 3.11 и 38,472 с на Python 3.13.
+
+Теперь late-defect создаёт собственный evidence до исходного полного PASS.
+Negative assertion изменения старого evidence после REVIEW и все остальные
+проверки сохранены. Прямые запуски `late-defect-self-test.py` с согласованным PATH
+на Python 3.11.18 и 3.13.18 завершились с exit code 0 / PASS; validator и
+`git diff --check` — PASS. Эти факты записаны как summary локальных команд,
+без реконструкции terminal output. Воспроизводимый набор дополнен late-defect.
+Повторный CI проверяет исправленный consumer scaffold полным набором.

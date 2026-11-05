@@ -74,6 +74,10 @@ def main() -> int:
         set_fixture_verification(root, {"impactMap": "docs/verification/impact-map.json"})
         write(root / "src/ui/Button.tsx", "export const label = 'Button';\n")
         write(root / "src/backend/service.py", "print('backend')\n")
+        # Protocol-only scaffold не наследует product docs (#389). Создаём
+        # собственный старый evidence до первого PASS: negative case ниже
+        # по-прежнему проверяет запрет его изменения после REVIEW.
+        write(root / "docs/architecture.md", "# Evidence fixture\n\nИсходная проверенная граница UI.\n")
         criteria = acceptance_criteria(root, "STEP-001")
         checks = [
             {"id": "ui", "command": ui, "inputs": ["src/ui/**"],

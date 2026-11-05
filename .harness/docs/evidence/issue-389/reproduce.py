@@ -2,7 +2,7 @@
 """Воспроизвести ограниченные проверки #389 на disposable initialized consumer.
 
 Запускать выбранным Python из проверяемого checkout. Без аргументов Python 3.13
-выполняет 11 прежних execution-тестов и четыре регрессии, остальные версии —
+выполняет 11 прежних execution-тестов и пять регрессий, остальные версии —
 high-risk и fixture regression. Аргументы ограничивают набор именами self-tests.
 JSON и логи сохраняются в системном временном каталоге; retries отсутствуют.
 """
@@ -36,8 +36,8 @@ with tempfile.TemporaryDirectory(prefix='harness-389-consumer-') as td:
     fixture.run(host,sys.executable,'.harness/tools/validate.py','--mode','ci')
     files=[p for p in host.rglob('*') if p.is_file() and '.git' not in p.relative_to(host).parts]
     scale={'files':len(files),'bytes':sum(p.stat().st_size for p in files)}
-    names=([name for group in ('execution','verification','incremental','manual','high-risk') for name in windows_ci.GROUPS[group]] if version=='3.13' else ['verification-high-risk','self-test-fixture'])
-    if version=='3.13': names+=['self-test-fixture','windows-ci','run-self-tests','verification-review-regressions']
+    names=([name for group in ('execution','verification','incremental','manual','high-risk') for name in windows_ci.GROUPS[group]] if version=='3.13' else ['verification-high-risk','self-test-fixture','late-defect'])
+    if version=='3.13': names+=['self-test-fixture','windows-ci','run-self-tests','verification-review-regressions','late-defect']
     if len(sys.argv)>1: names=sys.argv[1:]
     for name in names:
         item,out,err=runner.run_one(host/'.harness/tools'/f'{name}-self-test.py',repo_root=host,timeout_seconds=120)
