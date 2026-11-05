@@ -757,6 +757,12 @@ def planning_context_snapshot(root: Path, step_id: str) -> dict[str, Any]:
     principles = active_blocking_principles(root)
     if principles:
         snapshot["principles"] = principles
+    # High-risk reuse — полномочие заранее проверенного project policy.
+    # Нельзя сузить impact map после PLAN и воспользоваться прежним review.
+    from verification_high_risk import planning_policy_basis
+    verification_policy = planning_policy_basis(root, step_id)
+    if verification_policy is not None:
+        snapshot["high_risk_verification"] = verification_policy
     return snapshot
 
 def _planning_context_components_from_snapshot(
@@ -767,6 +773,8 @@ def _planning_context_components_from_snapshot(
     entries: list[str] = [
         f"STEP@{step_id}={stable_hash(snapshot['step'])}"
     ]
+    if "high_risk_verification" in snapshot:
+        entries.append("VERIFICATION_POLICY@" + step_id + "=" + stable_hash(snapshot["high_risk_verification"]))
     for req_id, value in sorted(snapshot["requirements"].items()):
         entries.append(f"REQ@{req_id}={stable_hash(value)}")
     for adr_id, value in sorted(snapshot["adrs"].items()):
@@ -1301,6 +1309,7 @@ def _validate_task(root: Path, step_id: str, task: dict[str, Any], errors: list[
                     or key.startswith("ARCH@")
                     or key.startswith("OQ@")
                     or key.startswith("PRN@")
+                    or key.startswith("VERIFICATION_POLICY@")
                 ):
                     errors.append(
                         f"{prefix}: plan.context_components[{index}] has unsupported component key"

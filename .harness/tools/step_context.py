@@ -122,6 +122,8 @@ def build_step_context(
         )
 
     architecture = [_architecture_input(root, ref) for ref in architecture_refs(task)]
+    from verification_high_risk import planning_policy_basis
+    verification_policy = planning_policy_basis(root, step_id)
 
     oqs: list[dict[str, Any]] = []
     for item in relevant_open_questions(root, task):
@@ -143,6 +145,7 @@ def build_step_context(
             *(item["path"] for item in adrs),
             *(item["path"] for item in architecture),
             *(item["path"] for item in oqs),
+            *([verification_policy["path"]] if verification_policy else []),
         ]
     )
 
@@ -171,6 +174,7 @@ def build_step_context(
             "adrs": adrs,
             "architectureRefs": architecture,
             "openQuestions": oqs,
+            **({"verificationPolicy": verification_policy} if verification_policy else {}),
         },
         "readPaths": read_paths,
         "contextContract": build_context_contract(

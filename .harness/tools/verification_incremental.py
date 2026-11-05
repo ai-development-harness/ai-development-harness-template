@@ -70,9 +70,9 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
         raise IncrementalError("STEP_MAP_MISSING")
     policy = steps[step_id]
     valid_schema = {"checks", "infrastructure"}
-    if not isinstance(policy, dict) or set(policy) not in (
-        valid_schema, valid_schema | {"reuse"},
-    ):
+    if (not isinstance(policy, dict) or not valid_schema.issubset(policy)
+            or set(policy) - valid_schema - {"reuse", "highRiskFix"}
+            or {"reuse", "highRiskFix"}.issubset(policy)):
         raise IncrementalError("STEP_MAP_SCHEMA_INVALID")
     if "reuse" in policy:
         linked = policy["reuse"]
@@ -196,10 +196,20 @@ def _source_map(root: Path, step_id: str, commands: list[str], acceptance: list[
         visited.add(cid)
     for cid in ids:
         visit(cid)
+    if "highRiskFix" in policy:
+        # Opt-in меняет полномочия Core только для этого STEP; неизвестное
+        # обязательство или неявный внешний state не разрешают reuse (#382).
+        from verification_high_risk import validate_policy
+        validate_policy(policy["highRiskFix"], raw)
+        flags = read_task(root, step_id)["frontmatter"].get("risk_flags", [])
+        if (not isinstance(flags, list) or
+                not (set(flags) & NON_REUSABLE_FLAGS).issubset(policy["highRiskFix"]["riskChecks"])):
+            raise IncrementalError("HIGH_RISK_OBLIGATIONS_INCOMPLETE")
     return {
         "checks": raw, "infrastructure": policy["infrastructure"],
         "hash": _digest(data), "mapPath": path.relative_to(root.resolve()).as_posix(),
         "reuse": policy.get("reuse"),
+        "highRiskFix": policy.get("highRiskFix"),
     }
 
 
@@ -438,6 +448,8 @@ def _environment_for_policy(commands: list[str], policy: dict[str, Any]) -> str:
 def invalidate_failed_feedback(root: Path, step_id: str) -> None:
     """Новый FAIL/BLOCKED прекращает доверие к прежним локальным PASS."""
     from verification_resume import forget_pending
+    # STEP.fix.json удостоверяет только исходный capture, не PASS результатов.
+    # Он переживает FAIL, чтобы новый full PASS не терял pre-FIX provenance.
     records = (
         _state_path(root, step_id),
         _targeted_path(root, step_id),
@@ -503,8 +515,17 @@ def prepare(
         return fallback("FULL_VERIFICATION_REQUESTED")
     try:
         flags = read_task(root, step_id)["frontmatter"].get("risk_flags", [])
-        if not isinstance(flags, list) or any(flag in NON_REUSABLE_FLAGS for flag in flags):
+        if not isinstance(flags, list):
             return fallback("RISK_REQUIRES_FULL")
+        high_risk = bool(set(flags) & NON_REUSABLE_FLAGS)
+        # Без opt-in сохраняется прежний reason code, включая отсутствие map.
+        if high_risk:
+            try:
+                candidate = _source_map(root, step_id, commands, acceptance)
+            except (OSError, ValueError):
+                return fallback("RISK_REQUIRES_FULL")
+            if candidate.get("highRiskFix") is None:
+                return fallback("RISK_REQUIRES_FULL")
         policy = _source_map(root, step_id, commands, acceptance)
         inherited = False
         control_paths: set[str] = set()
@@ -562,6 +583,10 @@ def prepare(
         base = checkpoint.get("fullBaseline")
         if not isinstance(base, dict) or not re.fullmatch(r"[0-9a-f]{40,64}", str(base.get("tree", ""))):
             return fallback("BASELINE_TREE_INVALID")
+        high_risk_plan: dict[str, Any] = {}
+        if high_risk:
+            from verification_high_risk import prepare_fix
+            high_risk_plan = prepare_fix(root, step_id, policy, checkpoint, flags)
         original = checkpoint.get("latestChecks")
         if (not isinstance(original, dict) or set(original) != {c["id"] for c in policy["checks"]}
                 or not all(isinstance(item, dict) for item in original.values())):
@@ -595,11 +620,14 @@ def prepare(
         # corrective STEP has produced its own fresh PASS, subsequent deltas
         # follow normal per-input freshness instead of repeatedly discarding
         # a proven repaired check.
-        invalidated = set(
-            observation["finding"]["invalidatedChecks"]
-        ) if inherited and observation is not None else set()
+        invalidated = set(high_risk_plan.get("invalidatedChecks", []))
+        if inherited and observation is not None:
+            invalidated.update(observation["finding"]["invalidatedChecks"])
+        exact = set(high_risk_plan.get("exactChecks", []))
+        invalidated.update(exact)
         affected = {c["id"] for c in policy["checks"] if not c["reusable"] or
                     c["id"] in invalidated or
+                    any(c["id"] + "/" + g["id"] in invalidated for g in c.get("groups", [])) or
                     original[c["id"]].get("inputBasis") != basis[c["id"]]}
         # Зависимым проверкам недостаточно собственного неизменённого glob.
         while True:
@@ -607,13 +635,23 @@ def prepare(
             if extended == affected:
                 break
             affected = extended
+        reasons = high_risk_plan.get("reasons", {})
+        for check in policy["checks"]:
+            cid = check["id"]
+            if not check["reusable"]:
+                reasons.setdefault(cid, []).append("not-reusable")
+            if original[cid].get("inputBasis") != basis[cid]:
+                reasons.setdefault(cid, []).append("inputs-changed")
+            dependencies = sorted(set(check["dependsOn"]) & affected)
+            if dependencies:
+                reasons.setdefault(cid, []).append("dependencies:" + ",".join(dependencies))
         executed: list[str] = []
         reused: dict[str, dict[str, Any]] = {}
         composites: dict[str, dict[str, Any]] = {}
         for check in policy["checks"]:
             record = original[check["id"]]
             item = record.get("result")
-            if "groups" in check:
+            if "groups" in check and check["id"] not in exact:
                 # Parent input scope must be fully partitioned into approved
                 # groups. Otherwise the original monolith is the only proof.
                 for changed_path in meaningful:
@@ -638,8 +676,10 @@ def prepare(
                              # Зависимость родителя затрагивает все группы,
                              # даже если одновременно изменились его inputs.
                              or bool(set(check["dependsOn"]) & affected)
-                             or record.get("inputBasis") == basis[check["id"]])
-                    ) or group["id"] in invalidated or not group["reusable"]
+                             or (record.get("inputBasis") == basis[check["id"]]
+                                 and not any(check["id"] + "/" + g["id"] in invalidated
+                                             for g in check["groups"])))
+                    ) or group["id"] in invalidated or check["id"] + "/" + group["id"] in invalidated or not group["reusable"]
                     or previous_groups[group["id"]].get("inputBasis") != group_basis[group["id"]]
                 }
                 while True:
@@ -697,8 +737,13 @@ def prepare(
                 policy["reuse"]["sourceStep"] if inherited else None
             ),
             "changedPaths": meaningful, "subjectHash": subject_hash,
+            "invalidatedChecks": sorted(invalidated | affected),
+            "requiredExecution": [c["command"] for c in policy["checks"]
+                                  if c["id"] in invalidated] if high_risk else [],
+            "highRiskFixReceipt": high_risk_plan.get("receipt"),
+            "selectionReasons": reasons,
         }
-    except (IncrementalError, OSError, ValueError) as exc:
+    except (IncrementalError, OSError, ValueError, KeyError, TypeError) as exc:
         # Никогда не превращаем повреждённый state/policy в permission skip.
         return fallback(str(exc)[:180])
 
@@ -736,6 +781,12 @@ def record(
             baseline = original["fullBaseline"]
         else:
             baseline = {"tree": current, "subjectHash": result["subjectContentHash"], "runAt": result["runAt"]}
+            if policy.get("highRiskFix") is not None:
+                # Полный proof не теряется при публикации следующего aggregate.
+                # Он вложен в pinned checkpoint, старый Evidence не изменяется.
+                from verification_proof import _safe_proof_path
+                baseline["producerProof"] = json.loads(_safe_proof_path(root, step_id).read_text(encoding="utf-8"))
+                baseline["evidence"] = read_task(root, step_id)["sections"].get("Evidence", "")
         by_command = {item["command"]: item for item in result["commands"]}
         if set(by_command) != set(commands) or any(item.get("status") != "PASS" or item.get("exitCode") != 0 for item in by_command.values()):
             raise IncrementalError("AGGREGATE_COMMAND_RESULTS_INCOMPLETE")
@@ -782,6 +833,7 @@ def record(
                 and (plan.get("inheritedSource") or
                      plan["checkpoint"].get("inheritedOrigin")) else None,
             "latestChecks": latest,
+            "highRiskFixReceipt": plan.get("highRiskFixReceipt") if plan else None,
         }
         # External editor мог изменить файлы во время чтения Git tree.
         # Недоказанный checkpoint нельзя делать доступным для reuse.
@@ -901,6 +953,10 @@ def reuse_targeted(
 ) -> dict[str, dict[str, Any]]:
     """Consume selected feedback only for checks Core already selected to execute."""
     if selection.get("mode") != "incremental":
+        return {}
+    # Подтверждённые findings и critical obligations high-risk FIX должны
+    # исполняться canonical producer-ом сейчас, включая все nested groups.
+    if selection.get("highRiskFixReceipt") is not None:
         return {}
     try:
         path = _targeted_path(root, step_id)

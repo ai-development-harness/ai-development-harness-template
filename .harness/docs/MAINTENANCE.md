@@ -27,6 +27,31 @@ full PASS перезаписывает checkpoint; удаление любого
 Это clone-local, не Git и не новый source of truth. Подробности:
 [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
 
+Opt-in high-risk FIX использует существующие operational namespaces: `fullBaseline.producerProof/evidence` и `highRiskFixReceipt` в
+checkpoint, `fixBaselineSha256` в producer proof. Owner capture pin —
+`fix_delta.capture_fix`; перенос pin после PASS — canonical Evidence writer
+под `execution_state_lock`, с прежним CAS. Resume сохраняет original capture;
+следующий FIX получает новый pin. Старые schemaVersion=1 caches без полного
+provenance переквалифицируются full run, historical reports не мигрируются.
+Потеря/удаление cache/pin безопасно отменяет оптимизацию. Cleanup CHECK/APPLY
+эти существующие operational namespaces по-прежнему не удаляет; TTL policy
+ограничивает reuse, а не автоматически удаляет данные.
+
+Capture receipt `.harness/local/verification-proofs/STEP-NNN.fix.json` имеет
+schemaVersion=1, producer `deterministic-fix-capture`. Единственный owner выдачи —
+`fix_delta.capture_fix` через `bind_fix(capture=True)`, только после CAS
+подтверждённого canonical PASS pin. Запись под `execution_state_lock` атомарна;
+receipt связывает STEP, executionId и bytes исходного capture. Evidence writer
+его не создаёт и не перепривязывает после правок. FAIL удаляет результаты,
+сохраняя receipt; он может восстановить capture pin только при новом полном
+PASS, но не доказывает ни одной проверки. Следующий FIX заменяет receipt,
+завершённая execution или отсутствующий capture непригодны. При потере receipt
+допустим только legacy fallback на ещё действующий PASS pin; повреждённый
+существующий receipt требует полного режима и не маскируется fallback.
+Удаление безопасно теряет оптимизацию; следующий capture пересоздаёт artifact.
+Исторические schema-v1 caches не мигрируются; CHECK/APPLY этот namespace не
+удаляет. Symlink guard, current owner и exact digest проверяются при чтении.
+
 Новые файлы `OBSERVATION-<UTC>-<sha256-prefix>.json` в configured
 `protocol.reviewDirectory/STEP-NNN/` являются **project-owned immutable
 supplemental evidence**, а не локальным operational state и не REVIEW/FAIL.

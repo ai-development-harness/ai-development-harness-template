@@ -384,10 +384,13 @@ def latest_structured_findings(root: Path, step_id: str) -> dict[str, Any]:
         document,
         expected_version=FINDING_CONTRACT_VERSION,
     )
+    # Config resolver возвращает resolved путь, caller может использовать
+    # Windows 8.3 alias того же root. Общий helper нормализует обе стороны.
+    from planning_contract import _repo_relative
     return {
         "schemaVersion": FINDING_CONTRACT_VERSION,
         "stepId": step_id,
-        "report": path.relative_to(root).as_posix(),
+        "report": _repo_relative(root, path),
         "verdict": meta.get("verdict"),
         "findings": findings,
     }

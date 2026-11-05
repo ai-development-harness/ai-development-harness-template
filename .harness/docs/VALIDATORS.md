@@ -997,6 +997,9 @@ Microbenchmark может доказать только narrow claim. Когда
 - engine: `.harness/tools/verification.py`
 - CLI: `.harness/tools/verify-step.py`
 - regression: `.harness/tools/verification-self-test.py`
+- incremental engine: `.harness/tools/verification_incremental.py`
+- high-risk FIX boundary: `.harness/tools/verification_high_risk.py`
+- high-risk regression/canary: `.harness/tools/verification-high-risk-self-test.py`
 
 ## Роль
 
@@ -1014,6 +1017,22 @@ Microbenchmark может доказать только narrow claim. Когда
 - PASS Evidence хранит exit code, duration, stdout/stderr SHA-256 и byte counts; raw successful output не загружается в model context;
 - FAIL может вернуть короткий diagnostic tail;
 - manual checks не считаются PASS без exact supplied observation.
+
+Internal `verification_high_risk` не имеет самостоятельного mutation CLI.
+`validate_policy` проверяет schema project-owned `highRiskFix`; `prepare_fix`
+возвращает finding invalidation, exact critical checks и producer receipt либо
+ошибку для full fallback. `planning_policy_basis` добавляет opt-in файл в
+planning fingerprints и Context Contract. `fix_delta.capture_fix` вызывает
+`bind_fix` для закрепления exact pre-FIX bytes; canonical Evidence writer
+переносит только уже проверенный pin через `retained_fix_binding` и сохраняет
+full provenance в существующем checkpoint. Только capture owner может выдать
+`STEP-NNN.fix.json` после CAS canonical PASS: этот отдельный receipt переживает
+FAIL, но не доказывает результаты; writer восстанавливает pin лишь при новом
+полном PASS, без пересоздания pre-FIX snapshot. Cache и proof остаются optional:
+потеря/порча/устаревание запрещают reuse, а не выдают PASS. Existing STEP
+Completion Gate, exact command consumers и independent reviewers не меняются.
+Policy/schema, lifecycle и примеры: [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md),
+решение Core: [HIGH_RISK_FIX_VERIFICATION.md](HIGH_RISK_FIX_VERIFICATION.md).
 
 ## CLI
 
@@ -1553,6 +1572,7 @@ python3 .harness/tools/runtime_adapter_contract.py --runtime claude --json
 ## Роль
 
 `review_findings.py` задаёт machine-readable handoff `REVIEW → FIX`. Новый STEP REVIEW хранится как immutable Markdown с canonical JSON-блоком `## Machine-readable findings`.
+Путь `report` вычисляется общим alias-safe resolver: Windows 8.3 и полный путь одного repository root дают один repo-relative результат, без ослабления containment.
 
 Human-readable `## Findings` нужен человеку. FIX/orchestration не должен повторно интерпретировать этот prose: он использует deterministic parser.
 
@@ -2239,9 +2259,9 @@ Negative scenarios: missing/wrong receipt, previous executionId, modified file, 
 
 **Файлы:** `windows-ci.py`, `windows_ci.py`, `windows-ci-self-test.py`.
 
-**Роль:** выполнять 16 Windows self-tests тремя непересекающимися группами
+**Роль:** выполнять 17 Windows self-tests тремя непересекающимися группами
 на отдельных runners и сохранять итоговый check `Validate Windows boundaries` (#339).
-Группа `execution` включает incremental/environment Verification: они проверяют
+Группа `execution` включает incremental/environment/high-risk Verification: они проверяют
 Windows 8.3 path aliases на настоящем runner (#376).
 
 **Когда использовать:** Harness Integrity вызывает reusable `harness-windows-group.yml`

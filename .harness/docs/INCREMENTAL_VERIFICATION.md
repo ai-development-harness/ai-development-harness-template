@@ -1,4 +1,4 @@
-# Инкрементальная STEP Verification (#367)
+# Инкрементальная STEP Verification (#367, #382)
 
 ## Назначение и граница доверия
 
@@ -182,7 +182,8 @@ python3 .harness/tools/verify-step.py STEP-017 --full
   cache и proof дают полный fallback, без миграции исторических Evidence.
 - Изменились Acceptance/REQ/ADR/plan, команда/timeout, map, общий
   инфраструктурный вход, environment или идентичность инструментов.
-- Любой risk flag **текущего или исходного STEP при corrective reuse**:
+- Без описанного ниже opt-in любой risk flag текущего STEP, а также
+  **всегда** risk flag исходного STEP при corrective reuse:
   `security-sensitive`, `data-migration`, `external-integration`,
   `destructive`, `release-critical`. Исторический высокорисковый
   STEP нельзя использовать как источник инкрементальных проверок.
@@ -201,6 +202,73 @@ python3 .harness/tools/verify-step.py STEP-017 --full
 а `targetedReusedCount` выделяет использованные targeted-команды, включая группы.
 `durationMs` показывает время фактического исполнения либо исходного PASS. Это не
 доказательство сокращения времени без сравнительного полного прогона.
+
+## Opt-in: незавершённый высокорисковый STEP после REVIEW FAIL
+
+Архитектурная граница: [HIGH_RISK_FIX_VERIFICATION.md](HIGH_RISK_FIX_VERIFICATION.md).
+В project-owned записи STEP карты можно добавить:
+
+```json
+"highRiskFix": {
+  "riskChecks": {
+    "security-sensitive": ["auth"],
+    "data-migration": ["migration-safety"]
+  },
+  "externalState": {
+    "ui": "none",
+    "backend": "none",
+    "auth": "always-run",
+    "migration-safety": "none"
+  },
+  "maxAgeSeconds": 3600
+}
+```
+
+Это фрагмент записи с уже объявленными четырьмя `checks` с такими ID.
+`riskChecks` обязан покрывать каждый исключающий risk flag данного STEP
+непустым списком существующих **родительских** check ID. Эти команды всегда
+исполняются заново exact; для монолита выполняются также все его группы.
+Исторические risk flags не удаляются. `externalState` обязан перечислять
+каждый parent check: `none` — явное проверенное утверждение о полноте локальных
+inputs, включая группы; `always-run` — внешний mutable state требует exact
+execution при каждом FIX. Отсутствующая классификация запрещает opt-in.
+`maxAgeSeconds` — целое от 1 до 86400, возраст исходного полного baseline,
+не последнего incremental PASS. Автоматического продления срока нет.
+
+Полный файл карты входит в `VERIFICATION_POLICY@STEP-NNN` planning component
+и обязательные inputs Context Contract. Независимый planning reviewer проверяет
+полноту inputs/shared dependencies, риск и классификацию внешнего state.
+Нельзя сузить карту и воспользоваться старым planning PASS в том же patch.
+
+Допустим только `status: in_progress` в активной canonical `STEP FIX` после
+schema-valid REVIEW FAIL v3 с findings. Dispatcher сохраняет точный pre-FIX
+tree, включая dirty/staged/untracked inputs; capture owner закрепляет bytes
+FIX baseline в PASS producer proof. Resume не меняет capture. В первом
+полном checkpoint сохраняются исходные full Evidence и producer proof;
+старые caches без этих полей требуют полного прогона. Первая реализация,
+IMPLEMENT, post-PASS observation, completed STEP и cross-STEP reuse исключены.
+
+Каждый finding инвалидирует все checks, inputs которых покрывают его location;
+для квалифицированного монолита — все соответствующие группы. Неизвестный
+location или отсутствие подходящей группы означает full fallback. Сигнал
+invalidation передаётся транзитивно dependent checks, даже если их файлы не
+менялись. Finding checks, их реальные зависимости и critical checks выполняются
+canonical producer-ом: targeted PASS в этом режиме остаётся только feedback.
+При неясной семантической связи finding с картой reviewer не разрешает reuse.
+
+Повторные FIX сохраняют накопленный diff и исходные full proof/tree/runAt.
+Явный `--full` создаёт новый полный baseline и сохраняет уже доказанный capture
+активного FIX: последующий dispatcher completion не добавляет скрытый full.
+Новый aggregate относится к текущему subject; обычные completion, независимые
+security/tests reviewers, Semantic Blast Radius и manual/product freshness
+остаются обязательными. Exact execution consumer не принимает aggregate групп.
+
+JSON и Evidence показывают `incrementalBaseline`, `changedPaths`,
+`invalidatedChecks`, `selectionReasons`, executed/reused counts, provenance и
+фактические `durationMs`. Счётчики отражают выполненную работу, а не обещанную
+экономию времени. Отсутствие/порча pin, свежий FAIL, смена toolchain/environment,
+map/контракта, unknown dependency и stale baseline дают полный режим;
+конкурентная правка subject блокирует публикацию stale результата.
 
 ## Поздний дефект после REVIEW PASS
 
@@ -305,6 +373,18 @@ observations на актуальном subject.
   `.harness/local/verification-proofs/STEP-NNN.targeted.json`.
   Изменение cache или потеря этого pin требуют фактического запуска команды;
   canonical Evidence не выдаётся на основании самодекларированного subjectHash.
+- `.harness/local/verification-proofs/STEP-NNN.fix.json` — отдельный
+  schemaVersion=1 capture receipt, owner `fix_delta.capture_fix` после CAS
+  canonical PASS pin. Связывает STEP, executionId и exact bytes pre-FIX snapshot.
+  Он переживает canonical/targeted FAIL, пока result caches инвалидируются.
+  После исправления все проверки проходят новый full PASS; только затем writer
+  переносит прежний capture pin в новый producer перед сохранением baseline.
+  Это предотвращает скрытый повтор full при completion на том же subject.
+  Receipt не является test PASS и не создаётся из post-FIX JSON. Resume сохраняет
+  исходные bytes, следующий FIX получает новый receipt. Missing legacy receipt
+  допускает лишь surviving PASS pin; invalid schema/producer/owner/digest и
+  symlink дают полный режим, без маскировки legacy fallback. Очистка безопасно
+  теряет recovery; historical evidence не мигрируется. Namespace исключён из cleaner.
 - Данные clone-local, в Git не входят. Утрата, несовместимость версии,
   истечение жизни Git tree после GC или удаление файла → обычный полный
   Verification. Snapshot нельзя принимать вместо исходников или
@@ -317,8 +397,15 @@ observations на актуальном subject.
 
 ```bash
 python3 .harness/tools/verification-incremental-self-test.py
+python3 .harness/tools/verification-high-risk-self-test.py
 python3 .harness/tools/verification-self-test.py
 python3 .harness/tools/verification-selective-self-test.py
 python3 .harness/tools/run-self-tests.py
 python3 .harness/tools/validate.py --mode ci
 ```
+
+Для проверки candidate Core на принятой истории canary без обновления его
+checkout: `python3 .harness/tools/verification-high-risk-self-test.py --canary <path>`.
+Runner клонирует canary в disposable каталог и использует проверяемые Python
+modules Core с project-owned config/историей копии. Это проверка lifecycle,
+не qualification обновления или платформенный Windows CI.
