@@ -19,7 +19,9 @@ GROUPS = {
     "resume": ("step-next", "portable-handoff", "portable-resume", "portable-resume-matrix"),
     # Incremental/environment/high-risk Verification используют настоящие Git
     # snapshots и зависят от Windows 8.3 path aliases (#376, #382).
-    "execution": ("execution", "verification", "verification-incremental", "verification-environment", "verification-high-risk",
+    # Новый restart regression идёт первым: native-platform failure должен
+    # давать feedback до дорогого high-risk FIX lifecycle, сохраняя весь набор.
+    "execution": ("verification-manual-continuation", "execution", "verification", "verification-incremental", "verification-environment", "verification-high-risk",
                   "reliable-orchestration-fault", "operational-reports", "operational-completion",
                   "operational-integration", "local-cleanup"),
 }
@@ -27,8 +29,8 @@ GROUPS = {
 
 def validate_groups() -> None:
     names = [name for group in GROUPS.values() for name in group]
-    if len(names) != 17 or len(set(names)) != len(names):
-        raise ValueError("Windows-набор должен содержать 17 различных self-tests")
+    if len(names) != 18 or len(set(names)) != len(names):
+        raise ValueError("Windows-набор должен содержать 18 различных self-tests")
 
 
 def finalize(needs: dict) -> bool:

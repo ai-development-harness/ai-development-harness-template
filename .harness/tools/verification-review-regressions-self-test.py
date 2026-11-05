@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from self_test_fixture import set_fixture_verification
 import tempfile
 
 from completion_gate import acceptance_criteria
@@ -30,8 +31,7 @@ def prepare(root: Path, commands: list[str], checks: list[dict]) -> None:
         "\n".join(fixture.command_line(command) for command in commands),
     ))
     manifest = root / ".harness/manifest.yaml"
-    write(manifest, manifest.read_text(encoding="utf-8")
-          + "\nverification:\n  impactMap: docs/verification/impact-map.json\n")
+    set_fixture_verification(root, {"impactMap": "docs/verification/impact-map.json"})
     criteria = acceptance_criteria(root, "STEP-001")
     for check in checks:
         check.update(acceptance=criteria, reusable=True)

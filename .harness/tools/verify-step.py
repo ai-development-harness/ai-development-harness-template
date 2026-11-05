@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from verification import run_step_verification
+from verification_resume import preview_pending
 
 
 def repo_root() -> Path:
@@ -21,7 +22,14 @@ def main() -> int:
     parser.add_argument("--no-write-evidence", action="store_true")
     parser.add_argument("--full", action="store_true", help="Ignore incremental cache and run every check.")
     parser.add_argument("--pretty", action="store_true")
+    parser.add_argument("--continuation-plan", action="store_true",
+                        help="Показать повторы manual continuation без исполнения команд.")
     args = parser.parse_args()
+
+    if args.continuation_plan:
+        # Read-only preflight не создаёт Evidence, execution или новый checkpoint.
+        print(json.dumps(preview_pending(repo_root(), args.step_id), ensure_ascii=False, indent=2))
+        return 0
 
     manual = json.loads(args.manual_json) if args.manual_json else None
     if manual is not None and not isinstance(manual, list):

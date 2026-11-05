@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from self_test_fixture import set_fixture_verification
 import subprocess
 import tempfile
 from unittest.mock import patch
@@ -255,7 +256,7 @@ print(sys.argv[1])
                         "externalState": {name: "none" for name in ("all", "consumer", "auth")},
                         "maxAgeSeconds": 3600}}}}
     manifest = root / ".harness/manifest.yaml"
-    write(manifest, manifest.read_text(encoding="utf-8") + "\nverification:\n  impactMap: docs/verification/issue-382.json\n")
+    set_fixture_verification(root, {"impactMap": "docs/verification/issue-382.json"})
     write(root / "docs/verification/issue-382.json", json.dumps(policy))
     plan(root, sid, [commands[n] for n in ("all", "consumer", "auth")])
     initial = run_step_verification(root, sid)
@@ -301,8 +302,7 @@ if sys.argv[1] == "ui":
 print(sys.argv[1])
 ''')
     manifest = root / ".harness/manifest.yaml"
-    write(manifest, manifest.read_text(encoding="utf-8")
-          + "\nverification:\n  # Project-owned opt-in fixture. Пример: docs/verification/issue-382.json\n  impactMap: docs/verification/issue-382.json\n")
+    set_fixture_verification(root, {"impactMap": "docs/verification/issue-382.json"})
     shared = ["case/src/shared/**"]
     policy = {"schemaVersion": 1, "steps": {sid: {"checks": [
         {"id": name, "command": command,

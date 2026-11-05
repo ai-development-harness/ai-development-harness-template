@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from self_test_fixture import set_fixture_verification
 import tempfile
 from completion_gate import acceptance_criteria
 from verification import run_step_verification
@@ -47,9 +48,7 @@ def main() -> int:
         map_path.parent.mkdir(parents=True, exist_ok=True)
         map_path.write_text(json.dumps(policy), encoding="utf-8")
         manifest = root / ".harness/manifest.yaml"
-        manifest.write_text(manifest.read_text(encoding="utf-8")
-                            + "\nverification:\n  impactMap: docs/verification/impact-map.json\n",
-                            encoding="utf-8")
+        set_fixture_verification(root, {"impactMap": "docs/verification/impact-map.json"})
         try:
             os.environ[variable] = "pass"
             first = run_step_verification(root, task_id)
