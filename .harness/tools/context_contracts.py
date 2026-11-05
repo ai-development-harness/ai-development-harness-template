@@ -211,6 +211,13 @@ def _build_context_contract(root: Path, step_id: str, role: str) -> dict[str, An
         _architecture_projection(root, ref)
         for ref in architecture_refs(task)
     )
+    # Карта high-risk opt-in — обязательный semantic input PLAN/REVIEW,
+    # а не fingerprint, содержание которого reviewer должен угадать (#382).
+    from verification_high_risk import planning_policy_basis
+    verification_policy = planning_policy_basis(root, step_id)
+    if verification_policy is not None:
+        required.append({"artifact": "VERIFICATION_POLICY@" + step_id,
+                         "path": verification_policy["path"], "sections": []})
 
     # Applicability PRN — semantic judgement. Deterministic resolver therefore
     # даёт planner/reviewer только compact section projections всех active PRN,

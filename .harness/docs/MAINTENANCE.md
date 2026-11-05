@@ -27,6 +27,17 @@ full PASS перезаписывает checkpoint; удаление любого
 Это clone-local, не Git и не новый source of truth. Подробности:
 [INCREMENTAL_VERIFICATION.md](INCREMENTAL_VERIFICATION.md).
 
+Opt-in high-risk FIX добавляет только поля существующих артефактов, без нового
+namespace: `fullBaseline.producerProof/evidence` и `highRiskFixReceipt` в
+checkpoint, `fixBaselineSha256` в producer proof. Owner capture pin —
+`fix_delta.capture_fix`; перенос pin после PASS — canonical Evidence writer
+под `execution_state_lock`, с прежним CAS. Resume сохраняет original capture;
+следующий FIX получает новый pin. Старые schemaVersion=1 caches без полного
+provenance переквалифицируются full run, historical reports не мигрируются.
+Потеря/удаление cache/pin безопасно отменяет оптимизацию. Cleanup CHECK/APPLY
+эти существующие operational namespaces по-прежнему не удаляет; TTL policy
+ограничивает reuse, а не автоматически удаляет данные.
+
 Новые файлы `OBSERVATION-<UTC>-<sha256-prefix>.json` в configured
 `protocol.reviewDirectory/STEP-NNN/` являются **project-owned immutable
 supplemental evidence**, а не локальным operational state и не REVIEW/FAIL.

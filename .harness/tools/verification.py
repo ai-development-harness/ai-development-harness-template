@@ -827,6 +827,10 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Incremental reused checks: {result.get('reusedCount', 0)}",
         f"- Targeted feedback reused: {result.get('targetedReusedCount', 0)}",
         f"- Incremental fallback reason: {result.get('fallbackReason') or 'none'}",
+        f"- Incremental baseline: {json.dumps(result.get('incrementalBaseline'), ensure_ascii=False)}",
+        f"- Incremental changed paths: {json.dumps(result.get('changedPaths', []), ensure_ascii=False)}",
+        f"- Incremental invalidated obligations: {json.dumps(result.get('invalidatedChecks', []), ensure_ascii=False)}",
+        f"- Incremental selection reasons: {json.dumps(result.get('selectionReasons', {}), ensure_ascii=False, sort_keys=True)}",
         f"- Git head: {revision.get('git_head') or 'none'}",
         f"- Worktree hash: {revision.get('worktree_hash') or 'clean'}",
         f"- Verification contract basis: {result['contractBasis']}",
@@ -981,6 +985,10 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
                 raise VerificationInputsStale(
                     "incremental verification selection changed before Evidence write"
                 )
+        # Producer proof заменяется вместе с Evidence, но active FIX capture
+        # должен пережить full/aggregate PASS до завершения той же execution.
+        from verification_high_risk import retained_fix_binding, bind_fix
+        fix_binding = retained_fix_binding(root, step_id)
         path = task_path(root, step_id)
         original = path.read_bytes()
         updated = _replace_evidence_block(
@@ -1014,6 +1022,8 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         record_verification_proof(
             root, step_id, block=match.group(1), result=result,
         )
+        if fix_binding is not None:
+            bind_fix(root, step_id, fix_binding)
         # Record the validated pre-publication selection against the exact
         # current producer-bound PASS. Optional local cache remains expendable.
         record_incremental(
@@ -1334,6 +1344,10 @@ def run_step_verification(
             if group.get("reusedFrom")
         ),
         "fallbackReason": selection.get("reasonCode"),
+        "incrementalBaseline": selection.get("checkpoint", {}).get("fullBaseline", {}).get("runAt"),
+        "changedPaths": selection.get("changedPaths", []),
+        "invalidatedChecks": selection.get("invalidatedChecks", []),
+        "selectionReasons": selection.get("selectionReasons", {}),
         "stepId": step_id,
         "runAt": utc_now(),
         "revision": revision,
