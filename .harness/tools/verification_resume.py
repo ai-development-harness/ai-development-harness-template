@@ -185,15 +185,19 @@ def continuation_plan(root: Path, step_id: str, *, contract: str, context: str,
         if (not isinstance(recorded_at, (int, float)) or isinstance(recorded_at, bool)
                 or not 0 <= time.time() - recorded_at <= RESUME_TTL_SECONDS):
             raise ValueError("MANUAL_CONTINUATION_EXPIRED")
-        if (cached.get("stepId") != step_id or cached.get("contractBasis") != contract
-                or cached.get("contextBasis") != context
-                or cached.get("subjectRevision") != subject
-                or cached.get("timeoutSeconds") != timeout
-                or cached.get("policy") != policy
-                or cached.get("execution") != _execution(root, step_id)
-                or not cached.get("environmentBasis")
-                or cached.get("environmentBasis") != _environment_basis(names)):
-            raise ValueError("MANUAL_CONTINUATION_INPUTS_CHANGED")
+        current_inputs = {
+            "stepId": step_id, "contractBasis": contract, "contextBasis": context,
+            "subjectRevision": subject, "timeoutSeconds": timeout, "policy": policy,
+            "execution": _execution(root, step_id), "environmentBasis": _environment_basis(names),
+        }
+        changed = [key for key, value in current_inputs.items() if cached.get(key) != value]
+        if not cached.get("environmentBasis") and "environmentBasis" not in changed:
+            changed.append("environmentBasis")
+        if changed:
+            # Публикуются только имена компонентов: values окружения и прочие
+            # приватные входы остаются локальными, а причина повтора проверяема.
+            return {**fallback, "reasonCode": "MANUAL_CONTINUATION_INPUTS_CHANGED",
+                    "changedInputs": sorted(changed)}
         from verification import EVIDENCE_START, EVIDENCE_END
         from verification_proof import _safe_proof_path, verification_proof_error
         proof = json.loads(_safe_proof_path(root, step_id).read_bytes())

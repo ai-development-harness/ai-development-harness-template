@@ -128,7 +128,8 @@ def negatives(root: Path) -> None:
     with patch("verification_resume.time.time", return_value=cached["recordedAt"] + RESUME_TTL_SECONDS + 1):
         assert preview(root)["reasonCode"] == "MANUAL_CONTINUATION_EXPIRED"
     with patch.dict(os.environ, {"ISSUE385_ENVIRONMENT": "changed"}):
-        assert not preview(root)["reused"]
+        changed = preview(root)
+        assert not changed["reused"] and changed["changedInputs"] == ["environmentBasis"], changed
     with patch("verification_resume._environment_basis", return_value="different-toolchain"):
         assert not preview(root)["reused"]
     with patch("verification_resume._execution", side_effect=ValueError("ambiguous")):
