@@ -299,6 +299,8 @@ Execution tracking уже ведётся root execution wrapper. Заплани�
 11. Не ставить `Выполнено` до required review PASS.
 12. Command завершается только после PASS deterministic/manual Verification contract.
 
+Manual continuation свежего этапа, high-risk policy, producer binding и read-only preflight описаны в [`MANUAL_VERIFICATION_CONTINUATION.md`](MANUAL_VERIFICATION_CONTINUATION.md). `MANUAL_REQUIRED` не гарантирует отсутствие автоматических повторов без проверки continuation plan.
+
 Если execution-status показывает `running`, следующая session resume-ит тот же `STEP IMPLEMENT STEP-NNN` **только после PASS Intent Basis guard**. Изменившийся REQ/ADR/STEP/Project Principle или Ready plan делает старую semantic execution stale и маршрутизирует к `STEP PLAN STEP-NNN`.
 
 Single IMPLEMENT после SUCCESS останавливается; внутри chain/RUN CTS может продолжить к REVIEW.

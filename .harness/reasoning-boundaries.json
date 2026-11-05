@@ -230,7 +230,8 @@
         "deterministicWork": [
           "Проверка готовности плана и зависимостей",
           "Запуск автоматических проверок",
-          "Фиксация доказательств выполнения"
+          "Фиксация доказательств выполнения",
+          "Producer-bound manual continuation той же execution, preflight повторов и external-state policy"
         ],
         "fastPaths": []
       }
@@ -280,7 +281,8 @@
           "Контроль допустимого перехода",
           "Запуск автоматических проверок",
           "Выбор полного или инкрементального Verification по проверенной карте и полномочиям high-risk FIX",
-          "Обновление доказательств выполнения"
+          "Обновление доказательств выполнения",
+          "Producer-bound manual continuation той же execution, preflight повторов и external-state policy"
         ],
         "fastPaths": []
       }

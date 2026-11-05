@@ -39,7 +39,7 @@ from project_verification import (
     validate_product_observations,
 )
 from review_contract import repository_revision, repository_subject_content_hash
-from verification_resume import remember_pending, reuse_pending, forget_pending
+from verification_resume import remember_pending, continuation_plan, forget_pending, preview_pending, _environment_basis
 from verification_proof import record_verification_proof, verification_proof_error
 from verification_incremental import (
     prepare as prepare_incremental, record as record_incremental,
@@ -253,11 +253,6 @@ def verification_context_basis(root: Path, step_id: str) -> str:
         # обновление Harness не требует ложной повторной Verification.
         basis["dependencyCompletion"] = dependencies
     return stable_hash(basis)
-
-
-def _resume_contract_basis(contract: str, context: str) -> str:
-    """Кэш ручной стадии не переживает изменение acceptance или плана."""
-    return stable_hash({"verificationContract": contract, "verificationContext": context})
 
 
 def _stale_inputs_reason(root: Path, step_id: str, result: dict[str, Any]) -> str | None:
@@ -822,6 +817,7 @@ def _evidence_block(result: dict[str, Any]) -> str:
         f"- Verification run: {result['runAt']}",
         f"- Status: {result['status']}",
         f"- Automated resumed: {str(result.get('automatedResumed', False)).lower()}",
+        f"- Manual continuation: {json.dumps(result.get('manualContinuation'), ensure_ascii=False, sort_keys=True)}",
         f"- Verification mode: {result.get('verificationMode', 'full')}",
         f"- Incremental executed checks: {result.get('executedCount', len(result.get('commands', [])))}",
         f"- Incremental reused checks: {result.get('reusedCount', 0)}",
@@ -963,6 +959,12 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         stale_reason = _stale_inputs_reason(root, step_id, result)
         if stale_reason is not None:
             raise VerificationInputsStale(stale_reason)
+        if result.get("automatedResumed"):
+            # CAS subject недостаточен: local checkpoint, execution, TTL или
+            # environment могли измениться после selection до публикации.
+            current = preview_pending(root, step_id)
+            if current != result.get("manualContinuation"):
+                raise VerificationInputsStale("manual continuation changed before Evidence write")
         # Для инкрементальной записи сохраняем точный validated selection
         # *до* изменения Evidence: после публикации новый runAt уже не совпадёт
         # с previous cache, и повторная prepare даст ложный full fallback.
@@ -1022,6 +1024,11 @@ def _write_evidence(root: Path, step_id: str, result: dict[str, Any]) -> None:
         record_verification_proof(
             root, step_id, block=match.group(1), result=result,
         )
+        if result["status"] == "MANUAL_REQUIRED":
+            remember_pending(root, step_id, result=result)
+            result["continuationPlan"] = preview_pending(root, step_id)
+        else:
+            forget_pending(root, step_id)
         if fix_binding is not None:
             bind_fix(root, step_id, fix_binding)
         # Record the validated pre-publication selection against the exact
@@ -1093,7 +1100,6 @@ def run_step_verification(
             "dependencies": dependency_failures,
         }
 
-    resume_basis = _resume_contract_basis(contract_basis, context_basis)
     command_names = [item["value"] for item in entries if item["kind"] == "command"]
     from completion_gate import acceptance_criteria
     acceptance = acceptance_criteria(root, step_id)
@@ -1131,6 +1137,7 @@ def run_step_verification(
             except (OSError, ValueError):
                 pass
     previous_failed_commands: set[str] = set()
+    previous_status = None
     if previous_block_match is not None:
         previous_block = previous_block_match.group(1)
         previous_status = re.search(r"(?m)^- Status: (PASS|FAIL|MANUAL_REQUIRED)\s*$", previous_block)
@@ -1151,7 +1158,11 @@ def run_step_verification(
         root, step_id, commands=command_names, acceptance=acceptance,
         contract_basis=contract_basis, context_basis=context_basis,
         timeout=timeout, subject_hash=subject_content_hash,
-        full=force_full or untrusted_evidence,
+        # После MANUAL_REQUIRED выбором команд владеет continuation policy.
+        # Incremental/FIX cache не может обойти её external-state obligations.
+        full=force_full or untrusted_evidence or (previous_status is not None
+             and previous_status.group(1) == "MANUAL_REQUIRED"
+             and (manual_results is not None or product_results is not None)),
     )
     if selection["mode"] == "incremental" and previous_failed_commands:
         for name in command_names:
@@ -1179,16 +1190,23 @@ def run_step_verification(
             command = group["spec"]["command"]
             if group.get("reused") is None and command in targeted:
                 group["reused"] = targeted[command]
-    reused = None
-    if not force_full and not qualified_groups and (manual_results is not None or product_results is not None):
-        reused = reuse_pending(
-            root, step_id, contract=resume_basis,
-            subject=subject_revision, names=command_names, timeout=timeout,
-        )
-    commands: list[dict[str, Any]] = list(reused) if reused is not None else []
+    # Manual continuation не меняет subject и не является FIX/cross-STEP cache.
+    # План вычисляется до запуска; внешние проверки остаются адресными повторами.
+    manual_plan = continuation_plan(
+        root, step_id, contract=contract_basis, context=context_basis,
+        subject=subject_revision, names=command_names, timeout=timeout,
+    )
+    reused = (manual_plan["reused"] if not force_full and not qualified_groups
+              and (manual_results is not None or product_results is not None) else {})
+    # Checkpoint нельзя приписать окружению, появившемуся уже после команд.
+    automated_environment = _environment_basis(command_names)
+    commands: list[dict[str, Any]] = []
     try:
-        for entry in ([] if reused is not None else entries):
+        for entry in entries:
             if entry["kind"] != "command":
+                continue
+            if entry["value"] in reused:
+                commands.append(reused[entry["value"]])
                 continue
             if selection["mode"] == "incremental" and entry["value"] in selection["reused"]:
                 commands.append(selection["reused"][entry["value"]])
@@ -1309,32 +1327,27 @@ def run_step_verification(
             "commands": commands,
         }
 
-    if status == "MANUAL_REQUIRED" and reused is None and not qualified_groups:
-        remember_pending(
-            root, step_id, contract=resume_basis,
-            subject=subject_revision, commands=commands, timeout=timeout,
-        )
-    elif status != "MANUAL_REQUIRED" or qualified_groups:
-        forget_pending(root, step_id)
-
     result = {
         "schemaVersion": 1,
         "status": status,
-        "automatedResumed": reused is not None,
+        "automatedResumed": bool(reused),
+        "automatedEnvironmentBasis": automated_environment,
+        "manualContinuation": {key: value for key, value in manual_plan.items() if key != "reused"},
+        **({"automatedStageRecordedAt": manual_plan["recordedAt"]} if reused else {}),
         "verificationMode": selection["mode"],
         "executedChecks": [
             name for name in command_names
-            if reused is None and name in selection["executed"] and name not in targeted
+            if name not in reused and name in selection["executed"] and name not in targeted
         ],
-        "targetedChecks": [] if reused is not None else list(targeted),
+        "targetedChecks": [name for name in targeted if name not in reused],
         # Считаем только реальные запуски top-level команд. Синтетический
         # aggregate и subgroup feedback учитываются отдельно от выполнения.
-        "executedCount": 0 if reused is not None else sum(
+        "executedCount": sum(
             not item.get("reusedFrom") and not item.get("composite")
-            for item in commands
+            for item in commands if item["command"] not in reused
         ),
-        "reusedCount": len(commands) if reused is not None else len(selection["reused"]),
-        "targetedReusedCount": 0 if reused is not None else len(targeted),
+        "reusedCount": len(set(reused) | set(selection["reused"])),
+        "targetedReusedCount": len(set(targeted) - set(reused)),
         "groupExecutedCount": sum(
             1 for item in commands for group in (item.get("groups") or [])
             if not group.get("reusedFrom")

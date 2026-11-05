@@ -16,6 +16,8 @@ hash **никогда** не присваивается задним число�
 но не способен доказать полноту произвольных зависимостей по glob-шаблонам.
 Если проект не может обосновать карту, он не должен её подключать.
 
+Продолжение свежего `MANUAL_REQUIRED` на неизменённом subject — отдельный [manual continuation](MANUAL_VERIFICATION_CONTINUATION.md); оно не требует impact map или REVIEW FAIL.
+
 ## Подключение
 
 В configured `.harness/manifest.yaml` проекта укажи необязательную секцию:
