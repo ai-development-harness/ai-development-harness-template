@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""#339: полный набор, три независимых job и отказ при неполном результате."""
+"""#339: полный набор, независимые jobs и отказ при неполном результате."""
 from __future__ import annotations
 import json
 import os
@@ -28,6 +28,12 @@ def main() -> int:
     names = [name for group in ci.GROUPS.values() for name in group]
     assert set(names) == expected and len(names) == len(expected) == 18
     ci.validate_groups()
+    # Самые дорогие suites не должны снова делить последовательный job (#389).
+    # Эти три теста получают по 900 секунд внутри отдельного 20-минутного job.
+    for group, test in (("manual", "verification-manual-continuation"),
+                        ("incremental", "verification-incremental"),
+                        ("high-risk", "verification-high-risk")):
+        assert ci.GROUPS[group] == (test,), (group, ci.GROUPS[group])
     good = {"windows-" + name: {"result": "success"} for name in ci.GROUPS}
     assert ci.finalize(good)
     for group in good:
@@ -48,11 +54,11 @@ def main() -> int:
     final = re.search(r"(?ms)^  validate-windows-boundaries:\n(.*?)(?=^  [a-z][\w-]*:|\Z)", workflow)[1]
     assert "name: Validate Windows boundaries" in final
     assert "if: ${{ always() }}" in final
-    assert "needs: [windows-update, windows-resume, windows-execution]" in final
+    assert "needs: [" + ", ".join("windows-" + group for group in ci.GROUPS) + "]" in final
     assert "WINDOWS_NEEDS_JSON: ${{ toJSON(needs) }}" in final
     assert "windows-ci.py finalize" in final
     assert "continue-on-error:" not in final + reusable
-    assert "runs-on: windows-2025" in reusable and "timeout-minutes: 15" in reusable
+    assert "runs-on: windows-2025" in reusable and "timeout-minutes: 20" in reusable
     assert "windows-ci.py run --group $env:GROUP" in reusable and "exit $LASTEXITCODE" in reusable
     with tempfile.TemporaryDirectory(prefix="harness-windows-ci-") as directory:
         fixture = Path(directory)

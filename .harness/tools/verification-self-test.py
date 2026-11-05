@@ -50,7 +50,9 @@ def run(root: Path, *args: str) -> str:
 
 
 def copy_tracked(target: Path) -> None:
-    copy_effective_harness_checkout(SOURCE_ROOT, target)
+    # Synthetic Verification не зависит от продукта (#389): сохраняем текущие
+    # managed files и configured scaffold, затем создаём собственные inputs.
+    copy_effective_harness_checkout(SOURCE_ROOT, target, protocol_only=True)
 
 def command_line(command: str) -> str:
     tick = chr(96)
