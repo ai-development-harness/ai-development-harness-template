@@ -51,3 +51,21 @@ execution lane и реальные downstream build/install/database/browser sui
 здесь не запускались. Synthetic REVIEW проверяет применение существующих
 schema/proof gates; он не является независимым semantic review этого patch.
 Release, установленный canary и опубликованный tag не обновлялись.
+
+## Native Windows follow-up
+
+Первый native CI выявил расхождение только `environmentBasis` при restart:
+[диагностический check](https://github.com/ai-development-harness/ai-development-harness-template/actions/runs/42026756939/job/127242777683).
+Причина в negative test: `patch.dict(os.environ)` выполнял bulk clear/update.
+Windows CRT `_wputenv` удаляет empty-valued переменные из native environment,
+тогда как Python mapping может ещё хранить их; дочерний процесс видел уже иной
+набор входов. Guard корректно требовал повтор.
+
+Negative test теперь меняет только новый временный ключ. Весь regression
+запускается в отдельном процессе с явно заданной пустой переменной, поэтому
+restart проверяет сохранность именно native environment. Основной runner,
+TTL, producer/CAS и проверка полного окружения не ослаблены. Перед публикацией
+этого исправления targeted manual/basic/environment suites прошли на Linux;
+окончательный native результат хранится в checks обновлённого PR #386.
+
+Семантика CRT: [Microsoft `_putenv` / `_wputenv`](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/putenv-wputenv).

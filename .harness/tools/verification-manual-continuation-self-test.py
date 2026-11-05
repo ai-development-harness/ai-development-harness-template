@@ -127,9 +127,18 @@ def negatives(root: Path) -> None:
     checkpoint.write_bytes(saved)
     with patch("verification_resume.time.time", return_value=cached["recordedAt"] + RESUME_TTL_SECONDS + 1):
         assert preview(root)["reasonCode"] == "MANUAL_CONTINUATION_EXPIRED"
-    with patch.dict(os.environ, {"ISSUE385_ENVIRONMENT": "changed"}):
+    # patch.dict(os.environ) восстанавливает всю mapping через clear/update.
+    # На Windows _wputenv удаляет пустые values из native environment, хотя
+    # Python mapping ещё хранит их: @link https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/putenv-wputenv
+    variable = "ISSUE385_ENVIRONMENT"
+    while variable in os.environ:
+        variable += "_TEST"
+    os.environ[variable] = "changed"
+    try:
         changed = preview(root)
         assert not changed["reused"] and changed["changedInputs"] == ["environmentBasis"], changed
+    finally:
+        del os.environ[variable]
     with patch("verification_resume._environment_basis", return_value="different-toolchain"):
         assert not preview(root)["reused"]
     with patch("verification_resume._execution", side_effect=ValueError("ambiguous")):
@@ -222,6 +231,13 @@ def review_completion(root: Path) -> None:
 
 def main() -> int:
     """Параметризовать каждый guard flag и доказать адресный external повтор."""
+    if "--environment-child" not in sys.argv[1:]:
+        # Пустая переменная приходит через CreateProcess/env block, а не через
+        # Windows putenv. Old bulk restore воспроизводимо теряет её до restart.
+        environment = dict(os.environ, HARNESS_MANUAL_EMPTY_ENV="")
+        return subprocess.run([sys.executable, str(Path(__file__).resolve()),
+                               "--environment-child"], env=environment, check=False).returncode
+    assert os.environ.get("HARNESS_MANUAL_EMPTY_ENV") == ""
     with tempfile.TemporaryDirectory(prefix="harness-manual-continuation-") as directory:
         for flag in sorted(NON_REUSABLE_FLAGS):
             root = Path(directory) / flag
