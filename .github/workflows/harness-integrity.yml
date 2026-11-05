@@ -185,7 +185,7 @@ jobs:
         run: python3 .harness/tools/run-self-tests.py
 
   # Отдельная группа Windows self-tests без общих временных репозиториев.
-  # Пример: update выполняется параллельно двум остальным группам.
+  # Пример: update выполняется параллельно остальным группам.
   windows-update:
     # Локальный workflow использует ту же revision, что вызывающий workflow.
     # Пример: .github/workflows/harness-windows-group.yml.
@@ -198,7 +198,7 @@ jobs:
       group: update
 
   # Отдельная группа Windows self-tests без общих временных репозиториев.
-  # Пример: resume выполняется параллельно двум остальным группам.
+  # Пример: resume выполняется параллельно остальным группам.
   windows-resume:
     # Локальный workflow использует ту же revision, что вызывающий workflow.
     # Пример: .github/workflows/harness-windows-group.yml.
@@ -211,7 +211,7 @@ jobs:
       group: resume
 
   # Отдельная группа Windows self-tests без общих временных репозиториев.
-  # Пример: execution выполняется параллельно двум остальным группам.
+  # Пример: execution выполняется параллельно остальным группам.
   windows-execution:
     # Локальный workflow использует ту же revision, что вызывающий workflow.
     # Пример: .github/workflows/harness-windows-group.yml.
@@ -223,6 +223,58 @@ jobs:
       # Пример: execution.
       group: execution
 
+  # Изолировать дорогую Verification suite от общего execution-бюджета (#389).
+  # Пример: verification выполняется один раз на отдельной Windows-машине.
+  windows-verification:
+    # Использовать код текущего commit и общий bounded runner.
+    # Пример: локальный reusable workflow.
+    uses: ./.github/workflows/harness-windows-group.yml
+    # Фиксированный selector проверяется CLI и regression suite.
+    # Пример: verification.
+    with:
+      # Непересекающийся набор из windows_ci.GROUPS.
+      # Пример: verification.
+      group: verification
+
+  # Изолировать дорогую Verification suite от общего execution-бюджета (#389).
+  # Пример: incremental выполняется один раз на отдельной Windows-машине.
+  windows-incremental:
+    # Использовать код текущего commit и общий bounded runner.
+    # Пример: локальный reusable workflow.
+    uses: ./.github/workflows/harness-windows-group.yml
+    # Фиксированный selector проверяется CLI и regression suite.
+    # Пример: incremental.
+    with:
+      # Непересекающийся набор из windows_ci.GROUPS.
+      # Пример: incremental.
+      group: incremental
+
+  # Изолировать дорогую Verification suite от общего execution-бюджета (#389).
+  # Пример: manual выполняется один раз на отдельной Windows-машине.
+  windows-manual:
+    # Использовать код текущего commit и общий bounded runner.
+    # Пример: локальный reusable workflow.
+    uses: ./.github/workflows/harness-windows-group.yml
+    # Фиксированный selector проверяется CLI и regression suite.
+    # Пример: manual.
+    with:
+      # Непересекающийся набор из windows_ci.GROUPS.
+      # Пример: manual.
+      group: manual
+
+  # Изолировать дорогую Verification suite от общего execution-бюджета (#389).
+  # Пример: high-risk выполняется один раз на отдельной Windows-машине.
+  windows-high-risk:
+    # Использовать код текущего commit и общий bounded runner.
+    # Пример: локальный reusable workflow.
+    uses: ./.github/workflows/harness-windows-group.yml
+    # Фиксированный selector проверяется CLI и regression suite.
+    # Пример: high-risk.
+    with:
+      # Непересекающийся набор из windows_ci.GROUPS.
+      # Пример: high-risk.
+      group: high-risk
+
   # Стабильный обязательный check сохраняет совместимость publish gates (#339).
   # Пример: одна отменённая/пропущенная группа не допускает итоговый PASS.
   validate-windows-boundaries:
@@ -232,9 +284,9 @@ jobs:
     # Финализация запускается и после ошибки группы.
     # Пример: always().
     if: ${{ always() }}
-    # Все три обязательные группы должны завершиться успешно.
+    # Все обязательные группы должны завершиться успешно.
     # Пример: отсутствие любого результата означает FAIL.
-    needs: [windows-update, windows-resume, windows-execution]
+    needs: [windows-update, windows-resume, windows-execution, windows-verification, windows-incremental, windows-manual, windows-high-risk]
     # Финализация не повторяет Windows-тесты и требует только Python.
     # Пример: ubuntu-24.04.
     runs-on: ${{ fromJSON(vars.HARNESS_LINUX_RUNS_ON || '"ubuntu-24.04"') }}
@@ -242,7 +294,7 @@ jobs:
     # Пример: 5 минут.
     timeout-minutes: 5
     # Получить тот же код и проверить фактические needs текущего запуска.
-    # Пример: три success -> PASS.
+    # Пример: все success -> PASS.
     steps:
       # Прочитать CLI из того же commit.
       # Пример: checkout@v7.

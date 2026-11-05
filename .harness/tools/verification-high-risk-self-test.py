@@ -31,6 +31,11 @@ from verification_incremental import validate_impact_map
 from verification_selective import run_selected
 
 
+def scenario(name: str) -> None:
+    """Оставить bounded отметку для lastScenario при timeout runner (#389)."""
+    print(f"[SCENARIO] high-risk/{name}", flush=True)
+
+
 def write(path: Path, body: str) -> None:
     """Создать только test inputs внутри disposable fixture."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +129,7 @@ def negative_cases(root: Path, sid: str, policy: dict, commands: list[str]) -> N
             assert value["fallbackReason"] == reason, value
         return value
 
+    scenario("negative/policy")
     without = deepcopy(policy)
     del without["steps"][sid]["highRiskFix"]
     write(map_path, json.dumps(without))
@@ -152,6 +158,7 @@ def negative_cases(root: Path, sid: str, policy: dict, commands: list[str]) -> N
     with patch.dict(os.environ, {"HARNESS_382_FIX_ENV": "changed"}):
         full("SEMANTIC_OR_ENVIRONMENT_CHANGED")
 
+    scenario("negative/expiry")
     class Future(datetime):
         """Изменить только часы freshness, сохранив inputs и environment."""
         @classmethod
@@ -174,6 +181,7 @@ def negative_cases(root: Path, sid: str, policy: dict, commands: list[str]) -> N
     from verification_high_risk import retained_fix_binding
     capture_proof = root / f".harness/local/verification-proofs/{sid}.fix.json"
     original_receipt = capture_proof.read_bytes()
+    scenario("negative/capture-receipt")
     for field, invalid in (("executionId", "exec-" + "f" * 32),
                            ("fixBaselineSha256", "sha256:" + "f" * 64),
                            ("schemaVersion", 2)):
@@ -196,6 +204,7 @@ def negative_cases(root: Path, sid: str, policy: dict, commands: list[str]) -> N
     checkpoint.write_bytes(original_checkpoint)
 
     # Producer-bound targeted PASS не закрывает обязательный rerun finding.
+    scenario("negative/targeted-pass")
     selected = run_selected(root, sid, [commands[0]])
     assert selected["status"] == "PASS" and selected["completionProof"] is False, selected
     current = run_step_verification(root, sid, write_evidence=False)
@@ -204,6 +213,7 @@ def negative_cases(root: Path, sid: str, policy: dict, commands: list[str]) -> N
 
     # Настоящая конкурентная запись между execution и publication должна
     # остановить producer; раньше вычисленный aggregate не публикуется.
+    scenario("negative/concurrent-write")
     import verification
     actual = verification._run_command
     cases = root / "case/tests/ui/cases.json"
@@ -223,6 +233,7 @@ def composite_case(root: Path) -> None:
     """Finding groups распространяют invalidation; critical parent exact-run."""
     from verification import verification_command_evidence
     fixture = fixture_module()
+    scenario("composite/prepare")
     fixture.prepare(root)
     sid = "STEP-001"
     commands = {name: f"python3 case/checks.py {name}" for name in
@@ -258,6 +269,7 @@ print(sys.argv[1])
     manifest = root / ".harness/manifest.yaml"
     set_fixture_verification(root, {"impactMap": "docs/verification/issue-382.json"})
     write(root / "docs/verification/issue-382.json", json.dumps(policy))
+    scenario("composite/lifecycle")
     plan(root, sid, [commands[n] for n in ("all", "consumer", "auth")])
     initial = run_step_verification(root, sid)
     assert initial["status"] == "PASS" and initial["groupExecutedCount"] == 4, initial
@@ -318,6 +330,7 @@ print(sys.argv[1])
     }}}
     map_path = root / "docs/verification/issue-382.json"
     write(map_path, json.dumps(policy))
+    scenario("lifecycle/plan-and-baseline")
     plan(root, sid, commands)
     assert not validate_impact_map(root)
     initial = run_step_verification(root, sid)
@@ -342,12 +355,14 @@ print(sys.argv[1])
     assert first["executedChecks"] == [c for n, c in zip(names, commands) if n not in ("backend", "migration")], first
     assert first["reusedCount"] == 2 and "ui" in first["invalidatedChecks"], first
     assert (root / ".git/index").read_bytes() == index
+    scenario("lifecycle/negative-cases")
     negative_cases(root, sid, policy, commands)
     checkpoint = root / f".harness/local/verification-incremental/{sid}.json"
     baseline = json.loads(checkpoint.read_text(encoding="utf-8"))["fullBaseline"]["tree"]
 
     # Resume сохраняет pre-FIX tree; dirty/staged/untracked delta считается
     # от исходного полного baseline, а не только от последнего маленького FIX.
+    scenario("lifecycle/resume-and-renames")
     resumed = resume_dispatch(root, root_command=fix["rootCommand"])
     assert resumed["executionId"] == fix["executionId"], resumed
     write(root / "case/tests/ui/new.json", "{}\n")
@@ -364,6 +379,7 @@ print(sys.argv[1])
 
     # Risk flags сохраняются; boundary inputs запускают предусмотренные
     # exact safety checks, сохраняя доказанно независимый backend PASS.
+    scenario("lifecycle/risk-boundaries")
     write(root / "case/src/auth/policy.txt", "Проверить новую auth boundary\n")
     write(root / "case/src/migration-safety/schema.txt", "Проверить migration boundary\n")
     boundary = run_step_verification(root, sid)
@@ -371,6 +387,7 @@ print(sys.argv[1])
     assert read_task(root, sid)["frontmatter"]["risk_flags"] == ["security-sensitive", "data-migration"]
 
     # Реальная общая зависимость затрагивает все потребители, включая backend.
+    scenario("lifecycle/shared-dependency")
     write(root / "case/src/shared/validator.py", "def trim(value):\n    return value.lstrip().rstrip()\n")
     shared_result = run_step_verification(root, sid)
     assert shared_result["verificationMode"] == "incremental" and shared_result["executedCount"] == 8, shared_result
@@ -385,6 +402,7 @@ print(sys.argv[1])
     assert after_full["verificationMode"] == "incremental", after_full
 
     # Полный fallback при tampered bytes и неизвестной зависимости.
+    scenario("lifecycle/tampering")
     altered = json.loads(checkpoint.read_text(encoding="utf-8"))
     altered["latestChecks"]["backend"]["inputBasis"] = "sha256:" + "f" * 64
     write(checkpoint, json.dumps(altered))
@@ -397,6 +415,7 @@ print(sys.argv[1])
     capture_before = capture_proof.read_bytes()
     cases = root / "case/tests/ui/cases.json"
     saved_cases = cases.read_bytes()
+    scenario("lifecycle/canonical-and-targeted-fail")
     write(cases, '["broken"]\n')
     canonical_failed = run_step_verification(root, sid)
     assert canonical_failed["status"] == "FAIL", canonical_failed
@@ -409,6 +428,7 @@ print(sys.argv[1])
 
     # Более новый реальный targeted FAIL уничтожает прежний trusted cache.
     # Capture receipt остаётся тем же и не делает старый PASS пригодным.
+    scenario("lifecycle/canonical-and-targeted-fail")
     write(cases, '["broken"]\n')
     failed_feedback = run_selected(root, sid, [commands[0]])
     assert failed_feedback["status"] == "FAIL", failed_feedback
@@ -424,6 +444,7 @@ print(sys.argv[1])
 
     # Финальный lifecycle использует НОВЫЙ настоящий FAIL/FIX, чей pre-FIX
     # pin подтверждает текущий producer. Старые immutable reports не меняются.
+    scenario("lifecycle/completion")
     done = complete_dispatch(root, root_command=fix["rootCommand"], command=f"STEP FIX {sid}",
                              execution_id=fix["executionId"], result="SUCCESS")
     assert done["status"] == "DONE", done
@@ -444,6 +465,7 @@ print(sys.argv[1])
     assert final["status"] == "DONE", final
     assert "- Verification mode: incremental\n" in step.read_text(encoding="utf-8"), final
     assert verification_freshness(root, sid)["fresh"]
+    scenario("lifecycle/final-review")
     review(root, sid, location=None)
     assert read_task(root, sid)["frontmatter"]["status"] == "completed"
     return {"status": "PASS", "testOnlyExecuted": first["executedCount"],
@@ -459,11 +481,13 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="high-risk-verification-") as directory:
         root = Path(directory) / "project"
         if args.canary:
+            scenario("canary/clone")
             git(args.canary, "clone", "--quiet", "--no-local", str(args.canary.resolve()), str(root))
             git(root, "config", "user.email", "high-risk@example.invalid")
             git(root, "config", "user.name", "High Risk Fixture")
         else:
             root.mkdir()
+            scenario("synthetic/prepare")
             fixture_module().prepare(root)
         result = exercise(root, "STEP-910" if args.canary else "STEP-001")
         if not args.canary:

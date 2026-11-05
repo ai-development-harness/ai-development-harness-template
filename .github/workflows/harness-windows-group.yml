@@ -1,5 +1,5 @@
 # Общий Windows runner: каждая группа получает отдельную машину (#339).
-# Пример: вызывается тремя jobs Harness Integrity на том же commit.
+# Пример: вызывается независимыми jobs Harness Integrity на том же commit.
 name: Harness Windows group
 # Reusable workflow не запускает независимую публикацию.
 # Пример: workflow_call из harness-integrity.yml.
@@ -11,7 +11,7 @@ on:
     # Пример: один обязательный group.
     inputs:
       # Имя непересекающейся группы self-tests.
-      # Пример: update, resume или execution.
+      # Пример: update, resume, execution или high-risk.
       group:
         # Отсутствующая группа не должна давать пустой PASS.
         # Пример: true.
@@ -37,9 +37,9 @@ jobs:
     # Сохраняем исходную Windows platform.
     # Пример: windows-2025.
     runs-on: windows-2025
-    # Сохраняем исходный внешний лимит на каждую группу.
-    # Пример: 15 минут.
-    timeout-minutes: 15
+    # Per-test лимит 900 секунд должен завершить cleanup до отмены job (#389).
+    # Пример: 20 минут оставляют пять минут для setup и завершения процесса.
+    timeout-minutes: 20
     # Исходные setup steps для каждой отдельной машины.
     # Пример: checkout, Python, python3 shim.
     steps:

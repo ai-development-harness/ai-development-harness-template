@@ -9,10 +9,11 @@ import json
 import stat
 import sys
 import tempfile
+from unittest.mock import patch
 
 from self_test_fixture import (copy_effective_harness_checkout, isolate_project_artifacts,
                                set_fixture_verification)
-from harness_config import load_manifest, task_directory
+from harness_config import load_manifest, task_directory, project_overview_path
 from projection_contract import write_projections
 from verification import run_step_verification
 from verification_incremental import validate_impact_map
@@ -104,6 +105,9 @@ adrs: []
         "STEP-971": {"readOnly": True, "localCommands": [checks["STEP-971"]["checks"][0]["command"]],
                      "repeatCommands": []},
     }})
+    # Initialized host создаёт собственный overview: protocol-only scaffold
+    # больше не наследует product docs, в том числе template docs/PROJECT.md (#389).
+    write(project_overview_path(root), "# Тестовый consumer\n\nИзолированная проверка Verification policy.\n")
     write_projections(root)
     run(root, "git", "add", ".")
     run(root, "git", "commit", "-qm", "Настроить initialized host с Verification policy")
@@ -175,6 +179,43 @@ def verification_isolation(source: Path, base: Path) -> None:
             set_fixture_verification(target, None)
             assert "verification" not in load_manifest(target)
         assert snapshot(host) == original
+
+
+def verification_scale(source: Path, base: Path) -> None:
+    """Scaffold на initialized consumer не наследует 27 МБ продукта (#389).
+
+    Проверяем не только helper: prepare() импортируется из самого consumer.
+    Staged/dirty inputs, project skills и новые managed files сохраняют владельца.
+    """
+    host = base / "large-host"
+    verification_host(source, host, "policies/host-map.json")
+    for number in range(1900):
+        write(host / f"product/module-{number:04d}.txt", "x" * 14000)
+    write(host / ".agents/skills/project-check/SKILL.md", "# Навык consumer\n")
+    run(host, "git", "add", "product", ".agents/skills/project-check")
+    run(host, "git", "commit", "-qm", "Добавить масштабный consumer fixture")
+    # Managed untracked моделирует обновление до git add; dirty tracked bytes
+    # должны копироваться из installed checkout, а не из HEAD или upstream tag.
+    write(host / ".harness/tools/issue-389-managed.py", "# Новый installed файл\n")
+    runtime = host / ".harness/tools/verification.py"
+    write(runtime, runtime.read_text(encoding="utf-8") + "\n# Installed изменение #389.\n")
+    original = snapshot(host)
+    spec = importlib.util.spec_from_file_location("scaled_verification", host / ".harness/tools/verification-self-test.py")
+    assert spec and spec.loader
+    fixture = importlib.util.module_from_spec(spec)
+    # Импорт disposable helper не должен добавлять __pycache__ в snapshot host.
+    # Реальный prepare() остаётся без mock: проверяем копирование и isolation.
+    with patch.object(sys, "dont_write_bytecode", True):
+        spec.loader.exec_module(fixture)
+    target = base / "scaled-scaffold"
+    target.mkdir()
+    fixture.prepare(target)
+    assert not (target / "product").exists(), "Scaffold скопировал продукт consumer"
+    assert (target / ".harness/tools/verification.py").read_bytes() == runtime.read_bytes()
+    for rel in (".harness/tools/issue-389-managed.py", ".agents/skills/project-check/SKILL.md"):
+        assert (target / rel).read_bytes() == (host / rel).read_bytes()
+    assert "verification" not in load_manifest(target)
+    assert snapshot(host) == original, "Scaffold изменил исходный consumer"
 
 
 def verification_section_update(root: Path) -> None:
@@ -263,6 +304,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-verification-isolation-") as td:
         verification_isolation(Path(__file__).resolve().parents[2], Path(td))
         verification_section_update(Path(td) / "section-update")
+        verification_scale(Path(__file__).resolve().parents[2], Path(td))
     print("self-test fixture effective checkout and Verification isolation: PASS")
     return 0
 

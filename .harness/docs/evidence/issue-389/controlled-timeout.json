@@ -1,0 +1,8 @@
+{
+  "test": "verification-high-risk-self-test.py",
+  "exitCode": null,
+  "status": "TIMEOUT",
+  "timeoutSeconds": 1,
+  "elapsedSeconds": 1.008,
+  "lastScenario": "high-risk/lifecycle/plan-and-baseline"
+}

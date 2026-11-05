@@ -1,7 +1,7 @@
-"""Три изолированные группы Windows CI и общий обязательный результат (#339).
+"""Изолированные группы Windows CI и общий обязательный результат (#339, #389).
 
 Группы владеют непересекающимися наборами self-tests, включая проверку очистки (#334).
-Итоговый check принимает только успех всех трёх jobs; пропуск или отмена
+Итоговый check принимает только успех всех jobs; пропуск или отмена
 не становятся успехом даже при успешных оставшихся группах.
 """
 from __future__ import annotations
@@ -17,13 +17,15 @@ import time
 GROUPS = {
     "update": ("harness-config", "document-contract", "update-engine"),
     "resume": ("step-next", "portable-handoff", "portable-resume", "portable-resume-matrix"),
-    # Incremental/environment/high-risk Verification используют настоящие Git
-    # snapshots и зависят от Windows 8.3 path aliases (#376, #382).
-    # Новый restart regression идёт первым: native-platform failure должен
-    # давать feedback до дорогого high-risk FIX lifecycle, сохраняя весь набор.
-    "execution": ("verification-manual-continuation", "execution", "verification", "verification-incremental", "verification-environment", "verification-high-risk",
-                  "reliable-orchestration-fault", "operational-reports", "operational-completion",
-                  "operational-integration", "local-cleanup"),
+    # Бывшая execution-группа превышала 15 минут ещё до шестого теста (#389).
+    # Дорогие lifecycle suites получают отдельные runners; каждый из прежних
+    # 11 тестов выполняется ровно один раз, итоговый gate требует все группы.
+    "execution": ("execution", "reliable-orchestration-fault", "operational-reports",
+                  "operational-completion", "operational-integration", "local-cleanup"),
+    "verification": ("verification", "verification-environment"),
+    "incremental": ("verification-incremental",),
+    "manual": ("verification-manual-continuation",),
+    "high-risk": ("verification-high-risk",),
 }
 
 
